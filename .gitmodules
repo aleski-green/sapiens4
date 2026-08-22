@@ -1,0 +1,3 @@
+[submodule "blindly4"]
+	path = blindly4
+	url = ../blindly4.git
