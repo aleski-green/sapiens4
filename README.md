@@ -1,1 +1,1 @@
-# sapiens4
+sapiens4 is basically just a rather very intelligent system that runs locally, uses your computer, and — with your permission — can access everything you're signed in to, acting as your digital twin or a virtual co-worker for teams
