@@ -1,5 +1,6 @@
 """Serve the pinned CORPORA shell with a small, checked integration seam."""
 from .runtime import ROOT
+from html import unescape
 
 UI = ROOT / "lab-corpora-ui"
 WEB = ROOT / "web"
@@ -16,7 +17,7 @@ def javascript():
     source = replace_once(source,
                           "try { state = JSON.parse(localStorage.getItem(STORAGE)); } catch {}",
                           "state = makeInitialState(bootstrap);")
-    source = replace_once(source, "\nrender();\n", "\n" + "\n".join((WEB / name).read_text() for name in ("names.js", "work-ui.js", "task-dialog.js", "mentions.js", "bridge.js")) + "\n")
+    source = replace_once(source, "\nrender();\n", "\n" + "\n".join((WEB / name).read_text() for name in ("names.js", "work-ui.js", "task-dialog.js", "mentions.js", "mindmap.js", "bridge.js")) + "\n")
     # These direct listeners must resolve the adapter functions at click time.
     for selector, function in (("add-agent", "addAgent"), ("autonomy-button", "autonomyDialog")):
         source = replace_once(source, f"$('#{selector}').addEventListener('click',{function});",
@@ -51,6 +52,30 @@ def index():
     return html
 
 
+def memory_viewer():
+    """Reuse the pinned JSON tree component, without its demo editor or shell."""
+    source = (UI / 'agent-state-explorer.html').read_text()
+    document = unescape(source.split('srcdoc="', 1)[1].split('"></iframe>', 1)[0])
+    start = document.index('<div id="json-tree-lab">')
+    end = document.index('</script>', document.index('<script>', start)) + len('</script>')
+    component = document[start:end]
+    component = replace_once(component, "  loadExample('commerce');", """
+  let current = null;
+  window.addEventListener('message', event => {
+    if (event.source !== parent || event.data?.type !== 'sapiens-memory') return;
+    root.style.colorScheme = event.data.dark ? 'dark' : 'light';
+    const value = JSON.stringify(event.data.memx);
+    if (value === current) return;
+    current = value; input.value = value; applyJson();
+  });
+  parent.postMessage({type:'sapiens-memory-ready'}, '*');
+""")
+    return '''<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'">
+<title>Consolidated memory</title></head><body>''' + component + '<style>' + (WEB / 'mindmap-viewer.css').read_text() + '</style></body></html>'
+
+
 def asset(path):
     if path in {"/", "/workspace/", "/workspace/index.html"}:
         return "text/html; charset=utf-8", index().encode()
@@ -58,6 +83,8 @@ def asset(path):
         return "text/javascript; charset=utf-8", javascript().encode()
     if path == "/live.css":
         return "text/css; charset=utf-8", (WEB / "live.css").read_bytes()
+    if path == '/mindmap.html':
+        return 'text/html; charset=utf-8', memory_viewer().encode()
     # Explicit public assets only: never expose submodule sources, runtime data or .git.
     files = {
         "/workspace/styles.css": ("text/css", UI / "workspace/styles.css"),

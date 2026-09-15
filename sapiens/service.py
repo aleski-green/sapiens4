@@ -7,6 +7,8 @@ from pathlib import Path
 import queue
 import re
 import threading
+import hashlib
+import json
 from uuid import uuid4
 
 from .runtime import AgentPy, Config, Limits, LocalFactory, ROOT, SDK, codex_binary, computer_manifest
@@ -273,10 +275,32 @@ class Service:
                 a.agid: {"schedule": self.orchestration.settings(a), "tasks": a.state["tasks"],
                          "manager": a.corpora.directory().get(a.agid, {}).get("parent"),
                          "memory_entries": len(a.memx),
+                         "memory": self.memory_status(a, snapshot['jobs']),
                          "recent": RecentContext(self.root / "workspaces" / a.agid).settings(),
                          "task_activity": self.tasks.activity(a),
                          **self.work.snapshot(a, snapshot["jobs"])} for a in self._agents.values()}
             return snapshot
+
+    def memory_status(self, agent, jobs):
+        settings = self.orchestration.settings(agent)
+        runs = [j for j in jobs if j['agent'] == agent.agid and j['flow'] == 'learning']
+        run = next((j for j in reversed(runs) if j['status'] not in {'done', 'cancelled'}), None)
+        if run is None:
+            run = next((j for j in runs if j['id'] == settings.get('consolidation_run')), None)
+        pending = settings['consolidate_requested']
+        status = 'waiting' if pending else run['status'] if run else 'idle'
+        blocked = next((j for j in jobs if j['agent'] == agent.agid and
+                        j['status'] not in {'done', 'cancelled', 'queued', 'running'}), None)
+        def summary(job):
+            return {k: job.get(k) for k in ('id', 'agent', 'status', 'error')} if job else None
+        return {'revision': hashlib.sha256(json.dumps(agent.memx, sort_keys=True).encode()).hexdigest(),
+                'status': status, 'run': summary(run),
+                'blocker': summary(blocked) if pending else None}
+
+    def memory(self, agid):
+        with self._lock:
+            agent = self._agent(agid)
+            return {'memx': agent.memx}
 
     def save_preferences(self, data):
         # Browser state never gets authority over runtime jobs, agents or computer ownership.
@@ -287,7 +311,7 @@ class Service:
                 raise APIError(400, f"{field} must be an object")
         if "selected" in data and data["selected"] not in {a["id"] for a in self.store.agents()}:
             raise APIError(400, "Unknown selected Sapi")
-        if data.get("panel", "chat") not in {"chat", "tasks", "cron", "log"}:
+        if data.get("panel", "chat") not in {"chat", "tasks", "cron", "mindmap", "log"}:
             raise APIError(400, "Unknown panel")
         if data.get("scope", "all") not in {"all", "sapis"}:
             raise APIError(400, "Unknown view")
@@ -342,7 +366,11 @@ class Service:
                         self._active = agent.agid
                         due = False
                     elif settings["consolidate_requested"]:
-                        agent.submit("learning", key=f"manual-learning:{agent.state['chat_revision']}")
+                        if not settings.get('consolidation_id'):
+                            settings['consolidation_id'] = uuid4().hex
+                            self.orchestration.save(agent, settings)
+                        settings['consolidation_run'] = agent.submit(
+                            "learning", key=f"manual-learning:{settings['consolidation_id']}")
                         settings["consolidate_requested"] = False
                         self.orchestration.save(agent, settings)
                         due = False
