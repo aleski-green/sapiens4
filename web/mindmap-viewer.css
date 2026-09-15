@@ -1,0 +1,13 @@
+html, body { margin:0; height:100%; }
+#json-tree-lab { height:100%; --jt-blue:light-dark(#8534e8,#bd93ff); --jt-panel:light-dark(#f8f6f3,#211c2a); --jt-bg:var(--jt-panel); font-family:ui-monospace,monospace; }
+#json-tree-lab .jt-editor, #json-tree-lab .jt-header > div:first-child { display:none; }
+#json-tree-lab .jt-shell { height:100%; border-radius:0; box-shadow:none; display:flex; flex-direction:column; }
+#json-tree-lab .jt-header { padding:8px 12px; }
+#json-tree-lab .jt-status { margin:0; }
+#json-tree-lab .jt-workspace { display:flex; flex:1; min-height:0; }
+#json-tree-lab .jt-browser { width:100%; }
+#json-tree-lab .jt-tree-scroll { height:auto; min-height:130px; flex:1; }
+#json-tree-lab .jt-panel-head { padding:10px; }
+#json-tree-lab .jt-search-row { padding:10px; }
+#json-tree-lab .jt-inspector { max-height:40%; overflow:auto; padding:10px; }
+#json-tree-lab .jt-inspector code { white-space:pre-wrap; overflow-wrap:anywhere; }

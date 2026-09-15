@@ -69,6 +69,11 @@ starting. No global Codex settings are changed.
   default; each Sapi's settings can disable it or change the window (1–3600 seconds).
   Explicit refresh/current-state requests bypass reuse within that window. This
   is separate from lasting memory.
+- **MindMap**, between Jobs and Log, shows the selected Sapi's consolidated `memx`
+  in CORPORA's searchable JSON tree. **Start consolidation** waits for the runner,
+  updates the tree, and shows **Done** only after learning succeeds. Click Done to
+  run it again; failures expose Retry/Dismiss. Its state survives reloads.
+  The Jobs tab counter counts saved recurring definitions.
 - **Tasks** holds one-off work: create a planned task, set an optional due time,
   start it, review its result, then mark complete. Completed tasks move to **Past**.
   Due tasks are admitted independently of periodic checks, including when checks
@@ -222,6 +227,7 @@ There is no LAN/public hosting mode in this iteration.
 | POST | `/api/agents/<id>/messages` | Submit `{text, attachments?: [id, ...]}`; legacy `flow` is still accepted |
 | POST | `/api/agents/<id>/attachments` | Upload `{kind, name, data: base64}` or reference `{kind, value}` |
 | POST | `/api/agents/<id>/control` | `{op: "status", "schedule", "manager", "task", "run_task", "finish_task", "recurring_job", "run_job", or "consolidate", ...}` |
+| GET | `/api/agents/<id>/memory` | Selected Sapi's consolidated `memx` JSON |
 | POST | `/api/agents/<id>/jobs/<job>/retry` | Explicit retry |
 | POST | `/api/agents/<id>/jobs/<job>/cancel` | Cancel queued/dismiss stopped work |
 | PUT | `/api/preferences` | Save UI preferences only |

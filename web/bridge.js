@@ -111,6 +111,7 @@ renderGlobal = function() {
   $('#resource-status').classList.remove('paused');
   $('#workspace-owner').innerHTML = `${mention(workspaceOwner)}<span>’s workspace</span>`;
   $('#task-count').textContent = live.orchestration?.[state.selected]?.tasks.length || 0;
+  $('#job-count').textContent = live.orchestration?.[state.selected]?.recurring.length || 0;
 };
 
 renderAgentHeader = function() {
@@ -154,6 +155,9 @@ renderConversation = function() {
       const detail = job.status === 'queued' ? 'Waiting for the local runner.' : job.error || event?.detail || 'Codex is working…';
       host.insertAdjacentHTML('beforeend', `<section class="live-status" role="status"><strong>${esc(statusNames[job.status])}</strong><p>${esc(detail)}</p>${job.status === 'interrupted' ? '<p>The previous run stopped. Check what happened before retrying a computer task.</p>' : ''}${jobActions(job)}</section>`);
     }
+  } else if (state.panel === 'mindmap') {
+    $('#composer-area').hidden = true;
+    renderMindMap(host);
   } else {
     $('#composer-area').hidden = true;
     host.innerHTML = workPanel(state.panel, jobs);
@@ -339,8 +343,9 @@ $('.composer-hint').remove();
 $('[data-scope="groups"]').disabled = true;
 $('[data-scope="groups"]').title = 'Groups are coming in the next iteration';
 $('[data-panel="cron"]').hidden = false;
-$('[data-panel="cron"]').textContent = 'Jobs';
+$('[data-panel="cron"]').innerHTML = 'Jobs <span id="job-count" title="Recurring jobs">0</span>';
 $('.conversation-tabs').insertBefore($('[data-panel="cron"]'), $('[data-panel="log"]'));
+$('[data-panel="log"]').insertAdjacentHTML('beforebegin', '<button type="button" data-panel="mindmap" aria-pressed="false">MindMap</button>');
 $('[data-panel="tasks"]').innerHTML = 'Tasks <span id="task-count">0</span>';
 $('#message-input').maxLength = 16000;
 $('#message-input').value = state.drafts[state.selected] || '';

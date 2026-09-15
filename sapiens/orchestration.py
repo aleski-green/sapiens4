@@ -5,6 +5,7 @@ import hashlib
 import json
 import shlex
 import sys
+from uuid import uuid4
 
 from .runtime import ROOT
 from agentpy.storage import atomic_bytes
@@ -177,8 +178,12 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 result['run_id'] = self.service.work.run_now(agent, text_field(data, 'id', 64))
             elif op == "consolidate":
                 settings = self.settings(agent)
-                settings["consolidate_requested"] = True
-                self.save(agent, settings)
+                learning = [j for j in agent.state['jobs'] if j['flow'] == 'learning'
+                            and j['status'] not in {'done', 'cancelled'}]
+                if not settings['consolidate_requested'] and not learning:
+                    settings['consolidation_id'] = uuid4().hex
+                    settings["consolidate_requested"] = True
+                    self.save(agent, settings)
                 result["status"] = "queued"
             if op != "status":
                 self.service.store.event(agid, "control", json.dumps(data), job=self.service._active_job(agid))
