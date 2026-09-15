@@ -83,6 +83,8 @@ class Handler(BaseHTTPRequestHandler):
                 if after < 0:
                     raise APIError(400, "after must be nonnegative")
                 return self._send(200, service.snapshot(after))
+            if len(parts) == 5 and parts[:2] == ['api','agents'] and parts[3] == 'tasks':
+                return self._send(200, service.tasks.detail(parts[2], parts[4]))
             if path == "/api/health":
                 return self._send(200, {"status": "ok", "provider": "codex"})
             if path == "/":
@@ -109,6 +111,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(202, service.submit(parts[2], data))
                 if len(parts) == 4 and parts[3] == "control" and self.command == "POST":
                     return self._send(200, service.orchestration.control(parts[2], data))
+                if len(parts) == 6 and parts[3] == 'tasks' and parts[5] == 'comments' and self.command == 'POST':
+                    with service._lock:
+                        return self._send(201, service.tasks.comment(service._agent(parts[2]), parts[4], data.get('text')))
                 if len(parts) == 6 and parts[3] == "jobs" and self.command == "POST":
                     return self._send(200, service.job_action(parts[2], parts[4], parts[5]))
         raise APIError(404, "Not found")

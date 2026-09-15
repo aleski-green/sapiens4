@@ -3,6 +3,7 @@ import json
 import os
 import re
 from uuid import uuid4
+from datetime import datetime
 from agentpy.storage import atomic_bytes
 from .orchestration import utcnow
 
@@ -13,13 +14,79 @@ class Tasks:
     def __init__(self, service):
         self.service = service
 
+    def activity(self, agent):
+        path = agent.root / 'task-activity.json'
+        return json.loads(path.read_text()) if path.exists() else []
+
+    def record(self, agent, task, kind, text, key=None, author=None, time=None):
+        rows = self.activity(agent)
+        if key and any(r['id'] == key for r in rows):
+            return
+        rows.append(dict(id=key or uuid4().hex, task=task['id'], name=task['name'],
+            kind=kind, text=text, author=author or agent.agid, time=time or utcnow().isoformat(),
+            agent=agent.agid, assigned_by=task.get('assigned_by', agent.agid)))
+        atomic_bytes(agent.root / 'task-activity.json', json.dumps(rows, ensure_ascii=False).encode())
+
+    def sync(self, agent, state, outputs):
+        jobs = {j['id']: j for j in state['jobs']}
+        events = state.get('events', [])
+        for task in state['tasks']:
+            if not task.get('name') or task.get('job') not in jobs:
+                continue
+            job = jobs[task['job']]
+            labels = {'queued':'Queued', 'running':'Started', 'done':'Result ready for review',
+                      'failed':'Failed', 'interrupted':'Interrupted', 'cancelled':'Dismissed',
+                      'budget_blocked':'Budget blocked', 'conflict':'Needs review'}
+            for event in events:
+                if event.get('job') != job['id'] or event['kind'] not in {'started','done','failed','interrupted','cancelled','budget_blocked','conflict'}:
+                    continue
+                kind = 'running' if event['kind'] == 'started' else event['kind']
+                detail = outputs.get(job['id'], '') if kind == 'done' else (job.get('error') or '') if kind in {'failed','interrupted','conflict'} else ''
+                self.record(agent, task, kind, labels.get(kind,kind) + (':\n' + detail if detail else ''),
+                            key=f"{job['id']}:{event['sequence']}", time=event['time'])
+            if job['status'] == 'queued':
+                self.record(agent, task, 'queued', 'Queued for the local runner.', key=job['id']+':queued')
+
+    def updates(self):
+        return [r for a in self.service._agents.values() for r in self.activity(a)
+                if r['kind'] in {'running','done','failed','interrupted','budget_blocked','conflict','completed'}]
+
+    def detail(self, agid, task_id):
+        from .service import APIError
+        with self.service._lock:
+            agent = self.service._agent(agid)
+            self.service._sync(agent)
+            task = next((t for t in self.catalog() if t['agent'] == agid and t['id'] == task_id), None)
+            if task is None:
+                raise APIError(404, 'Unknown task')
+            with self.service.store.connect() as db:
+                run = db.execute('SELECT * FROM jobs WHERE id=? AND agent=?', (task.get('job'),agid)).fetchone()
+                events = db.execute('SELECT * FROM events WHERE job=? AND agent=? ORDER BY id DESC LIMIT 200',
+                                    (task.get('job'),agid)).fetchall()
+            return dict(task=task, run=dict(run) if run else None,
+                        activity=[r for r in self.activity(agent) if r['task'] == task_id],
+                        events=sorted((dict(r) for r in events), key=lambda r:(r['time'],r['id'])))
+
+    def comment(self, agent, task_id, text, author='Human'):
+        from .service import APIError, text_field
+        task = next((t for t in self.catalog() if t['agent'] == agent.agid and t['id'] == task_id), None)
+        if task is None:
+            raise APIError(404, 'Unknown task')
+        self.record(agent, task, 'comment', text_field({'text':text}, 'text', 4000), author=author)
+        return {'saved':True}
+
+    def due(self, agent, instant):
+        return next((t for t in sorted(agent.state['tasks'], key=lambda t:t.get('due') or '')
+                     if t.get('due') and not t.get('job') and agent._time(t['due']) <= instant), None)
+
     def catalog(self):
         rows = []
         for agent in self.service._agents.values():
             rows.extend(dict(t, agent=agent.agid, past=False) for t in agent.state['tasks'])
             directory = agent.corpora.root / 'archive' / agent.agid / 'tasks'
-            rows.extend(dict(json.loads(p.read_text()), agent=agent.agid, past=True)
-                        for p in directory.glob('*.json'))
+            for path in directory.glob('*.json'):
+                rows.append(dict(json.loads(path.read_text()), agent=agent.agid, past=True,
+                    completed=datetime.fromtimestamp(path.stat().st_mtime, utcnow().tzinfo).isoformat()))
         return rows
 
     def name(self, title, supplied=None, used=None):
@@ -51,7 +118,7 @@ class Tasks:
                 raise APIError(400, 'due must be a timezone-aware ISO datetime or null')
             agent._time(due)
         name = self.name(title, data.get('name'))
-        task = dict(id=uuid4().hex, name=name, title=title, due=due, flow='reason', project=None,
+        task = dict(id=uuid4().hex, name=name, title=title, due=due, flow='task', project=None,
                     status='open', created=utcnow().isoformat(), assigned_by=caller.agid)
         # Task and its notice are one transaction: no phantom assignment messages.
         with agent.store.transaction() as state:

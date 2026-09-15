@@ -57,8 +57,9 @@ Pass a JSON object with op and the fields below. Quote JSON safely for the shell
   target (unique Sapi name or ID) assigns to another Sapi. Optional name must start
   a–z, with letters, numbers or - _ . : # + | ( ) & $ ^, at most 24 characters.
   Omit name to generate a unique task mention automatically. Assignment notices
-  are posted in the assignee and assigning Sapi chats. Due tasks run the SDK reasoning flow. This does not authorize
+  are posted in the assignee and assigning Sapi chats. Due tasks run at their own deadline, independently of checks. This does not authorize
   computer actions. status returns task IDs and their associated job results.
+- task_comment: id (your task ID), text (progress or a blocker). Saves a task comment.
 - run_task: id (existing task ID). Run a planned task once.
 - recurring_job: title, prompt, minutes (1–10080), enabled (boolean, default true).
   Creates a recurring job with its own timer; optional id updates an existing job.
@@ -68,6 +69,8 @@ Pass a JSON object with op and the fields below. Quote JSON safely for the shell
 Never edit host-control.json or runtime files. Report errors from the command.
 The returned saved facts are authoritative. Do not replay old chat requests.
 """)
+        agent.set_manifest('task-comments', json.dumps([r for r in self.service.tasks.activity(agent)
+            if r['kind'] == 'comment'][-20:], ensure_ascii=False))
         facts = self.status(agent)
         # Full job transcripts and task lists are fetched on demand, rather than
         # duplicating them into every chat and memory prompt.
@@ -140,7 +143,7 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             op = data.get("op")
             fields = {"status": set(), "schedule": {"minutes", "enabled", "monitor_team"},
                       "manager": {"manager", "target"}, "task": {"title", "due", "name", "target"},
-                      "finish_task": {"id"}, "run_task": {"id"}, "run_job": {"id"},
+                      "task_comment": {"id", "text"}, "finish_task": {"id"}, "run_task": {"id"}, "run_job": {"id"},
                       "recurring_job": {"id", "title", "prompt", "minutes", "enabled"}, "consolidate": set()}
             if not isinstance(op, str) or op not in fields or set(data) - fields[op] - {"op"}:
                 raise APIError(400, "Unknown operation or field")
@@ -158,6 +161,8 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 result = {"target": target.agid, "manager": parent}
             elif op == "task":
                 result.update(self.service.tasks.create(agent, data))
+            elif op == "task_comment":
+                result.update(self.service.tasks.comment(agent, text_field(data,'id',64), data.get('text'), author=agent.agid))
             elif op == "finish_task":
                 task_id = text_field(data, "id", 64)
                 if not any(t["id"] == task_id for t in agent.state["tasks"]):

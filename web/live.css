@@ -40,3 +40,12 @@
 .mention-suggestions small { opacity:.7; }
 .assignment-message .message-bubble { border-left:3px solid var(--accent, #de007a); }
 .live-job:focus { outline:2px solid var(--accent, #de007a); outline-offset:2px; }
+.task-description, .task-result, .task-history, .task-comments { margin-top:18px; }
+.task-result p, .task-comment p { white-space:pre-wrap; overflow-wrap:anywhere; margin-top:8px; }
+.task-history .log-row { display:block; padding:10px 0; border-bottom:1px solid var(--line); }
+.task-history .log-row p { white-space:pre-wrap; overflow-wrap:anywhere; }
+.task-history time, .task-comment time { font-size:11px; opacity:.7; }
+.task-comment { padding:12px 0; border-bottom:1px solid var(--line); }
+.task-comments form { margin-top:14px; }
+
+.task-comments textarea { min-height:90px; height:90px; resize:vertical; }

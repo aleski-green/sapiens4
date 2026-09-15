@@ -15,6 +15,7 @@ from .orchestration import Orchestration, utcnow
 from .hierarchy import Hierarchy
 from .work import Work
 from .tasks import Tasks
+from .recent import RecentContext
 
 
 class APIError(Exception):
@@ -119,6 +120,8 @@ class Service:
             if not self.factory_builder:
                 factory.keep_recent = lambda: any(j['status'] == 'running' and j['flow'] in {'chat', 'computer'}
                                                   for j in agent.state['jobs'])
+                factory.current_request = lambda: next((j['task'].split('Mention references (')[0]
+                    for j in agent.state['jobs'] if j['status'] == 'running'), '')
             self._agents[agid] = agent
             self._manifests(agent, row)
         return self._agents[agid]
@@ -144,6 +147,7 @@ class Service:
                     outputs[job["id"]] = agent.result(job["id"])
                 except FileNotFoundError:
                     pass  # An explicitly pruned archive need not block projection.
+        self.tasks.sync(agent, snapshot, outputs)
         self.store.project(agent.agid, snapshot, outputs)
         self._revisions[agent.agid] = snapshot["revision"]
 
@@ -179,6 +183,9 @@ class Service:
             agent = self._agent(agid)
             if any(j["status"] in {"queued", "running"} for j in agent.state["jobs"]):
                 raise APIError(409, "Wait for this Sapi's current job before changing its identity")
+            recent = RecentContext(self.root / 'workspaces' / agid)
+            if 'recent' in data:
+                recent.validate(data['recent'])
             schedule = None
             if "schedule" in data:
                 schedule = self.orchestration.validate_schedule(agent, data["schedule"])
@@ -187,6 +194,8 @@ class Service:
                 self.hierarchy.assign(agent, parent)
             if schedule is not None:
                 self.orchestration.save(agent, schedule)
+            if 'recent' in data:
+                recent.configure(data['recent'])
             self.store.update_agent(agid, row)
             self._manifests(agent, row)
             self.store.event(agid, "updated", "Sapi identity updated")
@@ -254,6 +263,7 @@ class Service:
                                     "built": os.access(self.binary, os.X_OK)}
             snapshot["provider"] = "codex"
             snapshot["task_assignments"] = self.tasks.notices()
+            snapshot["task_updates"] = self.tasks.updates()
             snapshot["main_agent_id"] = self.hierarchy.main
             snapshot["attachment_drafts"] = {
                 agid: [a for a in self.store.attachments(agid) if a["id"] in ids]
@@ -263,6 +273,8 @@ class Service:
                 a.agid: {"schedule": self.orchestration.settings(a), "tasks": a.state["tasks"],
                          "manager": a.corpora.directory().get(a.agid, {}).get("parent"),
                          "memory_entries": len(a.memx),
+                         "recent": RecentContext(self.root / "workspaces" / a.agid).settings(),
+                         "task_activity": self.tasks.activity(a),
                          **self.work.snapshot(a, snapshot["jobs"])} for a in self._agents.values()}
             return snapshot
 
@@ -319,12 +331,17 @@ class Service:
                     settings = self.orchestration.settings(agent)
                     due = self.orchestration.due(agent, instant)
                     recurring = self.work.due(agent, instant)
-                    if not due and not settings["consolidate_requested"] and not recurring:
+                    due_task = self.tasks.due(agent, instant)
+                    if not due and not settings["consolidate_requested"] and not recurring and not due_task:
                         continue
                     self._background.add(agent.agid)
                     background = True
                     self.orchestration.prepare(agent)
-                    if settings["consolidate_requested"]:
+                    if due_task:
+                        self.work.admit_task(agent, due_task['id'])
+                        self._active = agent.agid
+                        due = False
+                    elif settings["consolidate_requested"]:
                         agent.submit("learning", key=f"manual-learning:{agent.state['chat_revision']}")
                         settings["consolidate_requested"] = False
                         self.orchestration.save(agent, settings)

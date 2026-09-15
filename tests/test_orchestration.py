@@ -78,11 +78,12 @@ class OrchestrationTest(IntegrationFixture):
         service.scheduled(start)
         jobs = service.snapshot()['jobs']
         self.assertEqual(len(jobs), 1)
-        self.assertEqual(jobs[0]['flow'], 'reason')
+        self.assertEqual(jobs[0]['flow'], 'task')
         self.assertEqual(jobs[0]['status'], 'done')
         self.assertEqual(jobs[0]['output'], 'Connected through AgentPy.')
         service.scheduled(start + timedelta(minutes=11))
-        self.assertEqual(len(service.snapshot()['jobs']), 1)
+        # The later heartbeat can also consolidate memory; the task runs once.
+        self.assertEqual(len([j for j in service.snapshot()['jobs'] if j['flow'] == 'task']), 1)
         control(agid, {'op': 'finish_task', 'id': task})
         self.assertEqual(service._agent(agid).state['tasks'], [])
 

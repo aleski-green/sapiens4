@@ -64,7 +64,7 @@ document.addEventListener('click',e => {
     const entity=mentionEntities().find(t=>t.type==='task' && t.id===link.dataset.taskLink && t.owner===link.dataset.taskOwner);
     if (!entity) return;
     openChat(entity.owner);state.panel='tasks';workViews.tasks=entity.past?'past':'ongoing';renderConversation();save();
-    const card=document.getElementById(`task-${entity.id}`);card?.scrollIntoView({block:'center'});card?.focus();
+    taskDialog(entity.owner,entity.id);
     return;
   }
   if (e.target.id==='message-input') updateMentions(); else closeMentions();

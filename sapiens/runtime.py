@@ -24,7 +24,8 @@ from config import Config as SDKConfig  # noqa: E402
 class Config(SDKConfig):
     # Computer-task answers become conversation history as well as durable jobs.
     flows = {**SDKConfig.flows, "computer": Flow(("react",), commit="reply"),
-             "scheduled": Flow(("conversation",), commit="note")}
+             "scheduled": Flow(("conversation",), commit="note"),
+             "task": Flow(("conversation",), commit="note")}
     roles = {**SDKConfig.roles, "conversation": Role("""Maintain a concise conversation.
 Use the host-control command in the manifests to change Sapiens4 schedules,
 reporting relationships, one-off tasks, recurring jobs, or memory consolidation. For changes, execute
@@ -37,7 +38,8 @@ For an ambiguous Sapi name ask the user; never guess an ID. Team job completion
 does not by itself prove the user's objective succeeded.
 A recurring job executes its saved prompt on each timer run; only perform the
 work described by that prompt. Tasks are one-off; use recurring_job for repeated
-work. The main orchestrator has no manager; other Sapis belong to its hierarchy.
+work. For an assigned task, perform the requested work and return its actual result,
+not a recommendation to do it. Report a blocker honestly. The main orchestrator has no manager; other Sapis belong to its hierarchy.
 Chat is the single user entry point. When the current message explicitly asks
 for computer or browser work, execute it with Blindly4 under the computer-use
 manifest. For attached images/documents use local file-reading tools as needed;
@@ -96,7 +98,7 @@ class LocalLLM(CodexLLM):
         self._retain = self.spec.role in {'conversation', 'react'} and getattr(self, 'retain_context', True)
         answer, error = '', None
         try:
-            answer = super().complete(prompt + (self._recent.context() if self._retain else ''))
+            answer = super().complete(prompt + (self._recent.context((getattr(self, 'current_request', '') or prompt)) if self._retain else ''))
             return answer
         except Exception as exc:
             error = type(exc).__name__
@@ -136,6 +138,7 @@ class LocalFactory(CodexFactory):
         llm = LocalLLM(spec=spec, workdir=self.workdir, event_sink=self.event_sink,
                        timeout_seconds=self.timeout_seconds)
         llm.retain_context = self.keep_recent() if hasattr(self, 'keep_recent') else True
+        llm.current_request = self.current_request() if hasattr(self, 'current_request') else ''
         return llm
 
 

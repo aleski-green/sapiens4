@@ -86,8 +86,14 @@ class Work:
             raise APIError(409, 'Wait for current work, or retry/dismiss the run needing attention')
 
     def run_task(self, agent, task_id):
-        from .service import APIError
         self.require_idle(agent)
+        run = self.admit_task(agent, task_id)
+        self.service._sync(agent)
+        self.service._queue.put(agent.agid)
+        return run
+
+    def admit_task(self, agent, task_id):
+        from .service import APIError
         # SDK has no public run-task operation. Use its transaction/enqueue pair
         # so assigning the run and queuing it commit together, as tick() does.
         with agent.store.transaction() as state:
@@ -98,8 +104,6 @@ class Work:
                 raise APIError(409, 'This task has already run; review its result')
             run = agent._enqueue(state, task['flow'], task['title'], task['id'])
             task['job'] = run
-        self.service._sync(agent)
-        self.service._queue.put(agent.agid)
         return run
 
     def finish_task(self, agent, task_id):
@@ -109,7 +113,9 @@ class Work:
             raise APIError(404, 'Unknown open task')
         if any(j['id'] == task.get('job') and j['status'] in {'queued', 'running'} for j in agent.state['jobs']):
             raise APIError(409, 'Wait for this task to finish running')
+        self.service._sync(agent)
         agent.finish_task(task_id)
+        self.service.tasks.record(agent, task, 'completed', 'Marked complete.')
 
     def snapshot(self, agent, runs):
         definitions = self.read(agent)

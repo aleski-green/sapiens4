@@ -86,6 +86,15 @@ function applySnapshot(snapshot) {
       if (a && timestamp > a.lastActivity) {a.lastActivity=timestamp;a.preview=`New @${notice.name} assigned.`;}
     }
   }
+  for (const update of snapshot.task_updates || []) {
+    for (const owner of new Set([update.agent,update.assigned_by])) {
+      const timestamp=Date.parse(update.time), text=`@${update.name} · ${update.text}`;
+      (state.messages[owner] ||= []).push({role:'assistant',speaker:update.agent,text,
+        time:displayTime(update.time),timestamp,assignment:true});
+      const a=state.agents.find(a=>a.id===owner);
+      if (a && timestamp>a.lastActivity) {a.lastActivity=timestamp;a.preview=text.replace(/\s+/g,' ').slice(0,150);}
+    }
+  }
   for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp);
   if (!state.agents.some(a => a.id === state.selected)) state.selected = state.agents[0].id;
   state.logs = eventRows.slice().reverse().map(e => ({agent:e.agent,time:displayTime(e.time),title:e.kind,detail:e.detail}));
@@ -191,6 +200,11 @@ agentSettings = function() {
       <label>Check every (minutes)<input name="minutes" type="number" min="1" max="1440" step="1" required value="${schedule.minutes}"></label>
       <label class="check-label"><input name="monitor_team" type="checkbox" ${schedule.monitor_team ? 'checked' : ''}> Include team progress</label>
     </fieldset>
+    <fieldset class="schedule-fields"><legend>Recent memory</legend>
+      <label class="check-label"><input name="recent_enabled" type="checkbox" ${info.recent.enabled ? 'checked' : ''}> Reuse recent results for follow-ups</label>
+      <label>Fresh for (seconds)<input name="recent_seconds" type="number" min="1" max="3600" step="1" required value="${info.recent.seconds}"></label>
+      <small>“Do it again” or “check current state” always checks afresh.</small>
+    </fieldset>
     <dl class="sapi-details"><dt>Status</dt><dd>${esc(job ? statusNames[job.status] : 'Ready')}</dd><dt>Next check</dt><dd>${schedule.enabled && schedule.next_check ? esc(new Date(schedule.next_check).toLocaleString()) : 'Paused'}</dd><dt>Last check</dt><dd>${schedule.last_check ? esc(new Date(schedule.last_check).toLocaleString()) : 'Not yet'}</dd><dt>Memory</dt><dd>${info.memory_entries} ${info.memory_entries === 1 ? 'entry' : 'entries'}</dd></dl>
     <small class="form-hint">Checks run while the local server is running.</small>
     <button type="submit" class="button primary">Save</button></form>`, 'SAPIENS4');
@@ -217,6 +231,8 @@ document.addEventListener('submit', async e => {
     if (!created) {
       data.manager = data.manager || null;
       data.schedule = {enabled:form.elements.enabled.checked,minutes:Number(data.minutes),monitor_team:form.elements.monitor_team.checked};
+      data.recent = {enabled:form.elements.recent_enabled.checked,seconds:Number(data.recent_seconds)};
+      delete data.recent_enabled; delete data.recent_seconds;
       delete data.enabled; delete data.minutes; delete data.monitor_team;
     }
     const row = await api(created ? '/api/agents' : `/api/agents/${form.dataset.id}`, created ? 'POST' : 'PUT', data);
@@ -335,12 +351,13 @@ async function refresh() {
   refreshing = (async () => {
     try {
       const snapshot = await api(`/api/state?after=${cursor}`);
-      const changed = JSON.stringify([snapshot.agents,snapshot.jobs,snapshot.computer,snapshot.orchestration,snapshot.task_assignments]) !== JSON.stringify([live.agents,live.jobs,live.computer,live.orchestration,live.task_assignments]) || snapshot.events.length;
+      const changed = JSON.stringify([snapshot.agents,snapshot.jobs,snapshot.computer,snapshot.orchestration,snapshot.task_assignments,snapshot.task_updates]) !== JSON.stringify([live.agents,live.jobs,live.computer,live.orchestration,live.task_assignments,live.task_updates]) || snapshot.events.length;
       const reconnected = !online;
       online = true;
       applySnapshot(snapshot);
       if (changed || reconnected) {
         renderSidebar(); renderConversation(); renderGlobal();
+        if ($('#task-details-body')) refreshTaskDialog();
         if ($('#modal').open && $('#modal-title')?.textContent === 'Shared computer') computerDialog();
       }
     } catch (error) {

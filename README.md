@@ -65,14 +65,22 @@ starting. No global Codex settings are changed.
   in each Sapi's workspace. Each turn stores up to 6,000 characters of recent
   tool data (4,000 per result), with explicit truncation markers. Follow-ups reuse
   these observations; fresh state is still required before computer mutations.
-  Background jobs do not evict this buffer. This is separate from lasting memory.
+  Background jobs do not evict this buffer. Reuse expires after 90 seconds by
+  default; each Sapi's settings can disable it or change the window (1–3600 seconds).
+  Explicit refresh/current-state requests bypass reuse within that window. This
+  is separate from lasting memory.
 - **Tasks** holds one-off work: create a planned task, set an optional due time,
   start it, review its result, then mark complete. Completed tasks move to **Past**.
+  Due tasks are admitted independently of periodic checks, including when checks
+  are paused. A busy runner, stopped work or a sleeping/offline host can delay them.
+  Task links open a dialog with result, comments, lifecycle activity and execution
+  logs. Start/result/failure updates also appear in chat. New tasks execute a
+  single task role that returns the requested result.
 - **Jobs** holds recurring definitions with an interval, next-run time, last status,
   pause/resume, edit and run-now controls. **Past** contains finished runs. The
   existing agent check is shown as a built-in recurring job.
-- **Log** separates ongoing and past runtime runs, including chat turns. Detailed
-  activity events remain available there.
+- **Log** shows one chronological activity history, including chat turns; it has
+  no ongoing/past switch.
 - **Log** shows real runtime events and Codex command/tool activity, polled every 750 ms.
 - Retry failed, interrupted, conflicting or budget-blocked jobs; dismiss stopped
   jobs or cancel work that is still queued. Running calls finish or hit their deadline.
@@ -110,7 +118,7 @@ self-modification is not enabled by this host.
 Checks require the server to remain running and the computer to be awake.
 A busy or stopped Sapi is deferred; missed intervals produce one catch-up check.
 Stopped jobs are never automatically retried by the timer. A due task runs once;
-its reasoning result appears in Tasks, and completing the task requires a separate
+its result appears in Tasks and chat, and completing the task requires a separate
 verified completion. Team status distinguishes completed jobs from proven task
 success. The reporting tree is metadata, not an authorization boundary.
 
@@ -174,6 +182,8 @@ Default local data lives in gitignored `.sapiens4/`:
 | `agentpy/agents/<id>/` | AgentPy's existing atomic JSON state, manifests, budgets and run locks |
 | `agentpy/corpora/` | AgentPy's shared artifacts, directory, mailboxes, receipts and archives |
 | `workspaces/<id>/` | Working directory for that Sapi's Codex calls and generated files |
+| `agentpy/agents/<id>/task-activity.json` | Durable task comments and lifecycle updates |
+| `workspaces/<id>/recent-settings.json` | Per-Sapi recent-memory enablement and freshness interval |
 | `workspaces/<id>/recent-context.json` | Last five interactive calls, bounded tool observations and answer excerpts; isolated per Sapi |
 | `uploads/<id>/` | Local image/document uploads referenced by chat |
 | `host.lock` | Prevents two Sapiens4 servers from running the same data directory |

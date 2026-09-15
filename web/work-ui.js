@@ -11,8 +11,8 @@ function runCard(run) {
 }
 function taskCardLive(task, runs, past) {
   const run = runs.find(r => r.id === task.job);
-  const status = past ? 'Completed' : run ? (run.status === 'done' ? 'Ready for review' : run.status === 'running' ? 'In progress' : statusNames[run.status]) : 'Planned';
-  return `<article class="live-job" id="task-${esc(task.id)}" tabindex="-1"><span class="tag">${esc(status)}</span><h3>@${esc(task.name)}</h3><p>${esc(task.title)}</p><small>${past ? `Completed ${esc(new Date(task.completed).toLocaleString())}` : task.due ? `Due ${esc(new Date(task.due).toLocaleString())}` : 'No due date'}</small>${run?.output ? `<details><summary>Result</summary><p>${esc(run.output)}</p></details>` : ''}${run ? jobActions(run) : ''}${!past ? `<div class="actions">${!task.job ? workButton('run_task',task.id,'Start') : ''}${!run || !['queued','running'].includes(run.status) ? workButton('finish_task',task.id,'Mark complete') : ''}</div>` : ''}</article>`;
+  const status = taskStatus({...task,past},run);
+  return `<article class="live-job" id="task-${esc(task.id)}"><span class="tag">${esc(status)}</span><h3><button class="entity-mention" data-task-link="${esc(task.id)}" data-task-owner="${esc(state.selected)}" aria-label="Open task ${esc(task.name)}">@${esc(task.name)}</button></h3><p>${esc(task.title)}</p><small>${past ? `Completed ${esc(new Date(task.completed).toLocaleString())}` : task.due ? `Due ${esc(new Date(task.due).toLocaleString())}` : 'No due date'}</small><div class="actions"><button class="button" data-task-link="${esc(task.id)}" data-task-owner="${esc(state.selected)}">Open task</button></div></article>`;
 }
 function workPanel(panel, runs) {
   const info = live.orchestration[state.selected];
@@ -39,12 +39,12 @@ function workPanel(panel, runs) {
       }).join('');
     }
   } else {
-    heading = '<div class="list-heading"><h3>Runs</h3></div>';
-    const list = runs.filter(r => past ? finished(r) : !finished(r));
-    body = list.slice().reverse().map(runCard).join('') || `<div class="empty">${past ? 'No past runs.' : 'No ongoing runs.'}</div>`;
+    heading = '<div class="list-heading"><h3>Activity log</h3></div>';
+    const list = runs;
+    body = list.slice().reverse().map(runCard).join('') || '<div class="empty">No activity yet.</div>';
     body += `<details class="event-history"><summary>Activity events</summary>${eventRows.filter(e=>e.agent===state.selected).slice(-100).reverse().map(e=>`<div class="log-row"><time>${esc(displayTime(e.time))}</time><strong>${esc(e.kind)}</strong><p>${esc(e.detail)}</p></div>`).join('')}</details>`;
   }
-  return heading + workNav(panel) + body;
+  return heading + (panel==='log' ? '' : workNav(panel)) + body;
 }
 function workForm(kind, id) {
   const row = id ? live.orchestration[state.selected].recurring.find(j => j.id === id) : null;
@@ -66,8 +66,9 @@ document.addEventListener('click', async e => {
       const row = live.orchestration[state.selected].recurring.find(j => j.id === d.workId);
       data = {op:'recurring_job',id:row.id,enabled:!row.enabled};
     }
-    await api(`/api/agents/${state.selected}/control`, 'POST', data);
+    await api(`/api/agents/${b.closest('#task-details-body')?.dataset.owner || state.selected}/control`, 'POST', data);
     await refresh();
+    if ($('#task-details-body')) await refreshTaskDialog();
   } catch (error) { toast(error.message); }
   finally { b.disabled = false; }
 }, true);
