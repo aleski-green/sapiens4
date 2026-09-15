@@ -104,6 +104,24 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             raise APIError(400, "Sapi name must identify exactly one existing Sapi; use its ID")
         return self.service._agent(matches[0]["id"])
 
+    def validate_schedule(self, agent, data):
+        from .service import APIError
+        if not isinstance(data, dict) or set(data) - {"minutes", "enabled", "monitor_team"}:
+            raise APIError(400, "Invalid schedule fields")
+        settings = self.settings(agent)
+        minutes = data.get("minutes", settings["minutes"])
+        if type(minutes) is not int or not 1 <= minutes <= 1440:
+            raise APIError(400, "minutes must be an integer from 1 to 1440")
+        for key in ("enabled", "monitor_team"):
+            if key in data and type(data[key]) is not bool:
+                raise APIError(400, f"{key} must be boolean")
+        changed = any(settings[k] != v for k, v in data.items())
+        settings.update(data)
+        if changed:
+            settings["next_check"] = ((utcnow() + timedelta(minutes=minutes)).isoformat()
+                                      if settings["enabled"] else None)
+        return settings
+
     def control(self, agid, data):
         from .service import APIError, text_field
         with self.service._lock:
@@ -116,18 +134,9 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 raise APIError(400, "Unknown operation or field")
             result = {}
             if op == "schedule":
-                settings = self.settings(agent)
-                minutes = data.get("minutes", settings["minutes"])
-                if type(minutes) is not int or not 1 <= minutes <= 1440:
-                    raise APIError(400, "minutes must be an integer from 1 to 1440")
-                for key in ("enabled", "monitor_team"):
-                    if key in data and type(data[key]) is not bool:
-                        raise APIError(400, f"{key} must be boolean")
-                settings.update({k: v for k, v in data.items() if k != "op"})
-                settings["next_check"] = ((utcnow() + timedelta(minutes=minutes)).isoformat()
-                                          if settings["enabled"] else None)
+                settings = self.validate_schedule(agent, {k: v for k, v in data.items() if k != "op"})
                 self.save(agent, settings)
-                agent.config.schedule = replace(agent.config.schedule, awake_minutes=minutes)
+                agent.config.schedule = replace(agent.config.schedule, awake_minutes=settings["minutes"])
             elif op == "manager":
                 if "manager" not in data:
                     raise APIError(400, "manager is required; use null to clear it")

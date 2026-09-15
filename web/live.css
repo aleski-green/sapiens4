@@ -1,7 +1,5 @@
 /* The visual system and layouts come from lab-corpora-ui. */
 [hidden] { display: none !important; }
-.live-flow { display:flex; align-items:center; gap:8px; font-size:12px; }
-.live-flow select { max-width:160px; padding:6px; border:1px solid var(--line); border-radius:6px; color:inherit; background:var(--panel); font:inherit; }
 .live-status { padding:12px 14px; border:1px solid var(--line); border-radius:10px; margin:14px 0; }
 .live-status p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
 .live-status .actions { display:flex; gap:8px; margin-top:10px; }
@@ -10,3 +8,18 @@
 .live-job p { white-space:pre-wrap; font-size:12px; }
 .live-disconnected { color:#b74350; }
 .live-connection { font-size:12px; }
+#profile-button { width:auto; min-width:38px; padding:0 6px; }
+.agent-heading > div { min-width:0; flex:1; }
+.agent-heading h2, .agent-heading .agent-role { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.schedule-fields { display:grid; gap:12px; border:1px solid var(--line); padding:12px; margin:0; }
+.schedule-fields legend { padding:0 6px; font-size:13px; }
+.form-stack .check-label { display:flex; align-items:center; gap:9px; }
+.form-stack .check-label input { width:16px; height:16px; margin:0; accent-color:var(--pink, #ed008c); }
+.sapi-details { display:grid; grid-template-columns:auto 1fr; gap:8px 16px; font-size:12px; margin:0; }
+.sapi-details dt { color:var(--muted); }
+.sapi-details dd { margin:0; text-align:right; }
+.attachment-menu { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.attachment-menu .button { padding:18px 12px; text-align:left; }
+.attachment-item { display:block; overflow-wrap:anywhere; font-size:12px; color:inherit; }
+.message-attachments { display:grid; gap:7px; border-top:1px solid var(--line); padding-top:8px; margin-top:8px; }
+.attachment-chip { background:var(--panel); border:1px solid var(--line); }

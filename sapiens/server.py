@@ -55,8 +55,9 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             raise APIError(400, "Invalid content length") from None
-        if not 0 < length <= 2_000_000:
-            raise APIError(413, "Request body must be between 1 byte and 2 MB")
+        maximum = 15_000_000 if urlsplit(self.path).path.endswith("/attachments") else 2_000_000
+        if not 0 < length <= maximum:
+            raise APIError(413, "Request body is empty or too large")
         try:
             data = json.loads(self.rfile.read(length))
         except (ValueError, UnicodeError):
@@ -101,6 +102,9 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) >= 3 and parts[:2] == ["api", "agents"]:
                 if len(parts) == 3 and self.command == "PUT":
                     return self._send(200, service.update_agent(parts[2], data))
+                if len(parts) == 4 and parts[3] == "attachments" and self.command == "POST":
+                    from .attachments import create_attachment
+                    return self._send(201, create_attachment(service, parts[2], data))
                 if len(parts) == 4 and parts[3] == "messages" and self.command == "POST":
                     return self._send(202, service.submit(parts[2], data))
                 if len(parts) == 4 and parts[3] == "control" and self.command == "POST":

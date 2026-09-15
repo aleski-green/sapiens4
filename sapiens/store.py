@@ -17,7 +17,7 @@ class Store:
         with self.connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1):
+            if version not in (0, 1, 2):
                 raise RuntimeError(f"Unsupported CORPORA schema: {version}")
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS agents (
@@ -40,7 +40,14 @@ class Store:
                 CREATE TABLE IF NOT EXISTS preferences (
                     id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL
                 );
-                PRAGMA user_version=1;
+                CREATE TABLE IF NOT EXISTS attachments (
+                    id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(id),
+                    value TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS message_inputs (
+                    job TEXT PRIMARY KEY, text TEXT NOT NULL, attachments TEXT NOT NULL
+                );
+                PRAGMA user_version=2;
             """)
 
     @contextmanager
@@ -65,6 +72,22 @@ class Store:
     def update_agent(self, agid, row):
         with self.connect() as db:
             db.execute("UPDATE agents SET name=:name, role=:role WHERE id=:id", {**row, "id": agid})
+
+    def update_avatar(self, agid, row):
+        with self.connect() as db:
+            db.execute("UPDATE agents SET face=:face, color=:color WHERE id=:id", {**row, "id": agid})
+
+    def attachment(self, row):
+        with self.connect() as db:
+            db.execute("INSERT INTO attachments VALUES (?,?,?)", (row["id"], row["agent"], json.dumps(row)))
+
+    def attachments(self, agid):
+        with self.connect() as db:
+            return [json.loads(row[0]) for row in db.execute("SELECT value FROM attachments WHERE agent=?", (agid,))]
+
+    def message(self, job, text, attachments):
+        with self.connect() as db:
+            db.execute("INSERT INTO message_inputs VALUES (?,?,?)", (job, text, json.dumps(attachments)))
 
     def event(self, agent, kind, detail, job=None, source_key=None, time=None):
         with self.connect() as db:
@@ -91,6 +114,12 @@ class Store:
         with self.connect() as db:
             query = "SELECT * FROM jobs" + (" WHERE agent=?" if agent else "")
             jobs = [dict(row) for row in db.execute(query + " ORDER BY created, id", (agent,) if agent else ())]
+            messages = {row["job"]: row for row in db.execute("SELECT * FROM message_inputs")}
+            for job in jobs:
+                message = messages.get(job["id"])
+                job["attachments"] = json.loads(message["attachments"]) if message else []
+                if message:
+                    job["input"] = message["text"]
             events = [dict(row) for row in db.execute(
                 "SELECT * FROM events WHERE id>? ORDER BY id LIMIT 500", (after,))]
             latest = db.execute("SELECT COALESCE(MAX(id),0) FROM events").fetchone()[0]

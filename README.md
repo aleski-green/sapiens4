@@ -40,8 +40,17 @@ starting. No global Codex settings are changed.
 - **Chat** runs a conversation with host commands for schedules, manager assignments,
   task creation/completion, team status and memory consolidation. Changes must be
   confirmed by the host before the Sapi acknowledges them.
-- **Computer task** runs the execution role with Blindly4 instructions and stores
-  the answer in conversation history. For example: “Use Blindly4 to list the open apps.”
+- Chat also handles explicitly requested computer work through Blindly4. For
+  example: “Use Blindly4 to list the open apps.” There is no mode selector.
+- The **＋** menu attaches an image, document, link, or local filepath. Uploads
+  accept files up to 10 MB, with up to eight attachments per message. Images
+  support PNG, JPEG, GIF and WebP. Uploaded files are stored locally; Codex reads
+  them when needed for the request. Links and filepaths are references.
+- **… → settings** edits the name, role, manager, check interval, pause state and
+  team monitoring. Status, next/last check and memory count live there.
+- Names start with A–Z, followed by letters, numbers, or `- _ . : # + | ( ) & $ ^`.
+  Spaces are not allowed; the limit is 24 characters. Avatars are randomly
+  generated and saved; existing duplicate faces are repaired on startup.
 - **Jobs** shows queued/running/completed/failed states and token accounting.
 - **Log** shows real runtime events and Codex command/tool activity, polled every 750 ms.
 - Retry failed, interrupted, conflicting or budget-blocked jobs; dismiss stopped
@@ -55,8 +64,7 @@ No prototype messages, fake execution timers or sample attachments are used.
 
 Try “Wake up every 5 minutes and check tasks and other Sapis,” or tell Nova
 “Your manager is Sapi-TheFirst.” The saved interval and reporting relationship
-appear in the header; **Tasks & jobs** shows deadlines, last check, open tasks,
-job results and memory count. Use unique names or IDs when assigning managers.
+appear in **… → settings**; **Tasks & jobs** shows open tasks and job results. Use unique names or IDs when assigning managers.
 The host rejects missing agents and reporting cycles.
 
 Each Sapi defaults to a 10-minute local check. Ask to change the interval or
@@ -130,10 +138,11 @@ Default local data lives in gitignored `.sapiens4/`:
 
 | Path | Owner and purpose |
 | --- | --- |
-| `corpora.sqlite3` | UI profiles, projected messages/job results/events, browser tabs, drafts and panel preferences; schema version 1, SQLite WAL |
+| `corpora.sqlite3` | UI profiles, projected messages/job results/events, browser tabs, drafts and panel preferences; attachment metadata and original message text; schema version 2, SQLite WAL |
 | `agentpy/agents/<id>/` | AgentPy's existing atomic JSON state, manifests, budgets and run locks |
 | `agentpy/corpora/` | AgentPy's shared artifacts, directory, mailboxes, receipts and archives |
 | `workspaces/<id>/` | Working directory for that Sapi's Codex calls and generated files |
+| `uploads/<id>/` | Local image/document uploads referenced by chat |
 | `host.lock` | Prevents two Sapiens4 servers from running the same data directory |
 
 **SQLite is for the UI application only.** AgentPy state remains authoritative
@@ -166,8 +175,9 @@ There is no LAN/public hosting mode in this iteration.
 | GET | `/api/health` | Server health |
 | GET | `/api/state?after=<event-id>` | Agent/job projections, preferences, computer ownership and up to 500 newer events |
 | POST | `/api/agents` | Create `{name, role, color?, face?}` |
-| PUT | `/api/agents/<id>` | Update `{name, role}` while idle |
-| POST | `/api/agents/<id>/messages` | Submit `{text, flow: "chat" or "computer"}` |
+| PUT | `/api/agents/<id>` | Update `{name, role, manager?, schedule?}` while idle |
+| POST | `/api/agents/<id>/messages` | Submit `{text, attachments?: [id, ...]}`; legacy `flow` is still accepted |
+| POST | `/api/agents/<id>/attachments` | Upload `{kind, name, data: base64}` or reference `{kind, value}` |
 | POST | `/api/agents/<id>/control` | `{op: "status", "schedule", "manager", "task", "finish_task", or "consolidate", ...}` |
 | POST | `/api/agents/<id>/jobs/<job>/retry` | Explicit retry |
 | POST | `/api/agents/<id>/jobs/<job>/cancel` | Cancel queued/dismiss stopped work |

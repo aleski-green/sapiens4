@@ -1,5 +1,6 @@
 """One local host, serialized execution, and recoverable UI projections."""
 import asyncio
+import secrets
 import fcntl
 import os
 from pathlib import Path
@@ -26,6 +27,24 @@ def text_field(data, field, maximum):
     return value.strip()
 
 
+def sapi_name(data):
+    value = text_field(data, "name", 24)
+    if value != data["name"] or not re.fullmatch(r"[A-Z][A-Za-z0-9_.:#+|()&$^\-]*", value):
+        raise APIError(400, "Name must start with A–Z; use letters, numbers, or - _ . : # + | ( ) & $ ^ (no spaces)")
+    return value
+
+
+def random_avatar(used):
+    faces = [left + mouth + right for left, right in
+             [("◕", "◕"), ("◠", "◠"), ("•", "•"), ("⌐■", "■"), ("≧", "≦"), ("◉", "◉"), ("^", "^"), ("¬", "¬")]
+             for mouth in ["‿", "ᴗ", "ω", "▽", "ᵕ", "﹏", "o", "∇"]]
+    available = [face for face in faces if face not in used]
+    if not available:
+        available = [f"{face}✦{secrets.token_hex(2)}" for face in faces]
+    return dict(face=secrets.choice(available), color=secrets.choice(
+        ["#d8e5f4", "#dbd0f7", "#fdd997", "#f7d6d1", "#c9f3f1", "#e1edc6"]))
+
+
 class Service:
     def __init__(self, data_dir, *, factory_builder=None, start_worker=True, timeout=300):
         self.root = Path(data_dir).resolve()
@@ -37,6 +56,13 @@ class Service:
             self._file_lock.close()
             raise RuntimeError("Another Sapiens4 server is using this data directory") from None
         self.store = Store(self.root / "corpora.sqlite3")
+        # Repair old repeated default faces once; the resulting avatars persist.
+        used = set()
+        for row in self.store.agents():
+            if row["face"] in used:
+                row.update(random_avatar(used))
+                self.store.update_avatar(row["id"], row)
+            used.add(row["face"])
         self.binary = ROOT / "blindly4/.build/release/blindly4"
         self.factory_builder = factory_builder
         self.timeout = timeout
@@ -111,7 +137,7 @@ class Service:
         self._revisions[agent.agid] = snapshot["revision"]
 
     def create_agent(self, data):
-        name, role = text_field(data, "name", 24), text_field(data, "role", 60)
+        name, role = sapi_name(data), text_field(data, "role", 60)
         color = data.get("color", "#d8e5f4")
         if not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
             raise APIError(400, "color must be a six-digit hex color")
@@ -121,8 +147,13 @@ class Service:
         if data.get("kind", "sapi") != "sapi":
             raise APIError(400, "Groups are planned for the next iteration")
         with self._lock:
+            appearance = random_avatar({a["face"] for a in self.store.agents()})
+            if "face" in data and face not in {a["face"] for a in self.store.agents()}:
+                appearance["face"] = face
+            if "color" in data:
+                appearance["color"] = color
             row = dict(id="sapi_" + uuid4().hex[:12], name=name, role=role,
-                       color=color, face=face, created=now())
+                       **appearance, created=now())
             self.store.add_agent(row)
             agent = self._agent(row["id"])
             self.orchestration.settings(agent)
@@ -130,18 +161,42 @@ class Service:
             return row
 
     def update_agent(self, agid, data):
-        row = {key: text_field(data, key, limit) for key, limit in (("name", 24), ("role", 60))}
+        row = {"name": sapi_name(data), "role": text_field(data, "role", 60)}
         with self._lock:
             agent = self._agent(agid)
             if any(j["status"] in {"queued", "running"} for j in agent.state["jobs"]):
                 raise APIError(409, "Wait for this Sapi's current job before changing its identity")
+            schedule = None
+            if "schedule" in data:
+                schedule = self.orchestration.validate_schedule(agent, data["schedule"])
+            parent = None
+            if "manager" in data:
+                parent = self.orchestration.resolve(data["manager"]).agid if data["manager"] is not None else None
+                directory = agent.corpora.directory()
+                ancestor = parent
+                while ancestor:
+                    if ancestor == agid:
+                        raise APIError(400, "A Sapi cannot report to itself or its own team member")
+                    ancestor = directory.get(ancestor, {}).get("parent")
+            if "manager" in data:
+                agent.corpora.register(agid, parent=parent, scope=directory[agid]["scope"])
+            if schedule is not None:
+                self.orchestration.save(agent, schedule)
             self.store.update_agent(agid, row)
             self._manifests(agent, row)
             self.store.event(agid, "updated", "Sapi identity updated")
         return {"id": agid, **row}
 
     def submit(self, agid, data):
-        text = text_field(data, "text", 16000)
+        raw_text = data.get("text", "")
+        if not isinstance(raw_text, str) or len(raw_text) > 16000:
+            raise APIError(400, "Message must be text, at most 16000 characters")
+        text = raw_text.strip()
+        from .attachments import resolve_attachments, attachment_prompt
+        attachments = resolve_attachments(self, agid, data.get("attachments", []))
+        if not text and not attachments:
+            raise APIError(400, "Write a message or attach a file")
+        prompt = text + attachment_prompt(attachments)
         flow = data.get("flow", "chat")
         if flow not in ("chat", "computer"):
             raise APIError(400, "Choose chat or computer")
@@ -155,7 +210,8 @@ class Service:
             agent = self._agent(agid)
             if agid in self._background or any(j["status"] not in {"done", "cancelled"} for j in agent.state["jobs"]):
                 raise APIError(409, "Wait for this Sapi's job, or retry/dismiss the job needing attention")
-            job = agent.tell(text) if flow == "chat" else agent.submit("computer", text)
+            job = agent.tell(prompt) if flow == "chat" else agent.submit("computer", prompt)
+            self.store.message(job, text, attachments)
             self._sync(agent)
             self._queue.put(agid)
             return {"id": job, "agent": agid, "status": "queued", "flow": flow}
@@ -191,6 +247,10 @@ class Service:
             snapshot["computer"] = {"owner": self._active,
                                     "built": os.access(self.binary, os.X_OK)}
             snapshot["provider"] = "codex"
+            snapshot["attachment_drafts"] = {
+                agid: [a for a in self.store.attachments(agid) if a["id"] in ids]
+                for agid, ids in snapshot["preferences"].get("attachment_drafts", {}).items()}
+
             snapshot["orchestration"] = {
                 a.agid: {"schedule": self.orchestration.settings(a), "tasks": a.state["tasks"],
                          "manager": a.corpora.directory().get(a.agid, {}).get("parent"),
@@ -199,9 +259,9 @@ class Service:
 
     def save_preferences(self, data):
         # Browser state never gets authority over runtime jobs, agents or computer ownership.
-        if set(data) - {"selected", "panel", "scope", "panes", "workspaces", "drafts"}:
+        if set(data) - {"selected", "panel", "scope", "panes", "workspaces", "drafts", "attachment_drafts"}:
             raise APIError(400, "Unknown preference field")
-        for field in ("panes", "workspaces", "drafts"):
+        for field in ("panes", "workspaces", "drafts", "attachment_drafts"):
             if field in data and not isinstance(data[field], dict):
                 raise APIError(400, f"{field} must be an object")
         if "selected" in data and data["selected"] not in {a["id"] for a in self.store.agents()}:
@@ -216,6 +276,9 @@ class Service:
         for key, value in data.get("drafts", {}).items():
             if not isinstance(value, str) or len(value) > 16000:
                 raise APIError(400, "Invalid draft")
+        from .attachments import resolve_attachments
+        for agid, ids in data.get("attachment_drafts", {}).items():
+            resolve_attachments(self, agid, ids, check_files=False)
         for key, workspace in data.get("workspaces", {}).items():
             if not isinstance(workspace, dict) or not isinstance(workspace.get("tabs"), list):
                 raise APIError(400, "Invalid workspace")
@@ -282,7 +345,7 @@ class Service:
                 agent = self._agent(agid)
                 self.orchestration.prepare(agent)
                 jobs = agent.state["jobs"]
-                self._active = agid if any(j["flow"] == "computer" and j["status"] == "queued" for j in jobs) else None
+                self._active = agid if any(j["flow"] in {"chat", "computer"} and j["status"] == "queued" for j in jobs) else None
             try:
                 asyncio.run(agent.run())
             except Exception as error:
