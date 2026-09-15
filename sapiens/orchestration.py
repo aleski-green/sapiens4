@@ -50,11 +50,16 @@ Pass a JSON object with op and the fields below. Quote JSON safely for the shell
   (boolean). Applies to you. A five-minute team check uses minutes=5,
   enabled=true, monitor_team=true. Checks run while this host is running;
   busy work can delay them. Unchanged checks do not start model calls.
-- manager: manager (unique name or ID, or null to clear); optional target
+- manager: manager (unique name or ID; null returns a non-main Sapi to the main
+  orchestrator). The main orchestrator can never have a manager. Optional target
   (unique name or ID, defaults to you). Persists the reporting relationship.
 - task: title (text), due (ISO datetime with timezone, or null for unscheduled).
   Saves your task; due tasks run the SDK reasoning flow. This does not authorize
   computer actions. status returns task IDs and their associated job results.
+- run_task: id (existing task ID). Run a planned task once.
+- recurring_job: title, prompt, minutes (1–10080), enabled (boolean, default true).
+  Creates a recurring job with its own timer; optional id updates an existing job.
+- run_job: id (recurring job ID). Run it now, without changing its timer.
 - finish_task: id (existing task ID). Only mark done when its result is verified.
 - consolidate: queues memory learning after the current conversation completes.
 Never edit host-control.json or runtime files. Report errors from the command.
@@ -92,7 +97,10 @@ The returned saved facts are authoritative. Do not replay old chat requests.
         return result
 
     def status(self, agent):
-        return dict(self_id=agent.agid, schedule=self.settings(agent), team=self.team())
+        return dict(self_id=agent.agid, main_agent_id=self.service.hierarchy.main,
+                    schedule=self.settings(agent), team=self.team(),
+                    recurring_jobs=[{k: v for k, v in j.items() if k != "runs"}
+                                    for j in self.service.work.read(agent)])
 
     def resolve(self, value):
         from .service import APIError
@@ -129,7 +137,8 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             op = data.get("op")
             fields = {"status": set(), "schedule": {"minutes", "enabled", "monitor_team"},
                       "manager": {"manager", "target"}, "task": {"title", "due"},
-                      "finish_task": {"id"}, "consolidate": set()}
+                      "finish_task": {"id"}, "run_task": {"id"}, "run_job": {"id"},
+                      "recurring_job": {"id", "title", "prompt", "minutes", "enabled"}, "consolidate": set()}
             if not isinstance(op, str) or op not in fields or set(data) - fields[op] - {"op"}:
                 raise APIError(400, "Unknown operation or field")
             result = {}
@@ -141,10 +150,9 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 if "manager" not in data:
                     raise APIError(400, "manager is required; use null to clear it")
                 target = self.resolve(data["target"]) if "target" in data else agent
-                parent = self.resolve(data["manager"]) if data["manager"] is not None else None
-                entry = target.corpora.directory()[target.agid]
-                target.corpora.register(target.agid, parent=parent.agid if parent else None, scope=entry["scope"])
-                result = {"target": target.agid, "manager": parent.agid if parent else None}
+                parent = self.service.hierarchy.validate(target.agid, data["manager"])
+                self.service.hierarchy.assign(target, parent)
+                result = {"target": target.agid, "manager": parent}
             elif op == "task":
                 title = text_field(data, "title", 2000)
                 due = data.get("due")
@@ -157,8 +165,14 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 task_id = text_field(data, "id", 64)
                 if not any(t["id"] == task_id for t in agent.state["tasks"]):
                     raise APIError(404, "Unknown open task")
-                agent.finish_task(task_id)
+                self.service.work.finish_task(agent, task_id)
                 result["completed_task_id"] = task_id
+            elif op == "run_task":
+                result['run_id'] = self.service.work.run_task(agent, text_field(data, 'id', 64))
+            elif op == "recurring_job":
+                result['recurring_job'] = self.service.work.upsert(agent, {k: v for k, v in data.items() if k != 'op'})
+            elif op == "run_job":
+                result['run_id'] = self.service.work.run_now(agent, text_field(data, 'id', 64))
             elif op == "consolidate":
                 settings = self.settings(agent)
                 settings["consolidate_requested"] = True

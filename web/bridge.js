@@ -21,7 +21,7 @@ const originalConversation = renderConversation;
 function preferences() {
   storeWorkspace();
   return {selected:state.selected,panel:state.panel,scope:state.scope,panes:state.panes,
-    workspaces:state.workspaces,drafts:state.drafts,
+    workspaces:state.workspaces,drafts:state.drafts,work_views:workViews,
     attachment_drafts:Object.fromEntries(Object.entries(attachmentDrafts).map(([id, items]) => [id, items.map(a => a.id)]))};
 }
 save = function() {
@@ -90,7 +90,8 @@ renderGlobal = function() {
   $('#resource-owner').textContent = owner ? `In use · ${agent(owner).name}` : live.computer.built ? 'Blindly4 · Available' : 'Blindly4 · Build required';
   $('#resource-status').classList.toggle('idle', !owner);
   $('#resource-status').classList.remove('paused');
-  $('#task-count').textContent = live.jobs.filter(j => j.agent === state.selected && !['done','cancelled'].includes(j.status)).length;
+  $('#workspace-owner').innerHTML = `${mention(workspaceOwner)}<span>’s workspace</span>`;
+  $('#task-count').textContent = live.orchestration?.[state.selected]?.tasks.length || 0;
 };
 
 renderAgentHeader = function() {
@@ -126,15 +127,9 @@ renderConversation = function() {
       const detail = job.status === 'queued' ? 'Waiting for the local runner.' : job.error || event?.detail || 'Codex is working…';
       host.insertAdjacentHTML('beforeend', `<section class="live-status" role="status"><strong>${esc(statusNames[job.status])}</strong><p>${esc(detail)}</p>${job.status === 'interrupted' ? '<p>The previous run stopped. Check what happened before retrying a computer task.</p>' : ''}${jobActions(job)}</section>`);
     }
-  } else if (state.panel === 'tasks') {
-    $('#composer-area').hidden = true;
-    const info = live.orchestration?.[state.selected];
-    const tasks = info?.tasks || [];
-    const taskList = tasks.map(t => `<article class="live-job"><h3>${esc(t.title)}</h3><p>${t.due ? `Due ${esc(new Date(t.due).toLocaleString())}` : 'No due date'} · ${t.job ? `Job ${esc(statusNames[jobs.find(j => j.id === t.job)?.status] || 'archived')}; awaiting completion review` : 'Open'}</p></article>`).join('');
-    host.innerHTML = (tasks.length ? '<div class="list-heading"><h3>Open tasks</h3></div>' + taskList : '') + '<div class="list-heading"><h3>Jobs</h3><span class="tag">LIVE</span></div>' + jobs.slice().reverse().map(j => `<article class="live-job"><span class="tag">${esc(statusNames[j.status])}</span><h3>${esc(j.input)}</h3><small>${esc(j.flow === 'computer' ? 'Computer task · Blindly4' : j.flow)} · ${esc(new Date(j.created).toLocaleString())} · ${j.tokens} tokens</small>${j.error ? `<p>${esc(j.error)}</p>` : ''}${j.output && !['chat','computer','learning'].includes(j.flow) ? `<p>${esc(j.output)}</p>` : ''}${jobActions(j)}</article>`).join('') + (jobs.length ? '' : '<div class="empty">Chat and computer jobs will appear here.</div>');
   } else {
     $('#composer-area').hidden = true;
-    host.innerHTML = '<div class="list-heading"><h3>Activity log</h3><span class="tag">LIVE</span></div>' + eventRows.filter(e => e.agent === state.selected).slice(-200).reverse().map(e => `<div class="log-row"><time>${esc(displayTime(e.time))}</time><strong>${esc(e.kind)}</strong><p>${esc(e.detail)}</p></div>`).join('');
+    host.innerHTML = workPanel(state.panel, jobs);
   }
   renderAgentHeader(); renderGlobal();
   host.scrollTop = bottom ? host.scrollHeight : scroll;
@@ -161,7 +156,7 @@ sendChat = async function(value) {
 };
 
 addAgent = function() {
-  modal('Create Sapi', `<form id="live-agent-form" class="form-stack"><label>Name<input name="name" required maxlength="24" placeholder="e.g. Nova" aria-describedby="name-help" autocomplete="off"></label><small id="name-help" class="form-hint">${esc(nameHelp)}</small><label>Role<input name="role" required maxlength="60" placeholder="e.g. Research assistant"></label><button class="button primary">Create Sapi</button></form>`, 'SAPIENS4');
+  modal('Create Sapi', `<form id="live-agent-form" class="form-stack"><label>Name<input name="name" required maxlength="24" placeholder="e.g. Nova" aria-describedby="name-help" autocomplete="off"></label>${nameSuggestions()}<label>Role<input name="role" required maxlength="60" placeholder="e.g. Research assistant"></label><button type="submit" class="button primary">Create Sapi</button></form>`, 'SAPIENS4');
 };
 agentSettings = function() {
   const a = selected();
@@ -170,17 +165,17 @@ agentSettings = function() {
   const job = live.jobs.find(j => j.agent === a.id && !['done','cancelled'].includes(j.status));
   modal(`${a.name} settings`, `<form id="live-settings-form" data-id="${esc(a.id)}" class="form-stack">
     <label>Name<input name="name" value="${esc(a.name)}" required maxlength="24" aria-describedby="name-help" autocomplete="off"></label>
-    <small id="name-help" class="form-hint">${esc(nameHelp)}</small>
+    ${nameSuggestions()}
     <label>Role<input name="role" value="${esc(a.role)}" required maxlength="60"></label>
-    <label>Manager<select name="manager"><option value="">No manager</option>${state.agents.filter(s => s.id !== a.id).map(s => `<option value="${esc(s.id)}" ${s.id === info.manager ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
+    ${managerOptions(a)}
     <fieldset class="schedule-fields"><legend>Scheduled checks</legend>
       <label class="check-label"><input name="enabled" type="checkbox" ${schedule.enabled ? 'checked' : ''}> Enable checks</label>
       <label>Check every (minutes)<input name="minutes" type="number" min="1" max="1440" step="1" required value="${schedule.minutes}"></label>
       <label class="check-label"><input name="monitor_team" type="checkbox" ${schedule.monitor_team ? 'checked' : ''}> Include team progress</label>
     </fieldset>
-    <dl class="sapi-details"><dt>Status</dt><dd>${esc(job ? statusNames[job.status] : 'Ready')}</dd><dt>Next check</dt><dd>${schedule.enabled && schedule.next_check ? esc(new Date(schedule.next_check).toLocaleString()) : 'Paused'}</dd><dt>Last check</dt><dd>${schedule.last_check ? esc(new Date(schedule.last_check).toLocaleString()) : 'Not yet'}</dd><dt>Memory</dt><dd>${info.memory_entries} entries</dd></dl>
+    <dl class="sapi-details"><dt>Status</dt><dd>${esc(job ? statusNames[job.status] : 'Ready')}</dd><dt>Next check</dt><dd>${schedule.enabled && schedule.next_check ? esc(new Date(schedule.next_check).toLocaleString()) : 'Paused'}</dd><dt>Last check</dt><dd>${schedule.last_check ? esc(new Date(schedule.last_check).toLocaleString()) : 'Not yet'}</dd><dt>Memory</dt><dd>${info.memory_entries} ${info.memory_entries === 1 ? 'entry' : 'entries'}</dd></dl>
     <small class="form-hint">Checks run while the local server is running.</small>
-    <button class="button primary">Save</button></form>`, 'SAPIENS4');
+    <button type="submit" class="button primary">Save</button></form>`, 'SAPIENS4');
 };
 actions['agent-settings'] = agentSettings;
 computerDialog = function() {
@@ -194,7 +189,7 @@ document.addEventListener('submit', async e => {
   const form = e.target;
   if (!['live-agent-form','live-settings-form'].includes(form.id)) return;
   e.preventDefault(); e.stopImmediatePropagation();
-  const button = form.querySelector('button');
+  const button = form.querySelector('button[type="submit"]') || form.querySelector('button');
   if (button.disabled) return;
   button.disabled = true;
   try {
@@ -293,7 +288,7 @@ document.addEventListener('submit', async e => {
   const form = e.target;
   if (form.id !== 'attachment-reference-form') return;
   e.preventDefault(); e.stopImmediatePropagation();
-  const button = form.querySelector('button');
+  const button = form.querySelector('button[type="submit"]') || form.querySelector('button');
   if (button.disabled) return;
   button.disabled = true;
   try {
@@ -309,8 +304,10 @@ $('#profile-button').textContent = 'Human';
 $('.composer-hint').remove();
 $('[data-scope="groups"]').disabled = true;
 $('[data-scope="groups"]').title = 'Groups are coming in the next iteration';
-$('[data-panel="cron"]').hidden = true;
-$('[data-panel="tasks"]').innerHTML = 'Tasks & jobs <span id="task-count">0</span>';
+$('[data-panel="cron"]').hidden = false;
+$('[data-panel="cron"]').textContent = 'Jobs';
+$('.conversation-tabs').insertBefore($('[data-panel="cron"]'), $('[data-panel="log"]'));
+$('[data-panel="tasks"]').innerHTML = 'Tasks <span id="task-count">0</span>';
 $('#message-input').maxLength = 16000;
 $('#message-input').value = state.drafts[state.selected] || '';
 $('#message-input').addEventListener('input', () => {state.drafts[state.selected] = $('#message-input').value; save();});

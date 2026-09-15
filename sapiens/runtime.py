@@ -21,10 +21,11 @@ from config import Config as SDKConfig  # noqa: E402
 
 class Config(SDKConfig):
     # Computer-task answers become conversation history as well as durable jobs.
-    flows = {**SDKConfig.flows, "computer": Flow(("react",), commit="reply")}
+    flows = {**SDKConfig.flows, "computer": Flow(("react",), commit="reply"),
+             "scheduled": Flow(("conversation",), commit="note")}
     roles = {**SDKConfig.roles, "conversation": Role("""Maintain a concise conversation.
 Use the host-control command in the manifests to change Sapiens4 schedules,
-reporting relationships, tasks, or memory consolidation. For changes, execute
+reporting relationships, one-off tasks, recurring jobs, or memory consolidation. For changes, execute
 the command and check its JSON result before confirming. For questions already
 answered by host-facts, use that fresh saved snapshot directly; call status only
 for more detail. The host refreshes host-facts before each conversation.
@@ -32,6 +33,9 @@ A conversational acknowledgement does not save a setting. Never claim a queued
 job is completed. Use current host facts over stale claims in chat or memory.
 For an ambiguous Sapi name ask the user; never guess an ID. Team job completion
 does not by itself prove the user's objective succeeded.
+A recurring job executes its saved prompt on each timer run; only perform the
+work described by that prompt. Tasks are one-off; use recurring_job for repeated
+work. The main orchestrator has no manager; other Sapis belong to its hierarchy.
 Chat is the single user entry point. When the current message explicitly asks
 for computer or browser work, execute it with Blindly4 under the computer-use
 manifest. For attached images/documents use local file-reading tools as needed;

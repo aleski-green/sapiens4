@@ -49,9 +49,17 @@ starting. No global Codex settings are changed.
 - **… → settings** edits the name, role, manager, check interval, pause state and
   team monitoring. Status, next/last check and memory count live there.
 - Names start with A–Z, followed by letters, numbers, or `- _ . : # + | ( ) & $ ^`.
-  Spaces are not allowed; the limit is 24 characters. Avatars are randomly
+  Spaces are not allowed; the limit is 24 characters. The UI offers three name
+  suggestions at a time, equally drawn from masculine, feminine and neutral
+  pools inspired by fiction, thinkers, founders and nature. Avatars are randomly
   generated and saved; existing duplicate faces are repaired on startup.
-- **Jobs** shows queued/running/completed/failed states and token accounting.
+- **Tasks** holds one-off work: create a planned task, set an optional due time,
+  start it, review its result, then mark complete. Completed tasks move to **Past**.
+- **Jobs** holds recurring definitions with an interval, next-run time, last status,
+  pause/resume, edit and run-now controls. **Past** contains finished runs. The
+  existing agent check is shown as a built-in recurring job.
+- **Log** separates ongoing and past runtime runs, including chat turns. Detailed
+  activity events remain available there.
 - **Log** shows real runtime events and Codex command/tool activity, polled every 750 ms.
 - Retry failed, interrupted, conflicting or budget-blocked jobs; dismiss stopped
   jobs or cancel work that is still queued. Running calls finish or hit their deadline.
@@ -64,8 +72,19 @@ No prototype messages, fake execution timers or sample attachments are used.
 
 Try “Wake up every 5 minutes and check tasks and other Sapis,” or tell Nova
 “Your manager is Sapi-TheFirst.” The saved interval and reporting relationship
-appear in **… → settings**; **Tasks & jobs** shows open tasks and job results. Use unique names or IDs when assigning managers.
-The host rejects missing agents and reporting cycles.
+appear in **… → settings**; **Tasks** shows one-off work and **Jobs** shows recurring work. Use unique names or IDs when assigning managers.
+The first Sapi is the main orchestrator and can never have a manager. New Sapis
+report to it automatically; an optional manager can place a new Sapi deeper in
+the tree. Missing parents, self-management and cycles are rejected. Clearing a
+non-main manager returns that Sapi to the main orchestrator. Old disconnected
+roots are repaired at startup.
+
+Recurring jobs have independent intervals of 1–10080 minutes. Create them in
+Jobs or ask in chat; their saved instructions run once per interval through the
+serialized SDK worker. Run now preserves the next scheduled deadline. After
+downtime, each overdue job gets one catch-up run, not a burst. Failed or
+interrupted runs require review/retry/dismissal before that Sapi resumes work.
+Definitions and run references persist in `agentpy/agents/<id>/recurring.json`.
 
 Each Sapi defaults to a 10-minute local check. Ask to change the interval or
 pause checks. The timer uses AgentPy's `tick()` to dispatch due reasoning tasks
@@ -78,7 +97,7 @@ self-modification is not enabled by this host.
 Checks require the server to remain running and the computer to be awake.
 A busy or stopped Sapi is deferred; missed intervals produce one catch-up check.
 Stopped jobs are never automatically retried by the timer. A due task runs once;
-its reasoning result appears in Jobs, and completing the task requires a separate
+its reasoning result appears in Tasks, and completing the task requires a separate
 verified completion. Team status distinguishes completed jobs from proven task
 success. The reporting tree is metadata, not an authorization boundary.
 
@@ -178,7 +197,7 @@ There is no LAN/public hosting mode in this iteration.
 | PUT | `/api/agents/<id>` | Update `{name, role, manager?, schedule?}` while idle |
 | POST | `/api/agents/<id>/messages` | Submit `{text, attachments?: [id, ...]}`; legacy `flow` is still accepted |
 | POST | `/api/agents/<id>/attachments` | Upload `{kind, name, data: base64}` or reference `{kind, value}` |
-| POST | `/api/agents/<id>/control` | `{op: "status", "schedule", "manager", "task", "finish_task", or "consolidate", ...}` |
+| POST | `/api/agents/<id>/control` | `{op: "status", "schedule", "manager", "task", "run_task", "finish_task", "recurring_job", "run_job", or "consolidate", ...}` |
 | POST | `/api/agents/<id>/jobs/<job>/retry` | Explicit retry |
 | POST | `/api/agents/<id>/jobs/<job>/cancel` | Cancel queued/dismiss stopped work |
 | PUT | `/api/preferences` | Save UI preferences only |

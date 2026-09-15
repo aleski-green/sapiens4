@@ -23,3 +23,13 @@
 .attachment-item { display:block; overflow-wrap:anywhere; font-size:12px; color:inherit; }
 .message-attachments { display:grid; gap:7px; border-top:1px solid var(--line); padding-top:8px; margin-top:8px; }
 .attachment-chip { background:var(--panel); border:1px solid var(--line); }
+
+.name-suggestions { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.name-suggestions .button { margin:0; padding:5px 10px; font-size:12px; }
+.work-views { display:flex; gap:14px; border-bottom:1px solid var(--line); margin-bottom:12px; }
+.work-views button { border:0; background:transparent; color:inherit; padding:9px 2px; font:inherit; font-size:12px; cursor:pointer; }
+.work-views button.active { color:#ec008c; border-bottom:2px solid currentColor; }
+.live-job .actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+.live-job summary, .event-history > summary { font-size:12px; cursor:pointer; padding-top:10px; }
+.event-history { margin-top:20px; }
+.conversation-tabs { gap:20px; }

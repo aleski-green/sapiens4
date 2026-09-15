@@ -52,7 +52,7 @@ class ChatControlsTest(IntegrationFixture):
         self.assertEqual(service.store.agents()[0]['name'], a['name'])
         self.assertEqual(service.store.agents()[1]['name'], 'Nova')
         service.update_agent(b['id'], {**settings, 'manager': None, 'schedule': {'enabled': False}})
-        self.assertIsNone(service.snapshot()['orchestration'][b['id']]['manager'])
+        self.assertEqual(service.snapshot()['orchestration'][b['id']]['manager'], a['id'])
         self.assertFalse(service.snapshot()['orchestration'][b['id']]['schedule']['enabled'])
 
     def test_attachments_reach_agent_and_keep_original_message(self):

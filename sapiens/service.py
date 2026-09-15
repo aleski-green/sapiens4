@@ -12,6 +12,8 @@ from uuid import uuid4
 from .runtime import AgentPy, Config, Limits, LocalFactory, ROOT, SDK, codex_binary, computer_manifest
 from .store import Store, now
 from .orchestration import Orchestration, utcnow
+from .hierarchy import Hierarchy
+from .work import Work
 
 
 class APIError(Exception):
@@ -74,6 +76,8 @@ class Service:
         self._active = None
         self._background = set()
         self.orchestration = Orchestration(self)
+        self.hierarchy = Hierarchy(self)
+        self.work = Work(self)
         self.worker = None
         if not self.store.agents():
             self.create_agent({"name": "Sapi", "role": "Personal assistant"})
@@ -84,6 +88,7 @@ class Service:
             # Only previously queued, never-started work is admitted automatically.
             if any(j["status"] in {"queued", "running"} for j in agent.state["jobs"]):
                 self._queue.put(row["id"])
+        self.hierarchy.repair()
         if start_worker:
             self.start()
 
@@ -154,8 +159,10 @@ class Service:
                 appearance["color"] = color
             row = dict(id="sapi_" + uuid4().hex[:12], name=name, role=role,
                        **appearance, created=now())
+            parent = self.hierarchy.validate(row["id"], data.get("manager"))
             self.store.add_agent(row)
             agent = self._agent(row["id"])
+            self.hierarchy.assign(agent, parent)
             self.orchestration.settings(agent)
             self.store.event(row["id"], "created", "Sapi created")
             return row
@@ -169,17 +176,9 @@ class Service:
             schedule = None
             if "schedule" in data:
                 schedule = self.orchestration.validate_schedule(agent, data["schedule"])
-            parent = None
             if "manager" in data:
-                parent = self.orchestration.resolve(data["manager"]).agid if data["manager"] is not None else None
-                directory = agent.corpora.directory()
-                ancestor = parent
-                while ancestor:
-                    if ancestor == agid:
-                        raise APIError(400, "A Sapi cannot report to itself or its own team member")
-                    ancestor = directory.get(ancestor, {}).get("parent")
-            if "manager" in data:
-                agent.corpora.register(agid, parent=parent, scope=directory[agid]["scope"])
+                parent = self.hierarchy.validate(agid, data["manager"])
+                self.hierarchy.assign(agent, parent)
             if schedule is not None:
                 self.orchestration.save(agent, schedule)
             self.store.update_agent(agid, row)
@@ -247,6 +246,7 @@ class Service:
             snapshot["computer"] = {"owner": self._active,
                                     "built": os.access(self.binary, os.X_OK)}
             snapshot["provider"] = "codex"
+            snapshot["main_agent_id"] = self.hierarchy.main
             snapshot["attachment_drafts"] = {
                 agid: [a for a in self.store.attachments(agid) if a["id"] in ids]
                 for agid, ids in snapshot["preferences"].get("attachment_drafts", {}).items()}
@@ -254,25 +254,29 @@ class Service:
             snapshot["orchestration"] = {
                 a.agid: {"schedule": self.orchestration.settings(a), "tasks": a.state["tasks"],
                          "manager": a.corpora.directory().get(a.agid, {}).get("parent"),
-                         "memory_entries": len(a.memx)} for a in self._agents.values()}
+                         "memory_entries": len(a.memx),
+                         **self.work.snapshot(a, snapshot["jobs"])} for a in self._agents.values()}
             return snapshot
 
     def save_preferences(self, data):
         # Browser state never gets authority over runtime jobs, agents or computer ownership.
-        if set(data) - {"selected", "panel", "scope", "panes", "workspaces", "drafts", "attachment_drafts"}:
+        if set(data) - {"selected", "panel", "scope", "panes", "workspaces", "drafts", "attachment_drafts", "work_views"}:
             raise APIError(400, "Unknown preference field")
-        for field in ("panes", "workspaces", "drafts", "attachment_drafts"):
+        for field in ("panes", "workspaces", "drafts", "attachment_drafts", "work_views"):
             if field in data and not isinstance(data[field], dict):
                 raise APIError(400, f"{field} must be an object")
         if "selected" in data and data["selected"] not in {a["id"] for a in self.store.agents()}:
             raise APIError(400, "Unknown selected Sapi")
-        if data.get("panel", "chat") not in {"chat", "tasks", "log"}:
+        if data.get("panel", "chat") not in {"chat", "tasks", "cron", "log"}:
             raise APIError(400, "Unknown panel")
         if data.get("scope", "all") not in {"all", "sapis"}:
             raise APIError(400, "Unknown view")
         if any(k not in {"sidebar", "chat", "workspace"} or type(v) is not bool
                for k, v in data.get("panes", {}).items()):
             raise APIError(400, "Invalid panel visibility")
+        if any(k not in {"tasks", "cron", "log"} or not isinstance(v, str) or v not in {"ongoing", "past"}
+               for k, v in data.get("work_views", {}).items()):
+            raise APIError(400, "Invalid work view")
         for key, value in data.get("drafts", {}).items():
             if not isinstance(value, str) or len(value) > 16000:
                 raise APIError(400, "Invalid draft")
@@ -298,37 +302,42 @@ class Service:
         for row in self.store.agents():
             if self._stopping.is_set():
                 return
-            with self._lock:
-                agent = self._agent(row["id"])
-                if any(j["status"] not in {"done", "cancelled"} for j in agent.state["jobs"]):
-                    continue  # Stopped work always requires explicit retry/dismiss.
-                settings = self.orchestration.settings(agent)
-                due = self.orchestration.due(agent, instant)
-                if not due and not settings["consolidate_requested"]:
-                    continue
-                self._background.add(agent.agid)
-                self.orchestration.prepare(agent)
-                if settings["consolidate_requested"]:
-                    agent.submit("learning", key=f"manual-learning:{agent.state['chat_revision']}")
-                    settings["consolidate_requested"] = False
-                    self.orchestration.save(agent, settings)
-                    # Run manual learning separately so tick cannot also enqueue
-                    # another learning pass against the same memory revision.
-                    due = False
+            background = False
             try:
-                if due:
-                    # Persist the next deadline before executing bounded work.
-                    with self._lock:
+                with self._lock:
+                    agent = self._agent(row["id"])
+                    if any(j["status"] not in {"done", "cancelled"} for j in agent.state["jobs"]):
+                        continue  # Stopped work requires explicit retry/dismiss.
+                    settings = self.orchestration.settings(agent)
+                    due = self.orchestration.due(agent, instant)
+                    recurring = self.work.due(agent, instant)
+                    if not due and not settings["consolidate_requested"] and not recurring:
+                        continue
+                    self._background.add(agent.agid)
+                    background = True
+                    self.orchestration.prepare(agent)
+                    if settings["consolidate_requested"]:
+                        agent.submit("learning", key=f"manual-learning:{agent.state['chat_revision']}")
+                        settings["consolidate_requested"] = False
+                        self.orchestration.save(agent, settings)
+                        due = False
+                    elif not due and recurring:
+                        self.work.admit(agent, recurring, instant)
+                        self._active = agent.agid
+                    if due:
                         self.orchestration.checked(agent, instant)
+                if due:
                     asyncio.run(agent.tick(now=instant, force=True))
                 else:
                     asyncio.run(agent.run())
             except Exception as error:
-                self.store.event(agent.agid, "host_error", f"{type(error).__name__}: {error}")
+                self.store.event(row["id"], "host_error", f"{type(error).__name__}: {error}")
             finally:
-                with self._lock:
-                    self._background.discard(agent.agid)
-                    self._sync(agent)
+                if background:
+                    with self._lock:
+                        self._active = None
+                        self._background.discard(agent.agid)
+                        self._sync(agent)
             if self._stopping.is_set():
                 return
 
@@ -345,7 +354,7 @@ class Service:
                 agent = self._agent(agid)
                 self.orchestration.prepare(agent)
                 jobs = agent.state["jobs"]
-                self._active = agid if any(j["flow"] in {"chat", "computer"} and j["status"] == "queued" for j in jobs) else None
+                self._active = agid if any(j["flow"] in {"chat", "computer", "scheduled"} and j["status"] == "queued" for j in jobs) else None
             try:
                 asyncio.run(agent.run())
             except Exception as error:

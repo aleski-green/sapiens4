@@ -31,7 +31,7 @@ class OrchestrationTest(IntegrationFixture):
         result = control(nova, {'op': 'manager', 'manager': director})
         self.assertEqual(result['manager'], director)
         control(director, {'op': 'schedule', 'minutes': 5, 'monitor_team': True})
-        with self.assertRaises(ValueError):
+        with self.assertRaises(APIError):
             control(director, {'op': 'manager', 'manager': nova})
         with self.assertRaises(APIError):
             control(nova, {'op': 'manager', 'manager': 'Missing'})
