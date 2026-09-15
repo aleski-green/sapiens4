@@ -14,6 +14,8 @@ class Server(ThreadingHTTPServer):
     def __init__(self, port, service):
         self.service = service
         super().__init__(("127.0.0.1", port), Handler)
+        with service._lock:
+            service.orchestration.attach(f"http://127.0.0.1:{self.server_port}")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -53,8 +55,9 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             raise APIError(400, "Invalid content length") from None
-        if not 0 < length <= 2_000_000:
-            raise APIError(413, "Request body must be between 1 byte and 2 MB")
+        maximum = 15_000_000 if urlsplit(self.path).path.endswith("/attachments") else 2_000_000
+        if not 0 < length <= maximum:
+            raise APIError(413, "Request body is empty or too large")
         try:
             data = json.loads(self.rfile.read(length))
         except (ValueError, UnicodeError):
@@ -80,6 +83,8 @@ class Handler(BaseHTTPRequestHandler):
                 if after < 0:
                     raise APIError(400, "after must be nonnegative")
                 return self._send(200, service.snapshot(after))
+            if len(parts) == 5 and parts[:2] == ['api','agents'] and parts[3] == 'tasks':
+                return self._send(200, service.tasks.detail(parts[2], parts[4]))
             if path == "/api/health":
                 return self._send(200, {"status": "ok", "provider": "codex"})
             if path == "/":
@@ -99,8 +104,16 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) >= 3 and parts[:2] == ["api", "agents"]:
                 if len(parts) == 3 and self.command == "PUT":
                     return self._send(200, service.update_agent(parts[2], data))
+                if len(parts) == 4 and parts[3] == "attachments" and self.command == "POST":
+                    from .attachments import create_attachment
+                    return self._send(201, create_attachment(service, parts[2], data))
                 if len(parts) == 4 and parts[3] == "messages" and self.command == "POST":
                     return self._send(202, service.submit(parts[2], data))
+                if len(parts) == 4 and parts[3] == "control" and self.command == "POST":
+                    return self._send(200, service.orchestration.control(parts[2], data))
+                if len(parts) == 6 and parts[3] == 'tasks' and parts[5] == 'comments' and self.command == 'POST':
+                    with service._lock:
+                        return self._send(201, service.tasks.comment(service._agent(parts[2]), parts[4], data.get('text')))
                 if len(parts) == 6 and parts[3] == "jobs" and self.command == "POST":
                     return self._send(200, service.job_action(parts[2], parts[4], parts[5]))
         raise APIError(404, "Not found")

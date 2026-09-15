@@ -16,7 +16,7 @@ def javascript():
     source = replace_once(source,
                           "try { state = JSON.parse(localStorage.getItem(STORAGE)); } catch {}",
                           "state = makeInitialState(bootstrap);")
-    source = replace_once(source, "\nrender();\n", "\n" + (WEB / "bridge.js").read_text() + "\n")
+    source = replace_once(source, "\nrender();\n", "\n" + "\n".join((WEB / name).read_text() for name in ("names.js", "work-ui.js", "task-dialog.js", "mentions.js", "bridge.js")) + "\n")
     # These direct listeners must resolve the adapter functions at click time.
     for selector, function in (("add-agent", "addAgent"), ("autonomy-button", "autonomyDialog")):
         source = replace_once(source, f"$('#{selector}').addEventListener('click',{function});",
@@ -45,7 +45,7 @@ def index():
         ('id="resource-owner">In use · Aaron', 'id="resource-owner">Connecting…'),
         ('placeholder="Message Aaron…"', 'placeholder="Message your Sapi…"'),
         ('id="autonomy-label">Autonomous', 'id="autonomy-label">Connecting…'),
-        ('aria-label="Workspace settings">AP', 'aria-label="Workspace settings">You'),
+        ('aria-label="Workspace settings">AP', 'aria-label="Workspace settings">Human'),
     ):
         html = replace_once(html, before, after)
     return html
