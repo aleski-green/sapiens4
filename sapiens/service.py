@@ -14,6 +14,7 @@ from .store import Store, now
 from .orchestration import Orchestration, utcnow
 from .hierarchy import Hierarchy
 from .work import Work
+from .tasks import Tasks
 
 
 class APIError(Exception):
@@ -78,6 +79,7 @@ class Service:
         self.orchestration = Orchestration(self)
         self.hierarchy = Hierarchy(self)
         self.work = Work(self)
+        self.tasks = Tasks(self)
         self.worker = None
         if not self.store.agents():
             self.create_agent({"name": "Sapi", "role": "Personal assistant"})
@@ -89,6 +91,7 @@ class Service:
             if any(j["status"] in {"queued", "running"} for j in agent.state["jobs"]):
                 self._queue.put(row["id"])
         self.hierarchy.repair()
+        self.tasks.repair()
         if start_worker:
             self.start()
 
@@ -113,6 +116,9 @@ class Service:
             agent = AgentPy.open(agid=agid, config=Config(), factory=factory,
                                  root=self.root / "agentpy", source=SDK,
                                  limits=Limits(parallel_jobs=1, tokens_per_call=32000, tokens_per_loop=256000))
+            if not self.factory_builder:
+                factory.keep_recent = lambda: any(j['status'] == 'running' and j['flow'] in {'chat', 'computer'}
+                                                  for j in agent.state['jobs'])
             self._agents[agid] = agent
             self._manifests(agent, row)
         return self._agents[agid]
@@ -209,6 +215,7 @@ class Service:
             agent = self._agent(agid)
             if agid in self._background or any(j["status"] not in {"done", "cancelled"} for j in agent.state["jobs"]):
                 raise APIError(409, "Wait for this Sapi's job, or retry/dismiss the job needing attention")
+            prompt += self.tasks.references(text)
             job = agent.tell(prompt) if flow == "chat" else agent.submit("computer", prompt)
             self.store.message(job, text, attachments)
             self._sync(agent)
@@ -246,6 +253,7 @@ class Service:
             snapshot["computer"] = {"owner": self._active,
                                     "built": os.access(self.binary, os.X_OK)}
             snapshot["provider"] = "codex"
+            snapshot["task_assignments"] = self.tasks.notices()
             snapshot["main_agent_id"] = self.hierarchy.main
             snapshot["attachment_drafts"] = {
                 agid: [a for a in self.store.attachments(agid) if a["id"] in ids]

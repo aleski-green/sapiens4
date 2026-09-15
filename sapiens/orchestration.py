@@ -53,8 +53,11 @@ Pass a JSON object with op and the fields below. Quote JSON safely for the shell
 - manager: manager (unique name or ID; null returns a non-main Sapi to the main
   orchestrator). The main orchestrator can never have a manager. Optional target
   (unique name or ID, defaults to you). Persists the reporting relationship.
-- task: title (text), due (ISO datetime with timezone, or null for unscheduled).
-  Saves your task; due tasks run the SDK reasoning flow. This does not authorize
+- task: title (instructions), due (ISO datetime with timezone, or null). Optional
+  target (unique Sapi name or ID) assigns to another Sapi. Optional name must start
+  a–z, with letters, numbers or - _ . : # + | ( ) & $ ^, at most 24 characters.
+  Omit name to generate a unique task mention automatically. Assignment notices
+  are posted in the assignee and assigning Sapi chats. Due tasks run the SDK reasoning flow. This does not authorize
   computer actions. status returns task IDs and their associated job results.
 - run_task: id (existing task ID). Run a planned task once.
 - recurring_job: title, prompt, minutes (1–10080), enabled (boolean, default true).
@@ -136,7 +139,7 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             agent = self.service._agent(agid)
             op = data.get("op")
             fields = {"status": set(), "schedule": {"minutes", "enabled", "monitor_team"},
-                      "manager": {"manager", "target"}, "task": {"title", "due"},
+                      "manager": {"manager", "target"}, "task": {"title", "due", "name", "target"},
                       "finish_task": {"id"}, "run_task": {"id"}, "run_job": {"id"},
                       "recurring_job": {"id", "title", "prompt", "minutes", "enabled"}, "consolidate": set()}
             if not isinstance(op, str) or op not in fields or set(data) - fields[op] - {"op"}:
@@ -154,13 +157,7 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 self.service.hierarchy.assign(target, parent)
                 result = {"target": target.agid, "manager": parent}
             elif op == "task":
-                title = text_field(data, "title", 2000)
-                due = data.get("due")
-                if due is not None:
-                    if not isinstance(due, str) or not due:
-                        raise APIError(400, "due must be a timezone-aware ISO datetime or null")
-                    agent._time(due)
-                result["task_id"] = agent.add_task(title, due=due, flow="reason")
+                result.update(self.service.tasks.create(agent, data))
             elif op == "finish_task":
                 task_id = text_field(data, "id", 64)
                 if not any(t["id"] == task_id for t in agent.state["tasks"]):

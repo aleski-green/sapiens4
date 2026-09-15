@@ -12,7 +12,7 @@ function runCard(run) {
 function taskCardLive(task, runs, past) {
   const run = runs.find(r => r.id === task.job);
   const status = past ? 'Completed' : run ? (run.status === 'done' ? 'Ready for review' : run.status === 'running' ? 'In progress' : statusNames[run.status]) : 'Planned';
-  return `<article class="live-job"><span class="tag">${esc(status)}</span><h3>${esc(task.title)}</h3><small>${past ? `Completed ${esc(new Date(task.completed).toLocaleString())}` : task.due ? `Due ${esc(new Date(task.due).toLocaleString())}` : 'No due date'}</small>${run?.output ? `<details><summary>Result</summary><p>${esc(run.output)}</p></details>` : ''}${run ? jobActions(run) : ''}${!past ? `<div class="actions">${!task.job ? workButton('run_task',task.id,'Start') : ''}${!run || !['queued','running'].includes(run.status) ? workButton('finish_task',task.id,'Mark complete') : ''}</div>` : ''}</article>`;
+  return `<article class="live-job" id="task-${esc(task.id)}" tabindex="-1"><span class="tag">${esc(status)}</span><h3>@${esc(task.name)}</h3><p>${esc(task.title)}</p><small>${past ? `Completed ${esc(new Date(task.completed).toLocaleString())}` : task.due ? `Due ${esc(new Date(task.due).toLocaleString())}` : 'No due date'}</small>${run?.output ? `<details><summary>Result</summary><p>${esc(run.output)}</p></details>` : ''}${run ? jobActions(run) : ''}${!past ? `<div class="actions">${!task.job ? workButton('run_task',task.id,'Start') : ''}${!run || !['queued','running'].includes(run.status) ? workButton('finish_task',task.id,'Mark complete') : ''}</div>` : ''}</article>`;
 }
 function workPanel(panel, runs) {
   const info = live.orchestration[state.selected];
@@ -49,7 +49,7 @@ function workPanel(panel, runs) {
 function workForm(kind, id) {
   const row = id ? live.orchestration[state.selected].recurring.find(j => j.id === id) : null;
   const recurring = kind === 'recurring';
-  modal(row ? 'Edit job' : recurring ? 'New job' : 'New task', `<form id="work-form" data-kind="${kind}" data-id="${esc(id || '')}" data-agent="${esc(state.selected)}" class="form-stack"><label>Title<input name="title" required maxlength="${recurring ? 120 : 2000}" value="${esc(row?.title || '')}"></label>${recurring ? `<label>Instructions<textarea name="prompt" required maxlength="2000">${esc(row?.prompt || '')}</textarea></label><label>Run every (minutes)<input name="minutes" type="number" required min="1" max="10080" value="${row?.minutes || 60}"></label><label class="check-label"><input name="enabled" type="checkbox" ${!row || row.enabled ? 'checked' : ''}> Enabled</label>` : '<label>Due (optional)<input name="due" type="datetime-local"></label>'}<button type="submit" class="button primary">${row ? 'Save' : 'Create'}</button></form>`, recurring ? 'RECURRING' : 'ONE-OFF');
+  modal(row ? 'Edit job' : recurring ? 'New job' : 'New task', `<form id="work-form" data-kind="${kind}" data-id="${esc(id || '')}" data-agent="${esc(state.selected)}" class="form-stack"><label>Title<input name="title" required maxlength="${recurring ? 120 : 2000}" value="${esc(row?.title || '')}"></label>${recurring ? `<label>Instructions<textarea name="prompt" required maxlength="2000">${esc(row?.prompt || '')}</textarea></label><label>Run every (minutes)<input name="minutes" type="number" required min="1" max="10080" value="${row?.minutes || 60}"></label><label class="check-label"><input name="enabled" type="checkbox" ${!row || row.enabled ? 'checked' : ''}> Enabled</label>` : '<label>Name (optional)<input name="name" maxlength="24" placeholder="Generated from title"></label><label>Due (optional)<input name="due" type="datetime-local"></label>'}<button type="submit" class="button primary">${row ? 'Save' : 'Create'}</button></form>`, recurring ? 'RECURRING' : 'ONE-OFF');
 }
 document.addEventListener('click', async e => {
   const b = e.target.closest('button');
@@ -83,7 +83,7 @@ document.addEventListener('submit', async e => {
     if (form.dataset.kind === 'recurring') {
       data.op='recurring_job'; data.minutes=Number(data.minutes); data.enabled=form.elements.enabled.checked;
       if (form.dataset.id) data.id=form.dataset.id;
-    } else { data.op='task'; data.due=data.due ? new Date(data.due).toISOString() : null; }
+    } else { data.op='task'; if (!data.name) delete data.name; data.due=data.due ? new Date(data.due).toISOString() : null; }
     await api(`/api/agents/${form.dataset.agent}/control`, 'POST', data);
     await refresh(); closeModal();
   } catch (error) { toast(error.message); }

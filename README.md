@@ -53,6 +53,19 @@ starting. No global Codex settings are changed.
   suggestions at a time, equally drawn from masculine, feminine and neutral
   pools inspired by fiction, thinkers, founders and nature. Avatars are randomly
   generated and saved; existing duplicate faces are repaired on startup.
+- Typing `@` opens keyboard-accessible suggestions for Sapis and named tasks;
+  group entities will appear when group workflows are enabled. Enter/Tab selects
+  a suggestion, arrows move, and Escape closes it. Task links open the assignee's
+  task card, including completed tasks in Past.
+- Tasks have unique names starting with a–z, with the same allowed characters and
+  24-character limit as Sapi names. Names generate from the title if omitted.
+  Host `task` accepts `target` (Sapi name/ID) for delegation. Assignment notices
+  persist atomically with tasks and appear from the assignee in both chats.
+- The last five chat/computer interactions retain timestamped tool observations
+  in each Sapi's workspace. Each turn stores up to 6,000 characters of recent
+  tool data (4,000 per result), with explicit truncation markers. Follow-ups reuse
+  these observations; fresh state is still required before computer mutations.
+  Background jobs do not evict this buffer. This is separate from lasting memory.
 - **Tasks** holds one-off work: create a planned task, set an optional due time,
   start it, review its result, then mark complete. Completed tasks move to **Past**.
 - **Jobs** holds recurring definitions with an interval, next-run time, last status,
@@ -161,6 +174,7 @@ Default local data lives in gitignored `.sapiens4/`:
 | `agentpy/agents/<id>/` | AgentPy's existing atomic JSON state, manifests, budgets and run locks |
 | `agentpy/corpora/` | AgentPy's shared artifacts, directory, mailboxes, receipts and archives |
 | `workspaces/<id>/` | Working directory for that Sapi's Codex calls and generated files |
+| `workspaces/<id>/recent-context.json` | Last five interactive calls, bounded tool observations and answer excerpts; isolated per Sapi |
 | `uploads/<id>/` | Local image/document uploads referenced by chat |
 | `host.lock` | Prevents two Sapiens4 servers from running the same data directory |
 

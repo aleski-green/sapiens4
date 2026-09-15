@@ -77,6 +77,16 @@ function applySnapshot(snapshot) {
     if (a && job.status === 'running') a.status = 'busy';
     if (job.status === 'queued' || job.status === 'running') pending.add(job.agent);
   }
+  for (const notice of snapshot.task_assignments || []) {
+    for (const owner of new Set([notice.agent, notice.assigned_by])) {
+      const timestamp=Date.parse(notice.time);
+      (state.messages[owner] ||= []).push({role:'assistant',speaker:notice.agent,
+        text:`New @${notice.name} assigned.`,time:displayTime(notice.time),timestamp,assignment:true});
+      const a=state.agents.find(a=>a.id===owner);
+      if (a && timestamp > a.lastActivity) {a.lastActivity=timestamp;a.preview=`New @${notice.name} assigned.`;}
+    }
+  }
+  for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp);
   if (!state.agents.some(a => a.id === state.selected)) state.selected = state.agents[0].id;
   state.logs = eventRows.slice().reverse().map(e => ({agent:e.agent,time:displayTime(e.time),title:e.kind,detail:e.detail}));
   state.computer.owner = snapshot.computer.owner;
@@ -113,13 +123,21 @@ renderConversation = function() {
     host.querySelector('.day-divider').textContent = 'CONVERSATION';
     host.querySelector('.suggestions')?.remove();
     host.querySelector('.typing')?.remove();
+    host.querySelectorAll('.message').forEach((node,i) => {
+      const message=getMessages(state.selected)[i];
+      if (message?.assignment) {
+        const speaker=agent(message.speaker);
+        node.classList.add('assignment-message');
+        node.querySelector('.message-meta').innerHTML=`${avatar(speaker,'mini')}<strong>${mention(speaker.id)}</strong><time>${esc(message.time)}</time>`;
+      }
+    });
     const humanMessages = getMessages(state.selected).filter(m => m.role === 'user');
     host.querySelectorAll('.message.user').forEach((node, i) => {
       node.querySelector('.message-meta strong').textContent = 'Human';
       const attachments = humanMessages[i]?.attachments || [];
       if (attachments.length) node.querySelector('.message-bubble').insertAdjacentHTML('beforeend', `<div class="message-attachments">${attachments.map(attachmentLabel).join('')}</div>`);
     });
-    if (!jobs.length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
+    if (!getMessages(state.selected).length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
     const job = jobs.find(j => !['done','cancelled'].includes(j.status));
     if (job) {
       const started = eventRows.slice().reverse().find(e => e.job === job.id && e.kind === 'started');
@@ -149,7 +167,7 @@ sendChat = async function(value) {
     if (state.selected === id && $('#message-input').value.trim() === text) {
       $('#message-input').value = ''; state.drafts[id] = '';
     }
-    save();
+    closeMentions(); save();
     await refresh();
   } catch (error) { toast(error.message); }
   finally { submitting.delete(id); renderAgentHeader(); }
@@ -317,7 +335,7 @@ async function refresh() {
   refreshing = (async () => {
     try {
       const snapshot = await api(`/api/state?after=${cursor}`);
-      const changed = JSON.stringify([snapshot.agents,snapshot.jobs,snapshot.computer,snapshot.orchestration]) !== JSON.stringify([live.agents,live.jobs,live.computer,live.orchestration]) || snapshot.events.length;
+      const changed = JSON.stringify([snapshot.agents,snapshot.jobs,snapshot.computer,snapshot.orchestration,snapshot.task_assignments]) !== JSON.stringify([live.agents,live.jobs,live.computer,live.orchestration,live.task_assignments]) || snapshot.events.length;
       const reconnected = !online;
       online = true;
       applySnapshot(snapshot);
