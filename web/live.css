@@ -1,0 +1,12 @@
+/* The visual system and layouts come from lab-corpora-ui. */
+[hidden] { display: none !important; }
+.live-flow { display:flex; align-items:center; gap:8px; font-size:12px; }
+.live-flow select { max-width:160px; padding:6px; border:1px solid var(--line); border-radius:6px; color:inherit; background:var(--panel); font:inherit; }
+.live-status { padding:12px 14px; border:1px solid var(--line); border-radius:10px; margin:14px 0; }
+.live-status p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
+.live-status .actions { display:flex; gap:8px; margin-top:10px; }
+.live-job { margin:12px 0; padding:14px; border:1px solid var(--line); border-radius:10px; overflow-wrap:anywhere; }
+.live-job h3 { font-size:13px; margin:8px 0; }
+.live-job p { white-space:pre-wrap; font-size:12px; }
+.live-disconnected { color:#b74350; }
+.live-connection { font-size:12px; }
