@@ -1,3 +1,9 @@
 [submodule "blindly4"]
 	path = blindly4
 	url = ../blindly4.git
+[submodule "lab-corpora-ui"]
+	path = lab-corpora-ui
+	url = https://github.com/aleski-green/lab-corpora-ui.git
+[submodule "lab-sapiens-rnd"]
+	path = lab-sapiens-rnd
+	url = https://github.com/aleski-green/lab-sapiens-rnd.git

@@ -1,0 +1,35 @@
+name: Integration
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Integration tests
+        run: python -m unittest discover -s tests -v
+      - name: Pinned runtime tests
+        working-directory: lab-sapiens-rnd
+        run: python -m unittest test_runtime test_adversarial test_codex_process -v
+      - name: Frontend syntax
+        run: |
+          python -c 'from sapiens.assets import javascript; from pathlib import Path; Path("/tmp/sapiens4-app.js").write_text(javascript())'
+          node --check /tmp/sapiens4-app.js
+  blindly:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - run: swift build --package-path blindly4
+      - run: swift run --package-path blindly4 blindly4 --self-test
+      - run: swift run --package-path blindly4 blindly4 schema
