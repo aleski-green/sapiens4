@@ -60,8 +60,9 @@ hosting the server. If needed, run:
 ```
 
 Enable the host in **System Settings → Privacy & Security → Accessibility**.
-Missing permission is reported as a failed computer job; the app does not grant
-permission automatically. The computer card shows build/ownership status, not
+Missing permission is reported by the computer task; the app does not grant
+permission automatically. A completed job means its agent flow returned a reply;
+read that reply to see whether the requested action succeeded. The computer card shows build/ownership status, not
 a claim that Accessibility permission has been granted.
 
 All jobs are serialized by this server, including jobs from different Sapis.
