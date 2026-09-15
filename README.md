@@ -37,7 +37,9 @@ starting. No global Codex settings are changed.
 ## First iteration
 
 - Create and rename individual Sapis; their name and role become runtime manifests.
-- **Chat** sends a message through AgentPy's text-only conversation flow.
+- **Chat** runs a conversation with host commands for schedules, manager assignments,
+  task creation/completion, team status and memory consolidation. Changes must be
+  confirmed by the host before the Sapi acknowledges them.
 - **Computer task** runs the execution role with Blindly4 instructions and stores
   the answer in conversation history. For example: “Use Blindly4 to list the open apps.”
 - **Jobs** shows queued/running/completed/failed states and token accounting.
@@ -46,9 +48,35 @@ starting. No global Codex settings are changed.
   jobs or cancel work that is still queued. Running calls finish or hit their deadline.
 - Per-Sapi browser tabs, drafts and panel preferences persist in SQLite.
 
-Groups, shared boards, group tasks, roles and recurring schedules are the next
-iteration. Their simulated controls are disabled/hidden in this application.
+Groups, shared boards, and group workflows are the next iteration. Their simulated controls are disabled/hidden in this application.
 No prototype messages, fake execution timers or sample attachments are used.
+
+### Agent orchestration
+
+Try “Wake up every 5 minutes and check tasks and other Sapis,” or tell Nova
+“Your manager is Sapi-TheFirst.” The saved interval and reporting relationship
+appear in the header; **Tasks & jobs** shows deadlines, last check, open tasks,
+job results and memory count. Use unique names or IDs when assigning managers.
+The host rejects missing agents and reporting cycles.
+
+Each Sapi defaults to a 10-minute local check. Ask to change the interval or
+pause checks. The timer uses AgentPy's `tick()` to dispatch due reasoning tasks
+and daily memory consolidation. It also inspects team job/task progress when
+requested. An unchanged idle check makes no model call. “Consolidate your
+memory” requests a learning pass after the current conversation finishes.
+Learning retains the SDK's proposer/critic/arbiter validation. Automatic
+self-modification is not enabled by this host.
+
+Checks require the server to remain running and the computer to be awake.
+A busy or stopped Sapi is deferred; missed intervals produce one catch-up check.
+Stopped jobs are never automatically retried by the timer. A due task runs once;
+its reasoning result appears in Jobs, and completing the task requires a separate
+verified completion. Team status distinguishes completed jobs from proven task
+success. The reporting tree is metadata, not an authorization boundary.
+
+Host scheduling settings live atomically in `agentpy/agents/<id>/host.json`;
+manager links use the SDK's existing directory. SQLite remains a UI projection.
+The host-control command uses the same validated loopback HTTP API as the UI.
 
 ### Computer access
 
@@ -70,8 +98,8 @@ Only one unresolved job per Sapi is accepted. Computer ownership represents
 this server's execution queue; it does not lock out other desktop applications
 or independently launched agent processes. The inherited Codex execution
 backend runs local tools without sandboxing. Blindly4 guidance preserves its
-PID, fresh AX path and exact-draft checks. Ordinary chat uses the SDK's
-text-only prompt; this distinction is behavioral, not an OS sandbox.
+PID, fresh AX path and exact-draft checks. Ordinary chat permits only the local
+host-control command; this distinction is behavioral, not an OS sandbox.
 
 The embedded workspace tabs remain CORPORA's sandboxed browser frames. They
 are separate from the native desktop that Blindly4 operates. Websites that
@@ -140,6 +168,7 @@ There is no LAN/public hosting mode in this iteration.
 | POST | `/api/agents` | Create `{name, role, color?, face?}` |
 | PUT | `/api/agents/<id>` | Update `{name, role}` while idle |
 | POST | `/api/agents/<id>/messages` | Submit `{text, flow: "chat" or "computer"}` |
+| POST | `/api/agents/<id>/control` | `{op: "status", "schedule", "manager", "task", "finish_task", or "consolidate", ...}` |
 | POST | `/api/agents/<id>/jobs/<job>/retry` | Explicit retry |
 | POST | `/api/agents/<id>/jobs/<job>/cancel` | Cancel queued/dismiss stopped work |
 | PUT | `/api/preferences` | Save UI preferences only |
@@ -161,7 +190,8 @@ swift run --package-path blindly4 blindly4 schema
 The integration tests exercise real AgentPy persistence with scripted LLMs,
 so they require no Codex login, model usage or desktop permission. They cover
 UI projections, creation/manifests, HTTP submission, serialization, failures,
-retry/dismiss, event pagination, restart recovery and the local HTTP boundary.
+retry/dismiss, event pagination, restart recovery, schedule/manager persistence,
+idle and overdue checks, task execution, memory commits and the local HTTP boundary.
 Real Codex and Accessibility checks are separate local smoke tests.
 
 To update a component, check out the desired commit inside its submodule,

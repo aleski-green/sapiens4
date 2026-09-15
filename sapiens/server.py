@@ -14,6 +14,8 @@ class Server(ThreadingHTTPServer):
     def __init__(self, port, service):
         self.service = service
         super().__init__(("127.0.0.1", port), Handler)
+        with service._lock:
+            service.orchestration.attach(f"http://127.0.0.1:{self.server_port}")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -101,6 +103,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, service.update_agent(parts[2], data))
                 if len(parts) == 4 and parts[3] == "messages" and self.command == "POST":
                     return self._send(202, service.submit(parts[2], data))
+                if len(parts) == 4 and parts[3] == "control" and self.command == "POST":
+                    return self._send(200, service.orchestration.control(parts[2], data))
                 if len(parts) == 6 and parts[3] == "jobs" and self.command == "POST":
                     return self._send(200, service.job_action(parts[2], parts[4], parts[5]))
         raise APIError(404, "Not found")

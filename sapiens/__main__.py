@@ -20,12 +20,13 @@ def main():
     if args.timeout <= 0:
         parser.error("--timeout must be positive")
     index(), javascript()  # Fail early if the pinned frontend contract changed.
-    service = Service(args.data_dir, timeout=args.timeout)
+    service = Service(args.data_dir, timeout=args.timeout, start_worker=False)
     try:
         server = Server(args.port, service)
     except BaseException:
         service.close()
         raise
+    service.start()  # Recovered jobs need the host-control endpoint attached first.
     url = f"http://127.0.0.1:{server.server_port}/workspace/"
     print(f"Sapiens4: {url}\nUI database: {service.store.path}", flush=True)
 

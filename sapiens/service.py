@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from .runtime import AgentPy, Config, Limits, LocalFactory, ROOT, SDK, codex_binary, computer_manifest
 from .store import Store, now
+from .orchestration import Orchestration, utcnow
 
 
 class APIError(Exception):
@@ -45,6 +46,8 @@ class Service:
         self._queue = queue.Queue()
         self._stopping = threading.Event()
         self._active = None
+        self._background = set()
+        self.orchestration = Orchestration(self)
         self.worker = None
         if not self.store.agents():
             self.create_agent({"name": "Sapi", "role": "Personal assistant"})
@@ -56,6 +59,10 @@ class Service:
             if any(j["status"] in {"queued", "running"} for j in agent.state["jobs"]):
                 self._queue.put(row["id"])
         if start_worker:
+            self.start()
+
+    def start(self):
+        if self.worker is None:
             self.worker = threading.Thread(target=self._work, name="sapiens-runner", daemon=True)
             self.worker.start()
 
@@ -73,7 +80,8 @@ class Service:
             factory = (self.factory_builder(agid, sink) if self.factory_builder else
                        LocalFactory(workdir=workdir, event_sink=sink, timeout_seconds=self.timeout))
             agent = AgentPy.open(agid=agid, config=Config(), factory=factory,
-                                 root=self.root / "agentpy", source=SDK, limits=Limits(parallel_jobs=1))
+                                 root=self.root / "agentpy", source=SDK,
+                                 limits=Limits(parallel_jobs=1, tokens_per_call=32000, tokens_per_loop=256000))
             self._agents[agid] = agent
             self._manifests(agent, row)
         return self._agents[agid]
@@ -92,7 +100,13 @@ class Service:
         snapshot = agent.state
         if self._revisions.get(agent.agid) == snapshot["revision"]:
             return
-        outputs = {m["job"]: m["content"] for m in snapshot["chat"] if m.get("job")}
+        outputs = {m["job"]: m["content"] for m in snapshot["chat"] + snapshot["notes"] if m.get("job")}
+        for job in snapshot["jobs"]:
+            if job["status"] == "done" and job["id"] not in outputs:
+                try:
+                    outputs[job["id"]] = agent.result(job["id"])
+                except FileNotFoundError:
+                    pass  # An explicitly pruned archive need not block projection.
         self.store.project(agent.agid, snapshot, outputs)
         self._revisions[agent.agid] = snapshot["revision"]
 
@@ -110,7 +124,8 @@ class Service:
             row = dict(id="sapi_" + uuid4().hex[:12], name=name, role=role,
                        color=color, face=face, created=now())
             self.store.add_agent(row)
-            self._agent(row["id"])
+            agent = self._agent(row["id"])
+            self.orchestration.settings(agent)
             self.store.event(row["id"], "created", "Sapi created")
             return row
 
@@ -138,7 +153,7 @@ class Service:
             if self._stopping.is_set():
                 raise APIError(503, "Server is shutting down")
             agent = self._agent(agid)
-            if any(j["status"] not in {"done", "cancelled"} for j in agent.state["jobs"]):
+            if agid in self._background or any(j["status"] not in {"done", "cancelled"} for j in agent.state["jobs"]):
                 raise APIError(409, "Wait for this Sapi's job, or retry/dismiss the job needing attention")
             job = agent.tell(text) if flow == "chat" else agent.submit("computer", text)
             self._sync(agent)
@@ -176,6 +191,10 @@ class Service:
             snapshot["computer"] = {"owner": self._active,
                                     "built": os.access(self.binary, os.X_OK)}
             snapshot["provider"] = "codex"
+            snapshot["orchestration"] = {
+                a.agid: {"schedule": self.orchestration.settings(a), "tasks": a.state["tasks"],
+                         "manager": a.corpora.directory().get(a.agid, {}).get("parent"),
+                         "memory_entries": len(a.memx)} for a in self._agents.values()}
             return snapshot
 
     def save_preferences(self, data):
@@ -210,13 +229,56 @@ class Service:
         self.store.preferences(data)
         return {"saved": True}
 
+    def scheduled(self, instant=None):
+        """One serialized scheduling pass, also callable with a clock in tests."""
+        instant = instant or utcnow()
+        for row in self.store.agents():
+            with self._lock:
+                agent = self._agent(row["id"])
+                if any(j["status"] not in {"done", "cancelled"} for j in agent.state["jobs"]):
+                    continue  # Stopped work always requires explicit retry/dismiss.
+                settings = self.orchestration.settings(agent)
+                due = self.orchestration.due(agent, instant)
+                if not due and not settings["consolidate_requested"]:
+                    continue
+                self._background.add(agent.agid)
+                self.orchestration.prepare(agent)
+                if settings["consolidate_requested"]:
+                    agent.submit("learning", key=f"manual-learning:{agent.state['chat_revision']}")
+                    settings["consolidate_requested"] = False
+                    self.orchestration.save(agent, settings)
+                    # Run manual learning separately so tick cannot also enqueue
+                    # another learning pass against the same memory revision.
+                    due = False
+            try:
+                if due:
+                    # Persist the next deadline before executing bounded work.
+                    with self._lock:
+                        self.orchestration.checked(agent, instant)
+                    asyncio.run(agent.tick(now=instant, force=True))
+                else:
+                    asyncio.run(agent.run())
+            except Exception as error:
+                self.store.event(agent.agid, "host_error", f"{type(error).__name__}: {error}")
+            finally:
+                with self._lock:
+                    self._background.discard(agent.agid)
+                    self._sync(agent)
+            if self._stopping.is_set():
+                return
+
     def _work(self):
         while not self._stopping.is_set():
-            agid = self._queue.get()
+            try:
+                agid = self._queue.get(timeout=1)
+            except queue.Empty:
+                self.scheduled()
+                continue
             if agid is None:
                 return
             with self._lock:
                 agent = self._agent(agid)
+                self.orchestration.prepare(agent)
                 jobs = agent.state["jobs"]
                 self._active = agid if any(j["flow"] == "computer" and j["status"] == "queued" for j in jobs) else None
             try:
@@ -227,6 +289,7 @@ class Service:
                 with self._lock:
                     self._active = None
                     self._sync(agent)
+            self.scheduled()
 
     def close(self):
         self._stopping.set()

@@ -60,16 +60,16 @@ function applySnapshot(snapshot) {
   for (const job of snapshot.jobs) {
     const messages = state.messages[job.agent] ||= [];
     const timestamp = Date.parse(job.created);
-    messages.push({role:'user',text:job.input,time:displayTime(job.created),timestamp});
-    if (job.status === 'done' && job.output !== null) {
+    if (['chat','computer'].includes(job.flow)) messages.push({role:'user',text:job.input,time:displayTime(job.created),timestamp});
+    if (['chat','computer'].includes(job.flow) && job.status === 'done' && job.output !== null) {
       messages.push({role:'assistant',text:job.output,time:displayTime(job.created),timestamp});
     }
     const a = state.agents.find(a => a.id === job.agent);
-    if (a) {
+    if (a && ['chat','computer'].includes(job.flow)) {
       a.lastActivity = timestamp;
       a.preview = (job.status === 'done' && job.output !== null ? job.output : job.input).replace(/\s+/g,' ').slice(0,150);
-      a.status = job.status === 'running' ? 'busy' : 'online';
     }
+    if (a && job.status === 'running') a.status = 'busy';
     if (job.status === 'queued' || job.status === 'running') pending.add(job.agent);
   }
   if (!state.agents.some(a => a.id === state.selected)) state.selected = state.agents[0].id;
@@ -91,11 +91,15 @@ renderGlobal = function() {
 renderAgentHeader = function() {
   const a = selected();
   const job = live.jobs.find(j => j.agent === a.id && !['done','cancelled'].includes(j.status));
-  const status = job ? statusNames[job.status] : 'Ready';
+  const info = live.orchestration?.[a.id];
+  const schedule = info?.schedule;
+  const manager = state.agents.find(s => s.id === info?.manager);
+  const status = [job ? statusNames[job.status] : 'Ready', manager ? `Manager: ${manager.name}` : 'No manager',
+    schedule?.enabled ? `Checks every ${schedule.minutes} min · next ${displayTime(schedule.next_check)}` : 'Checks paused'].join(' · ');
   $('#agent-heading').innerHTML = `${avatar(a,'large')}<div><h2>${esc(a.name)} <span class="muted" style="font-weight:400">/ ${esc(a.role)}</span></h2><p><span class="status-dot"></span> ${esc(status)}</p></div><button class="icon-button" data-action="agent-settings" aria-label="Agent settings">···</button>`;
   $('#message-input').placeholder = `Message ${a.name}…`;
   $$('[data-panel]').forEach(b => {b.classList.toggle('active',b.dataset.panel === state.panel);b.setAttribute('aria-pressed',b.dataset.panel === state.panel);});
-  $('.composer-hint span').textContent = $('#live-flow').value === 'computer' ? 'Runs with Blindly4' : 'Conversation · text only';
+  $('.composer-hint span').textContent = $('#live-flow').value === 'computer' ? 'Runs with Blindly4' : 'Chat · tasks, schedules and team controls';
   $('.send-button').disabled = !online || Boolean(job) || submitting.has(a.id);
 };
 
@@ -119,7 +123,12 @@ renderConversation = function() {
     }
   } else if (state.panel === 'tasks') {
     $('#composer-area').hidden = true;
-    host.innerHTML = '<div class="list-heading"><h3>Jobs</h3><span class="tag">LIVE</span></div>' + jobs.slice().reverse().map(j => `<article class="live-job"><span class="tag">${esc(statusNames[j.status])}</span><h3>${esc(j.input)}</h3><small>${j.flow === 'computer' ? 'Computer task · Blindly4' : 'Chat'} · ${esc(new Date(j.created).toLocaleString())} · ${j.tokens} tokens</small>${j.error ? `<p>${esc(j.error)}</p>` : ''}${jobActions(j)}</article>`).join('') + (jobs.length ? '' : '<div class="empty">Chat and computer jobs will appear here.</div>');
+    const info = live.orchestration?.[state.selected];
+    const tasks = info?.tasks || [];
+    const schedule = info?.schedule;
+    const summary = `<section class="live-job"><h3>Agent status</h3><p>${schedule?.enabled ? `Checks every ${schedule.minutes} minutes${schedule.monitor_team ? ', including team progress' : ''}. Next: ${esc(new Date(schedule.next_check).toLocaleString())}.` : 'Scheduled checks are paused.'}</p><p>Last check: ${schedule?.last_check ? esc(new Date(schedule.last_check).toLocaleString()) : 'Not yet'} · Memory: ${info?.memory_entries || 0} entries</p><p>Checks run while the local server is running. Busy or stopped jobs can delay them.</p></section>`;
+    const taskList = tasks.map(t => `<article class="live-job"><h3>${esc(t.title)}</h3><p>${t.due ? `Due ${esc(new Date(t.due).toLocaleString())}` : 'No due date'} · ${t.job ? `Job ${esc(statusNames[jobs.find(j => j.id === t.job)?.status] || 'archived')}; awaiting completion review` : 'Open'}</p></article>`).join('');
+    host.innerHTML = summary + (tasks.length ? '<div class="list-heading"><h3>Open tasks</h3></div>' + taskList : '') + '<div class="list-heading"><h3>Jobs</h3><span class="tag">LIVE</span></div>' + jobs.slice().reverse().map(j => `<article class="live-job"><span class="tag">${esc(statusNames[j.status])}</span><h3>${esc(j.input)}</h3><small>${esc(j.flow === 'computer' ? 'Computer task · Blindly4' : j.flow)} · ${esc(new Date(j.created).toLocaleString())} · ${j.tokens} tokens</small>${j.error ? `<p>${esc(j.error)}</p>` : ''}${j.output && !['chat','computer','learning'].includes(j.flow) ? `<p>${esc(j.output)}</p>` : ''}${jobActions(j)}</article>`).join('') + (jobs.length ? '' : '<div class="empty">Chat and computer jobs will appear here.</div>');
   } else {
     $('#composer-area').hidden = true;
     host.innerHTML = '<div class="list-heading"><h3>Activity log</h3><span class="tag">LIVE</span></div>' + eventRows.filter(e => e.agent === state.selected).slice(-200).reverse().map(e => `<div class="log-row"><time>${esc(displayTime(e.time))}</time><strong>${esc(e.kind)}</strong><p>${esc(e.detail)}</p></div>`).join('');
@@ -157,7 +166,7 @@ computerDialog = function() {
   modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Choose <strong>Computer task</strong> beside the message box to give a Sapi a task.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : 'Build required: run ./start.sh'}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Jobs run one at a time. macOS Accessibility access is required for desktop interaction; permission failures appear in the job and activity log.</p>`, 'BLINDLY4');
 };
 autonomyDialog = function() {
-  modal('Local workspace', '<p>Connected to your local Codex CLI. Sapis run when you send a message or a computer task.</p><p>Agent profiles, conversations, job results, tabs and drafts are saved locally. Groups and scheduling are planned for the next iteration.</p>', 'SAPIENS4');
+  modal('Local workspace', '<p>Connected to your local Codex CLI. Chat can set wake-up intervals, assign managers, create tasks, inspect team progress, and request memory learning.</p><p>Scheduled checks run while this server is running. Ask a Sapi to pause its checks or change the interval. Jobs shows the saved schedule, tasks, and memory count. Groups are planned for the next iteration.</p>', 'SAPIENS4');
 };
 
 document.addEventListener('submit', async e => {
@@ -200,7 +209,7 @@ $('#profile-button').textContent = 'You';
 $('[data-scope="groups"]').disabled = true;
 $('[data-scope="groups"]').title = 'Groups are coming in the next iteration';
 $('[data-panel="cron"]').hidden = true;
-$('[data-panel="tasks"]').innerHTML = 'Jobs <span id="task-count">0</span>';
+$('[data-panel="tasks"]').innerHTML = 'Tasks & jobs <span id="task-count">0</span>';
 $('.composer-bottom').insertAdjacentHTML('afterbegin', '<label class="live-flow">Mode <select id="live-flow" aria-label="Message mode"><option value="chat">Chat</option><option value="computer">Computer task</option></select></label>');
 $('#live-flow').addEventListener('change', renderAgentHeader);
 $('#message-input').maxLength = 16000;
@@ -212,7 +221,7 @@ async function refresh() {
   refreshing = (async () => {
     try {
       const snapshot = await api(`/api/state?after=${cursor}`);
-      const changed = JSON.stringify([snapshot.agents,snapshot.jobs,snapshot.computer]) !== JSON.stringify([live.agents,live.jobs,live.computer]) || snapshot.events.length;
+      const changed = JSON.stringify([snapshot.agents,snapshot.jobs,snapshot.computer,snapshot.orchestration]) !== JSON.stringify([live.agents,live.jobs,live.computer,live.orchestration]) || snapshot.events.length;
       const reconnected = !online;
       online = true;
       applySnapshot(snapshot);

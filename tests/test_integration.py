@@ -46,7 +46,7 @@ class ScriptedFactory:
         return ScriptedLLM(self)
 
 
-class IntegrationTest(unittest.TestCase):
+class IntegrationFixture(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -77,6 +77,8 @@ class IntegrationTest(unittest.TestCase):
             time.sleep(0.01)
         self.fail(f"Job did not reach {status}: {job}")
 
+
+class IntegrationTest(IntegrationFixture):
     def test_chat_projects_reply_and_survives_restart(self):
         service = self.service()
         agid = service.store.agents()[0]["id"]
