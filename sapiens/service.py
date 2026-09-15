@@ -233,6 +233,8 @@ class Service:
         """One serialized scheduling pass, also callable with a clock in tests."""
         instant = instant or utcnow()
         for row in self.store.agents():
+            if self._stopping.is_set():
+                return
             with self._lock:
                 agent = self._agent(row["id"])
                 if any(j["status"] not in {"done", "cancelled"} for j in agent.state["jobs"]):

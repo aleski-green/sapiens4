@@ -118,6 +118,14 @@ class OrchestrationTest(IntegrationFixture):
         self.assertEqual(len(self.factory.prompts), 1)
         self.assertEqual(service.snapshot()['jobs'][0]['status'], 'failed')
 
+    def test_shutdown_does_not_start_another_scheduled_run(self):
+        service = self.service(start_worker=False)
+        agid = service.store.agents()[0]['id']
+        service.close()
+        self.services.remove(service)
+        service.scheduled(datetime.now(timezone.utc) + timedelta(days=1))
+        self.assertIsNone(service._agent(agid).state['next_awake'])
+
     def test_http_control_is_wired_and_rejects_cross_origin(self):
         service = self.service(start_worker=False)
         server = Server(0, service)
