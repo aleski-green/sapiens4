@@ -37,7 +37,7 @@ class WorkTest(IntegrationFixture):
         agent = service._agent(agid)
         service.orchestration.control(agid, {'op':'schedule','enabled':False})
         definition = service.orchestration.control(agid, {'op':'recurring_job','title':'Progress report',
-                    'prompt':'Summarize current progress','minutes':5})['recurring_job']
+                    'prompt':'Summarize current progress','minutes':5,'watch':{'mode':'always','cooldown_minutes':1}})['recurring_job']
         deadline = datetime.fromisoformat(definition['next_run'])
         service.scheduled(deadline-timedelta(seconds=1))
         self.assertEqual(self.factory.prompts, [])

@@ -206,26 +206,61 @@ agentSettings = function() {
   const schedule = info.schedule;
   const job = live.jobs.find(j => j.agent === a.id && !['done','cancelled'].includes(j.status));
   modal(`${a.name} settings`, `<form id="live-settings-form" data-id="${esc(a.id)}" class="form-stack">
-    ${usageSettings(info)}
+    <div class="settings-tabs" role="tablist" aria-label="Sapi settings">${[['profile','Profile'],['schedule','Schedule'],['memory','Memory'],['usage','Usage'],['limits','Limits']].map(([key,label],i)=>`<button type="button" role="tab" id="settings-tab-${key}" aria-controls="settings-panel-${key}" aria-selected="${i===0}" tabindex="${i===0?0:-1}" data-settings-tab="${key}">${label}</button>`).join('')}</div>
+    <section class="settings-panel form-stack" role="tabpanel" id="settings-panel-profile" aria-labelledby="settings-tab-profile" data-settings-panel="profile">
     <label>Name<input name="name" value="${esc(a.name)}" required maxlength="24" aria-describedby="name-help" autocomplete="off"></label>
     ${nameSuggestions()}
     <label>Role<input name="role" value="${esc(a.role)}" required maxlength="60"></label>
     ${managerOptions(a)}
+    </section>
+    <section class="settings-panel form-stack" role="tabpanel" id="settings-panel-schedule" aria-labelledby="settings-tab-schedule" data-settings-panel="schedule" hidden>
     <fieldset class="schedule-fields"><legend>Scheduled checks</legend>
       <label class="check-label"><input name="enabled" type="checkbox" ${schedule.enabled ? 'checked' : ''}> Enable checks</label>
       <label>Check every (minutes)<input name="minutes" type="number" min="1" max="1440" step="1" required value="${schedule.minutes}"></label>
       <label class="check-label"><input name="monitor_team" type="checkbox" ${schedule.monitor_team ? 'checked' : ''}> Include team progress</label>
     </fieldset>
+    <small>Agent checks manage due work and team status. Each recurring job has its own change detector and wake-up limits in Jobs.</small>
+    <dl class="sapi-details"><dt>Status</dt><dd>${esc(job ? statusNames[job.status] : 'Ready')}</dd><dt>Next check</dt><dd>${schedule.enabled && schedule.next_check ? esc(new Date(schedule.next_check).toLocaleString()) : 'Paused'}</dd><dt>Last check</dt><dd>${schedule.last_check ? esc(new Date(schedule.last_check).toLocaleString()) : 'Not yet'}</dd></dl>
+    <small>Checks run while the local server is running.</small>
+    </section>
+    <section class="settings-panel form-stack" role="tabpanel" id="settings-panel-memory" aria-labelledby="settings-tab-memory" data-settings-panel="memory" hidden>
     <fieldset class="schedule-fields"><legend>Recent memory</legend>
       <label class="check-label"><input name="recent_enabled" type="checkbox" ${info.recent.enabled ? 'checked' : ''}> Reuse recent results for follow-ups</label>
       <label>Fresh for (seconds)<input name="recent_seconds" type="number" min="1" max="3600" step="1" required value="${info.recent.seconds}"></label>
       <small>“Do it again” or “check current state” always checks afresh.</small>
     </fieldset>
-    <dl class="sapi-details"><dt>Status</dt><dd>${esc(job ? statusNames[job.status] : 'Ready')}</dd><dt>Next check</dt><dd>${schedule.enabled && schedule.next_check ? esc(new Date(schedule.next_check).toLocaleString()) : 'Paused'}</dd><dt>Last check</dt><dd>${schedule.last_check ? esc(new Date(schedule.last_check).toLocaleString()) : 'Not yet'}</dd><dt>Memory</dt><dd>${info.memory_entries} ${info.memory_entries === 1 ? 'entry' : 'entries'}</dd></dl>
-    <small class="form-hint">Checks run while the local server is running.</small>
+    <p>${info.memory_entries} consolidated memory ${info.memory_entries === 1 ? 'entry' : 'entries'}. Start consolidation from MindMap.</p>
+    </section>
+    <section class="settings-panel" role="tabpanel" id="settings-panel-usage" aria-labelledby="settings-tab-usage" data-settings-panel="usage" hidden>${usageSettings(info,'usage')}</section>
+    <section class="settings-panel" role="tabpanel" id="settings-panel-limits" aria-labelledby="settings-tab-limits" data-settings-panel="limits" hidden>${usageSettings(info,'limits')}</section>
     <button type="submit" class="button primary">Save</button></form>`, 'SAPIENS4');
   loadUsage(a.id);
 };
+function settingsTab(key) {
+  const form = $('#live-settings-form');
+  if (!form) return;
+  form.querySelectorAll('[data-settings-panel]').forEach(p => { p.hidden = p.dataset.settingsPanel !== key; });
+  form.querySelectorAll('[data-settings-tab]').forEach(b => {
+    const active = b.dataset.settingsTab === key;
+    b.setAttribute('aria-selected', String(active)); b.tabIndex = active ? 0 : -1;
+  });
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-settings-tab]');
+  if (b) settingsTab(b.dataset.settingsTab);
+});
+document.addEventListener('keydown', e => {
+  const b = e.target.closest('[data-settings-tab]');
+  if (!b || !['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+  e.preventDefault();
+  const tabs = [...b.parentElement.querySelectorAll('[data-settings-tab]')];
+  const i = e.key==='Home' ? 0 : e.key==='End' ? tabs.length-1 : (tabs.indexOf(b)+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+  settingsTab(tabs[i].dataset.settingsTab); tabs[i].focus();
+});
+document.addEventListener('invalid', e => {
+  const p = e.target.closest('[data-settings-panel]');
+  if (p && p.hidden) settingsTab(p.dataset.settingsPanel);
+}, true);
 actions['agent-settings'] = agentSettings;
 computerDialog = function() {
   modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : 'Build required: run ./start.sh'}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Jobs run one at a time. macOS Accessibility access is required for desktop interaction; permission failures appear in the job and activity log.</p>`, 'BLINDLY4');

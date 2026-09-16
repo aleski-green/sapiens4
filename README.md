@@ -266,3 +266,9 @@ shown as unavailable. The local budget weights cached input at 10%; it is not a
 price estimate or a Codex account limit. `GET /api/agents/<id>/usage` returns the
 same report. See [usage and watcher recovery](docs/usage-and-watcher-recovery.md)
 for accounting, historical-data limitations, and scheduling behavior.
+
+### Script-first watchers
+
+Recurring inbox watchers now check a saved observation plan before calling the model. Unchanged checks consume no model tokens. Sapis can discover and save a Blindly chat-list plan once; jobs without a plan show **Setup needed**. Configure chat scope, cooldown and hourly/daily wake limits under **Jobs → Edit**. Explicit generative jobs can opt into interval-based model calls.
+
+The **…** settings are split into **Profile, Schedule, Memory, Usage and Limits**. See [script-first watchers](docs/script-first-watchers.md) for the investigation, configuration, coverage limits and validation.

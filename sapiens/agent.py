@@ -85,6 +85,11 @@ class SapiAgent(PersistentAgent):
                 snapshot = deepcopy(snapshot)
                 snapshot['chat'] = snapshot['chat'][-10:]
                 snapshot['notes'] = snapshot['notes'][-5:]
+                if job['flow'] == 'scheduled':
+                    # The detector + checkpoint in task are the working set.
+                    # Old chat and timer notes cause repeated discovery/learning.
+                    snapshot['chat'] = []
+                    snapshot['notes'] = []
             context = self._context(snapshot, job['task'])
             llm_index = 0
             for step in config.flows[job['flow']].steps:

@@ -1,9 +1,9 @@
 const number = value => Number(value || 0).toLocaleString();
-function usageSettings(info) {
+function usageSettings(info, section) {
   const s = info.execution;
-  return `<section class="usage-section" aria-label="Token consumption"><div class="list-heading"><h3>Token consumption</h3><button type="button" class="button" data-refresh-usage>Refresh</button></div>
-    <div id="sapi-usage" aria-live="polite">Loading usage…</div></section>
-    <details class="execution-settings"><summary>Budget & execution limits</summary>
+  if (section === 'usage') return `<section class="usage-section" aria-label="Token consumption"><div class="list-heading"><h3>Token consumption</h3><button type="button" class="button" data-refresh-usage>Refresh</button></div>
+    <div id="sapi-usage" aria-live="polite">Loading usage…</div></section>`;
+  return `<section class="execution-settings form-stack"><h3>Budget & execution limits</h3>
       <p>Budget units = uncached input + output + 10% of cached input. This is a local allowance, not a price or your Codex subscription limit.</p>
       <label>Weekly budget units<input name="weekly_limit" type="number" min="1000" max="100000000" required value="${s.weekly_limit}"></label>
       <label>Allowance per model call<input name="call_allowance" type="number" min="1000" max="1000000" required value="${s.call_allowance}"></label>
@@ -11,7 +11,7 @@ function usageSettings(info) {
       <label>Call timeout (seconds)<input name="timeout_seconds" type="number" min="15" max="600" required value="${s.timeout_seconds}"></label>
       <label>Tool result limit (tokens)<input name="output_tokens" type="number" min="200" max="8000" required value="${s.output_tokens}"></label>
       <small>Usage arrives at the end of a model call, so its allowance can be exceeded. Tool and time limits stop long runs; interrupted actions need review.</small>
-    </details>`;
+    </section>`;
 }
 async function loadUsage(owner) {
   const host = $('#sapi-usage');

@@ -365,6 +365,11 @@ class Service:
             try:
                 with self._lock:
                     agent = self._agent(row["id"])
+                    # Read-only scripts also run when model allowance is exhausted.
+                    # Keep them serialized with computer work and preserve hard-stop review.
+                    recurring = None
+                    if not any(j['status'] != 'budget_blocked' for j in self.work.blocking(agent)) and not any(j['status'] in {'queued','running'} for j in agent.state['jobs']):
+                        recurring = self.work.check_due(agent, instant)
                     self.work.monitor(agent, instant)
                     if any(j['status'] != 'budget_blocked' for j in self.work.blocking(agent)):
                         continue
@@ -380,7 +385,6 @@ class Service:
                         continue  # Stopped work requires explicit retry/dismiss.
                     settings = self.orchestration.settings(agent)
                     due = self.orchestration.due(agent, instant)
-                    recurring = self.work.due(agent, instant)
                     due_task = self.tasks.due(agent, instant)
                     if not due and not settings["consolidate_requested"] and not recurring and not due_task:
                         continue
@@ -400,8 +404,9 @@ class Service:
                         settings["consolidate_requested"] = False
                         self.orchestration.save(agent, settings)
                         due = False
-                    elif not due and recurring:
+                    elif recurring:
                         self.work.admit(agent, recurring, instant)
+                        due = False
                         self._active = agent.agid
                     if due:
                         self.orchestration.checked(agent, instant)

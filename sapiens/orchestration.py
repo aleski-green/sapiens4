@@ -65,7 +65,20 @@ Pass a JSON object with op and the fields below. Quote JSON safely for the shell
 - task_comment: id (your task ID), text (progress or a blocker). Saves a task comment.
 - run_task: id (existing task ID). Run a planned task once.
 - recurring_job: title, prompt, minutes (1–10080), enabled (boolean, default true).
-  Creates a recurring job with its own timer; optional id updates an existing job.
+  Creates a recurring job; optional id updates one. Default watch mode is changes:
+  timers run a deterministic read-only script, not an LLM. Save watch with
+  {{"mode":"changes","probe":{{"bundle_id":"observed app bundle ID",
+  "container_id":"observed stable AX chat-list identifier","names":["exact chat names"]}},
+  "cooldown_minutes":30,"max_per_hour":2,"max_per_day":8}}.
+  Empty names watches all visible list rows. Discover and verify a container once
+  with Blindly, then persist the plan. No plan means no automatic model runs.
+  Never invent selectors or classify phone-number labels as confirmed non-contacts.
+  Ask which chats matter if the scope is unclear. Prefer narrow lists, then new
+  phone-number-labelled candidates; do not scan every conversation repeatedly.
+  Choose the cheapest observation that can establish change; no change needs no
+  reasoning. Script failures back off without model calls. Mode always is only for
+  work requiring generation every interval, and still has wake limits. Explicitly
+  justify that choice in the response. Do not execute arbitrary polling scripts.
 - run_job: id (recurring job ID). Run it now, without changing its timer.
 - checkpoint: id (your recurring job ID), status (ok, partial, blocked), summary
   (at most 500 characters), value (JSON, at most 6000 characters). Save observed
@@ -118,8 +131,7 @@ The returned saved facts are authoritative. Do not replay old chat requests.
         return dict(self_id=agent.agid, main_agent_id=self.service.hierarchy.main,
                     schedule=self.settings(agent), team=self.team(),
                     recurring_jobs_scope='self only; team members have their own recurring_jobs',
-                    recurring_jobs=[{k: v for k, v in j.items() if k != "runs"}
-                                    for j in self.service.work.read(agent)])
+                    recurring_jobs=[self.service.work.public_definition(j) for j in self.service.work.read(agent)])
 
     def resolve(self, value):
         from .service import APIError
@@ -157,7 +169,7 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             fields = {"status": {'target'}, "schedule": {"minutes", "enabled", "monitor_team"},
                       "manager": {"manager", "target"}, "task": {"title", "due", "name", "target"},
                       "task_comment": {"id", "text"}, "finish_task": {"id"}, "run_task": {"id"}, "run_job": {"id"},
-                      "recurring_job": {"id", "title", "prompt", "minutes", "enabled"}, "consolidate": set(),
+                      "recurring_job": {"id", "title", "prompt", "minutes", "enabled", "watch"}, "consolidate": set(),
                       "checkpoint": {'id','status','summary','value'}}
             if not isinstance(op, str) or op not in fields or set(data) - fields[op] - {"op"}:
                 raise APIError(400, "Unknown operation or field")
@@ -189,12 +201,14 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             elif op == "run_task":
                 result['run_id'] = self.service.work.run_task(agent, text_field(data, 'id', 64))
             elif op == "recurring_job":
-                result['recurring_job'] = self.service.work.upsert(agent, {k: v for k, v in data.items() if k != 'op'})
+                result['recurring_job'] = self.service.work.public_definition(self.service.work.upsert(agent, {k: v for k, v in data.items() if k != 'op'}))
             elif op == "run_job":
                 result['run_id'] = self.service.work.run_now(agent, text_field(data, 'id', 64))
             elif op == 'checkpoint':
                 result['checkpoint'] = self.service.work.checkpoint(agent, data)
             elif op == "consolidate":
+                if any(j['flow'] == 'scheduled' and j['status'] == 'running' for j in agent.state['jobs']):
+                    raise APIError(409, 'Watcher runs must save a checkpoint, not start consolidation. Use MindMap for an explicit consolidation.')
                 settings = self.settings(agent)
                 learning = [j for j in agent.state['jobs'] if j['flow'] == 'learning'
                             and j['status'] not in {'done', 'cancelled'}]
