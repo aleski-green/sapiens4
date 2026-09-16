@@ -11,7 +11,9 @@ import hashlib
 import json
 from uuid import uuid4
 
-from .runtime import AgentPy, Config, Limits, LocalFactory, ROOT, SDK, codex_binary, computer_manifest
+from .runtime import Config, Limits, LocalFactory, ROOT, SDK, codex_binary, computer_manifest, computer_guide
+from .agent import SapiAgent
+from .usage import Usage, settings as execution_settings, validate as validate_execution
 from .store import Store, now
 from .orchestration import Orchestration, utcnow
 from .hierarchy import Hierarchy
@@ -62,6 +64,7 @@ class Service:
             self._file_lock.close()
             raise RuntimeError("Another Sapiens4 server is using this data directory") from None
         self.store = Store(self.root / "corpora.sqlite3")
+        self.usage = Usage(self.store)
         # Repair old repeated default faces once; the resulting avatars persist.
         used = set()
         for row in self.store.agents():
@@ -116,7 +119,7 @@ class Service:
 
             factory = (self.factory_builder(agid, sink) if self.factory_builder else
                        LocalFactory(workdir=workdir, event_sink=sink, timeout_seconds=self.timeout))
-            agent = AgentPy.open(agid=agid, config=Config(), factory=factory,
+            agent = SapiAgent(agid=agid, config=Config(), factory=factory,
                                  root=self.root / "agentpy", source=SDK,
                                  limits=Limits(parallel_jobs=1, tokens_per_call=32000, tokens_per_loop=256000))
             if not self.factory_builder:
@@ -131,6 +134,8 @@ class Service:
     def _manifests(self, agent, row):
         agent.set_manifest("identity", f"Your name is {row['name']}. Your role is {row['role']}.")
         agent.set_manifest("computer-use", computer_manifest(self.binary))
+        if self.binary.exists():
+            agent.set_manifest('computer-tools', computer_guide(self.binary, self.binary.stat().st_mtime_ns))
 
     def _active_job(self, agid):
         agent = self._agents.get(agid)
@@ -150,6 +155,8 @@ class Service:
                 except FileNotFoundError:
                     pass  # An explicitly pruned archive need not block projection.
         self.tasks.sync(agent, snapshot, outputs)
+        self.work.sync(agent, snapshot, outputs)
+        self.usage.sync(agent)
         self.store.project(agent.agid, snapshot, outputs)
         self._revisions[agent.agid] = snapshot["revision"]
 
@@ -188,6 +195,8 @@ class Service:
             recent = RecentContext(self.root / 'workspaces' / agid)
             if 'recent' in data:
                 recent.validate(data['recent'])
+            if 'execution' in data:
+                validate_execution(data['execution'])
             schedule = None
             if "schedule" in data:
                 schedule = self.orchestration.validate_schedule(agent, data["schedule"])
@@ -198,6 +207,8 @@ class Service:
                 self.orchestration.save(agent, schedule)
             if 'recent' in data:
                 recent.configure(data['recent'])
+            if 'execution' in data:
+                agent.configure(data['execution'])
             self.store.update_agent(agid, row)
             self._manifests(agent, row)
             self.store.event(agid, "updated", "Sapi identity updated")
@@ -224,8 +235,10 @@ class Service:
             if self._stopping.is_set():
                 raise APIError(503, "Server is shutting down")
             agent = self._agent(agid)
-            if agid in self._background or any(j["status"] not in {"done", "cancelled"} for j in agent.state["jobs"]):
+            if agid in self._background or self.work.blocking(agent):
                 raise APIError(409, "Wait for this Sapi's job, or retry/dismiss the job needing attention")
+            if not agent.can_admit(flow):
+                raise APIError(409, 'Budget allowance unavailable. Open Sapi settings for remaining allowance, reset time, and limits.')
             prompt += self.tasks.references(text)
             job = agent.tell(prompt) if flow == "chat" else agent.submit("computer", prompt)
             self.store.message(job, text, attachments)
@@ -266,6 +279,7 @@ class Service:
             snapshot["provider"] = "codex"
             snapshot["task_assignments"] = self.tasks.notices()
             snapshot["task_updates"] = self.tasks.updates()
+            snapshot['notifications'] = self.work.notifications()
             snapshot["main_agent_id"] = self.hierarchy.main
             snapshot["attachment_drafts"] = {
                 agid: [a for a in self.store.attachments(agid) if a["id"] in ids]
@@ -277,6 +291,7 @@ class Service:
                          "memory_entries": len(a.memx),
                          "memory": self.memory_status(a, snapshot['jobs']),
                          "recent": RecentContext(self.root / "workspaces" / a.agid).settings(),
+                         "execution": execution_settings(a), "budget": a.budget_status(),
                          "task_activity": self.tasks.activity(a),
                          **self.work.snapshot(a, snapshot["jobs"])} for a in self._agents.values()}
             return snapshot
@@ -350,7 +365,18 @@ class Service:
             try:
                 with self._lock:
                     agent = self._agent(row["id"])
-                    if any(j["status"] not in {"done", "cancelled"} for j in agent.state["jobs"]):
+                    self.work.monitor(agent, instant)
+                    if any(j['status'] != 'budget_blocked' for j in self.work.blocking(agent)):
+                        continue
+                    resumable = [j for j in agent.state['jobs'] if j['status'] == 'budget_blocked' and agent.can_admit(j['flow'], instant)]
+                    if resumable:
+                        # Budget-blocked work never started; retry is safe. Failed
+                        # or interrupted tool runs still require explicit review.
+                        for job in resumable:
+                            agent.retry(job['id'])
+                        self._queue.put(agent.agid)
+                        continue
+                    if self.work.blocking(agent):
                         continue  # Stopped work requires explicit retry/dismiss.
                     settings = self.orchestration.settings(agent)
                     due = self.orchestration.due(agent, instant)
@@ -365,7 +391,7 @@ class Service:
                         self.work.admit_task(agent, due_task['id'])
                         self._active = agent.agid
                         due = False
-                    elif settings["consolidate_requested"]:
+                    elif settings["consolidate_requested"] and not any(j['flow']=='learning' and j['status'] not in {'done','cancelled'} for j in agent.state['jobs']):
                         if not settings.get('consolidation_id'):
                             settings['consolidation_id'] = uuid4().hex
                             self.orchestration.save(agent, settings)

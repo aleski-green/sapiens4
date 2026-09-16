@@ -13,6 +13,7 @@ let uploading = 0;
 const nameRule = /^[A-Z][A-Za-z0-9_.:#+|()&$^\-]*$/;
 const nameHelp = 'Start with A–Z. Letters, numbers, and - _ . : # + | ( ) & $ ^ are allowed. No spaces.';
 const attention = new Set(['failed','interrupted','conflict','budget_blocked']);
+const blocksChat = job => !['done','cancelled'].includes(job.status) && !(job.flow === 'learning' && attention.has(job.status));
 const statusNames = {queued:'Queued',running:'Running',done:'Completed',failed:'Failed',
   interrupted:'Interrupted',conflict:'Needs review',budget_blocked:'Budget blocked',cancelled:'Dismissed'};
 const displayTime = value => new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
@@ -96,6 +97,16 @@ function applySnapshot(snapshot) {
     }
   }
   for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp);
+  for (const notice of snapshot.notifications || []) {
+    for (const owner of notice.owners) {
+      const timestamp = Date.parse(notice.time);
+      (state.messages[owner] ||= []).push({role:'assistant',speaker:notice.agent,text:notice.text,
+        time:displayTime(notice.time),timestamp,assignment:true});
+      const a = state.agents.find(a=>a.id===owner);
+      if (a && timestamp>a.lastActivity) {a.lastActivity=timestamp;a.preview=notice.text;}
+    }
+  }
+  for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp);
   if (!state.agents.some(a => a.id === state.selected)) state.selected = state.agents[0].id;
   state.logs = eventRows.slice().reverse().map(e => ({agent:e.agent,time:displayTime(e.time),title:e.kind,detail:e.detail}));
   state.computer.owner = snapshot.computer.owner;
@@ -116,7 +127,7 @@ renderGlobal = function() {
 
 renderAgentHeader = function() {
   const a = selected();
-  const job = live.jobs.find(j => j.agent === a.id && !['done','cancelled'].includes(j.status));
+  const job = live.jobs.find(j => j.agent === a.id && blocksChat(j));
   $('#agent-heading').innerHTML = `${avatar(a,'large')}<div><h2>${esc(a.name)}</h2><p class="agent-role">${esc(a.role)}</p></div><button class="icon-button" data-action="agent-settings" aria-label="Sapi settings">···</button>`;
   $('#message-input').placeholder = `Message ${a.name}…`;
   $$('[data-panel]').forEach(b => {b.classList.toggle('active',b.dataset.panel === state.panel);b.setAttribute('aria-pressed',b.dataset.panel === state.panel);});
@@ -148,7 +159,7 @@ renderConversation = function() {
       if (attachments.length) node.querySelector('.message-bubble').insertAdjacentHTML('beforeend', `<div class="message-attachments">${attachments.map(attachmentLabel).join('')}</div>`);
     });
     if (!getMessages(state.selected).length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
-    const job = jobs.find(j => !['done','cancelled'].includes(j.status));
+    const job = jobs.find(blocksChat) || jobs.find(j => !['done','cancelled'].includes(j.status));
     if (job) {
       const started = eventRows.slice().reverse().find(e => e.job === job.id && e.kind === 'started');
       const event = eventRows.slice().reverse().find(e => e.job === job.id && e.kind === 'codex' && (!started || e.time >= started.time));
@@ -195,6 +206,7 @@ agentSettings = function() {
   const schedule = info.schedule;
   const job = live.jobs.find(j => j.agent === a.id && !['done','cancelled'].includes(j.status));
   modal(`${a.name} settings`, `<form id="live-settings-form" data-id="${esc(a.id)}" class="form-stack">
+    ${usageSettings(info)}
     <label>Name<input name="name" value="${esc(a.name)}" required maxlength="24" aria-describedby="name-help" autocomplete="off"></label>
     ${nameSuggestions()}
     <label>Role<input name="role" value="${esc(a.role)}" required maxlength="60"></label>
@@ -212,6 +224,7 @@ agentSettings = function() {
     <dl class="sapi-details"><dt>Status</dt><dd>${esc(job ? statusNames[job.status] : 'Ready')}</dd><dt>Next check</dt><dd>${schedule.enabled && schedule.next_check ? esc(new Date(schedule.next_check).toLocaleString()) : 'Paused'}</dd><dt>Last check</dt><dd>${schedule.last_check ? esc(new Date(schedule.last_check).toLocaleString()) : 'Not yet'}</dd><dt>Memory</dt><dd>${info.memory_entries} ${info.memory_entries === 1 ? 'entry' : 'entries'}</dd></dl>
     <small class="form-hint">Checks run while the local server is running.</small>
     <button type="submit" class="button primary">Save</button></form>`, 'SAPIENS4');
+  loadUsage(a.id);
 };
 actions['agent-settings'] = agentSettings;
 computerDialog = function() {
@@ -236,6 +249,8 @@ document.addEventListener('submit', async e => {
       data.manager = data.manager || null;
       data.schedule = {enabled:form.elements.enabled.checked,minutes:Number(data.minutes),monitor_team:form.elements.monitor_team.checked};
       data.recent = {enabled:form.elements.recent_enabled.checked,seconds:Number(data.recent_seconds)};
+      data.execution = Object.fromEntries(['weekly_limit','call_allowance','max_tools','timeout_seconds','output_tokens'].map(k=>[k,Number(data[k])]));
+      for (const key of Object.keys(data.execution)) delete data[key];
       delete data.recent_enabled; delete data.recent_seconds;
       delete data.enabled; delete data.minutes; delete data.monitor_team;
     }

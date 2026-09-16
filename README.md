@@ -256,3 +256,13 @@ Real Codex and Accessibility checks are separate local smoke tests.
 To update a component, check out the desired commit inside its submodule,
 run these checks and the browser smoke test, then commit the changed Git link
 in `sapiens4`. Runtime data, generated assets and binaries stay out of Git.
+
+### Token usage and execution limits
+
+Open a Sapi's **…** settings for token consumption over the last hour, 24 hours,
+and seven days, plus recent calls and editable budget/execution limits. Cached
+input, uncached input, and output remain separate. Missing provider usage is
+shown as unavailable. The local budget weights cached input at 10%; it is not a
+price estimate or a Codex account limit. `GET /api/agents/<id>/usage` returns the
+same report. See [usage and watcher recovery](docs/usage-and-watcher-recovery.md)
+for accounting, historical-data limitations, and scheduling behavior.
