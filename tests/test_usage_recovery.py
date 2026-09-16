@@ -81,6 +81,7 @@ class UsageRecoveryTest(IntegrationFixture):
         asyncio.run(a.run())
         self.assertEqual(next(j['status'] for j in a.state['jobs'] if j['id']==chat),'done')
         watcher=service.work.upsert(a,dict(title='Watch',prompt='Observe',minutes=1,watch={'mode':'always','cooldown_minutes':1}))
+        self.ready_strategy(service, a, watcher)
         service.scheduled(datetime.fromisoformat(watcher['next_run']))
         self.assertEqual(service.work.read(a)[0]['last_observation']['status'],'done')
         self.assertEqual(next(j['status'] for j in a.state['jobs'] if j['id']==learning),'failed')
@@ -109,6 +110,7 @@ class UsageRecoveryTest(IntegrationFixture):
         main=service.hierarchy.main
         a=service._agent(service.create_agent({'name':'Nova','role':'Watcher'})['id'])
         row=service.work.upsert(a,dict(title='DM watcher',prompt='Inspect DMs',minutes=10,watch={'mode':'always'}))
+        self.ready_strategy(service, a, row)
         service.orchestration.control(a.agid,dict(op='checkpoint',id=row['id'],status='blocked',summary='Sync paused',value={'coverage':'none'}))
         for _ in range(2):service.work.monitor(a,datetime.now(timezone.utc))
         self.assertEqual(len(service.work.notifications()),1)

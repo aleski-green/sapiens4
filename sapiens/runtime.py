@@ -25,7 +25,8 @@ class Config(SDKConfig):
     # Computer-task answers become conversation history as well as durable jobs.
     flows = {**SDKConfig.flows, "computer": Flow(("react",), commit="reply"),
              "scheduled": Flow(("conversation",), commit="note"),
-             "task": Flow(("conversation",), commit="note")}
+             "task": Flow(("conversation",), commit="note"),
+             "strategy": Flow(("conversation",), commit="note")}
     roles = {**SDKConfig.roles, "conversation": Role("""Maintain a concise conversation.
 Use the host-control command in the manifests to change Sapiens4 schedules,
 reporting relationships, one-off tasks, recurring jobs, or memory consolidation. For changes, execute
@@ -192,7 +193,7 @@ After a login/sync/permission blocker is confirmed, stop, save the blocker, and 
 Aim for fewer than ten tool calls per run. Reuse unchanged observations within the run;
 avoid repeated schema/apps calls except to verify a launch. Do not loop over failed menu paths.
 Do not wrap many commands in one shell invocation to bypass the host's execution bounds.
-A recurring watcher must save a checkpoint through host-control before requesting consolidation.
+A recurring watcher saves a checkpoint through host-control; it must not request consolidation.
 The checkpoint must distinguish complete coverage from partial observations and blockers.
 Read its JSON results and check exit codes. Exit 77 means Accessibility permission
 is unavailable; report this and stop. Never substitute a different computer-use

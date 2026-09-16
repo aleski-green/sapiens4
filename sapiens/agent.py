@@ -81,15 +81,26 @@ class SapiAgent(PersistentAgent):
         try:
             # Keep routine calls bounded; learning still sees the complete input
             # history so consolidation does not silently forget older evidence.
-            if job['flow'] in {'chat', 'computer', 'scheduled', 'task'}:
+            if job['flow'] in {'chat', 'computer', 'scheduled', 'task', 'strategy'}:
                 snapshot = deepcopy(snapshot)
                 snapshot['chat'] = snapshot['chat'][-10:]
                 snapshot['notes'] = snapshot['notes'][-5:]
-                if job['flow'] == 'scheduled':
+                if job['flow'] in {'scheduled', 'strategy'}:
                     # The detector + checkpoint in task are the working set.
                     # Old chat and timer notes cause repeated discovery/learning.
                     snapshot['chat'] = []
                     snapshot['notes'] = []
+                    # The task carries this job's plan/checkpoint/feedback. Do
+                    # not duplicate every peer's plans into automated turns.
+                    manifests = snapshot['inputs']['manifests']
+                    facts = json.loads(manifests.get('host-facts', '{}'))
+                    facts.pop('recurring_jobs', None)
+                    facts['team'] = [{k: v for k, v in member.items()
+                                      if k in {'id', 'name', 'role', 'manager'} or
+                                      (member.get('id') == self.agid and k == 'budget')}
+                                     for member in facts.get('team', [])]
+                    manifests['host-facts'] = json.dumps(facts)
+                    manifests.pop('task-comments', None)
             context = self._context(snapshot, job['task'])
             llm_index = 0
             for step in config.flows[job['flow']].steps:
@@ -108,7 +119,7 @@ class SapiAgent(PersistentAgent):
                            time=started, started=started, status='running', usage=None,
                            historical=False, approximate_time=False, prompt_chars=len(prompt))
                 save_record(self, row)
-                if job['flow'] in {'scheduled','task'}:
+                if job['flow'] in {'scheduled','task','strategy'}:
                     def observed(item):
                         value = json.dumps(item, ensure_ascii=False)
                         row.setdefault('observations', []).append(dict(time=datetime.now(timezone.utc).isoformat(),

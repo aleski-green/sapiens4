@@ -15,18 +15,18 @@ Raw totals include cached input, and local units are the app's allowance policy,
 
 ## New execution model
 
-1. A Sapi discovers an app's stable chat-list container once with Blindly and saves a structured `watch` plan through `recurring_job`.
+1. Following the [agent-owned strategy lifecycle](agent-owned-strategies.md), a Sapi discovers an app's stable chat-list container once with Blindly and saves a structured `watch` plan through `recurring_job`.
 2. A deterministic host script polls with two read-only commands: `apps` and a bounded `tree`. No model, app activation, navigation, message sends, or generated shell code is involved.
 3. The script extracts the configured list's direct conversation rows and optionally filters exact chat names. It ignores menu trees, the opened conversation, selection, geometry and relative clock labels.
 4. The first observation establishes a baseline without a model call. Unchanged checks also use no model calls. Only changed previews can admit agent review.
 5. Pending changes wait for sufficient model budget and the configured cooldown/hour/day limits. Defaults: 30 minutes between admissions, two per rolling hour, eight per rolling day. Existing runs count when a legacy job receives its first plan.
-6. A completed review acknowledges the observed baseline. Failed/interrupted actions need explicit review; the timer does not replay them. Observation errors retain the baseline and back off up to an hour without asking a model to rediscover the same blocker.
+6. A completed review with a matching successful checkpoint acknowledges the observed baseline. Failed/interrupted actions need explicit review; the timer does not replay them. Observation errors retain the baseline and back off up to an hour without asking a model to rediscover the same blocker.
 
 Model runs receive the changed names and previous checkpoint, without unrelated chat history or accumulated timer notes. Phone-number-labelled candidates come first; that label is not proof of contact or DM status. The model must verify relevance and incoming-message status before claiming an update.
 
 Watchers cannot request consolidation while executing: the host rejects it and tells them to save a checkpoint. Explicit MindMap consolidation and the existing daily learning schedule remain available. A script poll creates neither a model job nor a new memory note.
 
-Unconfigured jobs fail closed with “Setup needed.” A deliberately generative recurring job can select `mode: always`; wake limits still apply. Explicit “Run now” bypasses change detection and time-based wake limits, while normal SDK budget admission still applies.
+Unconfigured jobs receive one bounded Sapi-owned strategy turn before routine execution. Incomplete setup then stops for explicit repair. A deliberately generative recurring job can select `mode: always`; wake limits still apply. For ready strategies, explicit “Run now” bypasses change detection and time-based wake limits, while normal SDK budget admission still applies.
 
 ## Configuration
 

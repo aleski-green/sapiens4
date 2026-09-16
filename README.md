@@ -269,6 +269,6 @@ for accounting, historical-data limitations, and scheduling behavior.
 
 ### Script-first watchers
 
-Recurring inbox watchers now check a saved observation plan before calling the model. Unchanged checks consume no model tokens. Sapis can discover and save a Blindly chat-list plan once; jobs without a plan show **Setup needed**. Configure chat scope, cooldown and hourly/daily wake limits under **Jobs → Edit**. Explicit generative jobs can opt into interval-based model calls.
+Recurring inbox watchers now check a saved observation plan before calling the model. Unchanged checks consume no model tokens. Each Sapi chooses and tests its own strategy before routine execution. A missing plan gets one bounded setup turn; costly or unproductive runs trigger a bounded review. See [agent-owned strategies](docs/agent-owned-strategies.md) for the lifecycle and current execution limits. Configure chat scope, cooldown and hourly/daily wake limits under **Jobs → Edit**. Explicit generative jobs can opt into interval-based model calls.
 
 The **…** settings are split into **Profile, Schedule, Memory, Usage and Limits**. See [script-first watchers](docs/script-first-watchers.md) for the investigation, configuration, coverage limits and validation.

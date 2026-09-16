@@ -24,6 +24,10 @@ class WatchTest(IntegrationFixture):
         service.orchestration.control(agent.agid,dict(op='schedule',enabled=False))
         row = service.work.upsert(agent,dict(title='Watch',prompt='Observe changes',minutes=1,
             watch=dict(mode='changes',probe=PLAN,cooldown_minutes=1,max_per_hour=2,max_per_day=3)))
+        with patch('sapiens.watch.observe', return_value=observation()):
+            self.ready_strategy(service, agent, row)
+        self.factory.on_complete = lambda _: self.services[-1].orchestration.control(agent.agid, dict(
+            op='checkpoint', id=row['id'], status='ok', outcome='useful', summary='Verified change', value={}))
         return service, agent, row, datetime.fromisoformat(row['next_run'])
 
     def test_unchanged_checks_cost_zero_and_survive_restart(self):
@@ -35,7 +39,7 @@ class WatchTest(IntegrationFixture):
         row=service.work.read(service._agent(agent.agid))[0]
         self.assertEqual(self.factory.prompts,[])
         self.assertEqual(row['detector']['checks'],6)
-        self.assertEqual(row['detector']['skipped'],5)
+        self.assertEqual(row['detector']['skipped'],6)
         self.assertEqual(row['runs'],[])
 
     def test_change_runs_once_commits_baseline_and_enforces_caps(self):
@@ -82,13 +86,15 @@ class WatchTest(IntegrationFixture):
         with patch('sapiens.watch.observe',return_value=observation()):service.scheduled(now+timedelta(minutes=3))
         self.assertEqual(service.work.read(agent)[0]['detector']['status'],'unchanged')
 
-    def test_unplanned_legacy_job_cannot_spend_automatically(self):
+    def test_unplanned_legacy_job_gets_one_bounded_setup(self):
         service, agent, row, now = self.setup_watch()
         rows=service.work.read(agent);rows[0].pop('watch');service.work.save(agent,rows)
         with patch('sapiens.watch.observe') as probe:service.scheduled(now)
         probe.assert_not_called()
-        self.assertEqual(self.factory.prompts,[])
-        self.assertEqual(service.work.read(agent)[0]['detector']['status'],'needs_plan')
+        self.assertEqual(len(self.factory.prompts),1)
+        self.assertEqual(service.work.read(agent)[0]['strategy']['status'],'blocked')
+        service.scheduled(now+timedelta(days=2))
+        self.assertEqual(len(self.factory.prompts),1)
         for bad in [dict(probe={'command':'bash'}),dict(max_per_hour=0),dict(mode='script'),dict(probe={**PLAN,'names':'Nova'})]:
             with self.assertRaises(APIError):service.work.upsert(agent,dict(id=row['id'],watch=bad))
 

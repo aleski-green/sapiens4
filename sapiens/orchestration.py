@@ -8,6 +8,7 @@ import sys
 from uuid import uuid4
 
 from .runtime import ROOT
+from .strategy import OPERATING_POLICY
 from agentpy.storage import atomic_bytes
 
 
@@ -38,6 +39,7 @@ class Orchestration:
             self.prepare(agent)
 
     def prepare(self, agent):
+        agent.set_manifest('operating-policy', OPERATING_POLICY)
         settings = self.settings(agent)
         agent.config.schedule = replace(agent.config.schedule, awake_minutes=settings["minutes"])
         if self.url:
@@ -70,18 +72,25 @@ Pass a JSON object with op and the fields below. Quote JSON safely for the shell
   {{"mode":"changes","probe":{{"bundle_id":"observed app bundle ID",
   "container_id":"observed stable AX chat-list identifier","names":["exact chat names"]}},
   "cooldown_minutes":30,"max_per_hour":2,"max_per_day":8}}.
-  Empty names watches all visible list rows. Discover and verify a container once
-  with Blindly, then persist the plan. No plan means no automatic model runs.
-  Never invent selectors or classify phone-number labels as confirmed non-contacts.
-  Ask which chats matter if the scope is unclear. Prefer narrow lists, then new
-  phone-number-labelled candidates; do not scan every conversation repeatedly.
-  Choose the cheapest observation that can establish change; no change needs no
-  reasoning. Script failures back off without model calls. Mode always is only for
-  work requiring generation every interval, and still has wake limits. Explicitly
-  justify that choice in the response. Do not execute arbitrary polling scripts.
+  Empty names watches all visible rows. The Sapi owns setup: each new or changed
+  goal gets one bounded strategy turn before routine runs. Existing plans must
+  also pass strategy setup. Do not ask the human to design selectors or scripts.
+  The current timer primitive reads a Blindly AX list and compares normalized
+  row hashes. It cannot run arbitrary scripts, identify contacts, or guarantee
+  off-screen coverage. Save a blocked strategy when it cannot satisfy the goal.
+- strategy: id (recurring job), status (ready/blocked), approach (<=800 chars),
+  success (verifiable outcome, <=500 chars), scope (coverage/limits, <=500 chars),
+  expected_units (positive local budget units per model run, within call allowance),
+  watch (same shape as recurring_job). Changes mode is read-tested before saving.
+  Always mode additionally requires generation_reason (<=500 chars): use only
+  for goals needing fresh generation every interval, never to bypass detection.
+  Save a concise decision, not private reasoning. Do not change the user's goal.
+  Cost and outcome feedback triggers a bounded strategy review. Incomplete setup
+  stops until an explicit repair; it never loops automatically. Paused jobs stay paused.
 - run_job: id (recurring job ID). Run it now, without changing its timer.
 - checkpoint: id (your recurring job ID), status (ok, partial, blocked), summary
-  (at most 500 characters), value (JSON, at most 6000 characters). Save observed
+  (at most 500 characters), value (JSON, at most 6000 characters), outcome
+  (useful/no_change/blocked). Save observed
   facts, coverage, timestamps and comparison baseline without waiting for learning.
 - finish_task: id (existing task ID). Only mark done when its result is verified.
 - consolidate: queues memory learning after the current conversation completes.
@@ -170,7 +179,8 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                       "manager": {"manager", "target"}, "task": {"title", "due", "name", "target"},
                       "task_comment": {"id", "text"}, "finish_task": {"id"}, "run_task": {"id"}, "run_job": {"id"},
                       "recurring_job": {"id", "title", "prompt", "minutes", "enabled", "watch"}, "consolidate": set(),
-                      "checkpoint": {'id','status','summary','value'}}
+                      "checkpoint": {'id','status','summary','value','outcome'},
+                      "strategy": {'id','status','approach','success','scope','expected_units','watch','generation_reason'}}
             if not isinstance(op, str) or op not in fields or set(data) - fields[op] - {"op"}:
                 raise APIError(400, "Unknown operation or field")
             result = {}
@@ -204,10 +214,13 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 result['recurring_job'] = self.service.work.public_definition(self.service.work.upsert(agent, {k: v for k, v in data.items() if k != 'op'}))
             elif op == "run_job":
                 result['run_id'] = self.service.work.run_now(agent, text_field(data, 'id', 64))
+            elif op == 'strategy':
+                from .strategy import save_plan
+                result['strategy'] = save_plan(self.service.work, agent, data)
             elif op == 'checkpoint':
                 result['checkpoint'] = self.service.work.checkpoint(agent, data)
             elif op == "consolidate":
-                if any(j['flow'] == 'scheduled' and j['status'] == 'running' for j in agent.state['jobs']):
+                if any(j['flow'] in {'scheduled', 'strategy'} and j['status'] == 'running' for j in agent.state['jobs']):
                     raise APIError(409, 'Watcher runs must save a checkpoint, not start consolidation. Use MindMap for an explicit consolidation.')
                 settings = self.settings(agent)
                 learning = [j for j in agent.state['jobs'] if j['flow'] == 'learning'
