@@ -116,6 +116,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(202, service.submit(parts[2], data))
                 if len(parts) == 4 and parts[3] == "control" and self.command == "POST":
                     return self._send(200, service.orchestration.control(parts[2], data))
+                if len(parts) == 5 and parts[3] == 'tasks' and self.command == 'PUT':
+                    if set(data) != {'name'}:
+                        raise APIError(400, 'Expected task name')
+                    with service._lock:
+                        return self._send(200, service.tasks.rename(service._agent(parts[2]), parts[4], data['name']))
                 if len(parts) == 6 and parts[3] == 'tasks' and parts[5] == 'comments' and self.command == 'POST':
                     with service._lock:
                         return self._send(201, service.tasks.comment(service._agent(parts[2]), parts[4], data.get('text')))

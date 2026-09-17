@@ -35,16 +35,16 @@ class RecentTasksTest(IntegrationFixture):
     def test_invalid_names_or_targets_never_create_task_or_notice(self):
         service=self.service(start_worker=False)
         main=service.hierarchy.main
-        for name in ['Upper','two words','bad/name','x'*25,'1task']:
+        for name in ['Upper','two words','bad/name','x'*65,'1task','task-12x:name']:
             with self.assertRaises(APIError):
                 service.orchestration.control(main,{'op':'task','title':'Example','name':name})
         with self.assertRaises(APIError):
             service.orchestration.control(main,{'op':'task','title':'Example','target':'Unknown'})
         self.assertEqual(service.snapshot()['task_assignments'],[])
         valid='a-Z_1.:#+|()&$^'
-        service.orchestration.control(main,{'op':'task','title':'Example','name':valid})
+        first=service.orchestration.control(main,{'op':'task','title':'Example','name':valid})
         with self.assertRaises(APIError):
-            service.orchestration.control(main,{'op':'task','title':'Other','name':valid})
+            service.orchestration.control(main,{'op':'task','title':'Other','name':first['task_name']})
         self.assertEqual(len(service.snapshot()['task_assignments']),1)
 
     def test_existing_tasks_get_stable_names_without_duplicate_notices(self):

@@ -3,24 +3,24 @@ function mentionEntities() {
   const entities = state.agents.map(a => ({type:a.kind === 'group' ? 'group' : 'sapi',id:a.id,name:a.name,owner:a.id}));
   for (const [owner, info] of Object.entries(live.orchestration || {})) {
     for (const task of [...info.tasks, ...info.past_tasks]) {
-      if (task.name) entities.push({type:'task',id:task.id,name:task.name,owner,past:info.past_tasks.includes(task),title:task.title});
+      if (task.name) entities.push({type:'task',id:task.id,name:task.name,tag:task.tag,slug:task.slug,aliases:task.aliases || [],owner,past:info.past_tasks.includes(task),title:task.title});
     }
   }
   return entities;
 }
-function entityLink(entity) {
-  return entity.type === 'task' ? `<button type="button" class="entity-mention" data-task-link="${esc(entity.id)}" data-task-owner="${esc(entity.owner)}" aria-label="Open task ${esc(entity.name)}">@${esc(entity.name)}</button>` : mention(entity.id);
+function entityLink(entity, label=entity.name) {
+  return entity.type === 'task' ? `<button type="button" class="entity-mention" data-task-link="${esc(entity.id)}" data-task-owner="${esc(entity.owner)}" aria-label="Open task ${esc(entity.name)}">@${esc(label)}</button>` : mention(entity.id);
 }
 formatText = function(value) {
   const text = String(value ?? '');
-  const entities = mentionEntities().sort((a,b) => b.name.length-a.name.length);
+  const entities = mentionEntities().flatMap(e => [...new Set([e.name,e.tag,...(e.aliases || [])].filter(Boolean))].map(handle => ({...e,handle}))).sort((a,b) => b.handle.length-a.handle.length);
   if (!entities.length) return esc(text);
-  const names = [...new Set(entities.map(e => e.name))].map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  const pattern = new RegExp(`(?<![\\p{L}\\p{N}_@.-])@?(?:${names.join('|')})(?![\\p{L}\\p{N}_@-])`, 'gu');
+  const names = [...new Set(entities.map(e => e.handle))].map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}_@.-])@?(?:${names.join('|')})(?![\\p{L}\\p{N}_@:-])`, 'gu');
   let result='', cursor=0;
   for (const match of text.matchAll(pattern)) {
-    const candidates = entities.filter(e => e.name === match[0].replace(/^@/,''));
-    result += esc(text.slice(cursor,match.index)) + (candidates.length === 1 ? entityLink(candidates[0]) : esc(match[0]));
+    const candidates = entities.filter(e => e.handle === match[0].replace(/^@/,''));
+    result += esc(text.slice(cursor,match.index)) + (candidates.length === 1 ? entityLink(candidates[0],match[0].replace(/^@/,'')) : esc(match[0]));
     cursor=match.index+match[0].length;
   }
   return result + esc(text.slice(cursor));
@@ -37,7 +37,7 @@ function updateMentions() {
   const match=before.match(/(?:^|\s)@([A-Za-z0-9_.:#+|()&$^\-]*)$/);
   if (!match || input.selectionStart !== input.selectionEnd) { closeMentions(); return; }
   mentionRange={start:input.selectionStart-match[1].length-1,end:input.selectionStart};
-  mentionChoices=mentionEntities().filter(e => e.name.toLowerCase().startsWith(match[1].toLowerCase())).slice(0,12);
+  mentionChoices=mentionEntities().filter(e => [e.name,e.tag,e.slug,...(e.aliases || [])].filter(Boolean).some(n => n.toLowerCase().startsWith(match[1].toLowerCase()))).slice(0,12);
   mentionIndex=0;
   drawMentions();
 }

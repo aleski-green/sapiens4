@@ -57,8 +57,12 @@ starting. No global Codex settings are changed.
   group entities will appear when group workflows are enabled. Enter/Tab selects
   a suggestion, arrows move, and Escape closes it. Task links open the assignee's
   task card, including completed tasks in Past.
-- Tasks have unique names starting with a–z, with the same allowed characters and
-  24-character limit as Sapi names. Names generate from the title if omitted.
+- Task mentions use `@task-x0012:readable-name`: a unique random lowercase letter
+  and four digits identify the task. The readable name starts with a–z, uses the
+  same allowed characters as Sapi names, and allows up to 64 characters. Names
+  generate from the title if omitted. The short `@task-x0012` also resolves.
+  Rename active or completed tasks in their dialog; ordinary renames retain the
+  tag and old mentions remain valid. Existing tasks migrate on startup.
   Host `task` accepts `target` (Sapi name/ID) for delegation. Assignment notices
   persist atomically with tasks and appear from the assignee in both chats.
 - The last five chat/computer interactions retain timestamped tool observations
@@ -227,6 +231,7 @@ There is no LAN/public hosting mode in this iteration.
 | POST | `/api/agents/<id>/messages` | Submit `{text, attachments?: [id, ...]}`; legacy `flow` is still accepted |
 | POST | `/api/agents/<id>/attachments` | Upload `{kind, name, data: base64}` or reference `{kind, value}` |
 | POST | `/api/agents/<id>/control` | `{op: "status", "schedule", "manager", "task", "run_task", "finish_task", "recurring_job", "run_job", or "consolidate", ...}` |
+| PUT | `/api/agents/<id>/tasks/<task>` | Rename `{name}`; readable name or explicit full tagged name |
 | GET | `/api/agents/<id>/memory` | Selected Sapi's consolidated `memx` JSON |
 | POST | `/api/agents/<id>/jobs/<job>/retry` | Explicit retry |
 | POST | `/api/agents/<id>/jobs/<job>/cancel` | Cancel queued/dismiss stopped work |
