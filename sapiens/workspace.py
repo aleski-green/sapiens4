@@ -17,6 +17,7 @@ class Workspace:
 
     def path(self, agent, name):
         from .service import APIError
+        name = self.service.artifacts.resolve(agent.agid, name)
         if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,99}\.(md|html|txt|json)', name):
             raise APIError(400, 'Artifact name must be a filename ending in .md, .html, .txt or .json')
         root = self.root(agent) / 'artifacts'
@@ -27,13 +28,11 @@ class Workspace:
     def summary(self, agent):
         prefs = self.service.store.read_preferences()
         ws = prefs.get('workspaces', {}).get(agent.agid, {})
-        artifacts = []
-        for path in sorted((self.root(agent) / 'artifacts').glob('*')):
-            if path.is_file() and not path.is_symlink():
-                artifacts.append({'name': path.name, 'bytes': path.stat().st_size})
+        artifacts = [{k: r[k] for k in ('filename','reference','tag','title')}
+                     for r in self.service.artifacts.catalog() if r['owner'] == agent.agid]
         return dict(active_tab=ws.get('activeTab'),
             tabs=[{k: t[k] for k in ('id', 'title', 'type', 'url', 'artifact') if k in t}
-                  for t in ws.get('tabs', [])], artifacts=artifacts)
+                  for t in ws.get('tabs', [])], artifacts=[dict(r,name=r['filename']) for r in artifacts])
 
     def save(self, agent, data):
         from .service import APIError
@@ -64,7 +63,8 @@ class Workspace:
             raise APIError(400, 'title must be nonempty text, at most 100 characters')
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_bytes(path, content.encode())
-        result = dict(name=path.name, path=str(path), bytes=path.stat().st_size,
+        identity = self.service.artifacts.ensure(agent.agid, path.name, title)
+        result = dict(name=path.name, reference=identity['reference'], tag=identity['tag'], path=str(path), bytes=path.stat().st_size,
                       url=f'/api/agents/{agent.agid}/artifacts/{quote(path.name)}')
         if data.get('open', True):
             result['tab'] = self.open(agent, dict(artifact=path.name, title=title))
@@ -84,7 +84,7 @@ class Workspace:
         if not path.is_file():
             raise APIError(404, 'Artifact not found')
         text = path.read_text()
-        return dict(name=name, content=text[:64000], truncated=len(text) > 64000)
+        return dict(name=path.name, reference=self.service.artifacts.ensure(agent.agid,path.name)['reference'], content=text[:64000], truncated=len(text) > 64000)
 
     def persist(self, prefs):
         prefs['workspace_revision'] = prefs.get('workspace_revision', 0) + 1
@@ -106,7 +106,7 @@ class Workspace:
                 raise APIError(404, 'Save the artifact before opening it')
             tab = tab or next((t for t in tabs if t.get('artifact') == path.name), None)
             value = dict(type='html', artifact=path.name, html=self.preview(path))
-            title = data.get('title', path.stem)
+            title = data.get('title', (tab or {}).get('title', path.stem))
         else:
             url = data['url']
             if not isinstance(url, str) or len(url) > 4000:
@@ -143,6 +143,31 @@ class Workspace:
         return {'closed': tab_id}
 
     @staticmethod
+    def inline_markdown(text):
+        pattern = re.compile(r'\[([^\]\n]+)\]\((?:<([^>\n]+)>|((?:[^()\s]|\([^()\s]*\))+))\)|`([^`\n]+)`|\*\*([^*\n]+)\*\*')
+        result, cursor = [], 0
+        for match in pattern.finditer(text):
+            result.append(escape(text[cursor:match.start()]))
+            label, angle, bare, code, bold = match.groups()
+            if label is not None:
+                url = angle or bare
+                try:
+                    parsed = urlsplit(url)
+                    safe = parsed.scheme in {'http', 'https'} and bool(parsed.netloc)
+                except ValueError:
+                    safe = False
+                if safe:
+                    result.append(f'<a href="{escape(url, quote=True)}" target="_blank" rel="noopener noreferrer">{escape(label)} ↗</a>')
+                else:
+                    result.append(escape(label))
+            elif code is not None:
+                result.append('<code>' + escape(code) + '</code>')
+            else:
+                result.append('<strong>' + escape(bold) + '</strong>')
+            cursor = match.end()
+        return ''.join(result) + escape(text[cursor:])
+
+    @staticmethod
     def preview(path):
         content = path.read_text()
         # HTML dashboards execute in the existing opaque-origin sandbox. Disable
@@ -160,10 +185,10 @@ class Workspace:
                 body.append(escape(line) + '\n')
             elif path.suffix == '.md' and (match := re.match(r'^(#{1,6}) (.*)$', line)):
                 level = len(match[1])
-                body.append(f'<h{level}>{escape(match[2])}</h{level}>')
+                body.append(f'<h{level}>{Workspace.inline_markdown(match[2])}</h{level}>')
             else:
-                body.append(f'<div class="line">{escape(line) or "<br>"}</div>')
+                body.append(f'<div class="line">{(Workspace.inline_markdown(line) if path.suffix == ".md" else escape(line)) or "<br>"}</div>')
         if code:
             body.append('</pre>')
         return f'''<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="{policy}">
-<title>{escape(path.name)}</title><style>body{{max-width:850px;margin:32px auto;padding:0 24px;font:16px/1.6 system-ui;color:#202030;background:#faf9f6}}.line{{white-space:pre-wrap;overflow-wrap:anywhere}}pre{{white-space:pre-wrap;background:#eeebf3;padding:16px}}h1,h2,h3{{line-height:1.2}}</style>''' + '\n'.join(body)
+<title>{escape(path.name)}</title><style>body{{max-width:850px;margin:32px auto;padding:0 24px;font:16px/1.6 system-ui;color:#202030;background:#faf9f6}}.line{{white-space:pre-wrap;overflow-wrap:anywhere}}pre{{white-space:pre-wrap;background:#eeebf3;padding:16px}}h1,h2,h3{{line-height:1.2}}a{{color:#7435b8;overflow-wrap:anywhere}}code{{background:#eeebf3;padding:2px 4px}}</style>''' + '\n'.join(body)

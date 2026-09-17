@@ -297,3 +297,10 @@ retain the last observation and identify artifacts saved during that attempt.
 
 Focused checks: `PYTHONPATH=tests python3 -m unittest test_workspace -v` and
 `node tests/workspace_merge.test.cjs`.
+
+Artifacts have permanent mention tags: `@art-md0016:proposal` for Markdown,
+`@art-html0017:dashboard` for HTML (also `txt` and `json`). The four digits are
+allocated randomly without tag collisions. Updates keep the tag; previous title
+handles remain aliases. Existing files are indexed without changing their contents.
+Artifact mentions and recognized old file links open the owner's workspace tab.
+External HTTP(S) chat links open a separate browser tab with a compact label.

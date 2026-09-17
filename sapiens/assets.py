@@ -46,7 +46,7 @@ def index():
         ('id="resource-owner">In use · Aaron', 'id="resource-owner">Connecting…'),
         ('placeholder="Message Aaron…"', 'placeholder="Message your Sapi…"'),
         ('id="autonomy-label">Autonomous', 'id="autonomy-label">Connecting…'),
-        ('aria-label="Workspace settings">AP', 'aria-label="Workspace settings">Human'),
+        ('aria-label="Workspace settings">AP', 'aria-label="Workspace settings">Admin'),
     ):
         html = replace_once(html, before, after)
     return html

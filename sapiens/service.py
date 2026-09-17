@@ -21,6 +21,7 @@ from .work import Work
 from .tasks import Tasks
 from .recent import RecentContext
 from .workspace import Workspace
+from .artifacts import Artifacts
 
 
 class APIError(Exception):
@@ -67,6 +68,7 @@ class Service:
         self.store = Store(self.root / "corpora.sqlite3")
         self.usage = Usage(self.store)
         self.workspace = Workspace(self)
+        self.artifacts = Artifacts(self)
         # Repair old repeated default faces once; the resulting avatars persist.
         used = set()
         for row in self.store.agents():
@@ -245,7 +247,7 @@ class Service:
                 raise APIError(409, "Wait for this Sapi's job, or retry/dismiss the job needing attention")
             if not agent.can_admit(flow):
                 raise APIError(409, 'Budget allowance unavailable. Open Sapi settings for remaining allowance, reset time, and limits.')
-            prompt += self.tasks.references(text)
+            prompt += self.tasks.references(text) + self.artifacts.references(text)
             job = agent.tell(prompt) if flow == "chat" else agent.submit("computer", prompt)
             self.store.message(job, text, attachments)
             self._sync(agent)
@@ -283,6 +285,7 @@ class Service:
             snapshot["computer"] = {"owner": self._active,
                                     "built": os.access(self.binary, os.X_OK)}
             snapshot["provider"] = "codex"
+            snapshot["artifacts"] = self.artifacts.catalog()
             snapshot["task_assignments"] = self.tasks.notices()
             snapshot["task_updates"] = self.tasks.updates()
             snapshot['notifications'] = self.work.notifications()

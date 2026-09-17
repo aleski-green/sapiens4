@@ -163,7 +163,7 @@ renderConversation = function() {
     });
     const humanMessages = getMessages(state.selected).filter(m => m.role === 'user');
     host.querySelectorAll('.message.user').forEach((node, i) => {
-      node.querySelector('.message-meta strong').textContent = 'Human';
+      node.querySelector('.message-meta strong').textContent = 'Admin';
       const attachments = humanMessages[i]?.attachments || [];
       if (attachments.length) node.querySelector('.message-bubble').insertAdjacentHTML('beforeend', `<div class="message-attachments">${attachments.map(attachmentLabel).join('')}</div>`);
     });
@@ -397,7 +397,8 @@ document.addEventListener('submit', async e => {
 
 // Remove simulation entry points; workspace tabs and appearance remain upstream UI.
 $('#attach-button').setAttribute('aria-label', 'Add attachment');
-$('#profile-button').textContent = 'Human';
+$('#profile-button').innerHTML = 'Admin <span aria-hidden="true">⌄</span>';
+$('#profile-button').setAttribute('aria-label','Admin settings');
 $('.composer-hint').remove();
 $('[data-scope="groups"]').disabled = true;
 $('[data-scope="groups"]').title = 'Groups are coming in the next iteration';
@@ -415,7 +416,7 @@ async function refresh() {
   refreshing = (async () => {
     try {
       const snapshot = await api(`/api/state?after=${cursor}`);
-      const changed = JSON.stringify([snapshot.agents,snapshot.jobs,snapshot.computer,snapshot.orchestration,snapshot.task_assignments,snapshot.task_updates]) !== JSON.stringify([live.agents,live.jobs,live.computer,live.orchestration,live.task_assignments,live.task_updates]) || snapshot.events.length;
+      const changed = JSON.stringify([snapshot.agents,snapshot.jobs,snapshot.computer,snapshot.orchestration,snapshot.task_assignments,snapshot.task_updates,snapshot.artifacts]) !== JSON.stringify([live.agents,live.jobs,live.computer,live.orchestration,live.task_assignments,live.task_updates,live.artifacts]) || snapshot.events.length;
       const reconnected = !online;
       online = true;
       const tabsChanged = (snapshot.preferences.workspace_revision || 0) > workspaceRevision;

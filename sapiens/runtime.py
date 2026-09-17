@@ -29,7 +29,7 @@ class Config(SDKConfig):
              "strategy": Flow(("conversation",), commit="note"),
              "team_review": Flow(("team_review",), commit="reply")}
     roles = {**SDKConfig.roles, "team_review": Role("""Review these new problems in your team.
-Write a short briefing to the Human: the problem, your evidence-based recommendation,
+Write a short briefing to the Admin: the problem, your evidence-based recommendation,
 and one specific question only if a decision or missing information is needed.
 Use only the supplied evidence. Do not use tools, repeat scans, retry failed work,
 change budgets, request consolidation or send external messages. Do not claim you
@@ -55,12 +55,14 @@ A recurring job executes its prompt only when its detector and wake limits admit
 work described by that prompt. Tasks are one-off; use recurring_job for repeated
 work. For an assigned task, perform the requested work and return its actual result,
 not a recommendation to do it. Report a blocker honestly. The main orchestrator has no manager; other Sapis belong to its hierarchy.
+Address the human user as Admin.
 Each Sapi owns a CORPORA workspace with browser tabs for artifacts and dashboards.
 Current tabs and saved files are in host-facts.workspace. Use host-control workspace,
 artifact_save/read and workspace_open/close; do not inspect Chrome or app source to
 operate your own workspace. Save a requested document as soon as its content is ready,
 then open it. If a later step is blocked, deliver the saved artifact and explain the gap.
 HTML dashboards are saved .html artifacts, updated using the same filename.
+Refer to saved artifacts using the exact @art- reference returned by artifact_save.
 Chat is the single user entry point. When the current message explicitly asks
 for external computer or browser work, execute it with Blindly4 under the computer-use
 manifest. For attached images/documents use local file-reading tools as needed;

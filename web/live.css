@@ -8,7 +8,7 @@
 .live-job p { white-space:pre-wrap; font-size:12px; }
 .live-disconnected { color:#b74350; }
 .live-connection { font-size:12px; }
-#profile-button { width:auto; min-width:38px; padding:0 6px; }
+#profile-button { width:auto; min-width:76px; height:34px; padding:0 10px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; gap:8px; font:inherit; font-size:12px; background:var(--panel); color:var(--ink); border:1px solid var(--line); }
 .agent-heading > div { min-width:0; flex:1; }
 .agent-heading h2, .agent-heading .agent-role { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .schedule-fields { display:grid; gap:12px; border:1px solid var(--line); padding:12px; margin:0; }
@@ -77,3 +77,6 @@
 .settings-panel { min-height:220px; }
 #live-settings-form > button[type="submit"] { position:sticky; bottom:0; }
 [data-watch-probe] { display:grid; gap:12px; }
+
+.message-bubble { min-width:0; overflow-wrap:anywhere; }
+.message-bubble .chat-link { color:var(--purple, #7c3cff); text-decoration:underline; text-underline-offset:3px; overflow-wrap:anywhere; }

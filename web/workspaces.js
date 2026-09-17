@@ -37,3 +37,13 @@ function receiveWorkspaces(prefs, acknowledged) {
   const ws = state.workspaces[workspaceOwner];
   if (ws) {state.tabs=ws.tabs;state.activeTab=ws.activeTab;}
 }
+
+const originalRenderWorkspace = renderWorkspace;
+renderWorkspace = function() {
+  originalRenderWorkspace();
+  const tab=state.tabs.find(t=>t.id===state.activeTab);
+  if (tab?.artifact) {
+    const artifact=(live.artifacts || []).find(a=>a.owner===workspaceOwner && a.filename===tab.artifact);
+    $('#browser-address').value=artifact?.reference || tab.artifact;
+  }
+};

@@ -57,6 +57,10 @@ Pass a JSON object with op and the fields below. Quote JSON safely for the shell
   or path (relative UTF-8 file inside your current workspace), optional title and
   open (boolean, default true). Saves the file and opens/updates its workspace tab.
   Reuse the same name to update a dashboard or document. Maximum file size 1 MB.
+  The receipt includes a stable reference like @art-md0016:proposal (Markdown) or
+  @art-html0017:dashboard (HTML). Use that exact reference in chat, not filesystem
+  paths or Markdown file links. The UI makes it clickable. Never invent a tag.
+  artifact_read and workspace_open.artifact also accept these references.
 - artifact_read: name; returns saved text (at most 64000 characters).
 - workspace_open: artifact (saved filename) OR url (HTTP/S), optional title and id
   (existing tab to update). Returns the actual tab id. No browser clicking needed.
