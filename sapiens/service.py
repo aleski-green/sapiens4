@@ -314,7 +314,7 @@ class Service:
         pending = settings['consolidate_requested']
         status = 'waiting' if pending else run['status'] if run else 'idle'
         blocked = next((j for j in jobs if j['agent'] == agent.agid and
-                        j['status'] not in {'done', 'cancelled', 'queued', 'running'}), None)
+                        j['status'] not in {'done', 'warning', 'cancelled', 'queued', 'running'}), None)
         def summary(job):
             return {k: job.get(k) for k in ('id', 'agent', 'status', 'error')} if job else None
         return {'revision': hashlib.sha256(json.dumps(agent.memx, sort_keys=True).encode()).hexdigest(),

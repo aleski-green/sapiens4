@@ -102,8 +102,8 @@ class Store:
                     ON CONFLICT(id) DO UPDATE SET status=excluded.status,
                     output=COALESCE(excluded.output,jobs.output), error=excluded.error,
                     tokens=excluded.tokens""",
-                           (job["id"], agent, job["flow"], job["task"], job["status"],
-                            outputs.get(job["id"]), job.get("error"), job["tokens"], job["created"]))
+                           (job["id"], agent, job["flow"], job["task"], "warning" if job["status"] == "done" and job.get("warning") else job["status"],
+                            outputs.get(job["id"]), job.get("error") or job.get("warning"), job["tokens"], job["created"]))
             for event in snapshot["events"]:
                 db.execute("""INSERT OR IGNORE INTO events
                     (agent,job,source_key,kind,detail,time) VALUES (?,?,?,?,?,?)""",

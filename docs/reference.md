@@ -304,3 +304,24 @@ allocated randomly without tag collisions. Updates keep the tag; previous title
 handles remain aliases. Existing files are indexed without changing their contents.
 Artifact mentions and recognized old file links open the owner's workspace tab.
 External HTTP(S) chat links open a separate browser tab with a compact label.
+
+### Bounded computer reads and partial results
+
+Blindly stays unchanged. `sapiens/computer.py read --pid PID --path PATH --depth 12`
+reads one bounded AX tree, selects the discovered container, and returns compact
+rows with original paths. Follow `next_offset` using `read --snapshot ID --offset N`;
+these pages reuse the same observation for 90 seconds. This is bounded coverage,
+not proof that the newest or every message was read. `find` results are compacted
+before applying the output limit.
+
+When a tool limit interrupts a run that saved an artifact, the host returns a
+**Warning** with the artifact reference and incomplete-coverage notice, without
+another model call or automatic retry. The SDK records a terminal run with warning
+metadata; CORPORA displays Warning rather than Completed or Failed. Budget usage
+remains unknown when the provider did not report it; the existing conservative
+charge is retained. Runs without a saved deliverable still report the error.
+
+After computer use, the host attempts to bring the originating browser/Codex app
+back to the foreground, including on errors and timeouts. If no browser origin
+was captured, it opens the configured local CORPORA URL. Restore failures are
+reported as warnings rather than hiding the task result.

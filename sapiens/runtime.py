@@ -112,9 +112,16 @@ def codex_binary():
     return max(versions, default=((), None))[1]
 
 
+class ToolLimitReached(RuntimeError):
+    pass
+
+
 class LocalLLM(CodexLLM):
     def complete(self, prompt):
         from .recent import RecentContext
+        from .foreground import ForegroundReturn
+        foreground = ForegroundReturn(self.workdir)
+        self.warning = None
         self._recent = RecentContext(self.workdir)
         self._observations = []
         self._observation_chars = 0
@@ -132,10 +139,23 @@ class LocalLLM(CodexLLM):
         try:
             answer = super().complete(prompt + (self._recent.context((getattr(self, 'current_request', '') or prompt)) if self._retain else ''))
             return answer
+        except ToolLimitReached as exc:
+            changed = [name for name, version in self._artifact_versions().items()
+                       if self._artifacts_before.get(name) != version]
+            if not changed:
+                error = type(exc).__name__
+                raise
+            self.warning = 'Tool limit reached; saved work is available, but the request is not fully verified.'
+            answer = self._partial_answer(changed)
+            return answer
         except Exception as exc:
             error = type(exc).__name__
             raise
         finally:
+            restore_warning = foreground.restore()
+            if restore_warning:
+                self.event_sink(restore_warning)
+                self.warning = (self.warning + ' ' if self.warning else '') + restore_warning
             if self._retain:
                 self._recent.save(self.id, self._observations, answer, error)
 
@@ -173,10 +193,29 @@ class LocalLLM(CodexLLM):
             changed = [name for name, version in self._artifact_versions().items()
                        if self._artifacts_before.get(name) != version]
             progress = (' Saved artifacts: ' + ', '.join(changed) + '.') if changed else ' No artifacts were saved through the workspace.'
-            raise RuntimeError(f'Tool-step limit reached after {self.tool_count} completed tool calls.'
+            raise ToolLimitReached(f'Tool-step limit reached after {self.tool_count} completed tool calls.'
                                + progress + ' Remaining work is unverified. You can send a follow-up;'
                                ' this run will not be retried automatically. Usage is unavailable for this interrupted call.')
         return message
+
+    def _partial_answer(self, names):
+        # Deterministic finalization: no further tools, retries or model charges.
+        # Artifact bodies are untrusted and may not establish task completion.
+        index_path = self.workdir.parent.parent / 'artifacts.json'
+        try:
+            records = json.loads(index_path.read_text())
+        except (OSError, ValueError):
+            records = []
+        if not isinstance(records, list):
+            records = []
+        links = []
+        for name in names:
+            record = next((r for r in records if r.get('owner') == self.workdir.name and r.get('filename') == name), None)
+            links.append('@'+record['name'] if record else name)
+        return ('Warning — partial result.\n\nSaved: ' + ', '.join(links) +
+                '.\n\nThe tool limit was reached after ' + str(self.tool_count) +
+                ' calls. The saved artifact is available, but completion and remaining coverage are unverified. '
+                'No automatic retry was started.')
 
     def _artifact_versions(self):
         from hashlib import sha256
@@ -224,7 +263,17 @@ This helper ONLY launches a local app; do not navigate Finder/Recent Items to op
 Start with apps, then targeted find --pid PID --title TEXT --limit 5 --depth 6.
 Prefer tree --pid PID --depth 6 --max-nodes 100 for an overview. Its wrapper
 returns compact nodes with exact original paths, without repeated geometry metadata.
-Use inspect --pid PID --path PATH for a specific element; grow depth gradually. Never dump the entire desktop.
+For reading a discovered container, use the Sapiens wrapper (not a Blindly command):
+{launcher} read --pid PID --path OBSERVED_PATH --depth 12
+It returns compact text/actions from that subtree, exact AX paths, observation time,
+and a snapshot id. If next_offset is set, use {launcher} read --snapshot ID --offset N.
+Pages reuse the same bounded observation for up to 90 seconds, without new UI scans.
+Use a fresh read after navigation or before mutations. Coverage/truncation is explicit;
+a message list containing old posts does not prove you have reached the latest messages.
+Prefer find by semantic role/description at sufficient depth, then read that container.
+Do not incrementally dump the application root. inspect returns ONE element, not its children.
+snapshot/changes require a persistent Blindly session; the one-shot wrapper does not
+preserve those in-memory snapshots. Use the wrapper read pagination instead.
 After a login/sync/permission blocker is confirmed, stop, save the blocker, and report it.
 Aim for fewer than ten tool calls per run. Reuse unchanged observations within the run;
 avoid repeated schema/apps calls except to verify a launch. Do not loop over failed menu paths.

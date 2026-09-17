@@ -151,8 +151,8 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                     for r in self.service.work.read(agent)],
                 budget=agent.budget_status(),
                 needs_attention=sum(j["status"] in {"failed", "interrupted", "conflict", "budget_blocked"} for j in jobs),
-                recent_jobs=[dict(id=j["id"], flow=j["flow"], status=j["status"],
-                                 task=j["task"][:120], error=(j.get("error") or '')[:160],
+                recent_jobs=[dict(id=j["id"], flow=j["flow"], status="warning" if j.get("warning") and j["status"] == "done" else j["status"],
+                                 task=j["task"][:120], error=(j.get("error") or j.get("warning") or '')[:160],
                                  result=outputs.get(j["id"], "")[:200],
                                  result_truncated=len(outputs.get(j['id'], '')) > 200) for j in jobs[-3:]]))
         return result

@@ -2,6 +2,11 @@
 import json
 import subprocess
 import sys
+
+try:
+    from .computer_read import compact, read
+except ImportError:
+    from computer_read import compact, read
 from pathlib import Path
 
 
@@ -26,6 +31,14 @@ def bounded_output(text, limit):
             nodes.pop()
             value['truncated'] = True
         return json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+    if isinstance(value, dict) and isinstance(value.get('matches'), list):
+        value['matches'] = [compact(row) for row in value['matches']]
+        while len(json.dumps(value, ensure_ascii=False)) > limit and value['matches']:
+            value['matches'].pop()
+            value['truncated'] = True
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, dict) and 'role' in value:
+        value = compact(value)
     if value is not None:
         text = json.dumps(value, ensure_ascii=False, separators=(',', ':'))
     if len(text) <= limit:
@@ -35,12 +48,18 @@ def bounded_output(text, limit):
 
 
 def main(argv):
-    if argv and argv[0] == 'blindly':
+    if argv and argv[0] in {'blindly', 'read'}:
         binary = Path(__file__).resolve().parent.parent / 'blindly4/.build/release/blindly4'
         settings = Path.cwd() / 'computer-limits.json'
         limit = json.loads(settings.read_text()).get('output_chars', 4800) if settings.exists() else 4800
         limit = max(800, min(32000, int(limit)))
-        result = subprocess.run([str(binary), *argv[1:]], capture_output=True, text=True, timeout=30)
+        Path('.computer-used').touch()
+        def invoke(args):
+            return subprocess.run([str(binary), *args], capture_output=True, text=True, timeout=30)
+        if argv[0] == 'read':
+            print(json.dumps(read(argv[1:], invoke, Path.cwd(), limit), ensure_ascii=False))
+            return 0
+        result = invoke(argv[1:])
         print(bounded_output(result.stdout, limit))
         if result.stderr:
             print(result.stderr[:2000], file=sys.stderr)
@@ -49,6 +68,7 @@ def main(argv):
         raise ValueError('Usage: computer.py launch "Application Name"')
     if sys.platform != 'darwin':
         raise ValueError('App launch requires macOS')
+    Path('.computer-used').touch()
     result = subprocess.run(['/usr/bin/open', '-a', argv[1]], capture_output=True, text=True, timeout=15)
     print(json.dumps(dict(launched=result.returncode == 0, app=argv[1], error=result.stderr.strip() or None)))
     return result.returncode

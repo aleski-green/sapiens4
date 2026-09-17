@@ -14,7 +14,7 @@ const nameRule = /^[A-Z][A-Za-z0-9_.:#+|()&$^\-]*$/;
 const nameHelp = 'Start with A–Z. Letters, numbers, and - _ . : # + | ( ) & $ ^ are allowed. No spaces.';
 const attention = new Set(['failed','interrupted','conflict','budget_blocked']);
 const blocksChat = job => ['queued','running','budget_blocked'].includes(job.status) && !(['learning','team_review'].includes(job.flow) && attention.has(job.status));
-const statusNames = {queued:'Queued',running:'Running',done:'Completed',failed:'Failed',
+const statusNames = {queued:'Queued',running:'Running',done:'Completed',warning:'Warning',failed:'Failed',
   interrupted:'Interrupted',conflict:'Needs review',budget_blocked:'Budget blocked',cancelled:'Dismissed'};
 const displayTime = value => new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 const originalConversation = renderConversation;
@@ -76,13 +76,13 @@ function applySnapshot(snapshot) {
     const messages = state.messages[job.agent] ||= [];
     const timestamp = Date.parse(job.created);
     if (['chat','computer'].includes(job.flow)) messages.push({role:'user',text:job.input,time:displayTime(job.created),timestamp,attachments:job.attachments});
-    if (['chat','computer','team_review'].includes(job.flow) && job.status === 'done' && job.output !== null) {
-      messages.push({role:'assistant',text:job.output,time:displayTime(job.created),timestamp});
+    if (['chat','computer','team_review'].includes(job.flow) && ['done','warning'].includes(job.status) && job.output !== null) {
+      messages.push({role:'assistant',text:job.output,time:displayTime(job.created),timestamp,warning:job.status === 'warning'});
     }
     const a = state.agents.find(a => a.id === job.agent);
-    if (a && (['chat','computer'].includes(job.flow) || (job.flow === 'team_review' && job.status === 'done' && job.output !== null))) {
+    if (a && (['chat','computer'].includes(job.flow) || (job.flow === 'team_review' && ['done','warning'].includes(job.status) && job.output !== null))) {
       a.lastActivity = timestamp;
-      a.preview = (job.status === 'done' && job.output !== null ? job.output : job.input).replace(/\s+/g,' ').slice(0,150);
+      a.preview = (['done','warning'].includes(job.status) && job.output !== null ? job.output : job.input).replace(/\s+/g,' ').slice(0,150);
     }
     if (a && job.status === 'running') a.status = 'busy';
     if (job.status === 'queued' || job.status === 'running') pending.add(job.agent);
@@ -155,6 +155,10 @@ renderConversation = function() {
     host.querySelector('.typing')?.remove();
     host.querySelectorAll('.message').forEach((node,i) => {
       const message=getMessages(state.selected)[i];
+      if (message?.warning) {
+        node.classList.add('warning-message');
+        node.querySelector('.message-meta').insertAdjacentHTML('beforeend', '<span class="warning-badge">Warning</span>');
+      }
       if (message?.assignment) {
         const speaker=agent(message.speaker);
         node.classList.add('assignment-message');
@@ -168,7 +172,8 @@ renderConversation = function() {
       if (attachments.length) node.querySelector('.message-bubble').insertAdjacentHTML('beforeend', `<div class="message-attachments">${attachments.map(attachmentLabel).join('')}</div>`);
     });
     if (!getMessages(state.selected).length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
-    const job = jobs.find(blocksChat) || jobs.find(j => !['done','cancelled'].includes(j.status));
+    const latestChat = jobs.filter(j => ['chat','computer'].includes(j.flow)).at(-1);
+    const job = jobs.find(blocksChat) || (latestChat && attention.has(latestChat.status) ? latestChat : null);
     if (job) {
       const started = eventRows.slice().reverse().find(e => e.job === job.id && e.kind === 'started');
       const event = eventRows.slice().reverse().find(e => e.job === job.id && e.kind === 'codex' && (!started || e.time >= started.time));
@@ -213,7 +218,7 @@ agentSettings = function() {
   const a = selected();
   const info = live.orchestration[a.id];
   const schedule = info.schedule;
-  const job = live.jobs.find(j => j.agent === a.id && !['done','cancelled'].includes(j.status));
+  const job = live.jobs.find(j => j.agent === a.id && !['done','warning','cancelled'].includes(j.status));
   modal(`${a.name} settings`, `<form id="live-settings-form" data-id="${esc(a.id)}" class="form-stack">
     <div class="settings-tabs" role="tablist" aria-label="Sapi settings">${[['profile','Profile'],['schedule','Schedule'],['memory','Memory'],['usage','Usage'],['limits','Limits']].map(([key,label],i)=>`<button type="button" role="tab" id="settings-tab-${key}" aria-controls="settings-panel-${key}" aria-selected="${i===0}" tabindex="${i===0?0:-1}" data-settings-tab="${key}">${label}</button>`).join('')}</div>
     <section class="settings-panel form-stack" role="tabpanel" id="settings-panel-profile" aria-labelledby="settings-tab-profile" data-settings-panel="profile">

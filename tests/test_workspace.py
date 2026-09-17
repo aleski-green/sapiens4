@@ -105,7 +105,9 @@ class WorkspaceTest(IntegrationFixture):
             (root/'artifacts'/'cip.md').write_text('# Saved CIP')
             instance._consume_event(dict(type='item.completed',item=dict(id='1',type='command_execution',command='save CIP',aggregated_output='saved',exit_code=0)))
         with patch('sapiens.runtime.CodexLLM.complete',run):
-            with self.assertRaisesRegex(RuntimeError,'Saved artifacts: cip.md'):
-                llm.complete('Write a proposal')
+            answer = llm.complete('Write a proposal')
+            self.assertIn('Warning', answer)
+            self.assertIn('cip.md', answer)
+            self.assertIn('not fully verified', llm.warning)
         retained = json.loads((root/'recent-context.json').read_text())[-1]
         self.assertIn('saved',retained['observations'][-1]['data'])

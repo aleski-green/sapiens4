@@ -133,6 +133,8 @@ class SapiAgent(PersistentAgent):
                 try:
                     answer = llm.complete(prompt)
                     log['answer'] = answer
+                    if getattr(llm, 'warning', None):
+                        log['warning'] = llm.warning
                 except Exception as exc:
                     error = str(exc)
                     raise
@@ -143,7 +145,7 @@ class SapiAgent(PersistentAgent):
                     result.tokens += charged
                     log.update(session=llm.id, usage=usage, charged=charged)
                     row.update(time=datetime.now(timezone.utc).isoformat(), session=llm.id,
-                               usage=usage, budget_units=charged, status='failed' if error else 'done',
+                               usage=usage, budget_units=charged, status='failed' if error else 'warning' if getattr(llm, 'warning', None) else 'done',
                                tools=getattr(llm, 'tool_count', None),
                                output_chars=getattr(llm, 'tool_output_chars', None),
                                repeated_tools=getattr(llm, 'repeated_tools', None))
@@ -171,5 +173,10 @@ class SapiAgent(PersistentAgent):
         # _finish archives the outcome before settling. Keep legacy job.tokens
         # raw for every existing UI consumer; admission uses only budget_units.
         logs = self.transcript(job['id'])
+        warnings = [l['warning'] for l in logs if l.get('warning')]
+        if warnings:
+            job['warning'] = ' '.join(warnings)
+        else:
+            job.pop('warning', None)
         known = [counters(l.get('usage')) for l in logs]
         job['tokens'] = sum(c['total'] for c in known if c) if known else 0

@@ -83,15 +83,17 @@ class Work:
                             reason='Strategy setup did not produce a tested plan. Ask the Sapi to repair it in chat.')
                     changed = True
                     continue
+                if run.get('warning') and definition.get('strategy'):
+                    definition['strategy'].update(status='review_needed', reason=run['warning'])
                 checkpoint = definition.get('checkpoint', {})
                 verified = (checkpoint.get('run') == run['id'] and checkpoint.get('status') == 'ok'
-                            and checkpoint.get('outcome') in {'useful', 'no_change'})
+                            and checkpoint.get('outcome') in {'useful', 'no_change'} and not run.get('warning'))
                 if run['status'] == 'done' and verified and ref.get('observed_rows') is not None:
                     detector = definition.setdefault('detector', {})
                     detector['baseline'] = ref.pop('observed_rows')
                     detector.pop('pending', None)
                     detector.update(status='reviewed', reason='Changed previews reviewed by the agent.')
-                definition['last_observation'] = dict(run=run['id'], status=run['status'],
+                definition['last_observation'] = dict(run=run['id'], status='warning' if run.get('warning') else run['status'],
                     time=utcnow().isoformat(), summary=(outputs.get(run['id']) or run.get('error') or '')[:4000])
                 if run['status'] != 'done':
                     attempts = [json.loads(p.read_text()) for p in (agent.root/'usage').glob('*.json')]
