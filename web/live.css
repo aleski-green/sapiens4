@@ -45,6 +45,8 @@
 .mention-suggestions button { display:flex; width:100%; justify-content:space-between; gap:12px; padding:10px 12px; border:0; border-bottom:1px solid #8882; background:transparent; color:inherit; text-align:left; font:inherit; cursor:pointer; }
 .mention-suggestions button[aria-selected=true] { background:#b882ed33; }
 .mention-suggestions small { opacity:.7; }
+.entity-mention, #modal-title, .mention-suggestions strong { overflow-wrap:anywhere; }
+.mention-suggestions strong { min-width:0; }
 .assignment-message .message-bubble { border-left:3px solid var(--accent, #de007a); }
 .live-job:focus { outline:2px solid var(--accent, #de007a); outline-offset:2px; }
 .task-description, .task-result, .task-history, .task-comments { margin-top:18px; }

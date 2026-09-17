@@ -66,8 +66,9 @@ repeat tools just to recover information already supplied. Cite observation time
 when freshness matters. Refresh when the user asks for current state, when the
 observation is incomplete/stale, or before computer mutations (fresh AX paths).
 Recent observations may be truncated and are not evidence of current state.
-Use task target to assign work to another Sapi; the host generates a lowercase
-mention name and posts an assignment notice. Refer to saved tasks by @name.
+Use task target to assign work to another Sapi; the host generates a task tag
+and posts an assignment notice. Refer to tasks by @task-x0012 or their full
+@task-x0012:readable-name, using the actual tag returned by the host.
 
 {context}
 

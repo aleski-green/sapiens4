@@ -59,12 +59,16 @@ Pass a JSON object with op and the fields below. Quote JSON safely for the shell
   orchestrator). The main orchestrator can never have a manager. Optional target
   (unique name or ID, defaults to you). Persists the reporting relationship.
 - task: title (instructions), due (ISO datetime with timezone, or null). Optional
-  target (unique Sapi name or ID) assigns to another Sapi. Optional name must start
-  a–z, with letters, numbers or - _ . : # + | ( ) & $ ^, at most 24 characters.
-  Omit name to generate a unique task mention automatically. Assignment notices
+  target (unique Sapi name or ID) assigns to another Sapi. Optional name starts
+  a–z, with letters, numbers or - _ . : # + | ( ) & $ ^, at most 64 characters.
+  The host prefixes it with task- plus a unique lowercase letter and four digits:
+  @task-x0012:create-ai-joke-or-find-one. Both @task-x0012 and the full name link
+  to the task. Omit name to generate it from the title. Assignment notices
   are posted in the assignee and assigning Sapi chats. Due tasks run at their own deadline, independently of checks. This does not authorize
   computer actions. status returns task IDs and their associated job results.
 - task_comment: id (your task ID), text (progress or a blocker). Saves a task comment.
+- rename_task: id (your task ID), name (new readable name). Keeps the short tag;
+  old mentions remain valid. Works for completed tasks too.
 - run_task: id (existing task ID). Run a planned task once.
 - recurring_job: title, prompt, minutes (1–10080), enabled (boolean, default true).
   Creates a recurring job; optional id updates one. Default watch mode is changes:
@@ -178,6 +182,7 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             fields = {"status": {'target'}, "schedule": {"minutes", "enabled", "monitor_team"},
                       "manager": {"manager", "target"}, "task": {"title", "due", "name", "target"},
                       "task_comment": {"id", "text"}, "finish_task": {"id"}, "run_task": {"id"}, "run_job": {"id"},
+                      "rename_task": {"id", "name"},
                       "recurring_job": {"id", "title", "prompt", "minutes", "enabled", "watch"}, "consolidate": set(),
                       "checkpoint": {'id','status','summary','value','outcome'},
                       "strategy": {'id','status','approach','success','scope','expected_units','watch','generation_reason'}}
@@ -202,6 +207,8 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 result.update(self.service.tasks.create(agent, data))
             elif op == "task_comment":
                 result.update(self.service.tasks.comment(agent, text_field(data,'id',64), data.get('text'), author=agent.agid))
+            elif op == "rename_task":
+                result.update(self.service.tasks.rename(agent, text_field(data,'id',64), data.get('name'), author=agent.agid))
             elif op == "finish_task":
                 task_id = text_field(data, "id", 64)
                 if not any(t["id"] == task_id for t in agent.state["tasks"]):
