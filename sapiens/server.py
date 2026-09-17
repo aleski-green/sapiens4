@@ -87,6 +87,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, service.tasks.detail(parts[2], parts[4]))
             if len(parts) == 4 and parts[:2] == ['api','agents'] and parts[3] == 'memory':
                 return self._send(200, service.memory(parts[2]))
+            if len(parts) == 4 and parts[:2] == ['api','agents'] and parts[3] == 'usage':
+                with service._lock:
+                    return self._send(200, service.usage.report(service._agent(parts[2])))
             if path == "/api/health":
                 return self._send(200, {"status": "ok", "provider": "codex"})
             if path == "/":

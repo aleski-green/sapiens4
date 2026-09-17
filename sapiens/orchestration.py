@@ -8,6 +8,7 @@ import sys
 from uuid import uuid4
 
 from .runtime import ROOT
+from .strategy import OPERATING_POLICY
 from agentpy.storage import atomic_bytes
 
 
@@ -38,6 +39,7 @@ class Orchestration:
             self.prepare(agent)
 
     def prepare(self, agent):
+        agent.set_manifest('operating-policy', OPERATING_POLICY)
         settings = self.settings(agent)
         agent.config.schedule = replace(agent.config.schedule, awake_minutes=settings["minutes"])
         if self.url:
@@ -46,7 +48,9 @@ class Orchestration:
             command = " ".join(shlex.quote(str(p)) for p in (sys.executable, ROOT / "sapiens/control.py", path))
             agent.set_manifest("host-control", f"""Internal Sapiens4 operations: run {command} '<JSON object>'.
 Pass a JSON object with op and the fields below. Quote JSON safely for the shell.
-- status: current self facts and team job/task progress; no other fields needed.
+- status: compact current self facts and team progress. Optional target (unique
+  Sapi name or ID) selects whose own schedule/recurring jobs to inspect. Each
+  member has its own recurring_jobs; an empty self list says nothing about others.
 - schedule: optional minutes (integer 1–1440), enabled (boolean), monitor_team
   (boolean). Applies to you. A five-minute team check uses minutes=5,
   enabled=true, monitor_team=true. Checks run while this host is running;
@@ -63,8 +67,31 @@ Pass a JSON object with op and the fields below. Quote JSON safely for the shell
 - task_comment: id (your task ID), text (progress or a blocker). Saves a task comment.
 - run_task: id (existing task ID). Run a planned task once.
 - recurring_job: title, prompt, minutes (1–10080), enabled (boolean, default true).
-  Creates a recurring job with its own timer; optional id updates an existing job.
+  Creates a recurring job; optional id updates one. Default watch mode is changes:
+  timers run a deterministic read-only script, not an LLM. Save watch with
+  {{"mode":"changes","probe":{{"bundle_id":"observed app bundle ID",
+  "container_id":"observed stable AX chat-list identifier","names":["exact chat names"]}},
+  "cooldown_minutes":30,"max_per_hour":2,"max_per_day":8}}.
+  Empty names watches all visible rows. The Sapi owns setup: each new or changed
+  goal gets one bounded strategy turn before routine runs. Existing plans must
+  also pass strategy setup. Do not ask the human to design selectors or scripts.
+  The current timer primitive reads a Blindly AX list and compares normalized
+  row hashes. It cannot run arbitrary scripts, identify contacts, or guarantee
+  off-screen coverage. Save a blocked strategy when it cannot satisfy the goal.
+- strategy: id (recurring job), status (ready/blocked), approach (<=800 chars),
+  success (verifiable outcome, <=500 chars), scope (coverage/limits, <=500 chars),
+  expected_units (positive local budget units per model run, within call allowance),
+  watch (same shape as recurring_job). Changes mode is read-tested before saving.
+  Always mode additionally requires generation_reason (<=500 chars): use only
+  for goals needing fresh generation every interval, never to bypass detection.
+  Save a concise decision, not private reasoning. Do not change the user's goal.
+  Cost and outcome feedback triggers a bounded strategy review. Incomplete setup
+  stops until an explicit repair; it never loops automatically. Paused jobs stay paused.
 - run_job: id (recurring job ID). Run it now, without changing its timer.
+- checkpoint: id (your recurring job ID), status (ok, partial, blocked), summary
+  (at most 500 characters), value (JSON, at most 6000 characters), outcome
+  (useful/no_change/blocked). Save observed
+  facts, coverage, timestamps and comparison baseline without waiting for learning.
 - finish_task: id (existing task ID). Only mark done when its result is verified.
 - consolidate: queues memory learning after the current conversation completes.
 Never edit host-control.json or runtime files. Report errors from the command.
@@ -97,17 +124,23 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             result.append(dict(id=row["id"], name=row["name"], role=row["role"],
                 manager=directory.get(row["id"], {}).get("parent"),
                 tasks=state["tasks"], memory_entries=len(state["memx"]),
+                recurring_jobs=[dict(id=r['id'], title=r['title'], enabled=r['enabled'],
+                    minutes=r['minutes'], next_run=r['next_run'], last_run=r.get('last_run'),
+                    last_success=r.get('last_success'), health=self.service.work.health(agent,r))
+                    for r in self.service.work.read(agent)],
+                budget=agent.budget_status(),
                 needs_attention=sum(j["status"] in {"failed", "interrupted", "conflict", "budget_blocked"} for j in jobs),
                 recent_jobs=[dict(id=j["id"], flow=j["flow"], status=j["status"],
-                                 task=j["task"][:500], error=j.get("error"),
-                                 result=outputs.get(j["id"], "")[:500]) for j in jobs[-5:]]))
+                                 task=j["task"][:120], error=(j.get("error") or '')[:160],
+                                 result=outputs.get(j["id"], "")[:200],
+                                 result_truncated=len(outputs.get(j['id'], '')) > 200) for j in jobs[-3:]]))
         return result
 
     def status(self, agent):
         return dict(self_id=agent.agid, main_agent_id=self.service.hierarchy.main,
                     schedule=self.settings(agent), team=self.team(),
-                    recurring_jobs=[{k: v for k, v in j.items() if k != "runs"}
-                                    for j in self.service.work.read(agent)])
+                    recurring_jobs_scope='self only; team members have their own recurring_jobs',
+                    recurring_jobs=[self.service.work.public_definition(j) for j in self.service.work.read(agent)])
 
     def resolve(self, value):
         from .service import APIError
@@ -142,13 +175,18 @@ The returned saved facts are authoritative. Do not replay old chat requests.
         with self.service._lock:
             agent = self.service._agent(agid)
             op = data.get("op")
-            fields = {"status": set(), "schedule": {"minutes", "enabled", "monitor_team"},
+            fields = {"status": {'target'}, "schedule": {"minutes", "enabled", "monitor_team"},
                       "manager": {"manager", "target"}, "task": {"title", "due", "name", "target"},
                       "task_comment": {"id", "text"}, "finish_task": {"id"}, "run_task": {"id"}, "run_job": {"id"},
-                      "recurring_job": {"id", "title", "prompt", "minutes", "enabled"}, "consolidate": set()}
+                      "recurring_job": {"id", "title", "prompt", "minutes", "enabled", "watch"}, "consolidate": set(),
+                      "checkpoint": {'id','status','summary','value','outcome'},
+                      "strategy": {'id','status','approach','success','scope','expected_units','watch','generation_reason'}}
             if not isinstance(op, str) or op not in fields or set(data) - fields[op] - {"op"}:
                 raise APIError(400, "Unknown operation or field")
             result = {}
+            if op == 'status':
+                target = self.resolve(data['target']) if 'target' in data else agent
+                return self.status(target)
             if op == "schedule":
                 settings = self.validate_schedule(agent, {k: v for k, v in data.items() if k != "op"})
                 self.save(agent, settings)
@@ -173,10 +211,17 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             elif op == "run_task":
                 result['run_id'] = self.service.work.run_task(agent, text_field(data, 'id', 64))
             elif op == "recurring_job":
-                result['recurring_job'] = self.service.work.upsert(agent, {k: v for k, v in data.items() if k != 'op'})
+                result['recurring_job'] = self.service.work.public_definition(self.service.work.upsert(agent, {k: v for k, v in data.items() if k != 'op'}))
             elif op == "run_job":
                 result['run_id'] = self.service.work.run_now(agent, text_field(data, 'id', 64))
+            elif op == 'strategy':
+                from .strategy import save_plan
+                result['strategy'] = save_plan(self.service.work, agent, data)
+            elif op == 'checkpoint':
+                result['checkpoint'] = self.service.work.checkpoint(agent, data)
             elif op == "consolidate":
+                if any(j['flow'] in {'scheduled', 'strategy'} and j['status'] == 'running' for j in agent.state['jobs']):
+                    raise APIError(409, 'Watcher runs must save a checkpoint, not start consolidation. Use MindMap for an explicit consolidation.')
                 settings = self.settings(agent)
                 learning = [j for j in agent.state['jobs'] if j['flow'] == 'learning'
                             and j['status'] not in {'done', 'cancelled'}]
@@ -187,7 +232,12 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 result["status"] = "queued"
             if op != "status":
                 self.service.store.event(agid, "control", json.dumps(data), job=self.service._active_job(agid))
-            return {**self.status(agent), **result}
+            # Mutation receipts should not append the entire team history on
+            # every tool step (or truncate the actual saved result at the end).
+            receipt = {'self_id': agent.agid, 'saved': True, **result}
+            if op == 'schedule':
+                receipt['schedule'] = self.settings(agent)
+            return receipt
 
     def due(self, agent, instant):
         settings = self.settings(agent)
@@ -205,6 +255,8 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 self.service.store.event(agent.agid, "team_check", json.dumps(team, ensure_ascii=False))
             settings["team_digest"] = digest
             settings["team_checked_at"] = instant.isoformat()
+            from .team_review import enqueue_review
+            enqueue_review(self.service, agent, team, instant)
         self.save(agent, settings)
         self.service.store.event(agent.agid, "heartbeat", "Checked due tasks and " +
                                  ("team progress" if settings["monitor_team"] else "memory schedule"))

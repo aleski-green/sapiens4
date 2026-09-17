@@ -28,6 +28,8 @@ class ScriptedLLM:
                 raise TimeoutError("Test gate timed out")
         if self.factory.fail:
             raise RuntimeError("Scripted provider failure")
+        if getattr(self.factory, "on_complete", None):
+            self.factory.on_complete(prompt)
         return "Connected through AgentPy."
 
 
@@ -62,6 +64,12 @@ class IntegrationFixture(unittest.TestCase):
         service = Service(self.directory.name, factory_builder=self.factory.builder, **kwargs)
         self.services.append(service)
         return service
+
+    def ready_strategy(self, service, agent, row):
+        return service.orchestration.control(agent.agid, dict(op='strategy', id=row['id'],
+            status='ready', approach='Use the observed list for changes',
+            success='A verified relevant change is reported', scope='Visible list only',
+            expected_units=1000, generation_reason='Generate the requested periodic report'))
 
     def restart(self, service, **kwargs):
         service.close()

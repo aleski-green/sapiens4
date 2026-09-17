@@ -1,4 +1,5 @@
 const workViews = {tasks:'ongoing',cron:'ongoing',log:'ongoing',...bootstrap.preferences.work_views};
+const watchStatus = {needs_strategy:'Planning needed',review_needed:'Strategy review',needs_plan:'Setup needed',baseline:'Watching',unchanged:'No changes',partial:'Partial coverage',reviewed:'Watching',changed:'Change detected',monitoring:'Watching',throttled:'Cooling down',budget_blocked:'Waiting for budget',blocked:'Needs attention',queued:'Queued',running:'Running',paused:'Paused',scheduled:'Scheduled',ready:'Ready'};
 const timerStatus = (enabled, next) => !enabled ? 'Paused' : new Date(next) <= new Date() ? 'Waiting' : 'Scheduled';
 const finished = run => !['queued','running'].includes(run.status);
 const workButton = (op, id, label, extra='') => `<button type="button" class="button" data-work-op="${op}" data-work-id="${esc(id)}" ${extra}>${label}</button>`;
@@ -35,7 +36,7 @@ function workPanel(panel, runs) {
       body += info.recurring.map(j => {
         const recent = j.runs[j.runs.length-1];
         const active = recent && (!finished(recent) || attention.has(recent.status));
-        return `<article class="live-job"><span class="tag">${active ? esc(statusNames[recent.status]) : esc(timerStatus(j.enabled,j.next_run))}</span><h3>${esc(j.title)}</h3><p>${esc(j.prompt)}</p><p>Every ${j.minutes} min</p><small>${j.enabled ? `Next ${esc(new Date(j.next_run).toLocaleString())}` : 'Timer paused'}</small><p>Last run: ${recent ? `${esc(statusNames[recent.status])} · ${esc(new Date(recent.created).toLocaleString())}` : 'Not yet'}</p><div class="actions">${workButton('run_job',j.id,'Run now',active?'disabled':'')}${workButton('toggle_job',j.id,j.enabled?'Pause':'Resume')}<button class="button" data-edit-recurring="${esc(j.id)}">Edit</button></div>${active ? jobActions(recent) : ''}</article>`;
+        return `<article class="live-job"><span class="tag">${esc(watchStatus[j.health?.status] || j.health?.status || (active ? statusNames[recent.status] : timerStatus(j.enabled,j.next_run)))}</span><h3>${esc(j.title)}</h3>${j.health?.reason ? `<p class="usage-warning">${esc(j.health.reason)}</p>` : ''}<p>${esc(j.prompt)}</p><p>Check every ${j.minutes} min · ${j.watch?.mode === 'always' ? 'Scheduled generation' : 'Script first'}</p>${j.detector ? `<small>${j.detector.checks || 0} script checks · ${j.detector.skipped || 0} unchanged checks skipped${j.detector.last_check ? ` · last ${esc(new Date(j.detector.last_check).toLocaleTimeString())}` : ''}</small><p>${esc(j.detector.coverage || '')}</p>` : ''}<small>${j.enabled ? `Next ${esc(new Date(j.next_run).toLocaleString())}` : 'Timer paused'}</small><p>Last run: ${recent ? `${esc(statusNames[recent.status])} · ${esc(new Date(recent.created).toLocaleString())}` : 'Not yet'}</p>${j.strategy ? `<details><summary>Execution strategy</summary><p>${esc(j.strategy.approach || '')}</p><p>Success: ${esc(j.strategy.success || '')}</p><p>Scope: ${esc(j.strategy.scope || '')}</p><small>Expected ${esc(j.strategy.expected_units)} budget units per run</small></details>` : ''}${j.checkpoint ? `<details><summary>Last observation · ${esc(j.checkpoint.status)}</summary><p>${esc(j.checkpoint.summary)}</p><small>${esc(new Date(j.checkpoint.time).toLocaleString())}</small></details>` : ''}<div class="actions">${workButton('run_job',j.id,j.strategy_state === 'ready' ? 'Run now' : 'Plan now',active?'disabled':'')}${workButton('toggle_job',j.id,j.enabled?'Pause':'Resume')}<button class="button" data-edit-recurring="${esc(j.id)}">Edit</button></div>${active ? jobActions(recent) : ''}</article>`;
       }).join('');
     }
   } else {
@@ -46,10 +47,30 @@ function workPanel(panel, runs) {
   }
   return heading + (panel==='log' ? '' : workNav(panel)) + body;
 }
+function watchFields(row) {
+  const w = row?.watch || {mode:'changes',cooldown_minutes:30,max_per_hour:2,max_per_day:8};
+  return `<fieldset class="schedule-fields"><legend>When to wake the agent</legend>
+    <label>Mode<select name="watch_mode"><option value="changes" ${w.mode==='changes'?'selected':''}>Only when the script detects changes</option><option value="always" ${w.mode==='always'?'selected':''}>Every interval (generative work)</option></select></label>
+    <div data-watch-probe ${w.mode==='always'?'hidden':''}>
+    <p>The Sapi chooses and tests its plan during setup. Routine runs begin after the plan is saved.</p>
+    <details><summary>Observation plan</summary><label>Application bundle ID<input name="watch_bundle" maxlength="200" value="${esc(w.probe?.bundle_id || '')}" placeholder="net.whatsapp.WhatsApp"></label>
+    <label>Chat-list identifier<input name="watch_container" maxlength="200" value="${esc(w.probe?.container_id || '')}" placeholder="Discovered with Blindly"></label></details>
+    <label>Chats to watch (one name per line)<textarea name="watch_names">${esc((w.probe?.names || []).join('\n'))}</textarea></label>
+    <small>Blank watches visible list rows. Phone-number labels are checked first; they do not prove non-contact or DM status. Archived and off-screen chats need separate coverage.</small>
+    </div>
+    <label>Minimum minutes between model runs<input name="cooldown_minutes" type="number" min="1" max="1440" value="${w.cooldown_minutes}" required></label>
+    <label>Maximum model runs per hour<input name="max_per_hour" type="number" min="1" max="12" value="${w.max_per_hour}" required></label>
+    <label>Maximum model runs per day<input name="max_per_day" type="number" min="1" max="48" value="${w.max_per_day}" required></label>
+    <small>No changes = no model tokens. Read failures back off without waking the agent. Run now explicitly bypasses the change detector.</small>
+  </fieldset>`;
+}
+document.addEventListener('change', e => {
+  if (e.target.name === 'watch_mode') e.target.form.querySelector('[data-watch-probe]').hidden=e.target.value==='always';
+});
 function workForm(kind, id) {
   const row = id ? live.orchestration[state.selected].recurring.find(j => j.id === id) : null;
   const recurring = kind === 'recurring';
-  modal(row ? 'Edit job' : recurring ? 'New job' : 'New task', `<form id="work-form" data-kind="${kind}" data-id="${esc(id || '')}" data-agent="${esc(state.selected)}" class="form-stack"><label>Title<input name="title" required maxlength="${recurring ? 120 : 2000}" value="${esc(row?.title || '')}"></label>${recurring ? `<label>Instructions<textarea name="prompt" required maxlength="2000">${esc(row?.prompt || '')}</textarea></label><label>Run every (minutes)<input name="minutes" type="number" required min="1" max="10080" value="${row?.minutes || 60}"></label><label class="check-label"><input name="enabled" type="checkbox" ${!row || row.enabled ? 'checked' : ''}> Enabled</label>` : '<label>Name (optional)<input name="name" maxlength="24" placeholder="Generated from title"></label><label>Due (optional)<input name="due" type="datetime-local"></label>'}<button type="submit" class="button primary">${row ? 'Save' : 'Create'}</button></form>`, recurring ? 'RECURRING' : 'ONE-OFF');
+  modal(row ? 'Edit job' : recurring ? 'New job' : 'New task', `<form id="work-form" data-kind="${kind}" data-id="${esc(id || '')}" data-agent="${esc(state.selected)}" class="form-stack"><label>Title<input name="title" required maxlength="${recurring ? 120 : 2000}" value="${esc(row?.title || '')}"></label>${recurring ? `<label>Instructions<textarea name="prompt" required maxlength="2000">${esc(row?.prompt || '')}</textarea></label><label>Run every (minutes)<input name="minutes" type="number" required min="1" max="10080" value="${row?.minutes || 60}"></label><label class="check-label"><input name="enabled" type="checkbox" ${!row || row.enabled ? 'checked' : ''}> Enabled</label>${watchFields(row)}` : '<label>Name (optional)<input name="name" maxlength="24" placeholder="Generated from title"></label><label>Due (optional)<input name="due" type="datetime-local"></label>'}<button type="submit" class="button primary">${row ? 'Save' : 'Create'}</button></form>`, recurring ? 'RECURRING' : 'ONE-OFF');
 }
 document.addEventListener('click', async e => {
   const b = e.target.closest('button');
@@ -83,6 +104,11 @@ document.addEventListener('submit', async e => {
     const data = Object.fromEntries(new FormData(form));
     if (form.dataset.kind === 'recurring') {
       data.op='recurring_job'; data.minutes=Number(data.minutes); data.enabled=form.elements.enabled.checked;
+      const bundle = data.watch_bundle.trim(), container = data.watch_container.trim();
+      if ((bundle || container) && !(bundle && container)) throw new Error('Provide both application and list identifiers.');
+      data.watch={mode:data.watch_mode,probe:bundle&&container?{bundle_id:bundle,container_id:container,names:data.watch_names.split('\n').map(n=>n.trim()).filter(Boolean)}:null,
+        cooldown_minutes:Number(data.cooldown_minutes),max_per_hour:Number(data.max_per_hour),max_per_day:Number(data.max_per_day)};
+      for (const key of ['watch_mode','watch_bundle','watch_container','watch_names','cooldown_minutes','max_per_hour','max_per_day']) delete data[key];
       if (form.dataset.id) data.id=form.dataset.id;
     } else { data.op='task'; if (!data.name) delete data.name; data.due=data.due ? new Date(data.due).toISOString() : null; }
     await api(`/api/agents/${form.dataset.agent}/control`, 'POST', data);

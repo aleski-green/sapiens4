@@ -13,6 +13,7 @@ let uploading = 0;
 const nameRule = /^[A-Z][A-Za-z0-9_.:#+|()&$^\-]*$/;
 const nameHelp = 'Start with A–Z. Letters, numbers, and - _ . : # + | ( ) & $ ^ are allowed. No spaces.';
 const attention = new Set(['failed','interrupted','conflict','budget_blocked']);
+const blocksChat = job => !['done','cancelled'].includes(job.status) && !(['learning','team_review'].includes(job.flow) && attention.has(job.status));
 const statusNames = {queued:'Queued',running:'Running',done:'Completed',failed:'Failed',
   interrupted:'Interrupted',conflict:'Needs review',budget_blocked:'Budget blocked',cancelled:'Dismissed'};
 const displayTime = value => new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
@@ -66,11 +67,11 @@ function applySnapshot(snapshot) {
     const messages = state.messages[job.agent] ||= [];
     const timestamp = Date.parse(job.created);
     if (['chat','computer'].includes(job.flow)) messages.push({role:'user',text:job.input,time:displayTime(job.created),timestamp,attachments:job.attachments});
-    if (['chat','computer'].includes(job.flow) && job.status === 'done' && job.output !== null) {
+    if (['chat','computer','team_review'].includes(job.flow) && job.status === 'done' && job.output !== null) {
       messages.push({role:'assistant',text:job.output,time:displayTime(job.created),timestamp});
     }
     const a = state.agents.find(a => a.id === job.agent);
-    if (a && ['chat','computer'].includes(job.flow)) {
+    if (a && (['chat','computer'].includes(job.flow) || (job.flow === 'team_review' && job.status === 'done' && job.output !== null))) {
       a.lastActivity = timestamp;
       a.preview = (job.status === 'done' && job.output !== null ? job.output : job.input).replace(/\s+/g,' ').slice(0,150);
     }
@@ -96,6 +97,16 @@ function applySnapshot(snapshot) {
     }
   }
   for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp);
+  for (const notice of snapshot.notifications || []) {
+    for (const owner of notice.owners) {
+      const timestamp = Date.parse(notice.time);
+      (state.messages[owner] ||= []).push({role:'assistant',speaker:notice.agent,text:notice.text,
+        time:displayTime(notice.time),timestamp,assignment:true});
+      const a = state.agents.find(a=>a.id===owner);
+      if (a && timestamp>a.lastActivity) {a.lastActivity=timestamp;a.preview=notice.text;}
+    }
+  }
+  for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp);
   if (!state.agents.some(a => a.id === state.selected)) state.selected = state.agents[0].id;
   state.logs = eventRows.slice().reverse().map(e => ({agent:e.agent,time:displayTime(e.time),title:e.kind,detail:e.detail}));
   state.computer.owner = snapshot.computer.owner;
@@ -116,7 +127,7 @@ renderGlobal = function() {
 
 renderAgentHeader = function() {
   const a = selected();
-  const job = live.jobs.find(j => j.agent === a.id && !['done','cancelled'].includes(j.status));
+  const job = live.jobs.find(j => j.agent === a.id && blocksChat(j));
   $('#agent-heading').innerHTML = `${avatar(a,'large')}<div><h2>${esc(a.name)}</h2><p class="agent-role">${esc(a.role)}</p></div><button class="icon-button" data-action="agent-settings" aria-label="Sapi settings">···</button>`;
   $('#message-input').placeholder = `Message ${a.name}…`;
   $$('[data-panel]').forEach(b => {b.classList.toggle('active',b.dataset.panel === state.panel);b.setAttribute('aria-pressed',b.dataset.panel === state.panel);});
@@ -148,7 +159,7 @@ renderConversation = function() {
       if (attachments.length) node.querySelector('.message-bubble').insertAdjacentHTML('beforeend', `<div class="message-attachments">${attachments.map(attachmentLabel).join('')}</div>`);
     });
     if (!getMessages(state.selected).length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
-    const job = jobs.find(j => !['done','cancelled'].includes(j.status));
+    const job = jobs.find(blocksChat) || jobs.find(j => !['done','cancelled'].includes(j.status));
     if (job) {
       const started = eventRows.slice().reverse().find(e => e.job === job.id && e.kind === 'started');
       const event = eventRows.slice().reverse().find(e => e.job === job.id && e.kind === 'codex' && (!started || e.time >= started.time));
@@ -195,24 +206,61 @@ agentSettings = function() {
   const schedule = info.schedule;
   const job = live.jobs.find(j => j.agent === a.id && !['done','cancelled'].includes(j.status));
   modal(`${a.name} settings`, `<form id="live-settings-form" data-id="${esc(a.id)}" class="form-stack">
+    <div class="settings-tabs" role="tablist" aria-label="Sapi settings">${[['profile','Profile'],['schedule','Schedule'],['memory','Memory'],['usage','Usage'],['limits','Limits']].map(([key,label],i)=>`<button type="button" role="tab" id="settings-tab-${key}" aria-controls="settings-panel-${key}" aria-selected="${i===0}" tabindex="${i===0?0:-1}" data-settings-tab="${key}">${label}</button>`).join('')}</div>
+    <section class="settings-panel form-stack" role="tabpanel" id="settings-panel-profile" aria-labelledby="settings-tab-profile" data-settings-panel="profile">
     <label>Name<input name="name" value="${esc(a.name)}" required maxlength="24" aria-describedby="name-help" autocomplete="off"></label>
     ${nameSuggestions()}
     <label>Role<input name="role" value="${esc(a.role)}" required maxlength="60"></label>
     ${managerOptions(a)}
+    </section>
+    <section class="settings-panel form-stack" role="tabpanel" id="settings-panel-schedule" aria-labelledby="settings-tab-schedule" data-settings-panel="schedule" hidden>
     <fieldset class="schedule-fields"><legend>Scheduled checks</legend>
       <label class="check-label"><input name="enabled" type="checkbox" ${schedule.enabled ? 'checked' : ''}> Enable checks</label>
       <label>Check every (minutes)<input name="minutes" type="number" min="1" max="1440" step="1" required value="${schedule.minutes}"></label>
       <label class="check-label"><input name="monitor_team" type="checkbox" ${schedule.monitor_team ? 'checked' : ''}> Include team progress</label>
     </fieldset>
+    <small>Agent checks manage due work and team status. Each recurring job has its own change detector and wake-up limits in Jobs.</small>
+    <dl class="sapi-details"><dt>Status</dt><dd>${esc(job ? statusNames[job.status] : 'Ready')}</dd><dt>Next check</dt><dd>${schedule.enabled && schedule.next_check ? esc(new Date(schedule.next_check).toLocaleString()) : 'Paused'}</dd><dt>Last check</dt><dd>${schedule.last_check ? esc(new Date(schedule.last_check).toLocaleString()) : 'Not yet'}</dd></dl>
+    <small>Checks run while the local server is running.</small>
+    </section>
+    <section class="settings-panel form-stack" role="tabpanel" id="settings-panel-memory" aria-labelledby="settings-tab-memory" data-settings-panel="memory" hidden>
     <fieldset class="schedule-fields"><legend>Recent memory</legend>
       <label class="check-label"><input name="recent_enabled" type="checkbox" ${info.recent.enabled ? 'checked' : ''}> Reuse recent results for follow-ups</label>
       <label>Fresh for (seconds)<input name="recent_seconds" type="number" min="1" max="3600" step="1" required value="${info.recent.seconds}"></label>
       <small>“Do it again” or “check current state” always checks afresh.</small>
     </fieldset>
-    <dl class="sapi-details"><dt>Status</dt><dd>${esc(job ? statusNames[job.status] : 'Ready')}</dd><dt>Next check</dt><dd>${schedule.enabled && schedule.next_check ? esc(new Date(schedule.next_check).toLocaleString()) : 'Paused'}</dd><dt>Last check</dt><dd>${schedule.last_check ? esc(new Date(schedule.last_check).toLocaleString()) : 'Not yet'}</dd><dt>Memory</dt><dd>${info.memory_entries} ${info.memory_entries === 1 ? 'entry' : 'entries'}</dd></dl>
-    <small class="form-hint">Checks run while the local server is running.</small>
+    <p>${info.memory_entries} consolidated memory ${info.memory_entries === 1 ? 'entry' : 'entries'}. Start consolidation from MindMap.</p>
+    </section>
+    <section class="settings-panel" role="tabpanel" id="settings-panel-usage" aria-labelledby="settings-tab-usage" data-settings-panel="usage" hidden>${usageSettings(info,'usage')}</section>
+    <section class="settings-panel" role="tabpanel" id="settings-panel-limits" aria-labelledby="settings-tab-limits" data-settings-panel="limits" hidden>${usageSettings(info,'limits')}</section>
     <button type="submit" class="button primary">Save</button></form>`, 'SAPIENS4');
+  loadUsage(a.id);
 };
+function settingsTab(key) {
+  const form = $('#live-settings-form');
+  if (!form) return;
+  form.querySelectorAll('[data-settings-panel]').forEach(p => { p.hidden = p.dataset.settingsPanel !== key; });
+  form.querySelectorAll('[data-settings-tab]').forEach(b => {
+    const active = b.dataset.settingsTab === key;
+    b.setAttribute('aria-selected', String(active)); b.tabIndex = active ? 0 : -1;
+  });
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-settings-tab]');
+  if (b) settingsTab(b.dataset.settingsTab);
+});
+document.addEventListener('keydown', e => {
+  const b = e.target.closest('[data-settings-tab]');
+  if (!b || !['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+  e.preventDefault();
+  const tabs = [...b.parentElement.querySelectorAll('[data-settings-tab]')];
+  const i = e.key==='Home' ? 0 : e.key==='End' ? tabs.length-1 : (tabs.indexOf(b)+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+  settingsTab(tabs[i].dataset.settingsTab); tabs[i].focus();
+});
+document.addEventListener('invalid', e => {
+  const p = e.target.closest('[data-settings-panel]');
+  if (p && p.hidden) settingsTab(p.dataset.settingsPanel);
+}, true);
 actions['agent-settings'] = agentSettings;
 computerDialog = function() {
   modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : 'Build required: run ./start.sh'}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Jobs run one at a time. macOS Accessibility access is required for desktop interaction; permission failures appear in the job and activity log.</p>`, 'BLINDLY4');
@@ -236,6 +284,8 @@ document.addEventListener('submit', async e => {
       data.manager = data.manager || null;
       data.schedule = {enabled:form.elements.enabled.checked,minutes:Number(data.minutes),monitor_team:form.elements.monitor_team.checked};
       data.recent = {enabled:form.elements.recent_enabled.checked,seconds:Number(data.recent_seconds)};
+      data.execution = Object.fromEntries(['weekly_limit','call_allowance','max_tools','timeout_seconds','output_tokens'].map(k=>[k,Number(data[k])]));
+      for (const key of Object.keys(data.execution)) delete data[key];
       delete data.recent_enabled; delete data.recent_seconds;
       delete data.enabled; delete data.minutes; delete data.monitor_team;
     }

@@ -56,3 +56,22 @@
 .task-comments form { margin-top:14px; }
 
 .task-comments textarea { min-height:90px; height:90px; resize:vertical; }
+.usage-section { border-bottom: 1px solid var(--line, #d4cddd); padding-bottom: 16px; }
+.usage-section h3 { margin: 0; font-size: 16px; }
+.usage-table-wrap { overflow-x: auto; }
+.usage-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.usage-table caption { text-align: left; font-size: 11px; padding: 10px 0; }
+.usage-table th, .usage-table td { text-align: right; padding: 8px 5px; border-bottom: 1px solid var(--line, #d4cddd); }
+.usage-table th:first-child { text-align: left; white-space: nowrap; }
+.usage-budget, .usage-warning, .execution-settings p { font-size: 12px; line-height: 1.5; }
+.usage-warning { color: light-dark(#9b3c16, #ffc88b); }
+.usage-calls article { display: grid; gap: 4px; padding: 8px 0; font-size: 12px; }
+.execution-settings label { display: grid; gap: 8px; margin: 14px 0; }
+
+.settings-tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); overflow-x:auto; position:sticky; top:0; background:var(--panel); z-index:2; }
+.settings-tabs button { border:0; border-bottom:2px solid transparent; background:transparent; color:inherit; font:inherit; padding:10px 12px; cursor:pointer; }
+.settings-tabs [aria-selected="true"] { color:var(--acid); border-bottom-color:currentColor; font-weight:bold; }
+.settings-panel[hidden], [data-watch-probe][hidden] { display:none !important; }
+.settings-panel { min-height:220px; }
+#live-settings-form > button[type="submit"] { position:sticky; bottom:0; }
+[data-watch-probe] { display:grid; gap:12px; }
