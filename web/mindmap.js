@@ -22,11 +22,12 @@ function renderMindMap(host) {
   const waiting = consolidationPending.has(owner) || ['waiting','queued','running'].includes(memory.status);
   const stopped = attention.has(memory.status);
   const button = $('#consolidate-memory');
-  button.disabled = waiting || stopped || !online;
-  button.textContent = waiting ? 'Waiting…' : memory.status === 'done' ? 'Done' : 'Start consolidation';
-  button.setAttribute('aria-label', memory.status === 'done' ? 'Done. Start consolidation again' : button.textContent);
+  const unchanged = memory.has_updates === false;
+  button.disabled = waiting || stopped || unchanged || !online;
+  button.textContent = waiting ? 'Waiting…' : unchanged ? 'Done' : 'Start consolidation';
+  button.setAttribute('aria-label', unchanged ? 'Done. No new updates to consolidate' : button.textContent);
   const issue = memory.blocker || (stopped ? memory.run : null);
-  $('#memory-status').innerHTML = issue ? `<p>${memory.blocker ? 'Waiting for this run to be resolved.' : esc(statusNames[memory.status])}</p>${issue.error ? `<p>${esc(issue.error)}</p>` : ''}${jobActions(issue)}` : memory.status === 'running' ? '<p>Consolidating memory…</p>' : waiting ? '<p>Waiting for the local runner…</p>' : '';
+  $('#memory-status').innerHTML = issue ? `<p>${memory.blocker ? 'Waiting for this run to be resolved.' : esc(statusNames[memory.status])}</p>${issue.error ? `<p>${esc(issue.error)}</p>` : ''}${jobActions(issue)}` : memory.status === 'running' ? '<p>Consolidating memory…</p>' : waiting ? '<p>Waiting for the local runner…</p>' : unchanged ? '<p>No new updates to consolidate.</p>' : '';
   $('#memory-empty').hidden = info.memory_entries > 0;
   loadMindMap(owner, memory.revision);
 }

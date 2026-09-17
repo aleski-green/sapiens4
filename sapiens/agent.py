@@ -76,6 +76,9 @@ class SapiAgent(PersistentAgent):
             job['error'] = 'Budget allowance unavailable. Resumes when enough allowance is available; limits are in Sapi settings.'
         else:
             job.pop('error', None)
+            if job['flow'] == 'learning':
+                from .memory import fingerprint, inputs
+                job['memory_input_fingerprint'] = fingerprint(inputs(state, self.manifests))
         return value
 
     async def run_selected(self, job_ids):

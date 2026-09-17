@@ -35,14 +35,25 @@ class MindMapTest(IntegrationFixture):
         self.assertEqual(status['status'], 'done')
         self.assertEqual(service.memory(owner)['memx'][0]['content'], 'Use concise answers')
         first = status['run']['id']
-        # A new explicit request must run even without another chat revision.
+        # Repeated requests without new input are free no-ops, including after restart.
         service.orchestration.control(owner, {'op':'consolidate'})
         service.scheduled()
         status = service.snapshot()['orchestration'][owner]['memory']
         self.assertEqual(status['status'], 'done')
-        self.assertNotEqual(first, status['run']['id'])
+        self.assertEqual(first, status['run']['id'])
+        self.assertFalse(status['has_updates'])
         service = self.restart(service, start_worker=False)
         self.assertEqual(service.snapshot()['orchestration'][owner]['memory']['status'], 'done')
+        calls = len(self.factory.prompts)
+        self.assertEqual(service.orchestration.control(owner, {'op':'consolidate'})['status'], 'unchanged')
+        service.scheduled()
+        self.assertEqual(len(self.factory.prompts), calls)
+        service.submit(owner, {'text':'A new preference'})
+        asyncio.run(service._agent(owner).run())
+        self.assertTrue(service.snapshot()['orchestration'][owner]['memory']['has_updates'])
+        service.orchestration.control(owner, {'op':'consolidate'})
+        service.scheduled()
+        self.assertNotEqual(first, service.snapshot()['orchestration'][owner]['memory']['run']['id'])
         other = service.create_agent({'name':'Nova', 'role':'Researcher'})['id']
         self.assertEqual(service.memory(other)['memx'], [])
         service.save_preferences({'panel':'mindmap'})
@@ -107,3 +118,45 @@ class MindMapTest(IntegrationFixture):
         self.assertEqual(len(agent.memx), 1)
         service.scheduled()
         self.assertEqual(len(self.factory.prompts), 4)  # No repeated learning or chat retry.
+
+    def test_state_changes_unlock_but_bookkeeping_and_learning_do_not(self):
+        service, owner = self.prepare()
+        agent = service._agent(owner)
+        service.orchestration.control(owner, {'op':'consolidate'})
+        service.scheduled()
+        self.assertFalse(service.memory_status(agent, service.snapshot()['jobs'])['has_updates'])
+        settings = service.orchestration.settings(agent)
+        settings.update(next_check='2099-01-01T00:00:00+00:00', last_check='2026-01-01T00:00:00+00:00')
+        service.orchestration.save(agent, settings)
+        service.orchestration.prepare(agent)
+        self.assertFalse(service.snapshot()['orchestration'][owner]['memory']['has_updates'])
+        # Exercise migration from the archived input of a pre-fingerprint run.
+        with agent.store.transaction() as state:
+            for job in state['jobs']:
+                job.pop('memory_input_fingerprint', None)
+        self.assertFalse(service.snapshot()['orchestration'][owner]['memory']['has_updates'])
+        service.orchestration.control(owner, {'op':'schedule', 'minutes':17})
+        self.assertTrue(service.snapshot()['orchestration'][owner]['memory']['has_updates'])
+        service.orchestration.control(owner, {'op':'consolidate'})
+        service.scheduled()
+        self.assertFalse(service.snapshot()['orchestration'][owner]['memory']['has_updates'])
+        with agent.store.transaction() as state:
+            state['tasks'].append({'id':'new-task', 'title':'New work'})
+        self.assertTrue(service.snapshot()['orchestration'][owner]['memory']['has_updates'])
+
+    def test_input_arriving_during_learning_is_not_marked_learned(self):
+        service, owner = self.prepare()
+        agent = service._agent(owner)
+        original = agent._work
+        def work(job, snapshot, config):
+            result = original(job, snapshot, config)
+            if job['flow'] == 'learning':
+                with agent.store.transaction() as state:
+                    state['tasks'].append({'id':'arrived-during-learning', 'title':'Later work'})
+            return result
+        agent._work = work
+        service.orchestration.control(owner, {'op':'consolidate'})
+        service.scheduled()
+        status = service.snapshot()['orchestration'][owner]['memory']
+        self.assertEqual(status['status'], 'done')
+        self.assertTrue(status['has_updates'])

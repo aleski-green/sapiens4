@@ -75,8 +75,11 @@ starting. No global Codex settings are changed.
   is separate from lasting memory.
 - **MemX** (Memory Explorer), between Jobs and Log, shows the selected Sapi's consolidated `memx`
   in CORPORA's searchable JSON tree. **Start consolidation** waits for the runner,
-  updates the tree, and shows **Done** only after learning succeeds. Click Done to
-  run it again; failures expose Retry/Dismiss. Its state survives reloads.
+  updates the tree, and shows **Done** only after learning succeeds. Done stays
+  disabled until new chat, task, or durable agent-state input arrives. The server
+  also skips unchanged requests without model calls; timer ticks, budget counters,
+  and learning's own output do not unlock it. Failures expose Retry/Dismiss.
+  Its state survives reloads, and updates arriving during a run remain eligible.
   Explicit consolidation waits for active work but can proceed past unrelated
   failed runs. It does not retry those runs or resume unrelated budget-blocked work.
   The Jobs tab counter counts saved recurring definitions.

@@ -306,6 +306,7 @@ class Service:
             return snapshot
 
     def memory_status(self, agent, jobs):
+        from .memory import current_fingerprint, last_fingerprint
         settings = self.orchestration.settings(agent)
         runs = [j for j in jobs if j['agent'] == agent.agid and j['flow'] == 'learning']
         run = next((j for j in reversed(runs) if j['status'] not in {'done', 'cancelled'}), None)
@@ -316,6 +317,7 @@ class Service:
         def summary(job):
             return {k: job.get(k) for k in ('id', 'agent', 'status', 'error')} if job else None
         return {'revision': hashlib.sha256(json.dumps(agent.memx, sort_keys=True).encode()).hexdigest(),
+                'has_updates': current_fingerprint(self, agent) != last_fingerprint(agent),
                 'status': status, 'run': summary(run),
                 'blocker': None}
 
@@ -382,6 +384,11 @@ class Service:
             # A stopped learning attempt still needs its own retry/dismiss.
             if any(j['flow'] == 'learning' and j['status'] not in {'done', 'cancelled'}
                    for j in agent.state['jobs']):
+                return True
+            from .memory import current_fingerprint, last_fingerprint
+            if current_fingerprint(self, agent) == last_fingerprint(agent):
+                settings['consolidate_requested'] = False
+                self.orchestration.save(agent, settings)
                 return True
             self.orchestration.prepare(agent)
             settings.setdefault('consolidation_id', uuid4().hex)
