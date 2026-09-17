@@ -2,6 +2,8 @@
 
 Persistent local agents with CORPORA UI, AgentPy orchestration, Codex CLI and Blindly4 computer access. SQLite stores UI data.
 
+![CORPORA workspace with agent chats, tasks, jobs and memory](docs/images/corpora-ui.png)
+
 ## Core principles
 
 core_principles_sapiens4.md
