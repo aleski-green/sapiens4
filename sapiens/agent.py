@@ -62,6 +62,8 @@ class SapiAgent(PersistentAgent):
         return self.budget_status(instant)['remaining'] >= required
 
     def _reserve(self, state, job, loop_remaining, now):
+        if getattr(self, '_selected_jobs', None) is not None and job['id'] not in self._selected_jobs:
+            return None
         # No repeated blocked events during unrelated work; run() may reconsider
         # a never-started budget-blocked job when its allowance becomes available.
         if job['status'] == 'budget_blocked':
@@ -75,6 +77,14 @@ class SapiAgent(PersistentAgent):
         else:
             job.pop('error', None)
         return value
+
+    async def run_selected(self, job_ids):
+        """Run explicit maintenance without admitting unrelated stopped work."""
+        self._selected_jobs = set(job_ids)
+        try:
+            await self.run()
+        finally:
+            self._selected_jobs = None
 
     def _work(self, job, snapshot, config):
         result = Outcome()

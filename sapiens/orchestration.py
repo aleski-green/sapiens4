@@ -259,7 +259,7 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 result['checkpoint'] = self.service.work.checkpoint(agent, data)
             elif op == "consolidate":
                 if any(j['flow'] in {'scheduled', 'strategy'} and j['status'] == 'running' for j in agent.state['jobs']):
-                    raise APIError(409, 'Watcher runs must save a checkpoint, not start consolidation. Use MindMap for an explicit consolidation.')
+                    raise APIError(409, 'Watcher runs must save a checkpoint, not start consolidation. Use MemX for an explicit consolidation.')
                 settings = self.settings(agent)
                 learning = [j for j in agent.state['jobs'] if j['flow'] == 'learning'
                             and j['status'] not in {'done', 'cancelled'}]

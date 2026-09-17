@@ -83,3 +83,27 @@ class MindMapTest(IntegrationFixture):
         self.assertIn('Interactive JSON tree', viewer)
         self.assertIn("event.source !== parent", viewer)
         self.assertNotIn("loadExample('commerce');", viewer)
+
+    def test_explicit_memory_does_not_retry_old_failure_or_budget_blocked_work(self):
+        service, owner = self.prepare()
+        self.factory.fail = True
+        failed = service.submit(owner, {'text':'Check Slack'})
+        agent = service._agent(owner)
+        asyncio.run(agent.run())
+        self.factory.fail = False
+        blocked = agent.submit('computer', 'Unrelated stopped work')
+        with agent.store.transaction() as state:
+            next(j for j in state['jobs'] if j['id'] == blocked)['status'] = 'budget_blocked'
+        service._sync(agent)
+        service.orchestration.control(owner, {'op':'consolidate'})
+        self.assertIsNone(service.snapshot()['orchestration'][owner]['memory']['blocker'])
+        service.scheduled()
+        memory = service.snapshot()['orchestration'][owner]['memory']
+        self.assertEqual(memory['status'], 'done')
+        statuses = {j['id']: j['status'] for j in agent.state['jobs']}
+        self.assertEqual(statuses[failed['id']], 'failed')
+        self.assertEqual(statuses[blocked], 'budget_blocked')
+        self.assertEqual(len(self.factory.prompts), 4)  # Failed chat + three memory roles.
+        self.assertEqual(len(agent.memx), 1)
+        service.scheduled()
+        self.assertEqual(len(self.factory.prompts), 4)  # No repeated learning or chat retry.

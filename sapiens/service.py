@@ -313,13 +313,11 @@ class Service:
             run = next((j for j in runs if j['id'] == settings.get('consolidation_run')), None)
         pending = settings['consolidate_requested']
         status = 'waiting' if pending else run['status'] if run else 'idle'
-        blocked = next((j for j in jobs if j['agent'] == agent.agid and
-                        j['status'] not in {'done', 'warning', 'cancelled', 'queued', 'running'}), None)
         def summary(job):
             return {k: job.get(k) for k in ('id', 'agent', 'status', 'error')} if job else None
         return {'revision': hashlib.sha256(json.dumps(agent.memx, sort_keys=True).encode()).hexdigest(),
                 'status': status, 'run': summary(run),
-                'blocker': summary(blocked) if pending else None}
+                'blocker': None}
 
     def memory(self, agid):
         with self._lock:
@@ -372,6 +370,33 @@ class Service:
             self.store.preferences(current)
             return {"saved": True, "preferences": current}
 
+    def _consolidate_pending(self, agid):
+        """Explicit memory work waits for active work, not historical failures."""
+        with self._lock:
+            agent = self._agent(agid)
+            settings = self.orchestration.settings(agent)
+            if not settings['consolidate_requested']:
+                return False
+            if any(j['status'] in {'queued', 'running'} for j in agent.state['jobs']):
+                return True
+            # A stopped learning attempt still needs its own retry/dismiss.
+            if any(j['flow'] == 'learning' and j['status'] not in {'done', 'cancelled'}
+                   for j in agent.state['jobs']):
+                return True
+            self.orchestration.prepare(agent)
+            settings.setdefault('consolidation_id', uuid4().hex)
+            run = agent.submit('learning', key=f"manual-learning:{settings['consolidation_id']}")
+            settings.update(consolidation_run=run, consolidate_requested=False)
+            self.orchestration.save(agent, settings)
+            self._background.add(agid)
+        try:
+            asyncio.run(agent.run_selected([run]))
+        finally:
+            with self._lock:
+                self._background.discard(agid)
+                self._sync(agent)
+        return True
+
     def scheduled(self, instant=None):
         """One serialized scheduling pass, also callable with a clock in tests."""
         instant = instant or utcnow()
@@ -380,6 +405,8 @@ class Service:
                 return
             background = False
             try:
+                if self._consolidate_pending(row['id']):
+                    continue
                 with self._lock:
                     agent = self._agent(row["id"])
                     # Read-only scripts also run when model allowance is exhausted.
@@ -403,7 +430,7 @@ class Service:
                     settings = self.orchestration.settings(agent)
                     due = self.orchestration.due(agent, instant)
                     due_task = self.tasks.due(agent, instant)
-                    if not due and not settings["consolidate_requested"] and not recurring and not due_task:
+                    if not due and not recurring and not due_task:
                         continue
                     self._background.add(agent.agid)
                     background = True
@@ -411,15 +438,6 @@ class Service:
                     if due_task:
                         self.work.admit_task(agent, due_task['id'])
                         self._active = agent.agid
-                        due = False
-                    elif settings["consolidate_requested"] and not any(j['flow']=='learning' and j['status'] not in {'done','cancelled'} for j in agent.state['jobs']):
-                        if not settings.get('consolidation_id'):
-                            settings['consolidation_id'] = uuid4().hex
-                            self.orchestration.save(agent, settings)
-                        settings['consolidation_run'] = agent.submit(
-                            "learning", key=f"manual-learning:{settings['consolidation_id']}")
-                        settings["consolidate_requested"] = False
-                        self.orchestration.save(agent, settings)
                         due = False
                     elif recurring:
                         self.work.admit(agent, recurring, instant)

@@ -73,10 +73,12 @@ starting. No global Codex settings are changed.
   default; each Sapi's settings can disable it or change the window (1–3600 seconds).
   Explicit refresh/current-state requests bypass reuse within that window. This
   is separate from lasting memory.
-- **MindMap**, between Jobs and Log, shows the selected Sapi's consolidated `memx`
+- **MemX** (Memory Explorer), between Jobs and Log, shows the selected Sapi's consolidated `memx`
   in CORPORA's searchable JSON tree. **Start consolidation** waits for the runner,
   updates the tree, and shows **Done** only after learning succeeds. Click Done to
   run it again; failures expose Retry/Dismiss. Its state survives reloads.
+  Explicit consolidation waits for active work but can proceed past unrelated
+  failed runs. It does not retry those runs or resume unrelated budget-blocked work.
   The Jobs tab counter counts saved recurring definitions.
 - **Tasks** holds one-off work: create a planned task, set an optional due time,
   start it, review its result, then mark complete. Completed tasks move to **Past**.

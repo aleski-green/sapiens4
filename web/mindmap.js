@@ -17,7 +17,7 @@ new MutationObserver(() => {const frame=$('#memory-viewer'); if (frame) sendMemo
 function renderMindMap(host) {
   const owner = state.selected, info = live.orchestration[owner], memory = info.memory;
   if (host.querySelector('#mindmap-panel')?.dataset.owner !== owner) {
-    host.innerHTML = `<section id="mindmap-panel" data-owner="${esc(owner)}"><div class="list-heading"><h3>MindMap</h3><button type="button" class="button" id="consolidate-memory">Start consolidation</button></div><div id="memory-status" role="status"></div><p id="memory-empty" hidden>No consolidated memory yet.</p><div id="memory-loading" role="status">Loading memory…</div><iframe id="memory-viewer" data-owner="${esc(owner)}" title="Consolidated memory JSON" sandbox="allow-scripts" hidden></iframe></section>`;
+    host.innerHTML = `<section id="mindmap-panel" data-owner="${esc(owner)}"><div class="list-heading"><h3>Memory Explorer</h3><button type="button" class="button" id="consolidate-memory">Start consolidation</button></div><div id="memory-status" role="status"></div><p id="memory-empty" hidden>No consolidated memory yet.</p><div id="memory-loading" role="status">Loading memory…</div><iframe id="memory-viewer" data-owner="${esc(owner)}" title="Consolidated memory JSON" sandbox="allow-scripts" hidden></iframe></section>`;
   }
   const waiting = consolidationPending.has(owner) || ['waiting','queued','running'].includes(memory.status);
   const stopped = attention.has(memory.status);

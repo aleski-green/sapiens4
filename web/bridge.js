@@ -8,6 +8,7 @@ let saveTimer;
 let saving = false;
 let savedPreferences = '';
 const submitting = new Set();
+const expandedWarnings = new Set();
 const attachmentDrafts = bootstrap.attachment_drafts || {};
 let uploading = 0;
 const nameRule = /^[A-Z][A-Za-z0-9_.:#+|()&$^\-]*$/;
@@ -60,6 +61,24 @@ function jobActions(job) {
   return '';
 }
 
+document.addEventListener('click', e => {
+  const button = e.target.closest('[data-warning-toggle]');
+  if (!button) return;
+  const id = button.dataset.warningToggle;
+  const expanded = !expandedWarnings.has(id);
+  if (expanded) expandedWarnings.add(id); else expandedWarnings.delete(id);
+  button.setAttribute('aria-expanded', String(expanded));
+  document.getElementById(button.getAttribute('aria-controls')).hidden = !expanded;
+});
+
+function chatResult(job) {
+  const text = job.output || '';
+  if (job.status !== 'warning') return {text};
+  // Only split the host-generated limit notice; preserve ordinary Sapi answers.
+  const notice = /^Warning — partial result\.\n\n(Saved: [\s\S]+?)\n\n(The tool limit was reached after [\s\S]+)$/.exec(text);
+  return {text:notice ? notice[1] : text, warning:notice ? notice[2] : job.error || 'Partial result; review before relying on it.'};
+}
+
 function applySnapshot(snapshot) {
   receiveWorkspaces(snapshot.preferences);
   live = snapshot;
@@ -77,12 +96,12 @@ function applySnapshot(snapshot) {
     const timestamp = Date.parse(job.created);
     if (['chat','computer'].includes(job.flow)) messages.push({role:'user',text:job.input,time:displayTime(job.created),timestamp,attachments:job.attachments});
     if (['chat','computer','team_review'].includes(job.flow) && ['done','warning'].includes(job.status) && job.output !== null) {
-      messages.push({role:'assistant',text:job.output,time:displayTime(job.created),timestamp,warning:job.status === 'warning'});
+      messages.push({role:'assistant',...chatResult(job),time:displayTime(job.created),timestamp,jobId:job.id});
     }
     const a = state.agents.find(a => a.id === job.agent);
     if (a && (['chat','computer'].includes(job.flow) || (job.flow === 'team_review' && ['done','warning'].includes(job.status) && job.output !== null))) {
       a.lastActivity = timestamp;
-      a.preview = (['done','warning'].includes(job.status) && job.output !== null ? job.output : job.input).replace(/\s+/g,' ').slice(0,150);
+      a.preview = (['done','warning'].includes(job.status) && job.output !== null ? chatResult(job).text : job.input).replace(/\s+/g,' ').slice(0,150);
     }
     if (a && job.status === 'running') a.status = 'busy';
     if (job.status === 'queued' || job.status === 'running') pending.add(job.agent);
@@ -157,7 +176,9 @@ renderConversation = function() {
       const message=getMessages(state.selected)[i];
       if (message?.warning) {
         node.classList.add('warning-message');
-        node.querySelector('.message-meta').insertAdjacentHTML('beforeend', '<span class="warning-badge">Warning</span>');
+        const expanded = expandedWarnings.has(message.jobId);
+        node.querySelector('.message-meta').insertAdjacentHTML('beforeend', `<button type="button" class="warning-badge" data-warning-toggle="${esc(message.jobId)}" aria-expanded="${expanded}" aria-controls="warning-${esc(message.jobId)}">Warning</button>`);
+        node.querySelector('.message-bubble').insertAdjacentHTML('afterbegin', `<div class="warning-details" id="warning-${esc(message.jobId)}" ${expanded ? '' : 'hidden'}>${esc(message.warning)}</div>`);
       }
       if (message?.assignment) {
         const speaker=agent(message.speaker);
@@ -243,7 +264,7 @@ agentSettings = function() {
       <label>Fresh for (seconds)<input name="recent_seconds" type="number" min="1" max="3600" step="1" required value="${info.recent.seconds}"></label>
       <small>“Do it again” or “check current state” always checks afresh.</small>
     </fieldset>
-    <p>${info.memory_entries} consolidated memory ${info.memory_entries === 1 ? 'entry' : 'entries'}. Start consolidation from MindMap.</p>
+    <p>${info.memory_entries} consolidated memory ${info.memory_entries === 1 ? 'entry' : 'entries'}. Start consolidation from MemX.</p>
     </section>
     <section class="settings-panel" role="tabpanel" id="settings-panel-usage" aria-labelledby="settings-tab-usage" data-settings-panel="usage" hidden>${usageSettings(info,'usage')}</section>
     <section class="settings-panel" role="tabpanel" id="settings-panel-limits" aria-labelledby="settings-tab-limits" data-settings-panel="limits" hidden>${usageSettings(info,'limits')}</section>
@@ -410,7 +431,7 @@ $('[data-scope="groups"]').title = 'Groups are coming in the next iteration';
 $('[data-panel="cron"]').hidden = false;
 $('[data-panel="cron"]').innerHTML = 'Jobs <span id="job-count" title="Recurring jobs">0</span>';
 $('.conversation-tabs').insertBefore($('[data-panel="cron"]'), $('[data-panel="log"]'));
-$('[data-panel="log"]').insertAdjacentHTML('beforebegin', '<button type="button" data-panel="mindmap" aria-pressed="false">MindMap</button>');
+$('[data-panel="log"]').insertAdjacentHTML('beforebegin', '<button type="button" data-panel="mindmap" aria-pressed="false">MemX</button>');
 $('[data-panel="tasks"]').innerHTML = 'Tasks <span id="task-count">0</span>';
 $('#message-input').maxLength = 16000;
 $('#message-input').value = state.drafts[state.selected] || '';
