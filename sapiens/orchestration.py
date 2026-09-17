@@ -255,6 +255,8 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 self.service.store.event(agent.agid, "team_check", json.dumps(team, ensure_ascii=False))
             settings["team_digest"] = digest
             settings["team_checked_at"] = instant.isoformat()
+            from .team_review import enqueue_review
+            enqueue_review(self.service, agent, team, instant)
         self.save(agent, settings)
         self.service.store.event(agent.agid, "heartbeat", "Checked due tasks and " +
                                  ("team progress" if settings["monitor_team"] else "memory schedule"))

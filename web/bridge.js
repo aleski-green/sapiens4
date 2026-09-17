@@ -13,7 +13,7 @@ let uploading = 0;
 const nameRule = /^[A-Z][A-Za-z0-9_.:#+|()&$^\-]*$/;
 const nameHelp = 'Start with A–Z. Letters, numbers, and - _ . : # + | ( ) & $ ^ are allowed. No spaces.';
 const attention = new Set(['failed','interrupted','conflict','budget_blocked']);
-const blocksChat = job => !['done','cancelled'].includes(job.status) && !(job.flow === 'learning' && attention.has(job.status));
+const blocksChat = job => !['done','cancelled'].includes(job.status) && !(['learning','team_review'].includes(job.flow) && attention.has(job.status));
 const statusNames = {queued:'Queued',running:'Running',done:'Completed',failed:'Failed',
   interrupted:'Interrupted',conflict:'Needs review',budget_blocked:'Budget blocked',cancelled:'Dismissed'};
 const displayTime = value => new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
@@ -67,11 +67,11 @@ function applySnapshot(snapshot) {
     const messages = state.messages[job.agent] ||= [];
     const timestamp = Date.parse(job.created);
     if (['chat','computer'].includes(job.flow)) messages.push({role:'user',text:job.input,time:displayTime(job.created),timestamp,attachments:job.attachments});
-    if (['chat','computer'].includes(job.flow) && job.status === 'done' && job.output !== null) {
+    if (['chat','computer','team_review'].includes(job.flow) && job.status === 'done' && job.output !== null) {
       messages.push({role:'assistant',text:job.output,time:displayTime(job.created),timestamp});
     }
     const a = state.agents.find(a => a.id === job.agent);
-    if (a && ['chat','computer'].includes(job.flow)) {
+    if (a && (['chat','computer'].includes(job.flow) || (job.flow === 'team_review' && job.status === 'done' && job.output !== null))) {
       a.lastActivity = timestamp;
       a.preview = (job.status === 'done' && job.output !== null ? job.output : job.input).replace(/\s+/g,' ').slice(0,150);
     }

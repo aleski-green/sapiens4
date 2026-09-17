@@ -4,6 +4,23 @@ A local workspace for persistent Sapis. **CORPORA** provides the interface,
 **AgentPy** runs the agents through your authenticated **Codex CLI**, and
 **Blindly4** is the main tool for computer and browser interaction on macOS.
 
+## Core principles
+
+core_principles_sapiens4.md
+
+> Agentic systems now:
+
+“a reactive, agreeable, passive, submissive calculator designed to please humans rather than immediately enhance team efficiency”
+
+> Three distinctive principles of Sapiens4:
+
+I. Proactivity: to be autonomously curious and proactively align itself with an admin-in-the-loop and human teams by initiating Q&A sessions and briefings to actively gather requirements and use those as a chance to challenge them
+
+II. Self-Reflection: to be aware of its own capabilities, flaws, successes, and failures and learn from its own experience and propose its own improvements with low-stakes experiments and tests
+
+III. Decisiveness: to maintain its own integrity, hold qualified opinions and doubts, and possess learned principles, strategies, how-tos, and know-how that may prove stronger and wiser than those derived from human team requirements
+
+
 ## Start
 
 Requirements: Python 3.9+, Git, an authenticated Codex CLI, and macOS 13+ with

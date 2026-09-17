@@ -148,17 +148,65 @@ class StrategyTest(IntegrationFixture):
         service.scheduled(now+timedelta(minutes=2))
         self.assertEqual(len(self.factory.prompts), 2)
 
-    def test_no_value_or_repeated_tools_trigger_review_not_success(self):
+    def test_verified_inaction_is_valid_but_missing_evidence_requires_review(self):
         service, agent, row, now = self.setup_job()
         with patch('sapiens.watch.observe', return_value=observation()): self.plan(service, agent, row)
         row = service.work.read(agent)[0]
         for i in range(2):
             run = dict(id=str(i), budget_units=7)
-            row['checkpoint'] = dict(run=str(i), outcome='no_change')
+            row['checkpoint'] = dict(run=str(i), status='ok', outcome='no_change')
             strategy.feedback(row, run, [{'tools':2, 'usage':{'input_tokens':4}}])
+        self.assertEqual(strategy.state(row), 'ready')
+        for i in range(2, 4):
+            row['checkpoint'] = dict(run=str(i), status='partial', outcome='no_change')
+            strategy.feedback(row, dict(id=str(i), budget_units=7), [{'tools':1, 'usage':{'input_tokens':4}}])
         self.assertEqual(strategy.state(row), 'review_needed')
         row['strategy']['status'] = 'ready'; row['feedback'] = []
         strategy.feedback(row, dict(id='x', budget_units=7), [{'repeated_tools':2}])
+        self.assertEqual(strategy.state(row), 'review_needed')
+
+    def test_failed_execution_retains_feedback_without_automatic_replay(self):
+        service, agent, row, now = self.setup_job(watch={'mode':'always'})
+        self.ready_strategy(service, agent, row)
+        self.factory.fail = True
+        run = service.work.admit(agent, service.work.read(agent)[0], now, manual=True)
+        asyncio.run(agent.run())
+        # Simulate observations retained before a provider failure.
+        import json
+        path = next((agent.root / 'usage').glob('*.json'))
+        attempt = json.loads(path.read_text())
+        attempt['observations'] = [{'excerpt':'Source unavailable', 'time':now.isoformat()}]
+        path.write_text(json.dumps(attempt))
+        service._sync(agent)
+        row = service.work.read(agent)[0]
+        item = row['feedback'][0]
+        self.assertEqual(item['status'], 'failed')
+        self.assertEqual(item['units'], 7)
+        self.assertIn('Scripted provider failure', item['error'])
+        self.assertEqual(item['observations'][0]['excerpt'], 'Source unavailable')
+        self.assertEqual(strategy.state(row), 'review_needed')
+        service = self.restart(service, start_worker=False)
+        service.scheduled(now+timedelta(days=1))
+        agent = service._agent(agent.agid)
+        self.assertEqual(len(self.factory.prompts), 1)
+        self.assertEqual(len(service.work.read(agent)[0]['feedback']), 1)
+        self.assertEqual(next(j['status'] for j in agent.state['jobs'] if j['id']==run), 'failed')
+        service.job_action(agent.agid, run, 'retry')
+        asyncio.run(agent.run())
+        service._sync(agent)
+        feedback = service.work.read(agent)[0]['feedback']
+        self.assertEqual(len(feedback), 2)
+        self.assertEqual(feedback[-1]['status'], 'failed')
+        self.assertEqual(feedback[-1]['observations'], [])
+
+    def test_interruption_overrides_an_earlier_success_checkpoint(self):
+        service, agent, row, now = self.setup_job()
+        with patch('sapiens.watch.observe', return_value=observation()): self.plan(service, agent, row)
+        row = service.work.read(agent)[0]
+        row['checkpoint'] = dict(run='interrupted-run', status='ok', outcome='useful')
+        strategy.feedback(row, dict(id='interrupted-run', status='interrupted',
+                          error='Runner stopped', budget_units=100), [])
+        self.assertEqual(row['feedback'][0]['outcome'], 'unknown')
         self.assertEqual(strategy.state(row), 'review_needed')
 
     def test_saved_checkpoint_belongs_to_its_run_and_policy_is_supplied(self):

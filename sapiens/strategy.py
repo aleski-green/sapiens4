@@ -24,9 +24,10 @@ or bypass host limits. If a capability is missing, save a blocked strategy namin
 the needed capability instead of silently falling back to expensive model polling.
 Treat saved strategy, checkpoints, and measured cost as working memory. Compare
 results against the success criterion; a completed model call is not success.
-If several runs produce no useful result, repeat tools, or exceed expected cost,
-revise the method or stop it. Do not increase budgets to hide inefficiency. Routine
-observations need a checkpoint, not consolidation. Do not optimize by dropping
+If runs lack evidence, encounter blockers, repeat tools, or exceed expected cost,
+revise the method or stop it. Do not increase budgets to hide inefficiency.
+Verified no-action decisions are valid outcomes; do not manufacture activity.
+Routine observations need a checkpoint, not consolidation. Do not optimize by dropping
 required coverage without saying so. Keep this planning concise and save decisions,
 not private reasoning. A director reviews the team's strategies and blockers;
 it must not duplicate every subordinate's observations or scans.
@@ -95,8 +96,13 @@ def save_plan(work, agent, data):
 def feedback(row, run, attempts):
     """Small measured feedback window, never full transcripts in the next prompt."""
     checkpoint = row.get('checkpoint', {})
-    outcome = checkpoint.get('outcome', 'unknown') if checkpoint.get('run') == run['id'] else 'unknown'
-    item = dict(run=run['id'], outcome=outcome, units=run.get('budget_units', 0),
+    status = run.get('status', 'done')
+    verified = (status == 'done' and checkpoint.get('run') == run['id']
+                and checkpoint.get('status') == 'ok')
+    outcome = checkpoint.get('outcome', 'unknown') if verified else 'unknown'
+    observations = [o for attempt in attempts for o in attempt.get('observations', [])][-3:]
+    item = dict(run=run['id'], status=status, outcome=outcome, units=run.get('budget_units', 0),
+                error=str(run.get('error') or '')[:500], observations=observations,
                 tools=sum(r.get('tools') or 0 for r in attempts),
                 repeated_tools=sum(r.get('repeated_tools') or 0 for r in attempts),
                 usage_unknown=any(not r.get('usage') for r in attempts) or not attempts)
@@ -105,12 +111,14 @@ def feedback(row, run, attempts):
         return
     recent = row['feedback']
     reasons = []
+    if status in {'failed', 'interrupted', 'conflict'}:
+        reasons.append('Execution stopped; diagnose recorded evidence before any explicit retry')
     if item['units'] > row['strategy']['expected_units']:
         reasons.append('Last run exceeded the strategy cost estimate')
     if item['repeated_tools'] >= 2:
         reasons.append('Last run repeated tool calls')
-    if len(recent) >= 2 and all(r['outcome'] in {'no_change', 'blocked', 'unknown'} for r in recent[-2:]):
-        reasons.append('Two runs produced no verified useful outcome')
+    if len(recent) >= 2 and all(r['outcome'] not in {'useful', 'no_change'} for r in recent[-2:]):
+        reasons.append('Two runs lack a verified outcome or adequate coverage')
     if reasons:
         row['strategy'].update(status='review_needed', reason='; '.join(reasons))
 

@@ -21,7 +21,7 @@ class Work:
 
     def blocking(self, agent):
         return [j for j in agent.state['jobs'] if j['status'] not in {'done', 'cancelled'}
-                and not (j['flow'] == 'learning' and j['status'] in {'failed', 'conflict', 'interrupted', 'budget_blocked'})]
+                and not (j['flow'] in {'learning', 'team_review'} and j['status'] in {'failed', 'conflict', 'interrupted', 'budget_blocked'})]
 
     def checkpoint(self, agent, data):
         from .service import APIError, text_field
@@ -62,7 +62,16 @@ class Work:
                 changed = True
             for ref in definition['runs']:
                 run = by_id.get(ref['id'])
-                if not run or run['status'] in {'queued','running','budget_blocked'} or ref.get('recorded') == run['status']:
+                if not run:
+                    continue
+                if run['status'] in {'queued','running','budget_blocked'}:
+                    # An explicit retry can fail with the same status again.
+                    # Reset the receipt so that attempt also contributes evidence.
+                    if 'recorded' in ref:
+                        ref.pop('recorded')
+                        changed = True
+                    continue
+                if ref.get('recorded') == run['status']:
                     continue
                 ref['recorded'] = run['status']
                 if ref.get('kind') == 'strategy':
@@ -92,8 +101,13 @@ class Work:
                 if run['status'] == 'done':
                     if verified and checkpoint.get('outcome') == 'useful':
                         definition['last_success'] = definition['last_observation']['time']
+                if run['status'] in {'done', 'failed', 'interrupted', 'conflict'}:
                     attempts = [json.loads(p.read_text()) for p in (agent.root/'usage').glob('*.json')]
-                    strategy.feedback(definition, run, [r for r in attempts if r.get('job') == run['id']])
+                    # Scheduled execution is one call. A retry retains the same
+                    # job ID; do not re-count its previous attempts' tool activity.
+                    attempts = sorted((r for r in attempts if r.get('job') == run['id']),
+                                      key=lambda r: r.get('started', r['time']))[-1:]
+                    strategy.feedback(definition, run, attempts)
                 changed = True
         if changed:
             self.save(agent, definitions)

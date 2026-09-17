@@ -35,12 +35,25 @@ goal. Those are the Sapi's decisions, with coverage limitations made explicit.
   current run. A successful provider response alone does not acknowledge a change
   or record goal success. A current `ok` checkpoint with `useful` or `no_change`
   can acknowledge the baseline; only `useful` records `last_success`.
+- Failed/interrupted executions retain their error, cost and recent observations
+  in strategy feedback and request diagnosis. They are not automatically replayed;
+  stopped executions still require explicit retry/dismissal.
 - Cost above the Sapi's estimate, two repeated tool calls in a run, or two runs
-  with no useful/known outcome suspend routine execution for strategy review.
+  without a verified outcome suspend routine execution for strategy review.
+  A completed run with a current `ok` / `no_change` checkpoint is a valid
+  decision to do nothing. Partial, stale or missing checkpoints do not qualify.
   Cost/tool counts are measured; usefulness remains the Sapi's assessment, not an
   independent semantic evaluator. The Sapi revises the plan or names a blocker.
 
 ## Bounds
+
+When team monitoring is enabled, a manager's scheduled check queues a brief
+review of new subordinate failures or recurring-job blockers. The reply appears
+in the manager's chat without a synthetic Human message. Unchanged problems do
+not trigger more calls. Reviews are batched (up to eight issues), limited to two
+calls per rolling day and subject to the manager's budget. Pending issues survive
+budget deferral and restarts. Reviews only recommend or ask a focused question;
+they do not replay failed actions. Failed briefings do not block Human chat.
 
 Automatic planning is limited to one setup per definition revision, one review
 per job per rolling day, and two planning calls across an agent's jobs per rolling
