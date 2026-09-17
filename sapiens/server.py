@@ -2,7 +2,7 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import logging
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlsplit, unquote
 
 from .assets import asset
 from .service import APIError
@@ -90,6 +90,14 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) == 4 and parts[:2] == ['api','agents'] and parts[3] == 'usage':
                 with service._lock:
                     return self._send(200, service.usage.report(service._agent(parts[2])))
+            if len(parts) == 5 and parts[:2] == ['api', 'agents'] and parts[3] == 'artifacts':
+                with service._lock:
+                    agent = service._agent(parts[2])
+                    file = service.workspace.path(agent, unquote(parts[4]))
+                    if not file.is_file():
+                        raise APIError(404, 'Artifact not found')
+                    # Raw text only: generated HTML is never served as same-origin script.
+                    return self._send(200, file.read_bytes(), 'text/plain; charset=utf-8')
             if path == "/api/health":
                 return self._send(200, {"status": "ok", "provider": "codex"})
             if path == "/":

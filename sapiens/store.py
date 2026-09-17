@@ -128,6 +128,11 @@ class Store:
                 "cursor": events[-1]["id"] if events else after, "latest_cursor": latest,
                 "preferences": json.loads(preferences[0]) if preferences else {}}
 
+    def read_preferences(self):
+        with self.connect() as db:
+            row = db.execute("SELECT value FROM preferences WHERE id=1").fetchone()
+        return json.loads(row[0]) if row else {}
+
     def preferences(self, value):
         with self.connect() as db:
             db.execute("INSERT INTO preferences VALUES (1,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value",

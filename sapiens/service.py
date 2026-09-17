@@ -20,6 +20,7 @@ from .hierarchy import Hierarchy
 from .work import Work
 from .tasks import Tasks
 from .recent import RecentContext
+from .workspace import Workspace
 
 
 class APIError(Exception):
@@ -65,6 +66,7 @@ class Service:
             raise RuntimeError("Another Sapiens4 server is using this data directory") from None
         self.store = Store(self.root / "corpora.sqlite3")
         self.usage = Usage(self.store)
+        self.workspace = Workspace(self)
         # Repair old repeated default faces once; the resulting avatars persist.
         used = set()
         for row in self.store.agents():
@@ -235,7 +237,11 @@ class Service:
             if self._stopping.is_set():
                 raise APIError(503, "Server is shutting down")
             agent = self._agent(agid)
-            if agid in self._background or self.work.blocking(agent):
+            # A failed attempt remains reviewable; a new message is not a retry.
+            waiting = any(j['status'] in {'queued', 'running'} or
+                          (j['status'] == 'budget_blocked' and j['flow'] not in {'learning', 'team_review'})
+                          for j in agent.state['jobs'])
+            if agid in self._background or waiting:
                 raise APIError(409, "Wait for this Sapi's job, or retry/dismiss the job needing attention")
             if not agent.can_admit(flow):
                 raise APIError(409, 'Budget allowance unavailable. Open Sapi settings for remaining allowance, reset time, and limits.')
@@ -319,7 +325,7 @@ class Service:
 
     def save_preferences(self, data):
         # Browser state never gets authority over runtime jobs, agents or computer ownership.
-        if set(data) - {"selected", "panel", "scope", "panes", "workspaces", "drafts", "attachment_drafts", "work_views"}:
+        if set(data) - {"selected", "panel", "scope", "panes", "workspaces", "drafts", "attachment_drafts", "work_views", "workspace_revision"}:
             raise APIError(400, "Unknown preference field")
         for field in ("panes", "workspaces", "drafts", "attachment_drafts", "work_views"):
             if field in data and not isinstance(data[field], dict):
@@ -352,8 +358,16 @@ class Service:
                     raise APIError(400, "Unknown tab type")
                 if any(k in tab and tab[k] is not None and not isinstance(tab[k], str) for k in ("url", "html")):
                     raise APIError(400, "Invalid tab content")
-        self.store.preferences(data)
-        return {"saved": True}
+        with self._lock:
+            current = self.store.read_preferences()
+            revision = current.get('workspace_revision', 0)
+            if 'workspaces' in data and data.get('workspace_revision', 0) != revision:
+                raise APIError(409, 'Workspace changed; refresh before saving')
+            changed = 'workspaces' in data and data['workspaces'] != current.get('workspaces', {})
+            current.update(data)
+            current['workspace_revision'] = revision + int(changed)
+            self.store.preferences(current)
+            return {"saved": True, "preferences": current}
 
     def scheduled(self, instant=None):
         """One serialized scheduling pass, also callable with a clock in tests."""

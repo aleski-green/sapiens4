@@ -13,7 +13,7 @@ let uploading = 0;
 const nameRule = /^[A-Z][A-Za-z0-9_.:#+|()&$^\-]*$/;
 const nameHelp = 'Start with A–Z. Letters, numbers, and - _ . : # + | ( ) & $ ^ are allowed. No spaces.';
 const attention = new Set(['failed','interrupted','conflict','budget_blocked']);
-const blocksChat = job => !['done','cancelled'].includes(job.status) && !(['learning','team_review'].includes(job.flow) && attention.has(job.status));
+const blocksChat = job => ['queued','running','budget_blocked'].includes(job.status) && !(['learning','team_review'].includes(job.flow) && attention.has(job.status));
 const statusNames = {queued:'Queued',running:'Running',done:'Completed',failed:'Failed',
   interrupted:'Interrupted',conflict:'Needs review',budget_blocked:'Budget blocked',cancelled:'Dismissed'};
 const displayTime = value => new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
@@ -22,7 +22,7 @@ const originalConversation = renderConversation;
 function preferences() {
   storeWorkspace();
   return {selected:state.selected,panel:state.panel,scope:state.scope,panes:state.panes,
-    workspaces:state.workspaces,drafts:state.drafts,work_views:workViews,
+    workspaces:state.workspaces,workspace_revision:workspaceRevision,drafts:state.drafts,work_views:workViews,
     attachment_drafts:Object.fromEntries(Object.entries(attachmentDrafts).map(([id, items]) => [id, items.map(a => a.id)]))};
 }
 save = function() {
@@ -35,12 +35,20 @@ async function flushPreferences() {
   if (value === savedPreferences) return;
   saving = true;
   try {
-    await api('/api/preferences', 'PUT', JSON.parse(value));
-    savedPreferences = value;
+    const sent = JSON.parse(value);
+    workspacePending = sent.workspaces;
+    const response = await api('/api/preferences', 'PUT', sent);
+    receiveWorkspaces(response.preferences, sent.workspaces);
+    savedPreferences = JSON.stringify({...sent,workspace_revision:response.preferences.workspace_revision});
   } catch (error) {
-    toast(`Workspace changes are not saved yet: ${error.message}`);
+    if (error.message.includes('Workspace changed')) {
+      const snapshot = await api('/api/state');
+      receiveWorkspaces(snapshot.preferences);
+      renderTabs(); renderWorkspace();
+    } else toast(`Workspace changes are not saved yet: ${error.message}`);
   } finally {
     saving = false;
+    workspacePending = null;
     if (JSON.stringify(preferences()) !== savedPreferences) saveTimer = setTimeout(flushPreferences, 2000);
   }
 }
@@ -53,6 +61,7 @@ function jobActions(job) {
 }
 
 function applySnapshot(snapshot) {
+  receiveWorkspaces(snapshot.preferences);
   live = snapshot;
   const known = new Set(eventRows.map(e => e.id));
   eventRows.push(...snapshot.events.filter(e => !known.has(e.id)));
@@ -409,7 +418,9 @@ async function refresh() {
       const changed = JSON.stringify([snapshot.agents,snapshot.jobs,snapshot.computer,snapshot.orchestration,snapshot.task_assignments,snapshot.task_updates]) !== JSON.stringify([live.agents,live.jobs,live.computer,live.orchestration,live.task_assignments,live.task_updates]) || snapshot.events.length;
       const reconnected = !online;
       online = true;
+      const tabsChanged = (snapshot.preferences.workspace_revision || 0) > workspaceRevision;
       applySnapshot(snapshot);
+      if (tabsChanged) {renderTabs(); renderWorkspace();}
       if (changed || reconnected) {
         renderSidebar(); renderConversation(); renderGlobal();
         if ($('#task-details-body')) refreshTaskDialog();

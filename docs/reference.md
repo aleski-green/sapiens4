@@ -277,3 +277,23 @@ for accounting, historical-data limitations, and scheduling behavior.
 Recurring inbox watchers now check a saved observation plan before calling the model. Unchanged checks consume no model tokens. Each Sapi chooses and tests its own strategy before routine execution. A missing plan gets one bounded setup turn; costly or unproductive runs trigger a bounded review. See [agent-owned strategies](agent-owned-strategies.md) for the lifecycle and current execution limits. Configure chat scope, cooldown and hourly/daily wake limits under **Jobs → Edit**. Explicit generative jobs can opt into interval-based model calls.
 
 The **…** settings are split into **Profile, Schedule, Memory, Usage and Limits**. See [script-first watchers](script-first-watchers.md) for the investigation, configuration, coverage limits and validation.
+
+### Sapi workspace operations
+
+Each Sapi sees its current tab titles/IDs and saved artifact names in
+`host-facts.workspace`. Through host-control it can use `workspace`,
+`artifact_save`, `artifact_read`, `workspace_open`, and `workspace_close`.
+`artifact_save` accepts text or a relative UTF-8 source file in that Sapi's
+workspace. It saves `.md`, `.html`, `.txt`, or `.json` under `artifacts/` and
+opens its tab by default. Saving the same name updates the document/dashboard.
+HTML dashboards run in an isolated frame with inline scripts and no network
+access. Plain-text artifact URLs never execute generated HTML in the host origin.
+
+Tabs synchronize live with the UI. Workspace revisions reject stale browser
+writes; reconciliation keeps independent browser edits and host-created tabs.
+A failed or interrupted run remains available for review, but does not prevent
+new chat. Sending a follow-up does not retry the failed run. Tool-limit stops
+retain the last observation and identify artifacts saved during that attempt.
+
+Focused checks: `PYTHONPATH=tests python3 -m unittest test_workspace -v` and
+`node tests/workspace_merge.test.cjs`.
