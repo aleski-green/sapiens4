@@ -1,11 +1,11 @@
-import argparse
 from pathlib import Path
+import argparse
 import signal
 import threading
 import webbrowser
 
 from .assets import index, javascript
-from .runtime import ROOT
+from .paths import ROOT
 from .server import Server
 from .service import Service
 

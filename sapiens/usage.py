@@ -6,8 +6,10 @@ input + output + ceil(cached input / 10). Raw provider counters stay intact.
 from datetime import datetime, timedelta, timezone
 import json
 import math
-from uuid import uuid4
-from agentpy.storage import atomic_bytes
+
+from .sdk import atomic_bytes
+from .validation import APIError
+
 
 DEFAULTS = dict(weekly_limit=1_000_000, call_allowance=100_000,
                 max_tools=16, timeout_seconds=120, output_tokens=1200)
@@ -29,7 +31,6 @@ def settings(agent):
 
 
 def validate(data):
-    from .service import APIError
     ranges = dict(weekly_limit=(1000, 100_000_000), call_allowance=(1000, 1_000_000),
                   max_tools=(1, 100), timeout_seconds=(15, 600), output_tokens=(200, 8000))
     if not isinstance(data, dict) or set(data) != set(ranges):

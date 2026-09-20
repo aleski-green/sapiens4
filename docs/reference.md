@@ -34,6 +34,15 @@ this avoids using an older npm CLI with a model supported by the desktop app.
 To choose explicitly, set `SAPIENS_CODEX_BINARY=/absolute/path/to/codex` before
 starting. No global Codex settings are changed.
 
+## Python import boundaries
+
+Host modules use module-level imports with an acyclic dependency graph. Shared
+request validation, UTC time, and repository paths live in `validation.py`,
+`clock.py`, and `paths.py`; `sdk.py` is the single import boundary for AgentPy.
+Helpers do not import the application service. The import architecture tests
+check all conditional branches, reject function/class imports, and import each
+host module in a fresh process to catch initialization-order dependencies.
+
 ## First iteration
 
 - Create and rename individual Sapis; their name and role become runtime manifests.
@@ -319,12 +328,24 @@ these pages reuse the same observation for 90 seconds. This is bounded coverage,
 not proof that the newest or every message was read. `find` results are compacted
 before applying the output limit.
 
-When a tool limit interrupts a run that saved an artifact, the host returns a
+When a tool limit or timeout interrupts a run that saved an artifact, the host returns a
 **Warning** with the artifact reference and incomplete-coverage notice, without
 another model call or automatic retry. The SDK records a terminal run with warning
 metadata; CORPORA displays Warning rather than Completed or Failed. Budget usage
 remains unknown when the provider did not report it; the existing conservative
 charge is retained. Runs without a saved deliverable still report the error.
+
+Conversation agents receive a hard execution deadline and a finish-by time that
+reserves the last quarter of the allowance (up to 30 seconds) for saving and replying.
+Host-control receipts include remaining seconds, tool calls, and a `save_and_finish`
+phase; `{"op":"execution"}` reads the clock directly. The hard timeout remains
+enforced even if an agent ignores that guidance.
+
+`{"op":"budget_diagnostics"}` returns current allowances, admission requirements,
+reset times, classified execution errors, and unknown-usage fallback charges.
+Optional `target`, `offset`, and `limit` narrow and paginate saved evidence without
+model calls. Fallback charges cover retained history and are not measured tokens.
+Failed and dismissed chat requests retain a compact status toggle with details.
 
 After computer use, the host attempts to bring the originating browser/Codex app
 back to the foreground, including on errors and timeouts. If no browser origin

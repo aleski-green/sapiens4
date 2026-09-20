@@ -6,15 +6,13 @@ telemetry and cache-aware admission. No provider counters are rewritten.
 from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
-import json
 from uuid import uuid4
 from zoneinfo import ZoneInfo
+import json
 
-from agentpy.runtime import PersistentAgent
-from agentpy.lifecycle import Outcome, Python
-from agentpy.interfaces import LLMSpec
-from agentpy.storage import atomic_bytes
-from .usage import settings, counters, backfill, save_record
+from .memory import fingerprint, inputs
+from .sdk import LLMSpec, Outcome, PersistentAgent, Python, atomic_bytes
+from .usage import backfill, counters, save_record, settings
 
 
 class SapiAgent(PersistentAgent):
@@ -77,7 +75,6 @@ class SapiAgent(PersistentAgent):
         else:
             job.pop('error', None)
             if job['flow'] == 'learning':
-                from .memory import fingerprint, inputs
                 job['memory_input_fingerprint'] = fingerprint(inputs(state, self.manifests))
         return value
 

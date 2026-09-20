@@ -1,13 +1,14 @@
 """Small launch-only helper; all UI observation and interaction stays in Blindly4."""
+from pathlib import Path
 import json
 import subprocess
 import sys
 
-try:
+
+if __package__:
     from .computer_read import compact, read
-except ImportError:
+else:  # Support the agent-facing `python /path/to/sapiens/computer.py` command.
     from computer_read import compact, read
-from pathlib import Path
 
 
 def bounded_output(text, limit):

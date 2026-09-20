@@ -1,8 +1,8 @@
 """Bounded, durable director briefings for new actionable team problems."""
 from datetime import datetime, timedelta
+from uuid import uuid4
 import hashlib
 import json
-from uuid import uuid4
 
 
 def enqueue_review(service, agent, team, instant):

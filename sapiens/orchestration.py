@@ -1,19 +1,21 @@
 """Host scheduling and validated operations; runtime data stays with AgentPy."""
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+from uuid import uuid4
 import hashlib
 import json
 import shlex
 import sys
-from uuid import uuid4
 
-from .runtime import ROOT
-from .strategy import OPERATING_POLICY
-from agentpy.storage import atomic_bytes
-
-
-def utcnow():
-    return datetime.now(timezone.utc)
+from .clock import utcnow
+from .diagnostics import report
+from .execution import read
+from .memory import current_fingerprint, last_fingerprint
+from .paths import ROOT
+from .sdk import atomic_bytes
+from .strategy import OPERATING_POLICY, save_plan
+from .team_review import enqueue_review
+from .validation import APIError, text_field
 
 
 class Orchestration:
@@ -48,6 +50,15 @@ class Orchestration:
             command = " ".join(shlex.quote(str(p)) for p in (sys.executable, ROOT / "sapiens/control.py", path))
             agent.set_manifest("host-control", f"""Internal Sapiens4 operations: run {command} '<JSON object>'.
 Pass a JSON object with op and the fields below. Quote JSON safely for the shell.
+- budget_diagnostics: read-only token-budget and execution-error report for all
+  Sapis. Optional target (Sapi name or ID), offset, limit (1–20, default 10).
+  Use this first for budget investigations. Includes remaining allowances, chat
+  and consolidation admission requirements, reset times, classified failures,
+  and fallback charges where actual usage is unknown. Follow next_offset only
+  if needed; save findings before expanding the investigation into source code.
+- execution: current deadline, remaining seconds/tool calls, and phase. During
+  save_and_finish stop discovery, save useful partial findings, and reply.
+  Host-control command receipts also include this execution clock.
 - status: compact current self facts and team progress. Optional target (unique
   Sapi name or ID) selects whose own schedule/recurring jobs to inspect. Each
   member has its own recurring_jobs; an empty self list says nothing about others.
@@ -165,7 +176,6 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                     recurring_jobs=[self.service.work.public_definition(j) for j in self.service.work.read(agent)])
 
     def resolve(self, value):
-        from .service import APIError
         rows = self.service.store.agents()
         matches = [r for r in rows if r["id"] == value]
         if not matches and isinstance(value, str):
@@ -175,7 +185,6 @@ The returned saved facts are authoritative. Do not replay old chat requests.
         return self.service._agent(matches[0]["id"])
 
     def validate_schedule(self, agent, data):
-        from .service import APIError
         if not isinstance(data, dict) or set(data) - {"minutes", "enabled", "monitor_team"}:
             raise APIError(400, "Invalid schedule fields")
         settings = self.settings(agent)
@@ -193,11 +202,11 @@ The returned saved facts are authoritative. Do not replay old chat requests.
         return settings
 
     def control(self, agid, data):
-        from .service import APIError, text_field
         with self.service._lock:
             agent = self.service._agent(agid)
             op = data.get("op")
-            fields = {"status": {'target'}, "schedule": {"minutes", "enabled", "monitor_team"},
+            fields = {"status": {'target'}, "budget_diagnostics": {'target', 'offset', 'limit'},
+                      "execution": set(), "schedule": {"minutes", "enabled", "monitor_team"},
                       "manager": {"manager", "target"}, "task": {"title", "due", "name", "target"},
                       "task_comment": {"id", "text"}, "finish_task": {"id"}, "run_task": {"id"}, "run_job": {"id"},
                       "rename_task": {"id", "name"},
@@ -210,6 +219,12 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             if not isinstance(op, str) or op not in fields or set(data) - fields[op] - {"op"}:
                 raise APIError(400, "Unknown operation or field")
             result = {}
+            if op == 'budget_diagnostics':
+                targets = [self.resolve(data['target'])] if 'target' in data else [
+                    self.service._agent(row['id']) for row in self.service.store.agents()]
+                return report(self.service, targets, data.get('offset', 0), data.get('limit', 10))
+            if op == 'execution':
+                return {'execution': read(self.service.workspace.root(agent))}
             if op == 'workspace':
                 return self.service.workspace.summary(agent)
             if op == 'artifact_read':
@@ -253,7 +268,6 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             elif op == "run_job":
                 result['run_id'] = self.service.work.run_now(agent, text_field(data, 'id', 64))
             elif op == 'strategy':
-                from .strategy import save_plan
                 result['strategy'] = save_plan(self.service.work, agent, data)
             elif op == 'checkpoint':
                 result['checkpoint'] = self.service.work.checkpoint(agent, data)
@@ -263,7 +277,6 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 settings = self.settings(agent)
                 learning = [j for j in agent.state['jobs'] if j['flow'] == 'learning'
                             and j['status'] not in {'done', 'cancelled'}]
-                from .memory import current_fingerprint, last_fingerprint
                 if not learning and not settings['consolidate_requested'] and current_fingerprint(self.service, agent) == last_fingerprint(agent):
                     return {'self_id': agent.agid, 'saved': True, 'status': 'unchanged'}
                 if not settings['consolidate_requested'] and not learning:
@@ -297,7 +310,6 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 self.service.store.event(agent.agid, "team_check", json.dumps(team, ensure_ascii=False))
             settings["team_digest"] = digest
             settings["team_checked_at"] = instant.isoformat()
-            from .team_review import enqueue_review
             enqueue_review(self.service, agent, team, instant)
         self.save(agent, settings)
         self.service.store.event(agent.agid, "heartbeat", "Checked due tasks and " +

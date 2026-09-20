@@ -1,11 +1,11 @@
 """Persistent, globally unique mention tags for local workspace artifacts."""
+from pathlib import Path
+from urllib.parse import quote
 import json
 import re
 import secrets
-from pathlib import Path
-from urllib.parse import quote
 
-from agentpy.storage import atomic_bytes
+from .sdk import atomic_bytes
 
 
 class Artifacts:

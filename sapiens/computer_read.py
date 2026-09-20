@@ -1,10 +1,11 @@
 """Bounded, paginated reads over the unchanged Blindly CLI."""
+from pathlib import Path
+from uuid import uuid4
 import argparse
 import json
-from pathlib import Path
 import re
 import time
-from uuid import uuid4
+
 
 FIELDS = {'path', 'pid', 'role', 'subrole', 'title', 'description', 'value',
           'identifier', 'enabled', 'focused', 'selected', 'actions'}

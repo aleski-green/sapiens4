@@ -1,47 +1,33 @@
 """One local host, serialized execution, and recoverable UI projections."""
-import asyncio
-import secrets
-import fcntl
-import os
 from pathlib import Path
-import queue
-import re
-import threading
+from uuid import uuid4
+import asyncio
+import fcntl
 import hashlib
 import json
-from uuid import uuid4
+import os
+import queue
+import re
+import secrets
+import threading
 
-from .runtime import Config, Limits, LocalFactory, ROOT, SDK, codex_binary, computer_manifest, computer_guide
 from .agent import SapiAgent
-from .usage import Usage, settings as execution_settings, validate as validate_execution
-from .store import Store, now
-from .orchestration import Orchestration, utcnow
-from .hierarchy import Hierarchy
-from .work import Work
-from .tasks import Tasks
-from .recent import RecentContext
-from .workspace import Workspace
 from .artifacts import Artifacts
-
-
-class APIError(Exception):
-    def __init__(self, status, message):
-        super().__init__(message)
-        self.status = status
-
-
-def text_field(data, field, maximum):
-    value = data.get(field)
-    if not isinstance(value, str) or not value.strip() or len(value) > maximum:
-        raise APIError(400, f"{field} must be nonempty text, at most {maximum} characters")
-    return value.strip()
-
-
-def sapi_name(data):
-    value = text_field(data, "name", 24)
-    if value != data["name"] or not re.fullmatch(r"[A-Z][A-Za-z0-9_.:#+|()&$^\-]*", value):
-        raise APIError(400, "Name must start with A–Z; use letters, numbers, or - _ . : # + | ( ) & $ ^ (no spaces)")
-    return value
+from .attachments import attachment_prompt, resolve_attachments
+from .clock import utcnow
+from .hierarchy import Hierarchy
+from .memory import current_fingerprint, last_fingerprint
+from .orchestration import Orchestration
+from .paths import ROOT, SDK
+from .recent import RecentContext
+from .runtime import Config, LocalFactory, codex_binary, computer_guide, computer_manifest
+from .sdk import Limits
+from .store import Store, now
+from .tasks import Tasks
+from .usage import Usage, settings as execution_settings, validate as validate_execution
+from .validation import APIError, sapi_name, text_field
+from .work import Work
+from .workspace import Workspace
 
 
 def random_avatar(used):
@@ -223,7 +209,6 @@ class Service:
         if not isinstance(raw_text, str) or len(raw_text) > 16000:
             raise APIError(400, "Message must be text, at most 16000 characters")
         text = raw_text.strip()
-        from .attachments import resolve_attachments, attachment_prompt
         attachments = resolve_attachments(self, agid, data.get("attachments", []))
         if not text and not attachments:
             raise APIError(400, "Write a message or attach a file")
@@ -306,7 +291,6 @@ class Service:
             return snapshot
 
     def memory_status(self, agent, jobs):
-        from .memory import current_fingerprint, last_fingerprint
         settings = self.orchestration.settings(agent)
         runs = [j for j in jobs if j['agent'] == agent.agid and j['flow'] == 'learning']
         run = next((j for j in reversed(runs) if j['status'] not in {'done', 'cancelled'}), None)
@@ -348,7 +332,6 @@ class Service:
         for key, value in data.get("drafts", {}).items():
             if not isinstance(value, str) or len(value) > 16000:
                 raise APIError(400, "Invalid draft")
-        from .attachments import resolve_attachments
         for agid, ids in data.get("attachment_drafts", {}).items():
             resolve_attachments(self, agid, ids, check_files=False)
         for key, workspace in data.get("workspaces", {}).items():
@@ -385,7 +368,6 @@ class Service:
             if any(j['flow'] == 'learning' and j['status'] not in {'done', 'cancelled'}
                    for j in agent.state['jobs']):
                 return True
-            from .memory import current_fingerprint, last_fingerprint
             if current_fingerprint(self, agent) == last_fingerprint(agent):
                 settings['consolidate_requested'] = False
                 self.orchestration.save(agent, settings)

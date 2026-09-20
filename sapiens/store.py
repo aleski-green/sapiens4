@@ -1,8 +1,8 @@
 """SQLite UI metadata and durable projections. AgentPy owns runtime state."""
 from contextlib import contextmanager
 from datetime import datetime, timezone
-import json
 from pathlib import Path
+import json
 import sqlite3
 
 

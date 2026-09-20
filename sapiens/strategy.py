@@ -5,6 +5,8 @@ import json
 import subprocess
 
 from . import watch
+from .clock import utcnow
+from .validation import APIError, text_field
 
 
 OPERATING_POLICY = """Own the method as well as the goal. Before using tools, decide what evidence
@@ -47,8 +49,6 @@ def state(row):
 
 
 def save_plan(work, agent, data):
-    from .service import APIError, text_field
-    from .orchestration import utcnow
     rows = work.read(agent)
     row = next((r for r in rows if r['id'] == data.get('id')), None)
     if row is None:

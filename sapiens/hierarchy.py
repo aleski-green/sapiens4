@@ -1,4 +1,7 @@
 """One main orchestrator; every other Sapi belongs to its reporting tree."""
+from .validation import APIError
+
+
 class Hierarchy:
     def __init__(self, service):
         self.service = service
@@ -20,7 +23,6 @@ class Hierarchy:
                 root.corpora.register(row['id'], parent=main, scope=entry['scope'])
 
     def validate(self, agid, manager):
-        from .service import APIError
         if agid == self.main:
             if manager is not None:
                 raise APIError(400, 'The main orchestrator cannot have a manager')

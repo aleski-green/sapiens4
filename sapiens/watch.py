@@ -11,12 +11,13 @@ import re
 import subprocess
 import unicodedata
 
+from .validation import APIError
+
 
 DEFAULTS = dict(mode='changes', probe=None, cooldown_minutes=30, max_per_hour=2, max_per_day=8)
 
 
 def validate(value):
-    from .service import APIError
     if not isinstance(value, dict) or set(value)-set(DEFAULTS):
         raise APIError(400, 'Invalid watcher plan')
     result = {**DEFAULTS, **value}

@@ -1,11 +1,12 @@
 """Agent-owned artifacts and workspace tabs, shared with the browser UI."""
 from html import escape
 from pathlib import Path
-import re
 from urllib.parse import quote, urlsplit
 from uuid import uuid4
+import re
 
-from agentpy.storage import atomic_bytes
+from .sdk import atomic_bytes
+from .validation import APIError
 
 
 class Workspace:
@@ -16,7 +17,6 @@ class Workspace:
         return self.service.root / 'workspaces' / agent.agid
 
     def path(self, agent, name):
-        from .service import APIError
         name = self.service.artifacts.resolve(agent.agid, name)
         if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,99}\.(md|html|txt|json)', name):
             raise APIError(400, 'Artifact name must be a filename ending in .md, .html, .txt or .json')
@@ -35,7 +35,6 @@ class Workspace:
                   for t in ws.get('tabs', [])], artifacts=[dict(r,name=r['filename']) for r in artifacts])
 
     def save(self, agent, data):
-        from .service import APIError
         path = self.path(agent, data.get('name'))
         if ('content' in data) == ('path' in data):
             raise APIError(400, 'Supply either content or a relative path to a UTF-8 file in your workspace')
@@ -79,7 +78,6 @@ class Workspace:
         return result
 
     def read(self, agent, name):
-        from .service import APIError
         path = self.path(agent, name)
         if not path.is_file():
             raise APIError(404, 'Artifact not found')
@@ -91,7 +89,6 @@ class Workspace:
         self.service.store.preferences(prefs)
 
     def open(self, agent, data):
-        from .service import APIError
         prefs = self.service.store.read_preferences()
         ws = prefs.setdefault('workspaces', {}).setdefault(agent.agid, {'tabs': []})
         tabs = ws['tabs']
@@ -130,7 +127,6 @@ class Workspace:
         return {k: v for k, v in value.items() if k != 'html'}
 
     def close(self, agent, tab_id):
-        from .service import APIError
         prefs = self.service.store.read_preferences()
         ws = prefs.get('workspaces', {}).get(agent.agid, {})
         tabs = ws.get('tabs', [])

@@ -1,9 +1,10 @@
 """Return to the CORPORA host after a bounded computer attempt."""
-import json
 from pathlib import Path
+from urllib.parse import urlsplit
+import json
 import subprocess
 import sys
-from urllib.parse import urlsplit
+
 
 BROWSERS = {'com.openai.codex', 'com.google.Chrome', 'com.apple.Safari', 'com.microsoft.edgemac', 'org.mozilla.firefox'}
 

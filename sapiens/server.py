@@ -1,11 +1,12 @@
 """Same-origin loopback HTTP API; no login or external Python dependencies."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, unquote, urlsplit
 import json
 import logging
-from urllib.parse import parse_qs, urlsplit, unquote
 
 from .assets import asset
-from .service import APIError
+from .attachments import create_attachment
+from .validation import APIError
 
 
 class Server(ThreadingHTTPServer):
@@ -118,7 +119,6 @@ class Handler(BaseHTTPRequestHandler):
                 if len(parts) == 3 and self.command == "PUT":
                     return self._send(200, service.update_agent(parts[2], data))
                 if len(parts) == 4 and parts[3] == "attachments" and self.command == "POST":
-                    from .attachments import create_attachment
                     return self._send(201, create_attachment(service, parts[2], data))
                 if len(parts) == 4 and parts[3] == "messages" and self.command == "POST":
                     return self._send(202, service.submit(parts[2], data))

@@ -1,13 +1,14 @@
 """Local chat references and uploads, scoped to the receiving Sapi."""
+from pathlib import Path
+from urllib.parse import urlsplit
+from uuid import uuid4
 import base64
 import binascii
 import json
 import os
-from pathlib import Path
-from urllib.parse import urlsplit
-from uuid import uuid4
 
-from .service import APIError, text_field
+from .validation import APIError, text_field
+
 
 MAX_FILE = 10 * 1024 * 1024
 

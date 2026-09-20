@@ -75,8 +75,17 @@ function chatResult(job) {
   const text = job.output || '';
   if (job.status !== 'warning') return {text};
   // Only split the host-generated limit notice; preserve ordinary Sapi answers.
-  const notice = /^Warning — partial result\.\n\n(Saved: [\s\S]+?)\n\n(The tool limit was reached after [\s\S]+)$/.exec(text);
+  const notice = /^Warning — partial result\.\n\n(Saved: [\s\S]+?)\n\n(The (?:tool|time) limit was reached after [\s\S]+)$/.exec(text);
   return {text:notice ? notice[1] : text, warning:notice ? notice[2] : job.error || 'Partial result; review before relying on it.'};
+}
+
+function requestStatus(job) {
+  if (!attention.has(job.status) && job.status !== 'cancelled') return null;
+  const error = job.error || '';
+  const reason = /TimeoutError|time limit|exceeded \d+(?:\.\d+)?s/i.test(error) ? 'Timed out' :
+    /tool-step limit|tool limit/i.test(error) ? 'Tool limit reached' : null;
+  return {label: reason ? reason + (job.status === 'cancelled' ? ' · Dismissed' : '') : statusNames[job.status],
+    detail: error.split('\n')[0] || (job.status === 'cancelled' ? 'This request was dismissed.' : 'This request needs attention.')};
 }
 
 function applySnapshot(snapshot) {
@@ -94,7 +103,7 @@ function applySnapshot(snapshot) {
   for (const job of snapshot.jobs) {
     const messages = state.messages[job.agent] ||= [];
     const timestamp = Date.parse(job.created);
-    if (['chat','computer'].includes(job.flow)) messages.push({role:'user',text:job.input,time:displayTime(job.created),timestamp,attachments:job.attachments});
+    if (['chat','computer'].includes(job.flow)) messages.push({role:'user',text:job.input,time:displayTime(job.created),timestamp,attachments:job.attachments,requestJob:job});
     if (['chat','computer','team_review'].includes(job.flow) && ['done','warning'].includes(job.status) && job.output !== null) {
       messages.push({role:'assistant',...chatResult(job),time:displayTime(job.created),timestamp,jobId:job.id});
     }
@@ -174,6 +183,12 @@ renderConversation = function() {
     host.querySelector('.typing')?.remove();
     host.querySelectorAll('.message').forEach((node,i) => {
       const message=getMessages(state.selected)[i];
+      const request = message?.requestJob, requestState = request && requestStatus(request);
+      if (requestState) {
+        const key = `request-${request.id}`, expanded = expandedWarnings.has(key);
+        node.querySelector('.message-meta').insertAdjacentHTML('beforeend', `<button type="button" class="warning-badge" data-warning-toggle="${esc(key)}" aria-expanded="${expanded}" aria-controls="${esc(key)}">${esc(requestState.label)}</button>`);
+        node.querySelector('.message-bubble').insertAdjacentHTML('afterbegin', `<div class="warning-details" id="${esc(key)}" ${expanded ? '' : 'hidden'}><p>${esc(requestState.detail)}</p><p>No final reply was saved for this request.</p>${jobActions(request)}</div>`);
+      }
       if (message?.warning) {
         node.classList.add('warning-message');
         const expanded = expandedWarnings.has(message.jobId);
@@ -193,8 +208,7 @@ renderConversation = function() {
       if (attachments.length) node.querySelector('.message-bubble').insertAdjacentHTML('beforeend', `<div class="message-attachments">${attachments.map(attachmentLabel).join('')}</div>`);
     });
     if (!getMessages(state.selected).length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
-    const latestChat = jobs.filter(j => ['chat','computer'].includes(j.flow)).at(-1);
-    const job = jobs.find(blocksChat) || (latestChat && attention.has(latestChat.status) ? latestChat : null);
+    const job = jobs.find(j => blocksChat(j) && !(attention.has(j.status) && ['chat','computer'].includes(j.flow)));
     if (job) {
       const started = eventRows.slice().reverse().find(e => e.job === job.id && e.kind === 'started');
       const event = eventRows.slice().reverse().find(e => e.job === job.id && e.kind === 'codex' && (!started || e.time >= started.time));

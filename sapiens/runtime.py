@@ -1,24 +1,21 @@
 """Load the pinned SDK and configure the host's two user-facing flows."""
-from pathlib import Path
-from functools import lru_cache
-import os
-import json
 from datetime import datetime, timezone
+from functools import lru_cache
+from hashlib import sha256
+import json
+import os
 import re
 import shlex
 import shutil
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parent.parent
-SDK = ROOT / "lab-sapiens-rnd"
-if not (SDK / "agentpy").is_dir():
-    raise RuntimeError("Missing SDK. Run: git submodule update --init --recursive")
-sys.path.insert(0, str(SDK))
-
-from agentpy import AgentPy, Flow, Limits, Role, Request  # noqa: E402
-from agentpy_codex import CodexFactory, CodexLLM  # noqa: E402
-from config import Config as SDKConfig  # noqa: E402
+from .execution import start
+from .foreground import ForegroundReturn
+from .paths import ROOT
+from .recent import RecentContext, observation
+from .sdk import CodexFactory, CodexLLM, Flow, Request, Role, SDKConfig, atomic_bytes
+from .usage import DEFAULTS
 
 
 class Config(SDKConfig):
@@ -44,6 +41,10 @@ answered by host-facts, use that fresh saved snapshot directly; call status only
 for more detail. The host refreshes host-facts before each conversation.
 A conversational acknowledgement does not save a setting. Never claim a queued
 job is completed. Use current host facts over stale claims in chat or memory.
+For token-budget or execution-error investigations, call host-control budget_diagnostics
+first. It reports current allowances, blocked runs, timeouts, tool limits, and
+unknown-usage charges. Narrow by target and paginate only when needed. Save the
+useful findings before inspecting source code for a specific unresolved cause.
 For an ambiguous Sapi name ask the user; never guess an ID. Team job completion
 does not by itself prove the user's objective succeeded.
 Recurring watchers must use a deterministic change detector before model work.
@@ -118,8 +119,6 @@ class ToolLimitReached(RuntimeError):
 
 class LocalLLM(CodexLLM):
     def complete(self, prompt):
-        from .recent import RecentContext
-        from .foreground import ForegroundReturn
         foreground = ForegroundReturn(self.workdir)
         self.warning = None
         self._recent = RecentContext(self.workdir)
@@ -131,27 +130,41 @@ class LocalLLM(CodexLLM):
         self._retain = self.spec.role in {'conversation', 'react'} and getattr(self, 'retain_context', True)
         answer, error = '', None
         self._artifacts_before = self._artifact_versions()
+        self._clock = start(self.timeout_seconds, getattr(self, 'max_tools', 16))
+        self._save_clock()
         if self.spec.role in {'conversation', 'react'}:
             prompt += (f"\nExecution allowance: at most {getattr(self, 'max_tools', 16)} tool calls. "
                    "Reserve the last two calls for saving/verifying the deliverable. "
                    "If discovery is not converging, stop exploration, preserve useful work and "
                    "give a concise final answer with the blocker. Do not use all calls on setup.\n")
+            prompt += (f"Hard execution deadline: {self._clock['deadline']} UTC "
+                       f"({self.timeout_seconds:g} seconds total). Stop discovery by "
+                       f"{self._clock['finish_by']} and use the remaining time to save and reply. "
+                       "Save useful findings incrementally with artifact_save; do not wait for complete coverage. "
+                       "Host-control receipts include an execution clock; op execution reads it directly. "
+                       "When phase is save_and_finish, stop investigating, save partial findings, state what "
+                       "remains unverified, and finish. Do not increase your limits or start another run.\n")
         try:
             answer = super().complete(prompt + (self._recent.context((getattr(self, 'current_request', '') or prompt)) if self._retain else ''))
             return answer
-        except ToolLimitReached as exc:
+        except (ToolLimitReached, TimeoutError) as exc:
             changed = [name for name, version in self._artifact_versions().items()
                        if self._artifacts_before.get(name) != version]
             if not changed:
                 error = type(exc).__name__
                 raise
-            self.warning = 'Tool limit reached; saved work is available, but the request is not fully verified.'
-            answer = self._partial_answer(changed)
+            reason = ('The time limit was reached after ' + str(self.timeout_seconds) + ' seconds.'
+                      if isinstance(exc, TimeoutError) else
+                      'The tool limit was reached after ' + str(self.tool_count) + ' calls.')
+            self.warning = reason + ' Saved work is available, but the request is not fully verified.'
+            answer = self._partial_answer(changed, reason)
             return answer
         except Exception as exc:
             error = type(exc).__name__
             raise
         finally:
+            self._clock['active'] = False
+            self._save_clock()
             restore_warning = foreground.restore()
             if restore_warning:
                 self.event_sink(restore_warning)
@@ -164,7 +177,6 @@ class LocalLLM(CodexLLM):
         if event.get('type') == 'item.completed' and item.get('type') in {'command_execution', 'mcp_tool_call', 'web_search'}:
             sink = getattr(self, 'observation_sink', None)
             if sink:
-                from .recent import observation
                 sink(observation(item))
             identity = item.get('id') or str(self.tool_count)
             if identity not in self._tool_ids:
@@ -174,8 +186,9 @@ class LocalLLM(CodexLLM):
                 command = item.get('command') or json.dumps(item.get('arguments', item.get('query', {})), sort_keys=True)
                 self.repeated_tools += int(command in self._commands)
                 self._commands.add(command)
+                self._clock['tools_used'] = self.tool_count
+                self._save_clock()
 
-        from .recent import observation, RecentContext
         if getattr(self, '_retain', False) and event.get('type') == 'item.completed':
             row = observation(event.get('item', {}))
             if row is not None:
@@ -198,7 +211,10 @@ class LocalLLM(CodexLLM):
                                ' this run will not be retried automatically. Usage is unavailable for this interrupted call.')
         return message
 
-    def _partial_answer(self, names):
+    def _save_clock(self):
+        atomic_bytes(self.workdir / 'execution-clock.json', json.dumps(self._clock).encode())
+
+    def _partial_answer(self, names, reason=None):
         # Deterministic finalization: no further tools, retries or model charges.
         # Artifact bodies are untrusted and may not establish task completion.
         index_path = self.workdir.parent.parent / 'artifacts.json'
@@ -212,13 +228,12 @@ class LocalLLM(CodexLLM):
         for name in names:
             record = next((r for r in records if r.get('owner') == self.workdir.name and r.get('filename') == name), None)
             links.append('@'+record['name'] if record else name)
+        reason = reason or ('The tool limit was reached after ' + str(self.tool_count) + ' calls.')
         return ('Warning — partial result.\n\nSaved: ' + ', '.join(links) +
-                '.\n\nThe tool limit was reached after ' + str(self.tool_count) +
-                ' calls. The saved artifact is available, but completion and remaining coverage are unverified. '
+                '.\n\n' + reason + ' The saved artifact is available, but completion and remaining coverage are unverified. '
                 'No automatic retry was started.')
 
     def _artifact_versions(self):
-        from hashlib import sha256
         return {p.name: sha256(p.read_bytes()).hexdigest()
                 for p in (self.workdir / 'artifacts').glob('*') if p.is_file() and not p.is_symlink()}
 
@@ -238,13 +253,11 @@ class LocalFactory(CodexFactory):
     execution = None
 
     def spawn(self, spec):
-        from .usage import DEFAULTS
         policy = self.execution or DEFAULTS
         llm = LocalLLM(spec=spec, workdir=self.workdir, event_sink=self.event_sink,
                        timeout_seconds=min(self.timeout_seconds, policy['timeout_seconds']))
         llm.max_tools = policy['max_tools']
         llm.output_tokens = policy['output_tokens']
-        from agentpy.storage import atomic_bytes
         atomic_bytes(self.workdir / 'computer-limits.json', json.dumps({'output_chars': policy['output_tokens']*4}).encode())
         llm.retain_context = self.keep_recent() if hasattr(self, 'keep_recent') else True
         llm.current_request = self.current_request() if hasattr(self, 'current_request') else ''

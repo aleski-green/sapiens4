@@ -236,6 +236,9 @@ class IntegrationTest(IntegrationFixture):
         source = javascript()
         self.assertIn("state = makeInitialState(bootstrap)", source)
         self.assertNotIn("state = JSON.parse(localStorage.getItem(STORAGE))", source)
+        self.assertNotIn('globalThis.CorporaFixture', source)
+        from sapiens.assets import index
+        self.assertNotIn('fixtures/sapiens-cases.js', index())
         from agentpy.interfaces import LLMSpec
         from unittest.mock import patch
         with patch("sapiens.runtime.codex_binary", return_value="/usr/local/bin/codex"):

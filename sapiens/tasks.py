@@ -1,13 +1,16 @@
 """Named one-off tasks and durable assignment notices in SDK runtime storage."""
+from datetime import datetime
+from uuid import uuid4
 import json
 import os
 import re
 import secrets
 import string
-from uuid import uuid4
-from datetime import datetime
-from agentpy.storage import atomic_bytes
-from .orchestration import utcnow
+
+from .clock import utcnow
+from .sdk import atomic_bytes
+from .validation import APIError, text_field
+
 
 NAME = re.compile(r'[a-z][A-Za-z0-9_.:#+|()&$^\-]*')
 TAGGED = re.compile(r'(task-[a-z][0-9]{4}):(.+)')
@@ -62,7 +65,6 @@ class Tasks:
                 if r['kind'] in {'running','done','failed','interrupted','budget_blocked','conflict','completed'}]
 
     def detail(self, agid, task_id):
-        from .service import APIError
         with self.service._lock:
             agent = self.service._agent(agid)
             self.service._sync(agent)
@@ -78,7 +80,6 @@ class Tasks:
                         events=sorted((dict(r) for r in events), key=lambda r:(r['time'],r['id'])))
 
     def comment(self, agent, task_id, text, author='Human'):
-        from .service import APIError, text_field
         task = next((t for t in self.catalog() if t['agent'] == agent.agid and t['id'] == task_id), None)
         if task is None:
             raise APIError(404, 'Unknown task')
@@ -100,7 +101,6 @@ class Tasks:
         return rows
 
     def name(self, title, supplied=None, used=None, tag=None):
-        from .service import APIError
         used = used if used is not None else {h for t in self.catalog() for h in handles(t) if h}
         if supplied is not None:
             if not isinstance(supplied, str):
@@ -141,7 +141,6 @@ class Tasks:
         used.update(h for h in handles(task) if h)
 
     def rename(self, agent, task_id, name, author='Human'):
-        from .service import APIError
         with self.service._lock:
             if not isinstance(name, str) or not name:
                 raise APIError(400, 'Provide a new task name')
@@ -171,7 +170,6 @@ class Tasks:
             return dict(saved=True, task_id=task_id, task_name=new, task_tag=update_task['tag'])
 
     def create(self, caller, data):
-        from .service import APIError, text_field
         agent = self.service.orchestration.resolve(data['target']) if 'target' in data else caller
         title = text_field(data, 'title', 2000)
         due = data.get('due')

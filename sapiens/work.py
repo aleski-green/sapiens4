@@ -1,11 +1,12 @@
 """Recurring job definitions and run references alongside SDK runtime state."""
 from datetime import datetime, timedelta, timezone
-import json
 from uuid import uuid4
+import json
 
-from agentpy.storage import atomic_bytes
-from .orchestration import utcnow
-from . import watch, strategy
+from . import strategy, watch
+from .clock import utcnow
+from .sdk import atomic_bytes
+from .validation import APIError, text_field
 
 
 class Work:
@@ -24,7 +25,6 @@ class Work:
                 and not (j['flow'] in {'learning', 'team_review'} and j['status'] in {'failed', 'conflict', 'interrupted', 'budget_blocked'})]
 
     def checkpoint(self, agent, data):
-        from .service import APIError, text_field
         definitions = self.read(agent)
         row = next((r for r in definitions if r['id'] == data.get('id')), None)
         if row is None:
@@ -192,7 +192,6 @@ class Work:
         return dict(status='scheduled', reason=None)
 
     def upsert(self, agent, data):
-        from .service import APIError, text_field
         allowed = {'id', 'title', 'prompt', 'minutes', 'enabled', 'watch'}
         if set(data) - allowed:
             raise APIError(400, 'Unknown recurring job field')
@@ -293,7 +292,6 @@ class Work:
         return run
 
     def run_now(self, agent, job_id):
-        from .service import APIError
         definition = next((j for j in self.read(agent) if j['id'] == job_id), None)
         if definition is None:
             raise APIError(404, 'Unknown recurring job')
@@ -306,7 +304,6 @@ class Work:
         return run
 
     def require_idle(self, agent):
-        from .service import APIError
         if self.service._stopping.is_set():
             raise APIError(503, 'Server is shutting down')
         unresolved = self.blocking(agent)
@@ -324,7 +321,6 @@ class Work:
         return run
 
     def admit_task(self, agent, task_id):
-        from .service import APIError
         # SDK has no public run-task operation. Use its transaction/enqueue pair
         # so assigning the run and queuing it commit together, as tick() does.
         with agent.store.transaction() as state:
@@ -338,7 +334,6 @@ class Work:
         return run
 
     def finish_task(self, agent, task_id):
-        from .service import APIError
         task = next((t for t in agent.state['tasks'] if t['id'] == task_id), None)
         if task is None:
             raise APIError(404, 'Unknown open task')

@@ -2,7 +2,9 @@
 from datetime import datetime, timezone
 import json
 import re
-from agentpy.storage import atomic_bytes
+
+from .sdk import atomic_bytes
+from .validation import APIError
 
 
 class RecentContext:
@@ -25,7 +27,6 @@ class RecentContext:
         return json.loads(path.read_text()) if path.exists() else dict(enabled=True, seconds=90)
 
     def validate(self, data):
-        from .service import APIError
         if not isinstance(data, dict) or set(data) != {'enabled', 'seconds'}:
             raise APIError(400, 'Recent memory requires enabled and seconds')
         if type(data['enabled']) is not bool or type(data['seconds']) is not int or not 1 <= data['seconds'] <= 3600:

@@ -1,6 +1,8 @@
 """Serve the pinned CORPORA shell with a small, checked integration seam."""
-from .runtime import ROOT
 from html import unescape
+
+from .paths import ROOT
+
 
 UI = ROOT / "lab-corpora-ui"
 WEB = ROOT / "web"
@@ -14,6 +16,8 @@ def replace_once(source, before, after):
 
 def javascript():
     source = (UI / "workspace/app.js").read_text()
+    source = replace_once(source, 'const fixture = globalThis.CorporaFixture;',
+                          'const fixture = {state:makeInitialState(bootstrap),artifacts:[]};')
     source = replace_once(source,
                           "try { state = JSON.parse(localStorage.getItem(STORAGE)); } catch {}",
                           "state = makeInitialState(bootstrap);")
@@ -38,6 +42,7 @@ def javascript():
 
 def index():
     html = (UI / "workspace/index.html").read_text()
+    html = replace_once(html, '  <script src="fixtures/sapiens-cases.js"></script>\n', '')
     html = replace_once(html, '<link rel="stylesheet" href="styles.css">',
                         '<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="/live.css">')
     for before, after in (

@@ -95,7 +95,7 @@ class RecoveryTest(IntegrationFixture):
         root=Path(self.directory.name)
         for outcome in ('ok',RuntimeError('provider error'),ToolLimitReached('limit')):
             llm=LocalLLM(spec=LLMSpec(role='conversation'),workdir=root,event_sink=lambda _:None)
-            with patch('sapiens.foreground.ForegroundReturn') as foreground, patch('sapiens.runtime.CodexLLM.complete',side_effect=outcome if isinstance(outcome,Exception) else None,return_value='ok'):
+            with patch('sapiens.runtime.ForegroundReturn') as foreground, patch('sapiens.runtime.CodexLLM.complete',side_effect=outcome if isinstance(outcome,Exception) else None,return_value='ok'):
                 foreground.return_value.restore.return_value=None
                 if isinstance(outcome,Exception):
                     with self.assertRaises(RuntimeError):llm.complete('Read')
