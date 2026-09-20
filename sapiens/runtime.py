@@ -250,7 +250,7 @@ class LocalLLM(CodexLLM):
             os.environ.get('SAPIENS_CODEX_REASONING_EFFORT') or 'xhigh')]
         if self.spec.model == 'default':
             defaults += ['-c', 'model=' + json.dumps(
-                os.environ.get('SAPIENS_CODEX_MODEL') or 'gpt-5.6-luna')]
+                os.environ.get('SAPIENS_CODEX_MODEL') or 'gpt-5.6-sol')]
         command[2:2] = defaults
         # Current Codex config key (not the older tool_output_limit spelling).
         command[2:2] = ['-c', f'tool_output_token_limit={getattr(self, "output_tokens", 1200)}']

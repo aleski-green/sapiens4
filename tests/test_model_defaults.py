@@ -18,7 +18,7 @@ class ModelDefaultsTest(unittest.TestCase):
             for resume in (False, True):
                 with self.subTest(resume=resume):
                     command = self.command(resume=resume)
-                    self.assertIn('model="gpt-5.6-luna"', command)
+                    self.assertIn('model="gpt-5.6-sol"', command)
                     self.assertIn('model_reasoning_effort="xhigh"', command)
                     if resume:
                         self.assertIn('resume', command)
@@ -29,8 +29,8 @@ class ModelDefaultsTest(unittest.TestCase):
             command = self.command()
             self.assertIn('model="gpt-6-astra"', command)
             self.assertIn('model_reasoning_effort="high"', command)
-            command = self.command(model='gpt-5.6-sol', resume=True)
-            self.assertEqual(command[command.index('--model') + 1], 'gpt-5.6-sol')
+            command = self.command(model='gpt-5.6-luna', resume=True)
+            self.assertEqual(command[command.index('--model') + 1], 'gpt-5.6-luna')
             self.assertFalse(any(arg.startswith('model=') for arg in command))
 
 

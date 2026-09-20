@@ -28,7 +28,7 @@ python3 -m sapiens --port 4174
 ```
 
 If you need to sign in, run `codex login`. Sapiens4 uses your existing Codex
-authentication. All roles default to **GPT-5.6 Luna** (`gpt-5.6-luna`) with
+authentication. All roles default to **GPT-5.6 Sol** (`gpt-5.6-sol`) with
 **xhigh** reasoning effort, including chat, tasks, scheduled work, team reviews,
 and memory consolidation. These defaults also apply to resumed calls and override
 the user's global Codex model settings for Sapiens4 only. Set
