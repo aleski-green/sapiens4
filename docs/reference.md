@@ -28,7 +28,13 @@ python3 -m sapiens --port 4174
 ```
 
 If you need to sign in, run `codex login`. Sapiens4 uses your existing Codex
-authentication and model settings. On macOS it compares the installed PATH CLI
+authentication. All roles default to **GPT-5.6 Luna** (`gpt-5.6-luna`) with
+**xhigh** reasoning effort, including chat, tasks, scheduled work, team reviews,
+and memory consolidation. These defaults also apply to resumed calls and override
+the user's global Codex model settings for Sapiens4 only. Set
+`SAPIENS_CODEX_MODEL` and/or `SAPIENS_CODEX_REASONING_EFFORT` before starting to
+override them; an explicit SDK role model takes precedence over the default model.
+On macOS it compares the installed PATH CLI
 and CLIs bundled with Codex/ChatGPT, choosing the highest installed version;
 this avoids using an older npm CLI with a model supported by the desktop app.
 To choose explicitly, set `SAPIENS_CODEX_BINARY=/absolute/path/to/codex` before

@@ -244,6 +244,14 @@ class LocalLLM(CodexLLM):
             raise RuntimeError("Codex CLI was not found. Install Codex and run codex login.")
         command[0] = executable
         command.insert(2, "--skip-git-repo-check")
+        # Apply host defaults to every role, including learning and resumed calls.
+        # Explicit SDK models still take precedence over the default model.
+        defaults = ['-c', 'model_reasoning_effort=' + json.dumps(
+            os.environ.get('SAPIENS_CODEX_REASONING_EFFORT') or 'xhigh')]
+        if self.spec.model == 'default':
+            defaults += ['-c', 'model=' + json.dumps(
+                os.environ.get('SAPIENS_CODEX_MODEL') or 'gpt-5.6-luna')]
+        command[2:2] = defaults
         # Current Codex config key (not the older tool_output_limit spelling).
         command[2:2] = ['-c', f'tool_output_token_limit={getattr(self, "output_tokens", 1200)}']
         return command
