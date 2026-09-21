@@ -93,6 +93,7 @@
 /* Style-only port of lab-corpora-ui 1e57652. Keep live navigation and content intact. */
 
 :root body.sapi-workspace {
+  --sapi-brand-gradient:linear-gradient(to bottom right,#ed3995 0%,#df2eea 35%,#783cf0 65%,#35c5e8 100%);
   --sapi-bg:#f6f6f6; --sapi-surface:#fafafa; --sapi-white:#fff;
   --sapi-ink:#202020; --sapi-muted:#707070; --sapi-line:#e7e7e7;
   --sapi-pink:#202020; --sapi-violet:#454545; --sapi-accent:#d90068; --sapi-hover:#fbe7f0; --sapi-cyan:#4e6660;
@@ -139,7 +140,14 @@
 :root body.sapi-workspace .agent-row.active { background:var(--sapi-pink-tint);border:0;box-shadow:none; }
 :root body.sapi-workspace .agent-row:hover:not(.active) { background:var(--sapi-purple-tint); }
 :root body.sapi-workspace .agent-row .avatar { width:40px;height:40px;font:13.5px monospace;letter-spacing:-1.7px;border:1px solid var(--line);flex-shrink:0; }
-:root body.sapi-workspace .avatar.main-sapi-avatar { box-shadow:0 0 0 2px var(--sapi-white),0 0 0 4px var(--sapi-accent); }
+:root body.sapi-workspace .avatar.main-sapi-avatar { box-shadow:0 0 0 2px var(--sapi-white); }
+:root body.sapi-workspace .avatar.main-sapi-avatar::after {
+  content:'';position:absolute;inset:-5px;padding:2px;border-radius:50%;
+  background:var(--sapi-brand-gradient);pointer-events:none;
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+:root body.sapi-workspace .avatar.main-sapi-avatar .presence { z-index:1; }
 :root body.sapi-workspace .agent-row .avatar::before,:root body.sapi-workspace .agent-heading .avatar::before { display:none; }
 :root body.sapi-workspace .agent-row .avatar .presence { width:10.5px;height:10.5px;border-width:1.5px;right:-1px;bottom:0; }
 :root body.sapi-workspace .agent-row-name { display:block;font-size:15px;font-weight:500;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
