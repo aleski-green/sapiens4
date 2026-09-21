@@ -4,6 +4,14 @@ import hashlib
 import json
 
 
+def current_run(jobs):
+    """Active learning takes priority; historical failures cannot hide newer results."""
+    runs = sorted((j for j in jobs if j['flow'] == 'learning'),
+                  key=lambda j: (j['created'], j['id']), reverse=True)
+    return next((j for j in runs if j['status'] in {'queued', 'running'}),
+                runs[0] if runs else None)
+
+
 def fingerprint(blocks):
     manifests = blocks.get('manifests', {})
     facts = json.loads(manifests.get('host-facts', '{}'))

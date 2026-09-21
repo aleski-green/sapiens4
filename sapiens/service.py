@@ -16,7 +16,7 @@ from .artifacts import Artifacts
 from .attachments import attachment_prompt, resolve_attachments
 from .clock import utcnow
 from .hierarchy import Hierarchy
-from .memory import current_fingerprint, last_fingerprint
+from .memory import current_fingerprint, current_run, last_fingerprint
 from .orchestration import Orchestration
 from .paths import ROOT, SDK
 from .recent import RecentContext
@@ -292,10 +292,7 @@ class Service:
 
     def memory_status(self, agent, jobs):
         settings = self.orchestration.settings(agent)
-        runs = [j for j in jobs if j['agent'] == agent.agid and j['flow'] == 'learning']
-        run = next((j for j in reversed(runs) if j['status'] not in {'done', 'cancelled'}), None)
-        if run is None:
-            run = next((j for j in runs if j['id'] == settings.get('consolidation_run')), None)
+        run = current_run(j for j in jobs if j['agent'] == agent.agid)
         pending = settings['consolidate_requested']
         status = 'waiting' if pending else run['status'] if run else 'idle'
         def summary(job):
@@ -365,8 +362,8 @@ class Service:
             if any(j['status'] in {'queued', 'running'} for j in agent.state['jobs']):
                 return True
             # A stopped learning attempt still needs its own retry/dismiss.
-            if any(j['flow'] == 'learning' and j['status'] not in {'done', 'cancelled'}
-                   for j in agent.state['jobs']):
+            learning = current_run(agent.state['jobs'])
+            if learning and learning['status'] not in {'done', 'cancelled'}:
                 return True
             if current_fingerprint(self, agent) == last_fingerprint(agent):
                 settings['consolidate_requested'] = False

@@ -10,7 +10,7 @@ import sys
 from .clock import utcnow
 from .diagnostics import report
 from .execution import read
-from .memory import current_fingerprint, last_fingerprint
+from .memory import current_fingerprint, current_run, last_fingerprint
 from .paths import ROOT
 from .sdk import atomic_bytes
 from .strategy import OPERATING_POLICY, save_plan
@@ -275,8 +275,8 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 if any(j['flow'] in {'scheduled', 'strategy'} and j['status'] == 'running' for j in agent.state['jobs']):
                     raise APIError(409, 'Watcher runs must save a checkpoint, not start consolidation. Use MemX for an explicit consolidation.')
                 settings = self.settings(agent)
-                learning = [j for j in agent.state['jobs'] if j['flow'] == 'learning'
-                            and j['status'] not in {'done', 'cancelled'}]
+                latest = current_run(agent.state['jobs'])
+                learning = latest and latest['status'] not in {'done', 'cancelled'}
                 if not learning and not settings['consolidate_requested'] and current_fingerprint(self.service, agent) == last_fingerprint(agent):
                     return {'self_id': agent.agid, 'saved': True, 'status': 'unchanged'}
                 if not settings['consolidate_requested'] and not learning:

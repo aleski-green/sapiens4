@@ -6,6 +6,7 @@ import threading
 from test_integration import IntegrationFixture
 from test_orchestration import MemoryFactory
 from sapiens.assets import memory_viewer
+from sapiens.memory import current_run
 from sapiens.server import Server
 
 
@@ -16,6 +17,55 @@ class MindMapTest(IntegrationFixture):
         owner = service.store.agents()[0]['id']
         service.orchestration.control(owner, {'op':'schedule', 'enabled':False})
         return service, owner
+
+    def test_old_failure_does_not_hide_success_or_block_new_learning(self):
+        service, owner = self.prepare()
+        agent = service._agent(owner)
+        old = agent.submit('learning')
+        with agent.store.transaction() as state:
+            job = next(j for j in state['jobs'] if j['id'] == old)
+            job.update(status='failed', error='TimeoutError: historical timeout')
+        # A later scheduled consolidation succeeded without retrying the old run.
+        service.orchestration.prepare(agent)
+        newer = agent.submit('learning')
+        asyncio.run(agent.run_selected([newer]))
+        service._sync(agent)
+        settings = service.orchestration.settings(agent)
+        settings['consolidation_run'] = old
+        service.orchestration.save(agent, settings)
+        for restarted in (False, True):
+            if restarted:
+                service = self.restart(service, start_worker=False)
+                agent = service._agent(owner)
+            status = service.snapshot()['orchestration'][owner]['memory']
+            self.assertEqual(status['status'], 'done')
+            self.assertEqual(status['run']['id'], newer)
+            self.assertFalse(status['has_updates'])
+            self.assertEqual(service.orchestration.control(owner, {'op':'consolidate'})['status'], 'unchanged')
+            historical = next(j for j in agent.state['jobs'] if j['id'] == old)
+            self.assertEqual(historical['error'], 'TimeoutError: historical timeout')
+            self.assertEqual(historical['status'], 'failed')
+        # Fresh experience still admits and completes a new consolidation.
+        with agent.store.transaction() as state:
+            state['notes'].append({'content': 'New experience'})
+        service.orchestration.control(owner, {'op':'consolidate'})
+        service.scheduled()
+        status = service.snapshot()['orchestration'][owner]['memory']
+        self.assertEqual(status['status'], 'done')
+        self.assertNotEqual(status['run']['id'], newer)
+        self.assertFalse(status['has_updates'])
+
+    def test_current_learning_prefers_active_then_latest_attempt(self):
+        for status in ('queued', 'running', 'failed', 'budget_blocked', 'cancelled'):
+            with self.subTest(status=status):
+                older = dict(id='old', flow='learning', created='2026-09-18', status=status)
+                newer = dict(id='new', flow='learning', created='2026-09-22', status='done')
+                expected = older if status in {'queued', 'running'} else newer
+                self.assertEqual(current_run([newer, older]), expected)
+                newer['status'] = status
+                older['status'] = 'done'
+                self.assertEqual(current_run([newer, older]), newer)
+        self.assertIsNone(current_run([]))
 
     def test_waiting_done_repeat_and_restart(self):
         service, owner = self.prepare()
