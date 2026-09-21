@@ -165,7 +165,7 @@ renderGlobal = function() {
 renderAgentHeader = function() {
   const a = selected();
   const job = live.jobs.find(j => j.agent === a.id && blocksChat(j));
-  $('#agent-heading').innerHTML = `${avatar(a,'large')}<div><h2>${esc(a.name)}</h2><p class="agent-role">${esc(a.role)}</p></div><button class="icon-button" data-action="agent-settings" aria-label="Sapi settings">···</button>`;
+  $('#agent-heading').innerHTML = `${avatar(a,isMainSapi(a)?'large main-sapi-avatar':'large')}<div><h2>${esc(a.name)}</h2><p class="agent-role">${esc(a.role)}</p></div><button class="icon-button" data-action="agent-settings" aria-label="Sapi settings">···</button>`;
   $('#message-input').placeholder = `Message ${a.name}…`;
   $$('[data-panel]').forEach(b => {b.classList.toggle('active',b.dataset.panel === state.panel);b.setAttribute('aria-pressed',b.dataset.panel === state.panel);});
   $('.send-button').disabled = !online || Boolean(job) || submitting.has(a.id) || uploading > 0;
@@ -434,6 +434,14 @@ document.addEventListener('submit', async e => {
   } catch (error) { toast(error.message); }
   finally { button.disabled = false; }
 }, true);
+
+// Keep live branding aligned with the UI lab.
+$('.wordmark').innerHTML = '<span class="brand-name">Sapiens4</span>';
+$('.wordmark').setAttribute('aria-label', 'Sapiens4 home');
+$('.wordmark').addEventListener('click', () => {
+  const main = state.agents.find(isMainSapi);
+  if (main) openChat(main.id);
+});
 
 // Remove simulation entry points; workspace tabs and appearance remain upstream UI.
 $('#attach-button').setAttribute('aria-label', 'Add attachment');
