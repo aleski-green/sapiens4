@@ -1,4 +1,12 @@
 // Executed in the same closure as the pinned CORPORA app. No demo state is loaded.
+// Set tab branding before loading state, including when the backend is unavailable.
+document.title = 'Sapi4: Corpora';
+const favicon = document.createElement('link');
+favicon.rel = 'icon';
+favicon.type = 'image/svg+xml';
+favicon.href = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="none" stroke="#d90068" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M18 8a3 3 0 1 0-3-3v14a3 3 0 1 0 3-3H5a3 3 0 1 0 3 3V5a3 3 0 1 0-3 3Z"/></svg>');
+document.head.append(favicon);
+
 async function api(path, method = 'GET', data) {
   const response = await fetch(path, {
     method,
