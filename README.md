@@ -32,4 +32,8 @@ cd sapiens4
 
 Open http://127.0.0.1:4174/workspace/.
 
+On macOS, startup also registers `sapi4://corpora`. Enter it in your browser to
+open the running server, including when you use a different `--port`.
+[macOS shortcut details](docs/macos-url-handler.md).
+
 [Setup, features, API and tests](docs/reference.md) · [Agent strategies](docs/agent-owned-strategies.md)

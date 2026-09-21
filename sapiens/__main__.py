@@ -5,6 +5,7 @@ import threading
 import webbrowser
 
 from .assets import index, javascript
+from .macos_links import register_workspace_link
 from .paths import ROOT
 from .server import Server
 from .service import Service
@@ -29,6 +30,7 @@ def main():
     service.start()  # Recovered jobs need the host-control endpoint attached first.
     url = f"http://127.0.0.1:{server.server_port}/workspace/"
     print(f"Sapiens4: {url}\nUI database: {service.store.path}", flush=True)
+    workspace_link = register_workspace_link(server.server_port)
 
     def shutdown(signum, frame):
         print("Stopping; waiting for the current bounded Codex call to finish…", flush=True)
@@ -43,6 +45,8 @@ def main():
     finally:
         server.server_close()
         service.close()
+        if workspace_link is not None:
+            workspace_link.close()
 
 
 if __name__ == "__main__":
