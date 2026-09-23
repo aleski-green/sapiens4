@@ -153,7 +153,8 @@ class SapiAgent(PersistentAgent):
                     count = counters(usage)
                     charged = count['units'] if count else self.limits.tokens_per_call
                     result.tokens += charged
-                    log.update(session=llm.id, usage=usage, charged=charged)
+                    log.update(session=llm.id, usage=usage, charged=charged,
+                               failure_codes=sorted(getattr(llm, 'failure_codes', set())))
                     row.update(time=datetime.now(timezone.utc).isoformat(), session=llm.id,
                                usage=usage, budget_units=charged, status='failed' if error else 'warning' if getattr(llm, 'warning', None) else 'done',
                                tools=getattr(llm, 'tool_count', None),
@@ -183,6 +184,7 @@ class SapiAgent(PersistentAgent):
         # _finish archives the outcome before settling. Keep legacy job.tokens
         # raw for every existing UI consumer; admission uses only budget_units.
         logs = self.transcript(job['id'])
+        job['failure_codes'] = sorted({code for log in logs for code in log.get('failure_codes', [])})
         warnings = [l['warning'] for l in logs if l.get('warning')]
         if warnings:
             job['warning'] = ' '.join(warnings)

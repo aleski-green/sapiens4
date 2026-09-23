@@ -2,6 +2,7 @@
 from copy import deepcopy
 import hashlib
 import json
+from .experience import evidence, POLICY as EXPERIENCE_POLICY
 
 
 def current_run(jobs):
@@ -20,6 +21,7 @@ def fingerprint(blocks):
     # experience. Only keep durable facts that learning actually receives.
     stable = dict(
         identity=manifests.get('identity'),
+        execution_experience=manifests.get('execution-experience'),
         comments=manifests.get('task-comments', '[]'),
         schedule={k: schedule[k] for k in ('enabled', 'minutes', 'monitor_team') if k in schedule},
         team=[{k: member.get(k) for k in ('id', 'name', 'role', 'manager')}
@@ -62,6 +64,7 @@ def last_fingerprint(agent):
 
 def current_fingerprint(service, agent):
     manifests = deepcopy(agent.manifests)
+    manifests['execution-experience'] = EXPERIENCE_POLICY + json.dumps(evidence(agent.state))
     manifests['host-facts'] = json.dumps(service.orchestration.status(agent))
     manifests['task-comments'] = json.dumps([r for r in service.tasks.activity(agent)
         if r['kind'] == 'comment'][-20:], ensure_ascii=False)

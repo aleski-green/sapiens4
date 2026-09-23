@@ -14,6 +14,7 @@ from .memory import current_fingerprint, current_run, last_fingerprint
 from .paths import ROOT
 from .sdk import atomic_bytes
 from .strategy import OPERATING_POLICY, save_plan
+from .experience import evidence, POLICY as EXPERIENCE_POLICY
 from .team_review import enqueue_review
 from .validation import APIError, text_field
 
@@ -137,6 +138,7 @@ The returned saved facts are authoritative. Do not replay old chat requests.
         facts["team"] = [{k: v for k, v in member.items() if k not in {"recent_jobs", "tasks"}}
                          for member in facts["team"]]
         agent.set_manifest("host-facts", json.dumps(facts, ensure_ascii=False))
+        agent.set_manifest("execution-experience", EXPERIENCE_POLICY + json.dumps(evidence(agent.state)))
 
     def team(self):
         rows = self.service.store.agents()

@@ -7,8 +7,10 @@ import sys
 
 if __package__:
     from .computer_read import compact, read
+    from .workflow import invoke as workflow_invoke
 else:  # Support the agent-facing `python /path/to/sapiens/computer.py` command.
     from computer_read import compact, read
+    from workflow import invoke as workflow_invoke
 
 
 def bounded_output(text, limit):
@@ -56,7 +58,7 @@ def main(argv):
         limit = max(800, min(32000, int(limit)))
         Path('.computer-used').touch()
         def invoke(args):
-            return subprocess.run([str(binary), *args], capture_output=True, text=True, timeout=30)
+            return workflow_invoke(binary, args, Path.cwd())
         if argv[0] == 'read':
             print(json.dumps(read(argv[1:], invoke, Path.cwd(), limit), ensure_ascii=False))
             return 0
