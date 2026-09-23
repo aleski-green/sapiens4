@@ -42,7 +42,7 @@ def random_avatar(used):
 
 
 class Service:
-    def __init__(self, data_dir, *, factory_builder=None, start_worker=True, timeout=300):
+    def __init__(self, data_dir, *, factory_builder=None, start_worker=True, timeout=None):
         self.root = Path(data_dir).resolve()
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._file_lock = (self.root / "host.lock").open("a")
@@ -285,7 +285,8 @@ class Service:
                          "memory_entries": len(a.memx),
                          "memory": self.memory_status(a, snapshot['jobs']),
                          "recent": RecentContext(self.root / "workspaces" / a.agid).settings(),
-                         "execution": execution_settings(a), "budget": a.budget_status(),
+                         "execution": execution_settings(a),
+                         "effective_timeout_seconds": min(self.timeout, execution_settings(a)["timeout_seconds"]) if self.timeout is not None else execution_settings(a)["timeout_seconds"], "budget": a.budget_status(),
                          "task_activity": self.tasks.activity(a),
                          **self.work.snapshot(a, snapshot["jobs"])} for a in self._agents.values()}
             return snapshot

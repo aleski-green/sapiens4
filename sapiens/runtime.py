@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 
+from .discovery import blocker
 from .execution import start
 from .experience import tool_failure
 from .workflow import release as release_workflow
@@ -70,6 +71,15 @@ Chat is the single user entry point. When the current message explicitly asks
 for interaction with an external application or browser UI, use Blindly4 under the
 computer-use manifest. A URL research request alone is not a request for UI automation.
 For public information, prefer available web search, direct fetch, or an authorized API.
+For research and writing, use evidence -> draft -> identify gaps. Establish the
+minimum facts needed to answer; do not require complete extraction of a website.
+Once identity and relevant role/company facts have sufficient support, draft the
+requested text with source references. Separate supported facts from proposed
+positioning and assumptions. If the original About text is unavailable, say this
+is a proposed replacement, not a line-by-line review. Never invent credentials.
+If identity cannot be verified, ask for the profile text; do not keep exploring
+or substitute a similarly named person. Save a useful draft early and refine it
+only when new evidence would materially change it.
 If access is denied, do not bypass login or invent facts; use an authorized browser
 session only when needed, or ask for the relevant text. Stop a blocked route promptly.
 For attached images/documents use local file-reading tools as needed;
@@ -144,6 +154,10 @@ class LocalLLM(CodexLLM):
                    "Reserve the last two calls for saving/verifying the deliverable. "
                    "If discovery is not converging, stop exploration, preserve useful work and "
                    "give a concise final answer with the blocker. Do not use all calls on setup.\n")
+            prompt += (f"Live UI discovery stops after 12 reads or at {self._clock['discovery_until']} UTC, "
+                       "whichever comes first. Cached pagination and saving remain available. "
+                       "On discovery_stopped, stop all discovery, draft from sufficient evidence, "
+                       "or return a precise missing-input request. Do not change routes to evade the bound.\n")
             prompt += (f"Hard execution deadline: {self._clock['deadline']} UTC "
                        f"({self.timeout_seconds:g} seconds total). Stop discovery by "
                        f"{self._clock['finish_by']} and use the remaining time to save and reply. "
@@ -158,8 +172,15 @@ class LocalLLM(CodexLLM):
             changed = [name for name, version in self._artifact_versions().items()
                        if self._artifacts_before.get(name) != version]
             if not changed:
-                error = type(exc).__name__
-                raise
+                stopped = blocker(self.workdir, self._clock['deadline'])
+                if not stopped:
+                    error = type(exc).__name__
+                    raise
+                self.warning = 'Incomplete: discovery stopped and no draft was saved before the execution limit.'
+                answer = ('I could not complete this request. ' + stopped +
+                          ' No draft was saved, and the requested facts remain unverified. '
+                          'For a page-based research request, provide the relevant page text so I can continue without more UI discovery.')
+                return answer
             reason = ('The time limit was reached after ' + str(self.timeout_seconds) + ' seconds.'
                       if isinstance(exc, TimeoutError) else
                       'The tool limit was reached after ' + str(self.tool_count) + ' calls.')
@@ -278,7 +299,7 @@ class LocalFactory(CodexFactory):
     def spawn(self, spec):
         policy = self.execution or DEFAULTS
         llm = LocalLLM(spec=spec, workdir=self.workdir, event_sink=self.event_sink,
-                       timeout_seconds=min(self.timeout_seconds, policy['timeout_seconds']))
+                       timeout_seconds=min(self.timeout_seconds, policy['timeout_seconds']) if self.timeout_seconds is not None else policy['timeout_seconds'])
         llm.max_tools = policy['max_tools']
         llm.output_tokens = policy['output_tokens']
         atomic_bytes(self.workdir / 'computer-limits.json', json.dumps({'output_chars': policy['output_tokens']*4}).encode())

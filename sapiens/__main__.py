@@ -14,10 +14,10 @@ def main():
     parser = argparse.ArgumentParser(description="Run local Sapiens4 / CORPORA")
     parser.add_argument("--port", type=int, default=4174)
     parser.add_argument("--data-dir", type=Path, default=ROOT / ".sapiens4")
-    parser.add_argument("--timeout", type=int, default=300, help="Codex call deadline in seconds")
+    parser.add_argument("--timeout", type=int, default=None, help="Optional server cap in seconds; otherwise use each Sapi execution setting")
     parser.add_argument("--open", action="store_true", help="Open the UI in your browser")
     args = parser.parse_args()
-    if args.timeout <= 0:
+    if args.timeout is not None and args.timeout <= 0:
         parser.error("--timeout must be positive")
     index(), javascript()  # Fail early if the pinned frontend contract changed.
     service = Service(args.data_dir, timeout=args.timeout, start_worker=False)

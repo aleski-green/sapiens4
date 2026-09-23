@@ -25,3 +25,13 @@ These changes repair lease propagation and missing failure input, not every caus
 ## Validation
 
 Regression tests cover failed-run evidence across restart, per-agent isolation, classification persistence, bounded and sanitized evidence, fingerprint changes, lease forwarding and timeout cleanup, and rejection of a previous execution's lease. Tests use mocked provider and subprocess behavior; live LinkedIn access is not part of the acceptance test.
+
+## Research completion follow-up
+
+Research/writing instructions now explicitly use evidence → draft → identify gaps. Complete UI extraction is not a prerequisite for a qualified replacement draft. Identity must still be supported, assumptions disclosed, and missing original text acknowledged.
+
+The computer wrapper enforces a per-execution live discovery budget: at most 12 live read calls, ending after half the call allowance or 120 seconds, whichever is sooner. Parallel calls share a locked counter. A fresh execution resets it; expired execution records cannot grant more access. Cached snapshot pagination, host-control artifact saving and lease release remain available. The guard returns a structured `discovery_stopped` receipt rather than continuing UI exploration. It does not constrain every possible shell command or web-search provider; it is a host wrapper guard, not a security sandbox.
+
+The finish phase reserves up to 90 seconds (one third of the call allowance). If the model still hits its execution limit after a discovery stop without saving an artifact, the host returns an explicit incomplete result and missing-source guidance, never a fabricated draft or success claim. Existing saved-artifact recovery remains intact.
+
+The default server no longer silently caps an agent's setting at 300 seconds. An explicitly supplied `--timeout` remains a server cap; the settings UI reports the current effective timeout. This is independent of the UI discovery budget, so a larger call allowance does not grant unlimited UI scanning.

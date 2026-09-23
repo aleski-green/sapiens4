@@ -1,7 +1,7 @@
 """Bounded failure evidence, separate from expiring UI observations."""
 import json
 
-CODES = {'workflow_busy', 'workflow_lease_invalid', 'accessibility_denied'}
+CODES = {'workflow_busy', 'workflow_lease_invalid', 'accessibility_denied', 'discovery_stopped'}
 
 
 def tool_failure(item):

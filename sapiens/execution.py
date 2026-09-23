@@ -6,8 +6,8 @@ import json
 
 def start(timeout, max_tools):
     now = datetime.now(timezone.utc)
-    reserve = min(30, timeout / 4)
-    return dict(active=True, deadline=(now + timedelta(seconds=timeout)).isoformat(),
+    reserve = min(90, timeout / 3)
+    return dict(active=True, discovery_until=(now + timedelta(seconds=min(120, timeout/2))).isoformat(), deadline=(now + timedelta(seconds=timeout)).isoformat(),
                 finish_by=(now + timedelta(seconds=timeout-reserve)).isoformat(),
                 max_tools=max_tools, tools_used=0)
 

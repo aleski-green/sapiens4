@@ -8,6 +8,7 @@ function usageSettings(info, section) {
       <label>Weekly budget units<input name="weekly_limit" type="number" min="1000" max="100000000" required value="${s.weekly_limit}"></label>
       <label>Allowance per model call<input name="call_allowance" type="number" min="1000" max="1000000" required value="${s.call_allowance}"></label>
       <label>Tool-step stop threshold<input name="max_tools" type="number" min="1" max="100" required value="${s.max_tools}"></label>
+      <small>Current effective timeout: ${info.effective_timeout_seconds ?? s.timeout_seconds} seconds.</small>
       <label>Call timeout (seconds)<input name="timeout_seconds" type="number" min="15" max="600" required value="${s.timeout_seconds}"></label>
       <label>Tool result limit (tokens)<input name="output_tokens" type="number" min="200" max="8000" required value="${s.output_tokens}"></label>
       <small>Usage arrives at the end of a model call, so its allowance can be exceeded. Tool and time limits stop long runs; interrupted actions need review.</small>

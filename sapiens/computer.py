@@ -5,10 +5,13 @@ import subprocess
 import sys
 
 
+
 if __package__:
+    from .discovery import admission
     from .computer_read import compact, read
     from .workflow import invoke as workflow_invoke
 else:  # Support the agent-facing `python /path/to/sapiens/computer.py` command.
+    from discovery import admission
     from computer_read import compact, read
     from workflow import invoke as workflow_invoke
 
@@ -58,7 +61,12 @@ def main(argv):
         limit = max(800, min(32000, int(limit)))
         Path('.computer-used').touch()
         def invoke(args):
-            return workflow_invoke(binary, args, Path.cwd())
+            with admission(Path.cwd(), args[0]) as blocked:
+                if blocked:
+                    receipt = json.dumps(dict(code='discovery_stopped', error=blocked,
+                        next_step='Stop live UI discovery. Use collected evidence to draft, save through host-control, and state gaps. If insufficient, ask for the missing source text. Do not bypass this limit.'))
+                    return subprocess.CompletedProcess(args, 75, receipt, receipt)
+                return workflow_invoke(binary, args, Path.cwd())
         if argv[0] == 'read':
             print(json.dumps(read(argv[1:], invoke, Path.cwd(), limit), ensure_ascii=False))
             return 0
