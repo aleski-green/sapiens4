@@ -82,16 +82,23 @@ class Manager:
     def current(self):
         return json.loads((self.home / 'current.json').read_text())
 
+    def desktop_pending(self, release):
+        return bool(release.get('desktop')) and release.get('desktop_revision') != release['sha']
+
     def check(self):
         output = command(['git', 'ls-remote', UPSTREAM, 'refs/heads/main'], timeout=45)
         sha = output.split()[0] if output else ''
         if not re.fullmatch('[0-9a-f]{40}', sha):
             raise RuntimeError('GitHub did not return a valid main revision')
         current = self.current()
-        available = sha != current['sha']
+        pending = self.desktop_pending(current)
+        available = sha != current['sha'] or pending
+        message = (f"Update available: main {sha[:7]}" if sha != current['sha'] else
+                   'Desktop app update incomplete. Click Update now to retry.' if pending else
+                   'Sapiens4 is up to date')
         self.status('available' if available else 'current',
-                    f"Update available: main {sha[:7]}" if available else 'Sapiens4 is up to date',
-                    sha=sha, current=current['sha'], checked_at=time.time())
+                    message, sha=sha, current=current['sha'], checked_at=time.time(),
+                    desktop_revision=current.get('desktop_revision'))
         return sha
 
     def prepare(self, sha):
@@ -204,8 +211,10 @@ class Manager:
                 shutil.move(str(self.data), str(failed))
             shutil.copytree(backup, self.data, symlinks=True)
         atomic(self.home / 'current.json', tx['old'])
-        self.spawn(tx['old'])
+        # Retire rollback before restarting workers. A crash after they resume
+        # must never restore this backup over newly completed work.
         journal.unlink()
+        self.spawn(tx['old'])
         self.status('error', 'Previous version restored after an incomplete update. Your data backup was preserved.')
 
     def launch(self):
@@ -218,6 +227,8 @@ class Manager:
         sha = self.check()
         old = self.current()
         if sha == old['sha']:
+            if self.desktop_pending(old):
+                self.install_desktop(old)
             return
         new = self.prepare(sha)
         self.status('waiting', 'Update ready. Waiting for active and queued agent work to finish…')
@@ -249,12 +260,18 @@ class Manager:
         except Exception:
             self.recover()
             raise
-        desktop_revision = None
-        if new.get('desktop'):
+        self.install_desktop(new)
+
+    def install_desktop(self, release):
+        """Retry bundle installation independently of the active backend/data."""
+        sha = release['sha']
+        desktop_revision = release.get('desktop_revision')
+        if self.desktop_pending(release):
+            self.status('installing', 'Installing the desktop app…', sha=sha)
             app = Path(self.config['app'])
             staged = app.with_name('Sapiens4-staged-' + uuid.uuid4().hex + '.app')
             previous = self.home / 'backups' / ('desktop-' + uuid.uuid4().hex + '.app')
-            command(['ditto', new['desktop'], str(staged)])
+            command(['ditto', release['desktop'], str(staged)])
             exchanged = replace_app(staged, app)
             if exchanged:
                 shutil.move(str(staged), str(previous))
@@ -263,6 +280,9 @@ class Manager:
                 shutil.copy2(helper, self.home / 'updater-next.py')
                 os.replace(self.home / 'updater-next.py', self.home / 'updater.py')
             desktop_revision = sha
+            # Keep installation pending until both bundle and helper are saved.
+            # A later check/update can retry even when main already matches.
+            atomic(self.home / 'current.json', dict(release, desktop_revision=sha))
         self.status('current', f'Updated to main {sha[:7]}', sha=sha, checked_at=time.time(), desktop_revision=desktop_revision)
 
 

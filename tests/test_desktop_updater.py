@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import shutil
 import socket
 import sys
 import time
@@ -117,6 +118,100 @@ class DesktopUpdaterTests(unittest.TestCase):
         self.manager.recover()
         self.assertTrue(activation.exists())
         self.assertEqual((self.data / 'agent.txt').read_text(), 'original')
+
+    def test_crash_after_rollback_restart_preserves_new_work(self):
+        backup = self.home / 'backups/original'
+        shutil.copytree(self.data, backup)
+        updater.atomic(self.home / 'current.json', self.new)
+        updater.atomic(self.home / 'transaction.json', dict(
+            old=self.old, new=self.new, backup=str(backup), committed=False))
+        (self.data / 'agent.txt').write_text('failed migration')
+
+        def restart_then_crash(release, paused=False):
+            self.assertEqual(release, self.old)
+            self.assertEqual((self.data / 'agent.txt').read_text(), 'original')
+            (self.data / 'agent.txt').write_text('work completed after restart')
+            raise SystemExit('helper crashed after worker resumed')
+
+        with patch.object(updater, 'healthy', return_value=False), patch.object(self.manager, 'spawn', side_effect=restart_then_crash):
+            with self.assertRaises(SystemExit):
+                self.manager.recover()
+        with patch.object(updater, 'healthy', return_value=True), patch.object(self.manager, 'stop') as stop, patch.object(self.manager, 'spawn') as spawn:
+            self.manager.launch()
+        self.assertEqual((self.data / 'agent.txt').read_text(), 'work completed after restart')
+        self.assertEqual(self.manager.current(), self.old)
+        stop.assert_not_called()
+        spawn.assert_not_called()
+        self.assertFalse((self.home / 'transaction.json').exists())
+
+    def test_crash_before_rollback_restart_can_launch_restored_release(self):
+        backup = self.home / 'backups/original'
+        shutil.copytree(self.data, backup)
+        updater.atomic(self.home / 'current.json', self.new)
+        updater.atomic(self.home / 'transaction.json', dict(
+            old=self.old, new=self.new, backup=str(backup), committed=False))
+        with patch.object(updater, 'healthy', return_value=False), patch.object(self.manager, 'spawn', side_effect=SystemExit):
+            with self.assertRaises(SystemExit):
+                self.manager.recover()
+        with patch.object(updater, 'healthy', return_value=False), patch.object(self.manager, 'spawn') as spawn:
+            self.manager.launch()
+        spawn.assert_called_once_with(self.old)
+        self.assertEqual((self.data / 'agent.txt').read_text(), 'original')
+
+    def test_desktop_failures_remain_retryable_without_touching_backend(self):
+        candidate = self.home / 'candidate.app'
+        helper = Path('Contents/Resources/updater.py')
+        (candidate / helper).parent.mkdir(parents=True)
+        (candidate / helper).write_text('new helper')
+        installed = self.home / 'installed.app'
+        self.manager.config['app'] = str(installed)
+        self.new['desktop'] = str(candidate)
+
+        def copy_bundle(args):
+            self.assertEqual(args[0], 'ditto')
+            shutil.copytree(args[1], args[2])
+
+        def exchange(staged, app):
+            shutil.copytree(staged, app, dirs_exist_ok=True)
+            return False
+
+        for failure in ['copy', 'exchange', 'helper']:
+            with self.subTest(failure=failure):
+                updater.atomic(self.home / 'current.json', self.old)
+                with patch.object(self.manager, 'check', return_value=self.new['sha']), patch.object(self.manager, 'prepare', return_value=self.new), patch.object(updater, 'healthy', return_value=False), patch.object(self.manager, 'spawn', return_value=(Mock(), self.home / 'activation')), patch.object(updater, 'command', side_effect=copy_bundle), patch.object(updater, 'replace_app', side_effect=exchange):
+                    target, attribute = {
+                        'copy': (updater, 'command'),
+                        'exchange': (updater, 'replace_app'),
+                        'helper': (updater.shutil, 'copy2'),
+                    }[failure]
+                    with patch.object(target, attribute, side_effect=OSError('injected desktop failure')):
+                        with self.assertRaisesRegex(OSError, 'injected desktop failure'):
+                            self.manager.update()
+                self.assertEqual(self.manager.current()['sha'], self.new['sha'])
+                self.assertFalse((self.home / 'transaction.json').exists())
+                # Construct a fresh manager to verify the retry survives relaunch.
+                updater.atomic(self.home / 'config.json', self.manager.config)
+                manager = updater.Manager(self.home)
+                with patch.object(updater, 'command', return_value=self.new['sha'] + '\trefs/heads/main'):
+                    manager.check()
+                self.assertEqual(json.loads(manager.status_file.read_text())['phase'], 'available')
+                (self.data / 'agent.txt').write_text('new backend work')
+                backups = set((self.home / 'backups').iterdir())
+                with patch.object(manager, 'check', return_value=self.new['sha']), patch.object(manager, 'prepare') as prepare, patch.object(manager, 'stop') as stop, patch.object(manager, 'spawn') as spawn, patch.object(updater, 'command', side_effect=copy_bundle), patch.object(updater, 'replace_app', side_effect=exchange):
+                    manager.update()
+                prepare.assert_not_called()
+                stop.assert_not_called()
+                spawn.assert_not_called()
+                self.assertEqual(set((self.home / 'backups').iterdir()), backups)
+                self.assertEqual((self.data / 'agent.txt').read_text(), 'new backend work')
+                self.assertEqual((installed / helper).read_text(), 'new helper')
+                self.assertEqual((self.home / 'updater.py').read_text(), 'new helper')
+                self.assertEqual(manager.current()['desktop_revision'], self.new['sha'])
+                with patch.object(updater, 'command', return_value=self.new['sha'] + '\trefs/heads/main'):
+                    manager.check()
+                status = json.loads(manager.status_file.read_text())
+                self.assertEqual(status['phase'], 'current')
+                self.assertEqual(status['desktop_revision'], self.new['sha'])
 
     def test_waits_for_work_before_stopping(self):
         activation = self.home / 'activate-test'
