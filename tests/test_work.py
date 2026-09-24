@@ -7,6 +7,28 @@ from sapiens.service import APIError
 
 
 class WorkTest(IntegrationFixture):
+    def test_recurring_prompt_respects_mode_and_scoped_authorization(self):
+        service = self.service(start_worker=False)
+        agent = service._agent(service.hierarchy.main)
+        for mode, goal in [('always', 'Send one joke to the Admin-authorized Telegram recipient every six hours.'),
+                           ('changes', 'Observe changed messages and report; do not send replies.')]:
+            with self.subTest(mode=mode):
+                definition = service.work.upsert(agent, dict(title='Mode test', prompt=goal,
+                    minutes=360, watch={'mode': mode}))
+                with patch.object(agent, 'submit', return_value='test-'+mode) as submit:
+                    service.work.admit(agent, definition, datetime.now(timezone.utc), manual=True)
+                prompt = submit.call_args.args[1]
+                self.assertTrue(prompt.startswith(goal))
+                self.assertIn('only when explicitly authorized by Admin in the saved job goal', prompt)
+                self.assertIn('Observation-only goals remain observation-only', prompt)
+                self.assertNotIn('Observe only; this job does not grant permission', prompt)
+                if mode == 'always':
+                    self.assertIn('even when detector output is empty', prompt)
+                    self.assertNotIn('Investigate only changed items', prompt)
+                else:
+                    self.assertIn('Investigate only changed items', prompt)
+                    self.assertNotIn('even when detector output is empty', prompt)
+
     def test_main_and_default_parent_are_enforced_after_restart(self):
         service = self.service(start_worker=False)
         main = service.hierarchy.main
