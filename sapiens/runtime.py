@@ -247,10 +247,10 @@ class LocalLLM(CodexLLM):
         # Apply host defaults to every role, including learning and resumed calls.
         # Explicit SDK models still take precedence over the default model.
         defaults = ['-c', 'model_reasoning_effort=' + json.dumps(
-            os.environ.get('SAPIENS_CODEX_REASONING_EFFORT') or 'xhigh')]
+            os.environ.get('SAPIENS_CODEX_REASONING_EFFORT') or 'high')]
         if self.spec.model == 'default':
             defaults += ['-c', 'model=' + json.dumps(
-                os.environ.get('SAPIENS_CODEX_MODEL') or 'gpt-5.6-sol')]
+                os.environ.get('SAPIENS_CODEX_MODEL') or 'gpt-6-sol')]
         command[2:2] = defaults
         # Current Codex config key (not the older tool_output_limit spelling).
         command[2:2] = ['-c', f'tool_output_token_limit={getattr(self, "output_tokens", 1200)}']
