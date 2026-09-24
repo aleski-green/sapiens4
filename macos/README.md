@@ -17,7 +17,7 @@ For an unmanaged development launcher without update controls, run `./macos/buil
 
 ## Updates
 
-The managed app checks `https://github.com/aleski-green/sapiens4.git`, branch `main`, at launch and every hour while the app is running and the Mac is awake. It shows **Update available** and **Update now** inside the app. The Dock uses one static bundle icon with no update badge or runtime icon replacement. The app menu also offers a manual check. Network failures appear in the status bar and do not stop agents. Checks do not automatically apply updates.
+The managed app checks `https://github.com/aleski-green/sapiens4.git`, branch `main`, at launch and every hour while the app is running and the Mac is awake. Checking and up-to-date states use no workspace space. An available update shows a compact banner with **Update now** and **Dismiss**; dismissing it stays effective for that revision across checks and launches. Installation progress stays visible until completion, and errors have a dismissible retry banner. **Sapiens4 → Check for Updates…** remains available for manual checks and reveals a previously dismissed update. The Dock uses one static bundle icon with no update badge or runtime icon replacement. Checks do not automatically apply updates.
 
 Click **Update now** once:
 
