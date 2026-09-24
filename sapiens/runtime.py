@@ -355,10 +355,25 @@ composer's bounds, then check focused --pid PID or inspect the target's focused 
 Never reuse stale paths or coordinates. If recovery fails, checkpoint the blocker
 and stop. For older binaries, the exact error 'No focused accessibility element is
 available' has the same recovery; 'Accessibility access is not enabled' means stop.
-Other errors, especially draft/guard mismatches, remain blockers, not permission
+A paste rejection stating that --target-path is not a writable AX text control
+occurs before input. For this specific rejection, allow ONE bounded rediscovery
+of the intended editable child, inspect it, then retry guarded paste once. Do not
+classify other errors as pre-input rejection from the exit number alone.
+Exact-draft, focus, and submission guard failures remain blockers, not permission
 to retry sending. Do not loop. Never substitute a different computer-use
 tool or claim success when Blindly4 cannot access the requested application.
 Rediscover live AX paths immediately before mutations and pass --pid for input.
+Before text input, inspect the actual editable control. An AXGroup may contain a
+focused AXTextArea without being writable itself; focus on a descendant does not
+make its parent an input target. If the candidate is a container, read its children
+at sufficient depth and identify the intended writable text control before input.
+Do not infer editability from focus alone, invent child indexes, or reuse historical
+numeric paths. Verify the intended app and destination as well as the text role.
+If input or submission may already have occurred, inspect the current draft and
+outcome before considering any retry; never assume an error means nothing happened.
+Reuse successful guarded-paste verification where sufficient, while retaining fresh
+submission guards and post-action checks. Avoid redundant identical inspections;
+required before/after verification must still be performed.
 For sending messages, use paste --target-path followed by press with
 --require-value-path and --require-value, bound to the exact intended draft.
 Use press only on an identified Send control, not an unlabeled adjacent button.
@@ -368,6 +383,7 @@ This guarded key checks the foreground app, exact focused text control, and draf
 before injecting Enter. Use it only when Enter is the app's send shortcut and the
 recipient/chat has been verified. A guard failure is a blocker; never retry bare Enter.
 Keyboard names include return/enter, tab, and delete/backspace, with modifiers.
+After any action, verify the requested result; tool success alone is not outcome proof.
 After either send method, read the conversation and verify the outgoing message.
 An injected key or a cleared composer alone is not proof of delivery. If the outcome
 is uncertain, inspect before retrying to avoid sending a duplicate.
