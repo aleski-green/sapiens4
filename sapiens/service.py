@@ -16,6 +16,7 @@ from .artifacts import Artifacts
 from .attachments import attachment_prompt, resolve_attachments
 from .clock import utcnow
 from .hierarchy import Hierarchy
+from .lifecycle import Lifecycle
 from .memory import current_fingerprint, current_run, last_fingerprint
 from .orchestration import Orchestration
 from .paths import ROOT, SDK
@@ -73,6 +74,7 @@ class Service:
         self._active = None
         self._background = set()
         self.orchestration = Orchestration(self)
+        self.lifecycle = Lifecycle(self)
         self.hierarchy = Hierarchy(self)
         self.work = Work(self)
         self.tasks = Tasks(self)
@@ -84,7 +86,7 @@ class Service:
             self._sync(agent)
             # Public run() recovers running jobs to interrupted without replaying.
             # Only previously queued, never-started work is admitted automatically.
-            if any(j["status"] in {"queued", "running"} for j in agent.state["jobs"]):
+            if not self.lifecycle.retired(agent) and any(j["status"] in {"queued", "running"} for j in agent.state["jobs"]):
                 self._queue.put(row["id"])
         self.hierarchy.repair()
         self.tasks.repair()
@@ -180,6 +182,7 @@ class Service:
         row = {"name": sapi_name(data), "role": text_field(data, "role", 60)}
         with self._lock:
             agent = self._agent(agid)
+            self.lifecycle.require_active(agent)
             if any(j["status"] in {"queued", "running"} for j in agent.state["jobs"]):
                 raise APIError(409, "Wait for this Sapi's current job before changing its identity")
             recent = RecentContext(self.root / 'workspaces' / agid)
@@ -225,6 +228,7 @@ class Service:
                 raise APIError(503, "Server is shutting down")
             agent = self._agent(agid)
             # A failed attempt remains reviewable; a new message is not a retry.
+            self.lifecycle.require_active(agent)
             waiting = any(j['status'] in {'queued', 'running'} or
                           (j['status'] == 'budget_blocked' and j['flow'] not in {'learning', 'team_review'})
                           for j in agent.state['jobs'])
@@ -242,6 +246,7 @@ class Service:
     def job_action(self, agid, job_id, action):
         with self._lock:
             agent = self._agent(agid)
+            self.lifecycle.require_active(agent)
             jobs = agent.state["jobs"]
             job = next((j for j in jobs if j["id"] == job_id), None)
             if job is None:
@@ -267,6 +272,8 @@ class Service:
             for agent in self._agents.values():
                 self._sync(agent)
             snapshot = self.store.snapshot(after, agid)
+            for row in snapshot['agents']:
+                row['retired'] = self.lifecycle.retired(self._agent(row['id']))
             snapshot["computer"] = {"owner": self._active,
                                     "built": os.access(self.binary, os.X_OK)}
             snapshot["provider"] = "codex"
@@ -356,6 +363,8 @@ class Service:
         """Explicit memory work waits for active work, not historical failures."""
         with self._lock:
             agent = self._agent(agid)
+            if self.lifecycle.retired(agent):
+                return False
             settings = self.orchestration.settings(agent)
             if not settings['consolidate_requested']:
                 return False
@@ -389,12 +398,16 @@ class Service:
         for row in self.store.agents():
             if self._stopping.is_set():
                 return
+            if self.lifecycle.retired(self._agent(row['id'])):
+                continue
             background = False
             try:
                 if self._consolidate_pending(row['id']):
                     continue
                 with self._lock:
                     agent = self._agent(row["id"])
+                    if self.lifecycle.retired(agent):
+                        continue
                     # Read-only scripts also run when model allowance is exhausted.
                     # Keep them serialized with computer work and preserve hard-stop review.
                     recurring = None
@@ -457,6 +470,8 @@ class Service:
                 return
             with self._lock:
                 agent = self._agent(agid)
+                if self.lifecycle.retired(agent):
+                    continue
                 self.orchestration.prepare(agent)
                 jobs = agent.state["jobs"]
                 self._active = agid if any(j["flow"] in {"chat", "computer", "scheduled"} and j["status"] == "queued" for j in jobs) else None

@@ -72,7 +72,7 @@ function updateMentions() {
   const match=before.match(/(?:^|\s)@([A-Za-z0-9_.:#+|()&$^\-]*)$/);
   if (!match || input.selectionStart !== input.selectionEnd) { closeMentions(); return; }
   mentionRange={start:input.selectionStart-match[1].length-1,end:input.selectionStart};
-  mentionChoices=mentionEntities().filter(e => [e.name,e.tag,e.slug,e.filename,e.title,...(e.aliases || [])].filter(Boolean).some(n => n.toLowerCase().startsWith(match[1].toLowerCase()))).slice(0,12);
+  mentionChoices=mentionEntities().filter(e => !(e.type === 'sapi' && agent(e.id).retired) && [e.name,e.tag,e.slug,e.filename,e.title,...(e.aliases || [])].filter(Boolean).some(n => n.toLowerCase().startsWith(match[1].toLowerCase()))).slice(0,12);
   mentionIndex=0;
   drawMentions();
 }

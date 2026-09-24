@@ -23,7 +23,7 @@ function makeInitialState(data) {
   const prefs = data.preferences;
   const agents = data.agents.map(a => ({...a, kind:'sapi', scope:'personal', status:'online',
     autonomy:'assist', preview:'Ready for your message.', lastActivity:Date.parse(a.created), unread:false}));
-  const selected = agents.some(a => a.id === prefs.selected) ? prefs.selected : agents[0].id;
+  const selected = agents.some(a => a.id === prefs.selected && !a.retired) ? prefs.selected : agents[0].id;
   const workspaces = prefs.workspaces || {};
   const ws = workspaces[selected] || {tabs:[{id:`blank-${selected}`,type:'blank',title:'New tab'}]};
   return {agents, mainSapiId:agents[0].id, selected, scope:prefs.scope || 'all',

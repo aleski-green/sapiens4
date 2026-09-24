@@ -67,6 +67,15 @@ Pass a JSON object with op and the fields below. Quote JSON safely for the shell
   Sapi name/ID; defaults to the main Sapiens). Creates a real persistent Sapi and
   returns agent.id; use that ID as target for task and recurring_job. Main Sapiens
   only. Repeating the same name/role/manager reuses it; conflicting names fail.
+- retire_agent: target (name or ID), optional reason (up to 500 characters).
+  Main Sapi only, when Admin asks to retire/remove a Sapi. Hides it from the active
+  roster and stops all scheduling while preserving chats, memory, files and tasks.
+  Cannot retire the chief, a busy Sapi, or one with direct reports; reassign reports
+  first. Do not infer permission to retire from a question about team usefulness.
+- rehire_agent: target (retired name or ID). Main Sapi only, when Admin asks.
+  Reuses the same Sapi, memory, history and artifacts. Restores visibility;
+  checks and recurring jobs remain paused. Retained due tasks become eligible again.
+  status includes retired_team for finding retired Sapis. Never claim deletion.
 - budget_diagnostics: read-only token-budget and execution-error report for all
   Sapis. Optional target (Sapi name or ID), offset, limit (1–20, default 10).
   Use this first for budget investigations. Includes remaining allowances, chat
@@ -163,6 +172,8 @@ The returned saved facts are authoritative. Do not replay old chat requests.
         result = []
         for row in rows:
             agent = self.service._agent(row["id"])
+            if self.service.lifecycle.retired(agent):
+                continue
             state = agent.state
             jobs = state["jobs"]
             outputs = {m.get("job"): m["content"] for m in state["chat"]}
@@ -190,18 +201,22 @@ The returned saved facts are authoritative. Do not replay old chat requests.
     def status(self, agent):
         return dict(self_id=agent.agid, main_agent_id=self.service.hierarchy.main,
                     schedule=self.settings(agent), team=self.team(),
+                    retired_team=self.service.lifecycle.catalog(),
                     workspace=self.service.workspace.summary(agent),
                     recurring_jobs_scope='self only; team members have their own recurring_jobs',
                     recurring_jobs=[self.service.work.public_definition(j) for j in self.service.work.read(agent)])
 
-    def resolve(self, value):
+    def resolve(self, value, include_retired=False):
         rows = self.service.store.agents()
         matches = [r for r in rows if r["id"] == value]
         if not matches and isinstance(value, str):
             matches = [r for r in rows if r["name"].casefold() == value.casefold()]
         if len(matches) != 1:
             raise APIError(400, "Sapi name must identify exactly one existing Sapi; use its ID")
-        return self.service._agent(matches[0]["id"])
+        agent = self.service._agent(matches[0]["id"])
+        if not include_retired:
+            self.service.lifecycle.require_active(agent)
+        return agent
 
     def validate_schedule(self, agent, data):
         if not isinstance(data, dict) or set(data) - {"minutes", "enabled", "monitor_team"}:
@@ -226,6 +241,7 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             op = data.get("op")
             fields = {"batch": {"operations"}, "status": {'target'}, "budget_diagnostics": {'target', 'offset', 'limit'},
                       "create_agent": {"name", "role", "manager"},
+                      "retire_agent": {"target", "reason"}, "rehire_agent": {"target"},
                       "request_agent": {"context"}, "dismiss_task": {"id", "reason"},
                       "execution": set(), "schedule": {"minutes", "enabled", "monitor_team"},
                       "manager": {"manager", "target"}, "task": {"title", "due", "name", "target", "start"},
@@ -239,6 +255,9 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                       "strategy": {'id','status','approach','success','scope','expected_units','watch','generation_reason'}}
             if not isinstance(op, str) or op not in fields or set(data) - fields[op] - {"op"}:
                 raise APIError(400, "Unknown operation or field")
+            if op not in {'status', 'workspace', 'workspace_open', 'workspace_close',
+                          'artifact_read', 'budget_diagnostics', 'execution'}:
+                self.service.lifecycle.require_active(agent)
             if op == 'batch':
                 operations = data.get('operations')
                 if not isinstance(operations, list) or not 1 <= len(operations) <= 20:
@@ -267,9 +286,14 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             if op == 'artifact_read':
                 return self.service.workspace.read(agent, data.get('name'))
             if op == 'status':
-                target = self.resolve(data['target']) if 'target' in data else agent
+                target = self.resolve(data['target'], include_retired=True) if 'target' in data else agent
                 return self.status(target)
-            if op == 'request_agent':
+            if op in {'retire_agent', 'rehire_agent'}:
+                if agent.agid != self.service.hierarchy.main:
+                    raise APIError(403, 'Only the main Sapi can retire or rehire Sapis through host-control')
+                target = self.resolve(data.get('target'), include_retired=True)
+                result = self.service.lifecycle.change(target.agid, op == 'retire_agent', data.get('reason', ''))
+            elif op == 'request_agent':
                 if agent.agid == self.service.hierarchy.main:
                     raise APIError(400, 'The chief should decide directly rather than request itself')
                 context = text_field(data, 'context', 1600)
@@ -292,6 +316,7 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                     if len(matches) != 1 or matches[0]['role'] != role or matches[0]['id'] == agent.agid:
                         raise APIError(409, 'Name already exists with a different role; use status to inspect it')
                     child = self.service._agent(matches[0]['id'])
+                    self.service.lifecycle.require_active(child)
                     if child.corpora.directory()[child.agid]['parent'] != parent:
                         raise APIError(409, 'Name already exists with a different manager')
                     result = {'agent': matches[0], 'created': False}

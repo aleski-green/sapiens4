@@ -19,6 +19,7 @@ function managerOptions(a) {
   if (a.id === live.main_agent_id) return '<div class="settings-row"><span>Main orchestrator</span></div>';
   const info = live.orchestration[a.id];
   const allowed = state.agents.filter(candidate => {
+    if (candidate.retired) return false;
     let id = candidate.id;
     while (id) {
       if (id === a.id) return false;

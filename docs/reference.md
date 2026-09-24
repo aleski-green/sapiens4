@@ -169,6 +169,23 @@ A task without a due date does not run until started. Use `recurring_job` with
 a recurring definition is not proof of a working detector or successful execution.
 See [scenario audit](team-and-tool-routing.md) for verification and current limits.
 
+The chief can reversibly retire a Sapi when Admin requests it through host-control
+`{"op":"retire_agent","target":"NameOrID","reason":"Optional reason"}`.
+Retired Sapis leave the active CORPORA list and team status. Their chats, memory,
+tasks, saved artifacts, preferences and IDs remain intact. They cannot receive new
+work or run queued, due, budget-resumed or scheduled work while retired. The chief
+cannot retire itself, a Sapi with queued/running work, or one with active direct
+reports; finish/cancel work and reassign those reports first.
+
+`status.retired_team` lists every retired Sapi with its saved ID, role, retirement
+reason and time. On Admin's request, the chief uses
+`{"op":"rehire_agent","target":"SavedNameOrID"}` to restore that same Sapi,
+not create a replacement. Checks and recurring jobs stay paused; retained due
+tasks become eligible again. If its previous manager is retired, it reports to
+the chief. These commands add no interface controls. Historical mentions and
+artifacts remain readable, and merely asking which Sapis are useful does not
+authorize retirement.
+
 ### Computer access
 
 Blindly4 needs macOS Accessibility permission for the terminal or application
