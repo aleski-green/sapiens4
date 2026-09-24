@@ -28,7 +28,7 @@ class DiagnosticsTest(IntegrationFixture):
                     job.update(status='budget_blocked', error='Budget allowance unavailable')
                 else:
                     job.update(status='failed', error='RuntimeError: Tool-step limit reached')
-            state['budgets'][agent._sprint(datetime.now(timezone.utc))] = dict(spent=850000, reserved=0)
+            state['budgets'][agent._sprint(datetime.now(timezone.utc))] = dict(spent=agent.limits.tokens_per_sprint - 150000, reserved=0)
         save_record(agent, dict(id='unknown-timeout', job=timeout, flow='chat', status='failed',
             time=datetime.now(timezone.utc).isoformat(), usage=None, budget_units=100000))
         save_record(agent, dict(id='active', job='still-running', status='running',
@@ -42,8 +42,8 @@ class DiagnosticsTest(IntegrationFixture):
         self.assertNotIn('CLI noise', first['issues'][0]['error'])
         self.assertEqual(first['agents'][0]['unknown_usage_attempts'], 1)
         self.assertEqual(first['agents'][0]['fallback_units_retained_history'], 100000)
-        self.assertEqual(first['agents'][0]['admission']['learning']['shortfall_units'], 150000)
-        self.assertEqual(first['agents'][0]['admission']['chat']['shortfall_units'], 0)
+        self.assertEqual(first['agents'][0]['admission']['learning']['shortfall_units'], agent.limits.tokens_per_call * 3 - 150000)
+        self.assertEqual(first['agents'][0]['admission']['chat']['shortfall_units'], max(0, agent.limits.tokens_per_call - 150000))
         second = control(other, dict(op='budget_diagnostics', target=agent.agid, offset=1, limit=2))
         self.assertEqual(len(second['issues']), 2)
         self.assertIsNone(second['next_offset'])

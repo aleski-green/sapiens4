@@ -2,7 +2,9 @@
 
 A local workspace for persistent Sapis. **CORPORA** provides the interface,
 **AgentPy** runs the agents through your authenticated **Codex CLI**, and
-**Blindly4** is the main tool for computer and browser interaction on macOS.
+**Blindly4** is the fallback for native computer and browser UI interaction on macOS.
+Use available connectors, tools, service APIs, direct fetch, or search first when
+they can satisfy the request faster. Internal orchestration uses host-control.
 
 ## Start
 
@@ -154,6 +156,18 @@ success. The reporting tree is metadata, not an authorization boundary.
 Host scheduling settings live atomically in `agentpy/agents/<id>/host.json`;
 manager links use the SDK's existing directory. SQLite remains a UI projection.
 The host-control command uses the same validated loopback HTTP API as the UI.
+The main orchestrator (Sapiens, identified by `main_agent_id`) can use `create_agent`
+with a name and role. Repeated matching requests reuse the existing agent;
+conflicting identities are rejected. Explicit agent requests and implicit requests
+for distinct ongoing responsibilities should create/reuse the team and assign work,
+not merely return a proposed organization chart. Ordinary multi-step questions do
+not imply new agents.
+Use `batch` for multi-agent setup, with `task`, `target`, and `start: true` for
+immediate work. Alternatively, use `run_task` with the same target after creation.
+A task without a due date does not run until started. Use `recurring_job` with
+`target` for recurring assignments; its assignee owns strategy setup. Creation of
+a recurring definition is not proof of a working detector or successful execution.
+See [scenario audit](team-and-tool-routing.md) for verification and current limits.
 
 ### Computer access
 
@@ -175,8 +189,9 @@ Only one unresolved job per Sapi is accepted. Computer ownership represents
 this server's execution queue; it does not lock out other desktop applications
 or independently launched agent processes. The inherited Codex execution
 backend runs local tools without sandboxing. Blindly4 guidance preserves its
-PID, fresh AX path and exact-draft checks. Ordinary chat permits only the local
-host-control command; this distinction is behavioral, not an OS sandbox.
+PID, fresh AX path and exact-draft checks. Internal app changes use host-control;
+external work chooses available authorized tools before UI automation. This route
+selection is behavioral guidance, not an OS sandbox or a connector registry.
 
 The embedded workspace tabs remain CORPORA's sandboxed browser frames. They
 are separate from the native desktop that Blindly4 operates. Websites that
@@ -227,7 +242,8 @@ On restart, unstarted queued jobs resume. Previously running calls become
 `interrupted`; they are never automatically replayed. Inspect the result of a
 computer action before choosing Retry, because it may already have had effects.
 Stopping the server waits for a current Codex call to finish; the default call
-deadline is 300 seconds. Use `--timeout 120` to shorten it.
+deadline is 3000 seconds. The effective deadline is the smaller of this server
+cap and the Sapi’s configured timeout. Use `--timeout 120` to shorten it.
 
 To choose another local store:
 

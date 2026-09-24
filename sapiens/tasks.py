@@ -62,7 +62,7 @@ class Tasks:
     def updates(self):
         names = {t['id']: t.get('name') for t in self.catalog()}
         return [dict(r, name=names.get(r['task']) or r['name']) for a in self.service._agents.values() for r in self.activity(a)
-                if r['kind'] in {'running','done','failed','interrupted','budget_blocked','conflict','completed'}]
+                if r['kind'] in {'running','done','failed','interrupted','budget_blocked','conflict','completed','dismissed'}]
 
     def detail(self, agid, task_id):
         with self.service._lock:
@@ -185,6 +185,23 @@ class Tasks:
             state['tasks'].append(task)
             state.setdefault('task_assignments', []).append(self.notice(task, agent.agid))
         return dict(task_id=task['id'], task_name=name, task_tag=task['tag'], target=agent.agid)
+
+    def dismiss(self, agent, task_id, reason):
+        with agent.store.transaction() as state:
+            task = next((t for t in state['tasks'] if t['id'] == task_id), None)
+            if task is None:
+                raise APIError(404, 'Unknown open task owned by this Sapi')
+            job = next((j for j in state['jobs'] if j['id'] == task.get('job')), None)
+            # A running review may dismiss its own task; the review still returns
+            # its decision. An unstarted run must never execute after dismissal.
+            if job and job['status'] not in {'running', 'done', 'cancelled'}:
+                job['status'] = 'cancelled'
+            task.update(status='dismissed', dismissal_reason=reason)
+            agent.corpora.archive(agent.agid, f"tasks/{task_id}", task)
+            state['tasks'].remove(task)
+        self.record(agent, task, 'dismissed', 'Dismissed: ' + reason)
+        self.service._sync(agent)
+        return dict(task_id=task_id, status='dismissed', reason=reason)
 
     @staticmethod
     def notice(task, owner):

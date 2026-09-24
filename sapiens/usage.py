@@ -11,8 +11,8 @@ from .sdk import atomic_bytes
 from .validation import APIError
 
 
-DEFAULTS = dict(weekly_limit=1_000_000, call_allowance=100_000,
-                max_tools=16, timeout_seconds=120, output_tokens=1200)
+DEFAULTS = dict(weekly_limit=10_000_000, call_allowance=1_000_000,
+                max_tools=160, timeout_seconds=1200, output_tokens=12000)
 
 
 def counters(usage):
@@ -31,8 +31,8 @@ def settings(agent):
 
 
 def validate(data):
-    ranges = dict(weekly_limit=(1000, 100_000_000), call_allowance=(1000, 1_000_000),
-                  max_tools=(1, 100), timeout_seconds=(15, 600), output_tokens=(200, 8000))
+    ranges = dict(weekly_limit=(1000, 1_000_000_000), call_allowance=(1000, 10_000_000),
+                  max_tools=(1, 1000), timeout_seconds=(15, 6000), output_tokens=(200, 80000))
     if not isinstance(data, dict) or set(data) != set(ranges):
         raise APIError(400, 'Provide all execution limit fields')
     for key, (lo, hi) in ranges.items():

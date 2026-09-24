@@ -1,4 +1,5 @@
 function taskStatus(task, run) {
+  if (task.status === 'dismissed') return 'Dismissed';
   if (task.past || task.status === 'done') return 'Completed';
   if (run) return run.status === 'warning' ? 'Warning · partial result' : run.status === 'done' ? 'Ready for review' : run.status === 'running' ? 'In progress' : statusNames[run.status];
   if (task.due && new Date(task.due) <= new Date()) return 'Due · waiting for runner';

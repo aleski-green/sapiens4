@@ -118,8 +118,8 @@ function applySnapshot(snapshot) {
   for (const notice of snapshot.task_assignments || []) {
     for (const owner of new Set([notice.agent, notice.assigned_by])) {
       const timestamp=Date.parse(notice.time);
-      (state.messages[owner] ||= []).push({role:'assistant',speaker:notice.agent,
-        text:`New @${notice.name} assigned.`,time:displayTime(notice.time),timestamp,assignment:true});
+      (state.messages[owner] ||= []).push({role:'assistant',speaker:notice.assigned_by,
+        text:`@${agent(notice.assigned_by).name} assigned @${notice.name} to @${agent(notice.agent).name}.`,time:displayTime(notice.time),timestamp,assignment:true});
       const a=state.agents.find(a=>a.id===owner);
       if (a && timestamp > a.lastActivity) {a.lastActivity=timestamp;a.preview=`New @${notice.name} assigned.`;}
     }
