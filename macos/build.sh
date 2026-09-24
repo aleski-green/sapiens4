@@ -6,7 +6,7 @@ BUILD="$ROOT/.build/macos"
 APP="$BUILD/Sapiens4.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$BUILD/AppIcon.iconset" "$BUILD/module-cache"
 "$PYTHON" -c 'import sys; assert sys.version_info >= (3, 9), "Python 3.9+ required"'
-xcrun swiftc -module-cache-path "$BUILD/module-cache" -O -framework Cocoa -framework WebKit "$ROOT/macos/Sapiens4.swift" "$ROOT/macos/NavigationPolicy.swift" -o "$APP/Contents/MacOS/Sapiens4"
+xcrun swiftc -module-cache-path "$BUILD/module-cache" -O -framework Cocoa -framework WebKit "$ROOT/macos/Sapiens4.swift" "$ROOT/macos/NavigationPolicy.swift" "$ROOT/macos/ServerReadiness.swift" -o "$APP/Contents/MacOS/Sapiens4"
 xcrun swiftc -module-cache-path "$BUILD/module-cache" -framework Cocoa "$ROOT/macos/icon.swift" -o "$BUILD/make-icon"
 # Extract the browser favicon so the desktop icon cannot drift from its source.
 "$PYTHON" - "$ROOT/web/bootstrap.js" "$BUILD/favicon.svg" <<'PYICON'

@@ -88,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         updateButton.title = phase == "available" ? "Update now" : (busy ? "Updating…" : "Check for updates")
         updateMenu.title = updateButton.title; updateMenu.isEnabled = updateButton.isEnabled
         NSApp.dockTile.badgeLabel = phase == "available" ? "Update" : nil
-        if previous == "installing" && phase == "current" { web.reload() }
+        if previous == "installing" && phase == "current" { reload() }
         if phase == "current", let revision = status["desktop_revision"] as? String,
            revision != Bundle.main.object(forInfoDictionaryKey: "SapiensDesktopRevision") as? String, !relaunching {
             relaunching = true
@@ -112,23 +112,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     @objc func reload() { attempts = 0; checkServer() }
+    func retryServer() {
+        attempts += 1
+        if attempts >= 60 {
+            fail("The server did not become ready. Choose View → Reload to try again.")
+            launched = false
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.checkServer() }
+    }
     func checkServer() {
         var request = URLRequest(url: base.appendingPathComponent("api/health")); request.timeoutInterval = 2
         URLSession.shared.dataTask(with: request) { data, response, error in
             DispatchQueue.main.async {
                 if let http = response as? HTTPURLResponse {
-                    if http.statusCode == 200, http.value(forHTTPHeaderField: "Server")?.hasPrefix("Sapiens4") == true,
-                       let data = data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], json["status"] as? String == "ok" {
-                        self.web.load(URLRequest(url: self.base.appendingPathComponent("workspace/"))); return
+                    switch serverReadiness(statusCode: http.statusCode, server: http.value(forHTTPHeaderField: "Server"), data: data) {
+                    case .ready:
+                        self.attempts = 0
+                        self.web.load(URLRequest(url: self.base.appendingPathComponent("workspace/")))
+                    case .verifying:
+                        self.retryServer()
+                    case .unavailable:
+                        self.fail("Port 4174 is occupied by another service. Stop that service and choose View → Reload.")
                     }
-                    self.fail("Port 4174 is occupied by another service. Stop that service and choose View → Reload."); return
+                    return
                 }
                 if !self.launched {
                     do { try self.startServer(); self.launched = true } catch { self.fail(error.localizedDescription); return }
                 }
-                self.attempts += 1
-                if self.attempts >= 60 { self.fail("The server did not become ready. See .sapiens4/desktop-server.log in the repository, then choose View → Reload."); self.launched = false; return }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.checkServer() }
+                self.retryServer()
             }
         }.resume()
     }
@@ -174,7 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let panel = NSOpenPanel(); panel.allowsMultipleSelection = parameters.allowsMultipleSelection; panel.canChooseDirectories = false
         panel.beginSheetModal(for: window) { result in completionHandler(result == .OK ? panel.urls : nil) }
     }
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { webView.reload() }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { reload() }
 }
 @main
 struct DesktopApplication {
