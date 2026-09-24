@@ -33,3 +33,9 @@ jobs:
       - run: swift build --package-path blindly4
       - run: swift run --package-path blindly4 blindly4 --self-test
       - run: swift run --package-path blindly4 blindly4 schema
+      - name: Desktop navigation and readiness tests
+        run: |
+          swiftc macos/NavigationPolicy.swift macos/NavigationPolicyTests.swift -o /tmp/navigation-tests
+          /tmp/navigation-tests
+          swiftc macos/ServerReadiness.swift macos/ServerReadinessTests.swift -o /tmp/readiness-tests
+          /tmp/readiness-tests
