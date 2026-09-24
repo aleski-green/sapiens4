@@ -21,6 +21,12 @@ The managed app checks `https://github.com/aleski-green/sapiens4.git`, branch `m
 
 Click **Update now** once:
 
+The updater probes installed macOS SDKs for compiler compatibility. If SwiftPM
+fails with the known missing `llbuild` symbol, it compiles the dependency-free
+Blindly4 target directly and runs its self-test. The desktop build uses the same
+compatible SDK. This does not change system developer-tool settings; other build
+failures still leave the running version intact.
+
 1. Download the advertised main revision into a new release directory, fetch the pinned submodules recursively, and build Blindly4. If main includes the compatible desktop build, build and validate that bundle too. Build failures leave the running version alone.
 2. Wait until active and queued work finishes. The update helper can continue waiting if the desktop window closes. Reopening the app shows its persisted progress; an installation lock prevents overlapping updates.
 3. Gracefully stop the owned local backend, retaining its existing data directory. A managed backend keeps host-control available while any run that raced with the idle check finishes. No force kill is used.

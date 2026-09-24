@@ -9,6 +9,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -32,6 +33,54 @@ def command(args, cwd=None, timeout=300):
     if result.returncode:
         raise RuntimeError((result.stderr or result.stdout or 'Command failed')[-3000:])
     return result.stdout.strip()
+
+
+def swift_environment():
+    """Probe installed SDKs without changing the machine's developer tools."""
+    selected = Path(command(['xcrun', '--sdk', 'macosx', '--show-sdk-path']))
+    candidates = [selected, *sorted(selected.parent.glob('MacOSX*.sdk'), reverse=True)]
+    seen = set()
+    with tempfile.TemporaryDirectory(prefix='sapiens-swift-') as folder:
+        source = Path(folder) / 'probe.swift'
+        source.write_text('import Cocoa\nimport WebKit\n')
+        for sdk in candidates:
+            sdk = sdk.resolve()
+            if sdk in seen:
+                continue
+            seen.add(sdk)
+            env = dict(os.environ, SDKROOT=str(sdk))
+            probe = subprocess.run(['xcrun', 'swiftc', '-sdk', str(sdk), '-typecheck', str(source)],
+                                   env=env, capture_output=True, text=True, timeout=120)
+            if probe.returncode == 0:
+                return env
+    raise RuntimeError('No installed macOS SDK works with the Swift compiler. Repair or reinstall Apple Command Line Tools, then retry the update.')
+
+
+def build_blindly(root, env):
+    package = Path(root) / 'blindly4'
+    result = subprocess.run(['xcrun', 'swift', 'build', '--package-path', str(package), '-c', 'release'],
+                            env=env, capture_output=True, text=True, timeout=1200)
+    if result.returncode:
+        error = result.stderr or result.stdout
+        # Only bypass the known broken SwiftPM/llbuild loader. Source compilation
+        # failures must remain failures, and complex packages need SwiftPM.
+        simple_package = '''import PackageDescription
+let package = Package(name: "blindly4", platforms: [.macOS(.v13)],
+products: [.executable(name: "blindly4", targets: ["blindly4"])],
+targets: [.executableTarget(name: "blindly4")])'''
+        manifest = re.sub(r'//[^\n]*', '', (package / 'Package.swift').read_text())
+        simple = re.sub(r'\s+', '', manifest) == re.sub(r'\s+', '', simple_package)
+        if not ('Symbol not found:' in error and 'llbuild' in error and simple):
+            raise RuntimeError(error[-3000:])
+        output = package / '.build/release/blindly4'
+        output.parent.mkdir(parents=True, exist_ok=True)
+        sources = sorted((package / 'Sources/blindly4').rglob('*.swift'))
+        result = subprocess.run(['xcrun', 'swiftc', '-sdk', env['SDKROOT'], '-swift-version', '6',
+                                 '-O', '-module-name', 'blindly4', *map(str, sources), '-o', str(output)],
+                                env=env, capture_output=True, text=True, timeout=1200)
+        if result.returncode:
+            raise RuntimeError('Blindly4 compiler fallback failed: ' + result.stderr[-3000:])
+    command([str(package / '.build/release/blindly4'), '--self-test'])
 
 
 def replace_app(staged, installed):
@@ -108,12 +157,13 @@ class Manager:
         command(['git', 'checkout', '--detach', sha], cwd=destination)
         command(['git', 'submodule', 'update', '--init', '--recursive'], cwd=destination, timeout=900)
         self.status('preparing', 'Building Blindly4…')
-        command(['xcrun', 'swift', 'build', '--package-path', str(destination / 'blindly4'), '-c', 'release'], timeout=1200)
+        env = swift_environment()
+        build_blindly(destination, env)
         command([sys.executable, '-c', 'from sapiens.assets import index,javascript; index(); javascript(); from sapiens.service import Service'], cwd=destination)
         release = dict(root=str(destination), sha=sha)
         if (destination / 'macos/build.sh').is_file() and self.config.get('app'):
             self.status('preparing', 'Building the updated desktop app…')
-            env = dict(os.environ, SAPIENS_DESKTOP_HOME=str(self.home), SAPIENS_PYTHON=sys.executable)
+            env = dict(env, SAPIENS_DESKTOP_HOME=str(self.home), SAPIENS_PYTHON=sys.executable)
             build = subprocess.run([str(destination / 'macos/build.sh')], cwd=destination, env=env, capture_output=True, text=True, timeout=600)
             if build.returncode:
                 raise RuntimeError('Desktop build failed: ' + build.stderr[-2000:])

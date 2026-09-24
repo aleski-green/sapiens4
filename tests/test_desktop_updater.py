@@ -31,6 +31,46 @@ class DesktopUpdaterTests(unittest.TestCase):
         updater.atomic(self.home / 'current.json', self.old)
         self.manager = updater.Manager(self.home)
 
+    def test_sdk_probe_skips_incompatible_sdk(self):
+        selected = self.home / 'MacOSX26.sdk'
+        compatible = self.home / 'MacOSX15.sdk'
+        selected.mkdir(); compatible.mkdir()
+        with patch.object(updater, 'command', return_value=str(selected)), patch.object(updater.subprocess, 'run', side_effect=[Mock(returncode=1), Mock(returncode=0)]) as run:
+            env = updater.swift_environment()
+        self.assertEqual(env['SDKROOT'], str(compatible.resolve()))
+        self.assertEqual(run.call_count, 2)
+
+    def test_sdk_probe_reports_repair_when_no_sdk_works(self):
+        selected = self.home / 'MacOSX26.sdk'
+        selected.mkdir()
+        with patch.object(updater, 'command', return_value=str(selected)), patch.object(updater.subprocess, 'run', return_value=Mock(returncode=1)):
+            with self.assertRaisesRegex(RuntimeError, 'Repair or reinstall'):
+                updater.swift_environment()
+
+    def test_swiftpm_loader_failure_uses_direct_compiler_and_self_test(self):
+        package = self.home / 'blindly4'
+        package.mkdir()
+        original = Path(__file__).resolve().parents[1] / 'blindly4/Package.swift'
+        shutil.copy2(original, package / 'Package.swift')
+        failure = Mock(returncode=1, stderr='dyld: Symbol not found: llbuild', stdout='')
+        with patch.object(updater.subprocess, 'run', side_effect=[failure, Mock(returncode=0)]) as run, patch.object(updater, 'command') as command:
+            updater.build_blindly(self.home, {'SDKROOT': '/compatible.sdk'})
+        self.assertEqual(run.call_args_list[1].args[0][:4], ['xcrun', 'swiftc', '-sdk', '/compatible.sdk'])
+        command.assert_called_once_with([str(package / '.build/release/blindly4'), '--self-test'])
+
+    def test_source_errors_and_complex_packages_do_not_use_fallback(self):
+        package = self.home / 'blindly4'
+        package.mkdir()
+        original = Path(__file__).resolve().parents[1] / 'blindly4/Package.swift'
+        for error, manifest in [('source compilation error', original.read_text()),
+                                ('Symbol not found: llbuild', 'import PackageDescription\n// different package')]:
+            with self.subTest(error=error):
+                (package / 'Package.swift').write_text(manifest)
+                with patch.object(updater.subprocess, 'run', return_value=Mock(returncode=1, stderr=error, stdout='')) as run:
+                    with self.assertRaises(RuntimeError):
+                        updater.build_blindly(self.home, {'SDKROOT': '/compatible.sdk'})
+                self.assertEqual(run.call_count, 1)
+
     @unittest.skipUnless(sys.platform == "darwin", "macOS bundle exchange")
     def test_bundle_exchange_preserves_previous_app(self):
         staged, installed = self.home / 'new.app', self.home / 'installed.app'
