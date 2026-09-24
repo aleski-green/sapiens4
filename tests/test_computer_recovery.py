@@ -15,6 +15,11 @@ from sapiens.foreground import ForegroundReturn
 
 
 class ReadWrapperTest(unittest.TestCase):
+    def test_accessibility_error_codes_survive_wrapper(self):
+        for code in ('focus_unavailable', 'accessibility_permission_denied', 'accessibility_error'):
+            payload = dict(code=code, error='Accessibility diagnostic')
+            self.assertEqual(json.loads(bounded_output(json.dumps(payload), 800)), payload)
+
     def test_compacts_find_before_truncation(self):
         matches = [dict(path=str(i),role='AXStaticText',value=f'Message {i}',attributes=['noise']*100) for i in range(10)]
         result = json.loads(bounded_output(json.dumps(dict(matches=matches)), 1200))

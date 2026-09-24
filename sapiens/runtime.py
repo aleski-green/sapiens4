@@ -344,8 +344,19 @@ avoid repeated schema/apps calls except to verify a launch. Do not loop over fai
 Do not wrap many commands in one shell invocation to bypass the host's execution bounds.
 A recurring watcher saves a checkpoint through host-control; it must not request consolidation.
 The checkpoint must distinguish complete coverage from partial observations and blockers.
-Read its JSON results and check exit codes. Exit 77 means Accessibility permission
-is unavailable; report this and stop. Never substitute a different computer-use
+Read its JSON results and check exit codes. Exit 77 covers multiple accessibility
+errors; inspect the JSON code and error, not just the exit number.
+accessibility_permission_denied means permission is unavailable: stop and report it.
+focus_unavailable means no focused element was exposed, not missing permission.
+For that error only, allow ONE bounded recovery: rediscover the intended composer
+in the verified app/chat, activate that PID, and focus the fresh composer path.
+If AX focus alone does not work, click once at the center of that freshly inspected
+composer's bounds, then check focused --pid PID or inspect the target's focused state.
+Never reuse stale paths or coordinates. If recovery fails, checkpoint the blocker
+and stop. For older binaries, the exact error 'No focused accessibility element is
+available' has the same recovery; 'Accessibility access is not enabled' means stop.
+Other errors, especially draft/guard mismatches, remain blockers, not permission
+to retry sending. Do not loop. Never substitute a different computer-use
 tool or claim success when Blindly4 cannot access the requested application.
 Rediscover live AX paths immediately before mutations and pass --pid for input.
 For sending messages, use paste --target-path followed by press with
