@@ -19,6 +19,14 @@ const statusNames = {queued:'Queued',running:'Running',done:'Completed',warning:
   interrupted:'Interrupted',conflict:'Needs review',budget_blocked:'Budget blocked',cancelled:'Dismissed'};
 const displayTime = value => new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 const originalConversation = renderConversation;
+const originalSidebar = renderSidebar;
+renderSidebar = function() {
+  originalSidebar();
+  for (const row of $('#agent-list').querySelectorAll('[data-agent]')) {
+    if (state.agents.find(a => a.id === row.dataset.agent)?.retired) row.remove();
+  }
+  $('#agent-count').textContent = String(state.agents.filter(a => !a.retired).length).padStart(2,'0');
+};
 
 function preferences() {
   storeWorkspace();
@@ -144,7 +152,13 @@ function applySnapshot(snapshot) {
     }
   }
   for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp);
-  if (!state.agents.some(a => a.id === state.selected)) state.selected = state.agents[0].id;
+  if (!state.agents.some(a => a.id === state.selected) ||
+      (agent(state.selected).retired && !old.get(state.selected)?.retired)) {
+    state.drafts[state.selected] = $('#message-input').value;
+    state.selected = snapshot.main_agent_id;
+    $('#message-input').value = state.drafts[state.selected] || '';
+    renderTabs(); renderWorkspace();
+  }
   state.logs = eventRows.slice().reverse().map(e => ({agent:e.agent,time:displayTime(e.time),title:e.kind,detail:e.detail}));
   state.computer.owner = snapshot.computer.owner;
   state.tasks = snapshot.jobs.map(j => ({id:j.id,agent:j.agent,status:statusNames[j.status]}));
@@ -168,7 +182,7 @@ renderAgentHeader = function() {
   $('#agent-heading').innerHTML = `${avatar(a,isMainSapi(a)?'large main-sapi-avatar':'large')}<div><h2>${esc(a.name)}</h2><p class="agent-role">${esc(a.role)}</p></div><button class="icon-button" data-action="agent-settings" aria-label="Sapi settings">···</button>`;
   $('#message-input').placeholder = `Message ${a.name}…`;
   $$('[data-panel]').forEach(b => {b.classList.toggle('active',b.dataset.panel === state.panel);b.setAttribute('aria-pressed',b.dataset.panel === state.panel);});
-  $('.send-button').disabled = !online || Boolean(job) || submitting.has(a.id) || uploading > 0;
+  $('.send-button').disabled = a.retired || !online || Boolean(job) || submitting.has(a.id) || uploading > 0;
 };
 
 renderConversation = function() {

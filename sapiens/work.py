@@ -304,6 +304,7 @@ class Work:
         return run
 
     def require_idle(self, agent):
+        self.service.lifecycle.require_active(agent)
         if self.service._stopping.is_set():
             raise APIError(503, 'Server is shutting down')
         unresolved = self.blocking(agent)
