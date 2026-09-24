@@ -91,7 +91,7 @@ class UsageRecoveryTest(IntegrationFixture):
         a=service._agent(service.hierarchy.main)
         job=a.submit('chat','Not yet run')
         with a.store.transaction() as state:
-            state['budgets'][a._sprint(datetime.now(timezone.utc))]=dict(spent=1000000,reserved=0)
+            state['budgets'][a._sprint(datetime.now(timezone.utc))]=dict(spent=a.limits.tokens_per_sprint,reserved=0)
         asyncio.run(a.run())
         self.assertEqual(a.state['jobs'][0]['status'],'budget_blocked')
         self.assertEqual(len(self.factory.prompts),0)
@@ -170,7 +170,7 @@ class UsageRecoveryTest(IntegrationFixture):
         from sapiens.service import APIError
         with self.assertRaises(APIError):
             service.update_agent(a.agid,dict(name='Changed',role='Role',execution={**settings(a),'max_tools':0}))
-        self.assertEqual(service.store.agents()[0]['name'],'Sapi')
+        self.assertEqual(service.store.agents()[0]['name'],'SapiTheMain')
         service.update_agent(a.agid,dict(name='Sapi',role='Role',execution={**settings(a),'max_tools':8}))
         service=self.restart(service,start_worker=False)
         self.assertEqual(settings(service._agent(a.agid))['max_tools'],8)

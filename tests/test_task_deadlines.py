@@ -88,7 +88,7 @@ class TaskDeadlineTest(IntegrationFixture):
         for bad in [dict(enabled=True,seconds=0),dict(enabled='yes',seconds=90),dict(enabled=True,seconds=True)]:
             with self.assertRaises(APIError):
                 service.update_agent(main,{'name':'Changed','role':'Main','recent':bad})
-        self.assertEqual(service.store.agents()[0]['name'],'Sapi')
+        self.assertEqual(service.store.agents()[0]['name'],'SapiTheMain')
         service.update_agent(main,{'name':'Sapi','role':'Main','recent':{'enabled':True,'seconds':45}})
         service=self.restart(service,start_worker=False)
         info=service.snapshot()['orchestration']

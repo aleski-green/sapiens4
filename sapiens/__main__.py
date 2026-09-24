@@ -14,7 +14,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run local Sapiens4 / CORPORA")
     parser.add_argument("--port", type=int, default=4174)
     parser.add_argument("--data-dir", type=Path, default=ROOT / ".sapiens4")
-    parser.add_argument("--timeout", type=int, default=300, help="Codex call deadline in seconds")
+    parser.add_argument("--timeout", type=int, default=3000, help="Codex call deadline in seconds")
     parser.add_argument("--open", action="store_true", help="Open the UI in your browser")
     args = parser.parse_args()
     if args.timeout <= 0:

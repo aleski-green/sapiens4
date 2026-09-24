@@ -53,7 +53,7 @@ def main(argv):
         binary = Path(__file__).resolve().parent.parent / 'blindly4/.build/release/blindly4'
         settings = Path.cwd() / 'computer-limits.json'
         limit = json.loads(settings.read_text()).get('output_chars', 4800) if settings.exists() else 4800
-        limit = max(800, min(32000, int(limit)))
+        limit = max(800, min(320000, int(limit)))
         Path('.computer-used').touch()
         def invoke(args):
             return subprocess.run([str(binary), *args], capture_output=True, text=True, timeout=30)

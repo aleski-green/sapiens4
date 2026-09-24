@@ -65,7 +65,7 @@ class WatchTest(IntegrationFixture):
         service, agent, row, now = self.setup_watch()
         with patch('sapiens.watch.observe',return_value=observation()):service.scheduled(now)
         with agent.store.transaction() as state:
-            state['budgets'][agent._sprint(now)]=dict(spent=1000000,reserved=0)
+            state['budgets'][agent._sprint(now)]=dict(spent=agent.limits.tokens_per_sprint,reserved=0)
         with patch('sapiens.watch.observe',return_value=observation('new')):service.scheduled(now+timedelta(minutes=1))
         self.assertEqual(self.factory.prompts,[])
         self.assertEqual(service.work.read(agent)[0]['detector']['status'],'budget_blocked')

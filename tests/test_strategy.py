@@ -81,7 +81,7 @@ class StrategyTest(IntegrationFixture):
         row = service.work.upsert(agent, dict(id=row['id'], enabled=True))
         now = datetime.fromisoformat(row['next_run'])
         with agent.store.transaction() as state:
-            state['budgets'][agent._sprint(now)] = dict(spent=1000000, reserved=0)
+            state['budgets'][agent._sprint(now)] = dict(spent=agent.limits.tokens_per_sprint, reserved=0)
         service.scheduled(now)
         self.assertEqual(self.factory.prompts, [])
         with agent.store.transaction() as state:

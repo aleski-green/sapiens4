@@ -42,7 +42,7 @@ def random_avatar(used):
 
 
 class Service:
-    def __init__(self, data_dir, *, factory_builder=None, start_worker=True, timeout=300):
+    def __init__(self, data_dir, *, factory_builder=None, start_worker=True, timeout=3000):
         self.root = Path(data_dir).resolve()
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._file_lock = (self.root / "host.lock").open("a")
@@ -78,7 +78,7 @@ class Service:
         self.tasks = Tasks(self)
         self.worker = None
         if not self.store.agents():
-            self.create_agent({"name": "Sapi", "role": "Personal assistant"})
+            self.create_agent({"name": "SapiTheMain", "role": "Head of Corpora"})
         for row in self.store.agents():
             agent = self._agent(row["id"])
             self._sync(agent)
