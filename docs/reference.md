@@ -386,7 +386,16 @@ Optional `target`, `offset`, and `limit` narrow and paginate saved evidence with
 model calls. Fallback charges cover retained history and are not measured tokens.
 Failed and dismissed chat requests retain a compact status toggle with details.
 
-After computer use, the host attempts to bring the originating browser/Codex app
-back to the foreground, including on errors and timeouts. If no browser origin
-was captured, it opens the configured local CORPORA URL. Restore failures are
+Blindly4 supports Enter (`return` or `enter`), Tab (`tab`), and Backspace
+(`delete` or `backspace`). If an authorized message has no accessible Send button,
+Sapis can use `key --key return --pid PID --target-path PATH --require-value TEXT`
+after verifying the recipient and focusing the composer. This checks the exact
+draft, focused text control, and foreground app. The outgoing message must still
+be observed before reporting a successful send; a successful key command is not
+proof of delivery.
+
+After computer use, the host attempts to bring the originating Sapiens4 desktop,
+browser or Codex app back to the foreground, including on errors and timeouts.
+If no supported origin was captured, it leaves the foreground alone. Completion
+does not open a CORPORA URL or create a browser tab. Restore failures are
 reported as warnings rather than hiding the task result.

@@ -104,6 +104,21 @@ class RecoveryTest(IntegrationFixture):
 
 
 class ForegroundTest(unittest.TestCase):
+    def test_desktop_and_background_completion_never_open_workspace_url(self):
+        for bundle in ('com.sapiens4.desktop', 'com.apple.finder', None):
+            with self.subTest(bundle=bundle), tempfile.TemporaryDirectory() as root:
+                root=Path(root)
+                (root/'host-control.json').write_text('{}')
+                with patch('sapiens.foreground.sys.platform','darwin'), patch('sapiens.foreground.front_bundle',return_value=bundle), patch('sapiens.foreground.subprocess.run') as run:
+                    run.return_value.returncode=0
+                    guard=ForegroundReturn(root)
+                    (root/'.computer-used').touch()
+                    self.assertIsNone(guard.restore())
+                    if bundle == 'com.sapiens4.desktop':
+                        run.assert_called_once_with(['/usr/bin/open','-b',bundle],capture_output=True,text=True,timeout=5)
+                    else:
+                        run.assert_not_called()
+
     def test_only_restore_when_computer_was_used(self):
         with tempfile.TemporaryDirectory() as root:
             root=Path(root)

@@ -1,12 +1,10 @@
 """Return to the CORPORA host after a bounded computer attempt."""
 from pathlib import Path
-from urllib.parse import urlsplit
-import json
 import subprocess
 import sys
 
 
-BROWSERS = {'com.openai.codex', 'com.google.Chrome', 'com.apple.Safari', 'com.microsoft.edgemac', 'org.mozilla.firefox'}
+HOST_APPS = {'com.sapiens4.desktop', 'com.openai.codex', 'com.google.Chrome', 'com.apple.Safari', 'com.microsoft.edgemac', 'org.mozilla.firefox'}
 
 
 def front_bundle():
@@ -27,25 +25,16 @@ class ForegroundReturn:
         if self.enabled:
             try:
                 bundle = front_bundle()
-                self.bundle = bundle if bundle in BROWSERS else None
+                self.bundle = bundle if bundle in HOST_APPS else None
             except (OSError, subprocess.TimeoutExpired):
                 pass
 
     def restore(self):
-        if not self.enabled or not self.marker.exists() or self.marker.stat().st_mtime_ns == self.before:
+        if not self.enabled or not self.bundle or not self.marker.exists() or self.marker.stat().st_mtime_ns == self.before:
             return None
         try:
-            if self.bundle:
-                result = subprocess.run(['/usr/bin/open', '-b', self.bundle], capture_output=True, text=True, timeout=5)
-            else:
-                # No foreground browser to return to (e.g. a background task).
-                # Open the actual local CORPORA endpoint, never a guessed port.
-                url = json.loads((self.root/'host-control.json').read_text())['url']
-                parsed = urlsplit(url)
-                if parsed.scheme != 'http' or parsed.hostname not in {'127.0.0.1','localhost'}:
-                    raise ValueError('Invalid local CORPORA address')
-                result = subprocess.run(['/usr/bin/open', f'{parsed.scheme}://{parsed.netloc}/workspace/'],
-                    capture_output=True, text=True, timeout=5)
+            # Return to the captured host without opening a workspace URL/tab.
+            result = subprocess.run(['/usr/bin/open', '-b', self.bundle], capture_output=True, text=True, timeout=5)
             if result.returncode:
                 return 'Could not bring CORPORA back to the foreground.'
         except (OSError, ValueError, KeyError, subprocess.TimeoutExpired):

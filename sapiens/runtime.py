@@ -349,6 +349,16 @@ tool or claim success when Blindly4 cannot access the requested application.
 Rediscover live AX paths immediately before mutations and pass --pid for input.
 For sending messages, use paste --target-path followed by press with
 --require-value-path and --require-value, bound to the exact intended draft.
+Use press only on an identified Send control, not an unlabeled adjacent button.
+If no accessible Send control is available, focus the freshly observed composer,
+then use key --key return --pid PID --target-path COMPOSER_PATH --require-value EXACT_DRAFT.
+This guarded key checks the foreground app, exact focused text control, and draft
+before injecting Enter. Use it only when Enter is the app's send shortcut and the
+recipient/chat has been verified. A guard failure is a blocker; never retry bare Enter.
+Keyboard names include return/enter, tab, and delete/backspace, with modifiers.
+After either send method, read the conversation and verify the outgoing message.
+An injected key or a cleared composer alone is not proof of delivery. If the outcome
+is uncertain, inspect before retrying to avoid sending a duplicate.
 External commits must be within the user's explicitly requested task.
 Do not use bare type/key-return to send messages or weaken Blindly4's checks.
 The host serializes jobs, giving one Sapi at a time access to the shared computer.
