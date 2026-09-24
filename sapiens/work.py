@@ -185,8 +185,13 @@ class Work:
             return dict(status=detector['status'], reason=detector.get('reason'))
         if not agent.can_admit('scheduled', instant):
             return dict(status='blocked', reason='Budget allowance unavailable. See Sapi settings for reset time and limits.')
-        if row.get('checkpoint', {}).get('status') in {'blocked','partial'}:
-            return dict(status=row['checkpoint']['status'], reason=row['checkpoint']['summary'])
+        checkpoint = row.get('checkpoint', {})
+        reviewed_at = row.get('strategy', {}).get('saved_at')
+        observed_at = checkpoint.get('time')
+        reviewed = (reviewed_at and observed_at and
+                    datetime.fromisoformat(reviewed_at) > datetime.fromisoformat(observed_at))
+        if checkpoint.get('status') in {'blocked','partial'} and not reviewed:
+            return dict(status=checkpoint['status'], reason=checkpoint['summary'])
         if row.get('next_run') and datetime.fromisoformat(row['next_run']) < instant-timedelta(seconds=60):
             return dict(status='overdue', reason='Scheduled time missed; waiting for the shared worker.')
         return dict(status='scheduled', reason=None)

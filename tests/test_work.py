@@ -7,6 +7,24 @@ from sapiens.service import APIError
 
 
 class WorkTest(IntegrationFixture):
+    def test_reviewed_strategy_supersedes_old_blocker_without_erasing_checkpoint(self):
+        service = self.service(start_worker=False)
+        agent = service._agent(service.hierarchy.main)
+        row = service.work.upsert(agent, dict(title='Generation', prompt='Generate report', minutes=360,
+                                             watch={'mode':'always'}))
+        self.ready_strategy(service, agent, row)
+        service.work.checkpoint(agent, dict(id=row['id'], status='blocked', outcome='blocked',
+                                           summary='Old instruction conflict'))
+        row = service.work.read(agent)[0]
+        self.assertEqual(service.work.health(agent, row)['status'], 'blocked')
+        self.ready_strategy(service, agent, row)
+        row = service.work.read(agent)[0]
+        self.assertEqual(service.work.health(agent, row)['status'], 'scheduled')
+        self.assertEqual(row['checkpoint']['status'], 'blocked')
+        service.work.checkpoint(agent, dict(id=row['id'], status='blocked', outcome='blocked',
+                                           summary='New access blocker'))
+        self.assertEqual(service.work.health(agent, service.work.read(agent)[0])['reason'], 'New access blocker')
+
     def test_recurring_prompt_respects_mode_and_scoped_authorization(self):
         service = self.service(start_worker=False)
         agent = service._agent(service.hierarchy.main)
