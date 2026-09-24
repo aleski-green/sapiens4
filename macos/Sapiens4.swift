@@ -20,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
-        NSApp.applicationIconImage = NSImage(named: "AppIcon")
+        // Let macOS keep the bundle icon at its normal Dock size.
         let menu = NSMenu()
         let appItem = NSMenuItem(); menu.addItem(appItem)
         let appMenu = NSMenu(); appItem.submenu = appMenu
@@ -87,7 +87,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         updateButton.isEnabled = !busy && !helperRunning
         updateButton.title = phase == "available" ? "Update now" : (busy ? "Updating…" : "Check for updates")
         updateMenu.title = updateButton.title; updateMenu.isEnabled = updateButton.isEnabled
-        NSApp.dockTile.badgeLabel = phase == "available" ? "Update" : nil
         if previous == "installing" && phase == "current" { reload() }
         if phase == "current", let revision = status["desktop_revision"] as? String,
            revision != Bundle.main.object(forInfoDictionaryKey: "SapiensDesktopRevision") as? String, !relaunching {
