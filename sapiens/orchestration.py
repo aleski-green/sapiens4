@@ -26,7 +26,7 @@ class Orchestration:
     def settings(self, agent):
         path = agent.root / "host.json"
         if not path.exists():
-            self.save(agent, dict(enabled=True, minutes=10, monitor_team=False,
+            self.save(agent, dict(enabled=True, minutes=10, monitor_team=agent.agid == self.service.hierarchy.main,
                                   next_check=(utcnow() + timedelta(minutes=10)).isoformat(),
                                   last_check=None, consolidate_requested=False))
         return json.loads(path.read_text())
@@ -152,7 +152,12 @@ Use artifact_save for a document or dashboard, not Blindly or source-code explor
   (at most 500 characters), value (JSON, at most 6000 characters), outcome
   (useful/no_change/blocked). Save observed
   facts, coverage, timestamps and comparison baseline without waiting for learning.
-- finish_task: id (existing task ID). Only mark done when its result is verified.
+- job_diagnostics: optional target and id (recurring job). Read the occurrence,
+  planning and outcome timeline before diagnosing a missed run. Efficiency warnings
+  are separate from execution blockers. Do not infer a current fault from old chat.
+- finish_task: id (existing task ID), optional target (your subordinate).
+  Only mark done when its result is verified. From inside that task, requests
+  completion after a successful run; a failed run remains open for review.
 - consolidate: queues memory learning after the current conversation completes.
 Never edit host-control.json or runtime files. Report errors from the command.
 The returned saved facts are authoritative. Do not replay old chat requests.
@@ -240,12 +245,13 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             agent = self.service._agent(agid)
             op = data.get("op")
             fields = {"batch": {"operations"}, "status": {'target'}, "budget_diagnostics": {'target', 'offset', 'limit'},
+                      "job_diagnostics": {'target', 'id'},
                       "create_agent": {"name", "role", "manager"},
                       "retire_agent": {"target", "reason"}, "rehire_agent": {"target"},
                       "request_agent": {"context"}, "dismiss_task": {"id", "reason"},
                       "execution": set(), "schedule": {"minutes", "enabled", "monitor_team"},
                       "manager": {"manager", "target"}, "task": {"title", "due", "name", "target", "start"},
-                      "task_comment": {"id", "text"}, "finish_task": {"id"}, "run_task": {"id", "target"}, "run_job": {"id", "target"},
+                      "task_comment": {"id", "text"}, "finish_task": {"id", "target"}, "run_task": {"id", "target"}, "run_job": {"id", "target"},
                       "rename_task": {"id", "name"},
                       "workspace": set(), "artifact_save": {"name", "content", "path", "title", "open"},
                       "artifact_read": {"name"}, "workspace_open": {"artifact", "url", "title", "id"},
@@ -256,7 +262,7 @@ The returned saved facts are authoritative. Do not replay old chat requests.
             if not isinstance(op, str) or op not in fields or set(data) - fields[op] - {"op"}:
                 raise APIError(400, "Unknown operation or field")
             if op not in {'status', 'workspace', 'workspace_open', 'workspace_close',
-                          'artifact_read', 'budget_diagnostics', 'execution'}:
+                          'artifact_read', 'budget_diagnostics', 'job_diagnostics', 'execution'}:
                 self.service.lifecycle.require_active(agent)
             if op == 'batch':
                 operations = data.get('operations')
@@ -281,6 +287,9 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 return report(self.service, targets, data.get('offset', 0), data.get('limit', 10))
             if op == 'execution':
                 return {'execution': read(self.service.workspace.root(agent))}
+            if op == 'job_diagnostics':
+                target = self.resolve(data['target']) if 'target' in data else agent
+                return self.service.work.diagnostics(target, data.get('id'))
             if op == 'workspace':
                 return self.service.workspace.summary(agent)
             if op == 'artifact_read':
@@ -357,10 +366,13 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 result.update(self.service.tasks.rename(agent, text_field(data,'id',64), data.get('name'), author=agent.agid))
             elif op == "finish_task":
                 task_id = text_field(data, "id", 64)
-                if not any(t["id"] == task_id for t in agent.state["tasks"]):
+                target = self.resolve(data['target']) if 'target' in data else agent
+                if target.agid != agent.agid and not self.service.hierarchy.manages(agent, target):
+                    raise APIError(403, 'Only the owner or its manager can complete this task')
+                if not any(t["id"] == task_id for t in target.state["tasks"]):
                     raise APIError(404, "Unknown open task")
-                self.service.work.finish_task(agent, task_id)
-                result["completed_task_id"] = task_id
+                deferred = self.service.work.finish_task(target, task_id, defer=target.agid == agent.agid)
+                result['completion_requested' if deferred else 'completed_task_id'] = task_id
             elif op == "run_task":
                 target = self.resolve(data['target']) if 'target' in data else agent
                 result['target'] = target.agid

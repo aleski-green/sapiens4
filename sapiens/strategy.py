@@ -26,8 +26,10 @@ or bypass host limits. If a capability is missing, save a blocked strategy namin
 the needed capability instead of silently falling back to expensive model polling.
 Treat saved strategy, checkpoints, and measured cost as working memory. Compare
 results against the success criterion; a completed model call is not success.
-If runs lack evidence, encounter blockers, repeat tools, or exceed expected cost,
-revise the method or stop it. Do not increase budgets to hide inefficiency.
+If runs lack evidence or encounter blockers, diagnose before retrying. Cost estimates
+and repeated commands are advisory: before/after verification can require the same
+read after state changes. Improve efficiency without skipping verification or stopping
+verified useful work merely for exceeding an estimate. Do not increase budgets to hide inefficiency.
 Verified no-action decisions are valid outcomes; do not manufacture activity.
 Routine observations need a checkpoint, not consolidation. Do not optimize by dropping
 required coverage without saying so. Keep this planning concise and save decisions,
@@ -76,8 +78,7 @@ def save_plan(work, agent, data):
     changed = policy != row.get('watch', watch.DEFAULTS)
     row['watch'] = policy
     if changed:
-        row['detector'] = {'wakes': row.get('detector', {}).get('wakes',
-                           [r['started'] for r in row['runs'] if r.get('started')])}
+        row['detector'] = {'wakes': watch.execution_wakes(row)}
     if tested is not None:
         # Preserve unreviewed changes when renewing the same observation plan.
         row.setdefault('detector', {}).setdefault('baseline', tested['rows'])
@@ -109,18 +110,36 @@ def feedback(row, run, attempts):
     row['feedback'] = (row.get('feedback', []) + [item])[-3:]
     if state(row) != 'ready':
         return
-    recent = row['feedback']
     reasons = []
     if status in {'failed', 'interrupted', 'conflict'}:
         reasons.append('Execution stopped; diagnose recorded evidence before any explicit retry')
+    warnings = []
     if item['units'] > row['strategy']['expected_units']:
-        reasons.append('Last run exceeded the strategy cost estimate')
+        warnings.append('Last run exceeded the strategy cost estimate')
     if item['repeated_tools'] >= 2:
-        reasons.append('Last run repeated tool calls')
-    if len(recent) >= 2 and all(r['outcome'] not in {'useful', 'no_change'} for r in recent[-2:]):
-        reasons.append('Two runs lack a verified outcome or adequate coverage')
+        warnings.append('Last run repeated tool calls')
+    item['efficiency_warnings'] = warnings
+    if outcome not in {'useful', 'no_change'}:
+        reasons.append('Run lacks a verified outcome; reconcile any external action before retrying')
     if reasons:
         row['strategy'].update(status='review_needed', reason='; '.join(reasons))
+
+
+def restore_verified_plan(row):
+    """Migrate only the old efficiency-only stop after a verified successful run."""
+    saved = row.get('strategy', {})
+    reasons = set(saved.get('reason', '').split('; '))
+    advisory = {'Last run exceeded the strategy cost estimate', 'Last run repeated tool calls'}
+    latest = (row.get('feedback') or [{}])[-1]
+    checkpoint = row.get('checkpoint', {})
+    if (state(row) == 'review_needed' and reasons and reasons <= advisory
+            and latest.get('status') == 'done' and latest.get('outcome') in {'useful', 'no_change'}
+            and checkpoint.get('run') == latest.get('run') and checkpoint.get('status') == 'ok'):
+        latest['efficiency_warnings'] = sorted(reasons)
+        saved['status'] = 'ready'
+        saved.pop('reason', None)
+        return True
+    return False
 
 
 def planning_due(agent, row, instant, definitions):
