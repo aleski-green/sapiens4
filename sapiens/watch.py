@@ -17,6 +17,14 @@ from .validation import APIError
 DEFAULTS = dict(mode='changes', probe=None, cooldown_minutes=30, max_per_hour=2, max_per_day=8)
 
 
+def execution_wakes(row):
+    """Planning has its own cap and must not consume delivery cooldown/capacity."""
+    executions = {r['started'] for r in row.get('runs', []) if r.get('started') and r.get('kind') != 'strategy'}
+    planning = {r['started'] for r in row.get('runs', []) if r.get('started') and r.get('kind') == 'strategy'}
+    saved = row.get('detector', {}).get('wakes', sorted(executions))
+    return [t for t in saved if t not in planning or t in executions]
+
+
 def validate(value):
     if not isinstance(value, dict) or set(value)-set(DEFAULTS):
         raise APIError(400, 'Invalid watcher plan')
@@ -139,7 +147,7 @@ def poll(row, binary, instant, can_admit):
             return False
         changed.sort(key=lambda r: (r['priority'] != 'phone-number label', r['name']))
         state['pending'] = dict(rows=current['rows'], changed=[{k:r[k] for k in ('name','priority')} for r in changed[:20]], observed_at=instant.isoformat())
-    wakes = [t for t in state.get('wakes', []) if datetime.fromisoformat(t)>instant-timedelta(days=1)]
+    wakes = [t for t in execution_wakes(row) if datetime.fromisoformat(t)>instant-timedelta(days=1)]
     state['wakes'] = wakes
     hour = sum(datetime.fromisoformat(t)>instant-timedelta(hours=1) for t in wakes)
     cooldown = wakes and datetime.fromisoformat(wakes[-1])+timedelta(minutes=policy['cooldown_minutes'])>instant

@@ -58,6 +58,14 @@ class Tasks:
                             key=f"{job['id']}:{event['sequence']}", time=event['time'])
             if job['status'] == 'queued':
                 self.record(agent, task, 'queued', 'Queued for the local runner.', key=job['id']+':queued')
+            if task.get('completion_requested'):
+                if job['status'] == 'done' and not job.get('warning'):
+                    agent.finish_task(task['id'])
+                    self.record(agent, task, 'completed', 'Verified completion requested by the executing Sapi.',
+                                key=job['id']+':completed')
+                elif job['status'] not in {'queued', 'running'}:
+                    with agent.store.transaction() as current:
+                        next(t for t in current['tasks'] if t['id'] == task['id']).pop('completion_requested', None)
 
     def updates(self):
         names = {t['id']: t.get('name') for t in self.catalog()}

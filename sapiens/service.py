@@ -326,8 +326,9 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
     def memory_status(self, agent, jobs):
         settings = self.orchestration.settings(agent)
         run = current_run(j for j in jobs if j['agent'] == agent.agid)
-        pending = settings['consolidate_requested']
-        status = 'waiting' if pending else run['status'] if run else 'idle'
+        pending = settings['consolidate_requested'] or agent.state.get('memory_pending', False)
+        status = (run['status'] if run and run['status'] not in {'done', 'cancelled'}
+                  else 'waiting' if pending else run['status'] if run else 'idle')
         def summary(job):
             return {k: job.get(k) for k in ('id', 'agent', 'status', 'error')} if job else None
         return {'revision': hashlib.sha256(json.dumps(agent.memx, sort_keys=True).encode()).hexdigest(),
@@ -385,28 +386,40 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
             self.store.preferences(current)
             return {"saved": True, "preferences": current}
 
-    def _consolidate_pending(self, agid):
+    def _consolidate_pending(self, agid, instant=None):
         """Explicit memory work waits for active work, not historical failures."""
         with self._lock:
             agent = self._agent(agid)
             if self.lifecycle.retired(agent):
                 return False
             settings = self.orchestration.settings(agent)
-            if not settings['consolidate_requested']:
+            learning = current_run(agent.state['jobs'])
+            preflight = (learning and learning['status'] == 'failed' and 'memory_batch' not in learning
+                         and learning.get('tokens', 0) == 0
+                         and 'Prompt exceeds context limit' in (learning.get('error') or ''))
+            if not (settings['consolidate_requested'] or agent.state.get('memory_pending') or preflight):
+                return False
+            # Bounded learning must not starve a due delivery or assigned task.
+            instant = instant or utcnow()
+            recurring = self.work.due_definitions(agent, instant)
+            if any(self.work.health(agent, row, instant)['status'] in {'scheduled', 'overdue'} for row in recurring) or self.tasks.due(agent, instant):
                 return False
             if any(j['status'] in {'queued', 'running'} for j in agent.state['jobs']):
                 return True
             # A stopped learning attempt still needs its own retry/dismiss.
-            learning = current_run(agent.state['jobs'])
+            if preflight:
+                # A legacy preflight failure performed no model/tool work.
+                agent.cancel(learning['id'])
+                learning = None
             if learning and learning['status'] not in {'done', 'cancelled'}:
-                return True
+                return False  # A stopped maintenance run must not block repair/scheduling.
             if current_fingerprint(self, agent) == last_fingerprint(agent):
                 settings['consolidate_requested'] = False
                 self.orchestration.save(agent, settings)
                 return True
             self.orchestration.prepare(agent)
             settings.setdefault('consolidation_id', uuid4().hex)
-            run = agent.submit('learning', key=f"manual-learning:{settings['consolidation_id']}")
+            run = agent.submit('learning', key=f"learning-batch:{agent.state['mem_revision']}:{current_fingerprint(self, agent)}")
             settings.update(consolidation_run=run, consolidate_requested=False)
             self.orchestration.save(agent, settings)
             self._background.add(agid)
@@ -428,7 +441,7 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
                 continue
             background = False
             try:
-                if self._consolidate_pending(row['id']):
+                if self._consolidate_pending(row['id'], instant):
                     continue
                 with self._lock:
                     agent = self._agent(row["id"])

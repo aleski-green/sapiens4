@@ -41,3 +41,13 @@ class Hierarchy:
     def assign(self, agent, parent):
         entry = agent.corpora.directory()[agent.agid]
         agent.corpora.register(agent.agid, parent=parent, scope=entry['scope'])
+
+    def manages(self, manager, agent):
+        directory = agent.corpora.directory()
+        parent, seen = directory.get(agent.agid, {}).get('parent'), set()
+        while parent and parent not in seen:
+            if parent == manager.agid:
+                return True
+            seen.add(parent)
+            parent = directory.get(parent, {}).get('parent')
+        return False
