@@ -35,3 +35,5 @@ Open http://127.0.0.1:4174/workspace/.
 For a dedicated macOS window and Dock icon, see [the desktop app](macos/README.md).
 
 [Setup, features, API and tests](docs/reference.md) · [Agent strategies](docs/agent-owned-strategies.md)
+
+[Architecture proposal: Haskell core, TypeScript server, and Sapi-owned Python automation](docs/language-boundaries-proposal.md) — discussion draft.
