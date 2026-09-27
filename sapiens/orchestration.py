@@ -249,7 +249,7 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                       "create_agent": {"name", "role", "manager"},
                       "retire_agent": {"target", "reason"}, "rehire_agent": {"target"},
                       "request_agent": {"context"}, "dismiss_task": {"id", "reason"},
-                      "execution": set(), "schedule": {"minutes", "enabled", "monitor_team"},
+                      "execution": set(), "computer_acquire": set(), "schedule": {"minutes", "enabled", "monitor_team"},
                       "manager": {"manager", "target"}, "task": {"title", "due", "name", "target", "start"},
                       "task_comment": {"id", "text"}, "finish_task": {"id", "target"}, "run_task": {"id", "target"}, "run_job": {"id", "target"},
                       "rename_task": {"id", "name"},
@@ -285,6 +285,8 @@ The returned saved facts are authoritative. Do not replay old chat requests.
                 targets = [self.resolve(data['target'])] if 'target' in data else [
                     self.service._agent(row['id']) for row in self.service.store.agents()]
                 return report(self.service, targets, data.get('offset', 0), data.get('limit', 10))
+            if op == 'computer_acquire':
+                return self.service.acquire_computer(agid)
             if op == 'execution':
                 return {'execution': read(self.service.workspace.root(agent))}
             if op == 'job_diagnostics':

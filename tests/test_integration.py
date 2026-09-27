@@ -116,7 +116,7 @@ class IntegrationTest(IntegrationFixture):
         self.assertIn("Inspect apps", prompt)
         self.assertEqual(service._agent(row["id"]).state["chat"][-1]["content"], "Connected through AgentPy.")
 
-    def test_duplicate_submission_and_global_serialization(self):
+    def test_duplicate_submission_is_per_sapi(self):
         gate = self.factory.gate = threading.Event()
         self.addCleanup(gate.set)
         service = self.service()
@@ -129,8 +129,8 @@ class IntegrationTest(IntegrationFixture):
             service.submit(a, {"text":"Duplicate"})
         self.assertEqual(caught.exception.status, 409)
         state = service.snapshot()
-        self.assertEqual(state["computer"]["owner"], a)
-        self.assertEqual(next(j["status"] for j in state["jobs"] if j["id"] == second["id"]), "queued")
+        self.assertIsNone(state["computer"]["owner"])
+        self.wait_job(service, second["id"], "running")
         gate.set()
         self.wait_job(service, first["id"])
         self.wait_job(service, second["id"])

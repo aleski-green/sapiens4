@@ -1,4 +1,4 @@
-"""One local host, serialized execution, and recoverable UI projections."""
+"""One local host, parallel Sapi runners, and recoverable UI projections."""
 from pathlib import Path
 from uuid import uuid4
 import asyncio
@@ -10,6 +10,7 @@ import queue
 import re
 import secrets
 import threading
+import time
 
 from .agent import SapiAgent
 from .artifacts import Artifacts
@@ -43,7 +44,9 @@ def random_avatar(used):
 
 
 class Service:
-    def __init__(self, data_dir, *, factory_builder=None, start_worker=True, timeout=3000):
+    def __init__(self, data_dir, *, factory_builder=None, start_worker=True, timeout=3000, max_parallel_agents=4):
+        if type(max_parallel_agents) is not int or not 1 <= max_parallel_agents <= 32:
+            raise ValueError("max_parallel_agents must be between 1 and 32")
         self.root = Path(data_dir).resolve()
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._file_lock = (self.root / "host.lock").open("a")
@@ -73,6 +76,8 @@ class Service:
         self._stopping = threading.Event()
         self._active = None
         self._background = set()
+        self.max_parallel_agents = max_parallel_agents
+        self._runners = {}
         self.orchestration = Orchestration(self)
         self.lifecycle = Lifecycle(self)
         self.hierarchy = Hierarchy(self)
@@ -115,6 +120,7 @@ class Service:
                                  root=self.root / "agentpy", source=SDK,
                                  limits=Limits(parallel_jobs=1, tokens_per_call=32000, tokens_per_loop=256000))
             if not self.factory_builder:
+                factory.finish_computer = lambda restore: self.release_computer(agid, restore)
                 factory.keep_recent = lambda: any(j['status'] == 'running' and j['flow'] in {'chat', 'computer'}
                                                   for j in agent.state['jobs'])
                 factory.current_request = lambda: next((j['task'].split('Mention references (')[0]
@@ -154,6 +160,28 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
         agent.set_manifest("computer-use", computer_manifest(self.binary))
         if self.binary.exists():
             agent.set_manifest('computer-tools', computer_guide(self.binary, self.binary.stat().st_mtime_ns))
+
+    def acquire_computer(self, agid):
+        with self._lock:
+            if not self._active_job(agid):
+                raise APIError(409, "Computer access requires a running Sapi job")
+            if self._active not in (None, agid):
+                raise APIError(409, "Shared computer is busy with another Sapi. Continue non-UI work or report the blocker; do not retry in a loop.")
+            self._active = agid
+            return {"owner": agid}
+
+    def release_computer(self, agid, restore=lambda: None):
+        # Keep ownership while restoring focus; another Sapi must not begin UI
+        # work between the last action and the return to CORPORA.
+        with self._lock:
+            if self._active != agid:
+                return None
+        try:
+            return restore()
+        finally:
+            with self._lock:
+                if self._active == agid:
+                    self._active = None
 
     def _active_job(self, agid):
         agent = self._agents.get(agid)
@@ -432,102 +460,144 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
         return True
 
     def scheduled(self, instant=None):
-        """One serialized scheduling pass, also callable with a clock in tests."""
-        instant = instant or utcnow()
+        """Synchronous scheduling pass for maintenance/tests; live dispatch is parallel."""
         for row in self.store.agents():
             if self._stopping.is_set():
                 return
-            if self.lifecycle.retired(self._agent(row['id'])):
-                continue
-            background = False
-            try:
-                if self._consolidate_pending(row['id'], instant):
-                    continue
-                with self._lock:
-                    agent = self._agent(row["id"])
-                    if self.lifecycle.retired(agent):
-                        continue
-                    # Read-only scripts also run when model allowance is exhausted.
-                    # Keep them serialized with computer work and preserve hard-stop review.
-                    recurring = None
-                    if not any(j['status'] != 'budget_blocked' for j in self.work.blocking(agent)) and not any(j['status'] in {'queued','running'} for j in agent.state['jobs']):
-                        recurring = self.work.check_due(agent, instant)
-                    self.work.monitor(agent, instant)
-                    if any(j['status'] != 'budget_blocked' for j in self.work.blocking(agent)):
-                        continue
-                    resumable = [j for j in agent.state['jobs'] if j['status'] == 'budget_blocked' and agent.can_admit(j['flow'], instant)]
-                    if resumable:
-                        # Budget-blocked work never started; retry is safe. Failed
-                        # or interrupted tool runs still require explicit review.
-                        for job in resumable:
-                            agent.retry(job['id'])
-                        self._queue.put(agent.agid)
-                        continue
-                    if self.work.blocking(agent):
-                        continue  # Stopped work requires explicit retry/dismiss.
-                    settings = self.orchestration.settings(agent)
-                    due = self.orchestration.due(agent, instant)
-                    due_task = self.tasks.due(agent, instant)
-                    if not due and not recurring and not due_task:
-                        continue
-                    self._background.add(agent.agid)
-                    background = True
-                    self.orchestration.prepare(agent)
-                    if due_task:
-                        self.work.admit_task(agent, due_task['id'])
-                        self._active = agent.agid
-                        due = False
-                    elif recurring:
-                        self.work.admit(agent, recurring, instant)
-                        due = False
-                        self._active = agent.agid
-                    if due:
-                        self.orchestration.checked(agent, instant)
-                if due:
-                    asyncio.run(agent.tick(now=instant, force=True))
-                else:
-                    asyncio.run(agent.run())
-            except Exception as error:
-                self.store.event(row["id"], "host_error", f"{type(error).__name__}: {error}")
-            finally:
-                if background:
-                    with self._lock:
-                        self._active = None
-                        self._background.discard(agent.agid)
-                        self._sync(agent)
-            if self._stopping.is_set():
-                return
+            runner = self._dispatch(row['id'], scheduled=True, instant=instant)
+            if runner:
+                runner.join()
 
-    def _work(self):
-        while not self._stopping.is_set():
-            try:
-                agid = self._queue.get(timeout=1)
-            except queue.Empty:
-                self.scheduled()
-                continue
-            if agid is None:
+    def _scheduled_agent(self, agid, instant=None):
+        instant = instant or utcnow()
+        background = False
+        try:
+            if self._consolidate_pending(agid, instant):
                 return
             with self._lock:
                 agent = self._agent(agid)
                 if self.lifecycle.retired(agent):
-                    continue
+                    return
+                # Read-only scripts also run when model allowance is exhausted.
+                # Keep them serialized with computer work and preserve hard-stop review.
+                recurring = None
+                if not any(j['status'] != 'budget_blocked' for j in self.work.blocking(agent)) and not any(j['status'] in {'queued','running'} for j in agent.state['jobs']):
+                    recurring = self.work.check_due(agent, instant)
+                self.work.monitor(agent, instant)
+                if any(j['status'] != 'budget_blocked' for j in self.work.blocking(agent)):
+                    return
+                resumable = [j for j in agent.state['jobs'] if j['status'] == 'budget_blocked' and agent.can_admit(j['flow'], instant)]
+                if resumable:
+                    # Budget-blocked work never started; retry is safe. Failed
+                    # or interrupted tool runs still require explicit review.
+                    for job in resumable:
+                        agent.retry(job['id'])
+                    self._queue.put(agent.agid)
+                    return
+                if self.work.blocking(agent):
+                    return  # Stopped work requires explicit retry/dismiss.
+                settings = self.orchestration.settings(agent)
+                due = self.orchestration.due(agent, instant)
+                due_task = self.tasks.due(agent, instant)
+                if not due and not recurring and not due_task:
+                    return
+                self._background.add(agent.agid)
+                background = True
                 self.orchestration.prepare(agent)
-                jobs = agent.state["jobs"]
-                self._active = agid if any(j["flow"] in {"chat", "computer", "scheduled"} and j["status"] == "queued" for j in jobs) else None
-            try:
+                if due_task:
+                    self.work.admit_task(agent, due_task['id'])
+                    due = False
+                elif recurring:
+                    self.work.admit(agent, recurring, instant)
+                    due = False
+                if due:
+                    self.orchestration.checked(agent, instant)
+            if due:
+                asyncio.run(agent.tick(now=instant, force=True))
+            else:
                 asyncio.run(agent.run())
-            except Exception as error:
-                self.store.event(agid, "host_error", f"{type(error).__name__}: {error}")
-            finally:
+        except Exception as error:
+            self.store.event(agid, "host_error", f"{type(error).__name__}: {error}")
+        finally:
+            if background:
                 with self._lock:
-                    self._active = None
+                    self._background.discard(agent.agid)
                     self._sync(agent)
-            self.scheduled()
+
+    def _run_queued(self, agid):
+        with self._lock:
+            agent = self._agent(agid)
+            if self.lifecycle.retired(agent) or not any(
+                    j['status'] in {'queued', 'running'} for j in agent.state['jobs']):
+                return
+            self.orchestration.prepare(agent)
+        asyncio.run(agent.run())
+
+    def _dispatch(self, agid, *, scheduled=False, instant=None):
+        with self._lock:
+            if self._stopping.is_set() or agid in self._runners or len(self._runners) >= self.max_parallel_agents:
+                return False
+            def run():
+                try:
+                    if scheduled:
+                        self._scheduled_agent(agid, instant)
+                    else:
+                        self._run_queued(agid)
+                except Exception as error:
+                    self.store.event(agid, 'host_error', f'{type(error).__name__}: {error}')
+                finally:
+                    try:
+                        self.release_computer(agid)
+                        with self._lock:
+                            self._sync(self._agent(agid))
+                    finally:
+                        with self._lock:
+                            self._runners.pop(agid, None)
+            thread = threading.Thread(target=run, name=f'sapiens-{agid}', daemon=True)
+            self._runners[agid] = thread
+            thread.start()
+            return thread
+
+    def _work(self):
+        pending, checked = {}, {}
+        while not self._stopping.is_set():
+            try:
+                agid = self._queue.get(timeout=.1)
+                if agid is None:
+                    break
+                pending[agid] = None
+                # Coalesce wakeups, retaining one pending wake while a Sapi runs.
+                for _ in range(100):
+                    try:
+                        agid = self._queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    if agid is not None:
+                        pending[agid] = None
+            except queue.Empty:
+                pass
+            for agid in list(pending):
+                if self._dispatch(agid):
+                    del pending[agid]
+            instant = time.monotonic()
+            # Oldest scheduling check first prevents the first few Sapis from
+            # monopolizing a full pool. Human/explicit wakeups take priority.
+            rows = sorted(self.store.agents(), key=lambda row: checked.get(row['id'], 0))
+            for row in rows:
+                agid = row['id']
+                if instant - checked.get(agid, 0) >= 1 and self._dispatch(agid, scheduled=True):
+                    checked[agid] = instant
 
     def close(self):
+        if self._file_lock.closed:
+            return
         self._stopping.set()
         self._queue.put(None)
         if self.worker:
-            self.worker.join()  # Keep the host lock until bounded Codex calls have finished.
+            self.worker.join()
+        with self._lock:
+            runners = list(self._runners.values())
+        for runner in runners:
+            runner.join()  # Retain host.lock until every bounded call has finished.
         fcntl.flock(self._file_lock, fcntl.LOCK_UN)
         self._file_lock.close()

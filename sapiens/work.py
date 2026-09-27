@@ -249,6 +249,8 @@ class Work:
                 return {**definition, '_planning': True}
             # Repair and its admission cap must not erase a pending occurrence.
             return None
+        if self.service._active is not None and definition.get('watch', watch.DEFAULTS)['mode'] == 'changes':
+            return None  # Do not observe another Sapi's in-progress desktop workflow.
         ready = watch.poll(definition, self.service.binary, instant, agent.can_admit('scheduled', instant))
         if not ready and definition.get('detector', {}).get('status') in {'unchanged', 'baseline'}:
             self.advance(definition, instant)

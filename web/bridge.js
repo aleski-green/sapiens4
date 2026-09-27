@@ -226,7 +226,7 @@ renderConversation = function() {
     if (job) {
       const started = eventRows.slice().reverse().find(e => e.job === job.id && e.kind === 'started');
       const event = eventRows.slice().reverse().find(e => e.job === job.id && e.kind === 'codex' && (!started || e.time >= started.time));
-      const detail = job.status === 'queued' ? 'Waiting for the local runner.' : job.error || event?.detail || 'Codex is working…';
+      const detail = job.status === 'queued' ? 'Waiting for an available runner.' : job.error || event?.detail || 'Codex is working…';
       host.insertAdjacentHTML('beforeend', `<section class="live-status" role="status"><strong>${esc(statusNames[job.status])}</strong><p>${esc(detail)}</p>${job.status === 'interrupted' ? '<p>The previous run stopped. Check what happened before retrying a computer task.</p>' : ''}${jobActions(job)}</section>`);
     }
   } else if (state.panel === 'mindmap') {

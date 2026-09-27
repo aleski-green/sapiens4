@@ -133,7 +133,7 @@ roots are repaired at startup.
 
 Recurring jobs have independent intervals of 1–10080 minutes. Create them in
 Jobs or ask in chat; their saved instructions run once per interval through the
-serialized SDK worker. Run now preserves the next scheduled deadline. After
+per-Sapi SDK worker. Run now preserves the next scheduled deadline. After
 downtime, each overdue job gets one catch-up run, not a burst. Failed or
 interrupted runs require review/retry/dismissal before that Sapi resumes work.
 Definitions and run references persist in `agentpy/agents/<id>/recurring.json`.
@@ -201,9 +201,15 @@ permission automatically. A completed job means its agent flow returned a reply;
 read that reply to see whether the requested action succeeded. The computer card shows build/ownership status, not
 a claim that Accessibility permission has been granted.
 
-All jobs are serialized by this server, including jobs from different Sapis.
-Only one unresolved job per Sapi is accepted. Computer ownership represents
-this server's execution queue; it does not lock out other desktop applications
+Up to four Sapis run concurrently by default, including chat, assigned tasks,
+scheduled work and memory maintenance. Each Sapi still has one runner and accepts
+only one unresolved foreground job. Explicit queued work takes priority over
+periodic scheduling; excess work stays durably queued. Shutdown waits for every
+active runner before releasing the data-directory lock.
+Computer ownership is acquired by the managed wrapper on its first UI call and
+released when that model call ends (including failures). Other Sapis can continue
+non-UI work; their UI calls return a busy error without acting. Watcher probes wait
+while the desktop is owned. This does not lock out other desktop applications
 or independently launched agent processes. The inherited Codex execution
 backend runs local tools without sandboxing. Blindly4 guidance preserves its
 PID, fresh AX path and exact-draft checks. Internal app changes use host-control;
@@ -306,7 +312,7 @@ swift run --package-path blindly4 blindly4 schema
 
 The integration tests exercise real AgentPy persistence with scripted LLMs,
 so they require no Codex login, model usage or desktop permission. They cover
-UI projections, creation/manifests, HTTP submission, serialization, failures,
+UI projections, creation/manifests, HTTP submission, parallel dispatch, per-Sapi serialization, failures,
 retry/dismiss, event pagination, restart recovery, schedule/manager persistence,
 idle and overdue checks, task execution, memory commits and the local HTTP boundary.
 Real Codex and Accessibility checks are separate local smoke tests.
