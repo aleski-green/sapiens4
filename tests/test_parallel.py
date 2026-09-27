@@ -187,7 +187,8 @@ class ParallelTest(unittest.TestCase):
             thread.join()
 
     def test_busy_computer_wrapper_does_not_invoke_native_tools(self):
-        with patch.object(computer, 'acquire', side_effect=ValueError('Shared computer busy')), \
+        with patch.object(computer.sys, 'platform', 'darwin'), \
+             patch.object(computer, 'acquire', side_effect=ValueError('Shared computer busy')), \
              patch.object(computer.subprocess, 'run') as run, \
              patch.object(Path, 'touch') as touch:
             for argv in (['blindly','apps'], ['read','--pid','42','--path','0'], ['launch','Safari']):
