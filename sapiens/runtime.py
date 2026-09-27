@@ -31,7 +31,8 @@ Separate delivery, access, context, and efficiency issues; an old error is not t
 current cause. You may delegate one bounded repair task per affected subordinate
 within the existing Admin goal, or finish a subordinate task whose saved result you
 have verified. Reuse an existing open repair task; do not create verification chains
-or repeatedly poll a worker that cannot run until your turn finishes. Repair tasks
+or repeatedly poll a worker for progress. Independent Sapis can run concurrently;
+queued work is not proof that it has started or completed. Repair tasks
 must persist their result and request finish_task when verified. State precisely
 what is saved and what remains unverified. Do not retry interrupted external actions,
 run a sending job, change budgets, permissions or the user's goal, or send external
@@ -211,7 +212,8 @@ class LocalLLM(CodexLLM):
         finally:
             self._clock['active'] = False
             self._save_clock()
-            restore_warning = foreground.restore()
+            finish = getattr(self, 'finish_computer', None)
+            restore_warning = finish(foreground.restore) if finish else foreground.restore()
             if restore_warning:
                 self.event_sink(restore_warning)
                 self.warning = (self.warning + ' ' if self.warning else '') + restore_warning
@@ -310,6 +312,8 @@ class LocalFactory(CodexFactory):
         policy = self.execution or DEFAULTS
         llm = LocalLLM(spec=spec, workdir=self.workdir, event_sink=self.event_sink,
                        timeout_seconds=min(self.timeout_seconds, policy['timeout_seconds']))
+        if hasattr(self, 'finish_computer'):
+            llm.finish_computer = self.finish_computer
         llm.max_tools = policy['max_tools']
         if spec.role == 'team_review':
             llm.max_tools = min(llm.max_tools, 8)
@@ -333,6 +337,10 @@ permissions, or service restrictions. Explicit requests to operate a visible UI
 may require Blindly4. Internal Sapiens4 operations always use host-control.
 Use the supplied compact tool guide. Run {command} schema only when a needed command is missing or rejected.
 Use this bounded-output wrapper for all Blindly4 calls: {command}
+Independent Sapis run concurrently. The wrapper reserves the shared desktop on
+first use until this model call finishes. If another Sapi owns it, the wrapper
+returns a busy error before taking action. Continue non-UI work or report that
+blocker; do not bypass the wrapper, spin, or retry uncertain external actions.
 The wrapper preserves Blindly4 exit codes and safety checks; truncated results are explicitly marked.
 For opening a closed application use {launcher} launch 'Application Name'.
 This helper ONLY launches a local app; do not navigate Finder/Recent Items to open apps.
@@ -401,7 +409,8 @@ An injected key or a cleared composer alone is not proof of delivery. If the out
 is uncertain, inspect before retrying to avoid sending a duplicate.
 External commits must be within the user's explicitly requested task.
 Do not use bare type/key-return to send messages or weaken Blindly4's checks.
-The host serializes jobs, giving one Sapi at a time access to the shared computer.
+The host runs independent Sapis in parallel and reserves shared computer access
+for one Sapi at a time through the wrapper.
 Use host-control for internal orchestration. A current explicit user request in
 chat authorizes the computer work it describes; no separate mode is required.
 If Blindly4 is missing, report that it must be built with ./start.sh.

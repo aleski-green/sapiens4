@@ -3,6 +3,8 @@ from pathlib import Path
 import json
 import subprocess
 import sys
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 
 if __package__:
@@ -48,12 +50,29 @@ def bounded_output(text, limit):
         hint='Partial observation only. Use find or inspect for the relevant element; do not repeat this full dump.'))
 
 
+def acquire():
+    config_path = Path.cwd() / 'host-control.json'
+    if not config_path.exists():
+        return  # Standalone helper outside a managed Sapi workspace.
+    config = json.loads(config_path.read_text())
+    request = Request(config['url'], data=b'{"op":"computer_acquire"}', headers={
+        'Content-Type': 'application/json', 'X-Sapiens-Local': '1'})
+    try:
+        with urlopen(request, timeout=20) as response:
+            json.load(response)
+    except HTTPError as error:
+        raise ValueError(json.loads(error.read()).get('error', 'Shared computer unavailable')) from None
+    except URLError as error:
+        raise ValueError('Cannot reserve the shared computer: ' + str(error.reason)) from None
+
+
 def main(argv):
     if argv and argv[0] in {'blindly', 'read'}:
         binary = Path(__file__).resolve().parent.parent / 'blindly4/.build/release/blindly4'
         settings = Path.cwd() / 'computer-limits.json'
         limit = json.loads(settings.read_text()).get('output_chars', 4800) if settings.exists() else 4800
         limit = max(800, min(320000, int(limit)))
+        acquire()
         Path('.computer-used').touch()
         def invoke(args):
             return subprocess.run([str(binary), *args], capture_output=True, text=True, timeout=30)
@@ -69,6 +88,7 @@ def main(argv):
         raise ValueError('Usage: computer.py launch "Application Name"')
     if sys.platform != 'darwin':
         raise ValueError('App launch requires macOS')
+    acquire()
     Path('.computer-used').touch()
     result = subprocess.run(['/usr/bin/open', '-a', argv[1]], capture_output=True, text=True, timeout=15)
     print(json.dumps(dict(launched=result.returncode == 0, app=argv[1], error=result.stderr.strip() or None)))
