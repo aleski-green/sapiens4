@@ -118,6 +118,22 @@ class DesktopUpdaterTests(unittest.TestCase):
                 self.manager.check()
         self.assertEqual(self.manager.current(), self.old)
 
+    def test_model_preflight_failure_preserves_active_release_and_state(self):
+        def command(args, **kwargs):
+            if args[:3] == [sys.executable, '-m', 'sapiens.preflight']:
+                raise RuntimeError('Codex model check failed')
+            return ''
+        with patch.object(updater, 'command', side_effect=command) as run, \
+                patch.object(updater, 'build_blindly') as build, \
+                patch.object(self.manager, 'stop') as stop:
+            with self.assertRaisesRegex(RuntimeError, 'model check failed'):
+                self.manager.prepare(self.new['sha'])
+        self.assertEqual(run.call_args.args[0], [sys.executable, '-m', 'sapiens.preflight'])
+        build.assert_not_called()
+        stop.assert_not_called()
+        self.assertEqual(self.manager.current(), self.old)
+        self.assertEqual((self.data / 'agent.txt').read_text(), 'original')
+
     def test_busy_includes_queued_and_computer_work(self):
         self.assertTrue(updater.busy({'jobs': [{'status': 'queued'}]}))
         self.assertTrue(updater.busy({'computer': {'owner': 'agent'}}))

@@ -4,12 +4,11 @@ from functools import lru_cache
 from hashlib import sha256
 import json
 import os
-import re
 import shlex
-import shutil
 import subprocess
 import sys
 
+from .codex_config import codex_binary, model_defaults
 from .execution import start
 from .foreground import ForegroundReturn
 from .paths import ROOT
@@ -137,27 +136,6 @@ Message: {task}
             yield Request(task["flow"], task["title"], key=task["id"])
         if wake.circa_due and wake.changed:
             yield Request("learning", key=f"learning:{wake.now}")
-
-
-@lru_cache(maxsize=1)
-def codex_binary():
-    """Choose the newest installed CLI; an explicit app-local override wins."""
-    override = os.environ.get("SAPIENS_CODEX_BINARY")
-    if override:
-        return shutil.which(override)
-    candidates = [shutil.which("codex")]
-    if sys.platform == "darwin":
-        candidates += [f"/Applications/{app}.app/Contents/Resources/codex" for app in ("Codex", "ChatGPT")]
-    versions = []
-    for path in dict.fromkeys(p for p in candidates if p and os.access(p, os.X_OK)):
-        try:
-            result = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=5)
-            match = re.search(r"(\d+)\.(\d+)\.(\d+)", result.stdout)
-            if result.returncode == 0 and match:
-                versions.append((tuple(map(int, match.groups())), path))
-        except (OSError, subprocess.TimeoutExpired):
-            continue
-    return max(versions, default=((), None))[1]
 
 
 class ToolLimitReached(RuntimeError):
@@ -294,11 +272,10 @@ class LocalLLM(CodexLLM):
         command.insert(2, "--skip-git-repo-check")
         # Apply host defaults to every role, including learning and resumed calls.
         # Explicit SDK models still take precedence over the default model.
-        defaults = ['-c', 'model_reasoning_effort=' + json.dumps(
-            os.environ.get('SAPIENS_CODEX_REASONING_EFFORT') or 'high')]
+        model, reasoning = model_defaults()
+        defaults = ['-c', 'model_reasoning_effort=' + json.dumps(reasoning)]
         if self.spec.model == 'default':
-            defaults += ['-c', 'model=' + json.dumps(
-                os.environ.get('SAPIENS_CODEX_MODEL') or 'gpt-6-sol')]
+            defaults += ['-c', 'model=' + json.dumps(model)]
         command[2:2] = defaults
         # Current Codex config key (not the older tool_output_limit spelling).
         command[2:2] = ['-c', f'tool_output_token_limit={getattr(self, "output_tokens", 1200)}']

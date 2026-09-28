@@ -155,6 +155,8 @@ class Manager:
         self.status('preparing', 'Downloading main and Blindly4…')
         command(['git', 'clone', '--no-checkout', '--single-branch', '--branch', 'main', UPSTREAM, str(destination)], timeout=600)
         command(['git', 'checkout', '--detach', sha], cwd=destination)
+        self.status('preparing', 'Checking Codex CLI, login and model access…')
+        command([sys.executable, '-m', 'sapiens.preflight'], cwd=destination, timeout=180)
         command(['git', 'submodule', 'update', '--init', '--recursive', '--', 'blindly4'], cwd=destination, timeout=900)
         self.status('preparing', 'Building Blindly4…')
         env = swift_environment()

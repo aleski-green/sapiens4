@@ -31,7 +31,7 @@ python3 -m sapiens --port 4174
 
 If you need to sign in, run `codex login`. Sapiens4 uses your existing Codex
 authentication. All roles default to **GPT-6 Sol** (`gpt-6-sol`) with
-**high** reasoning effort, including chat, tasks, scheduled work, team reviews,
+**extra-high (`xhigh`)** reasoning effort, including chat, tasks, scheduled work, team reviews,
 and memory consolidation. These defaults also apply to resumed calls and override
 the user's global Codex model settings for Sapiens4 only. Set
 `SAPIENS_CODEX_MODEL` and/or `SAPIENS_CODEX_REASONING_EFFORT` before starting to
@@ -41,6 +41,17 @@ and CLIs bundled with Codex/ChatGPT, choosing the highest installed version;
 this avoids using an older npm CLI with a model supported by the desktop app.
 To choose explicitly, set `SAPIENS_CODEX_BINARY=/absolute/path/to/codex` before
 starting. No global Codex settings are changed.
+
+Installation requires Codex CLI **0.156.1 or newer**. Both the desktop installer
+and managed updater run `python3 -m sapiens.preflight` before changing the active
+installation. It checks the selected executable/version, `codex login status`,
+and a real request using the configured model and effort. The request uses a
+temporary directory, an ephemeral session and a read-only sandbox; it asks for a
+fixed acknowledgment with no tools and consumes a small amount of model usage.
+A rejected model, failed login, timeout or unexpected reply stops installation
+with an actionable error. Existing releases and app data remain in place.
+Run the same command manually to diagnose worker connectivity; HTTP health alone
+does not verify that the model can answer.
 
 ## Python import boundaries
 

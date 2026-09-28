@@ -24,7 +24,7 @@ III. Decisiveness: to maintain its own integrity, hold qualified opinions and do
 
 The runtime and UI live in this repo; Blindly4 is the only submodule.
 
-Requires Python 3.9+, Git and authenticated Codex CLI; Blindly4 requires macOS 13+, Swift 6 and Accessibility permission.
+Requires Python 3.9+, Git and authenticated Codex CLI 0.156.1+; Blindly4 requires macOS 13+, Swift 6 and Accessibility permission.
 
 ```sh
 git clone --recurse-submodules https://github.com/aleski-green/sapiens4.git

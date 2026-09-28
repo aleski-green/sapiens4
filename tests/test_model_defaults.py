@@ -19,7 +19,7 @@ class ModelDefaultsTest(unittest.TestCase):
                 with self.subTest(resume=resume):
                     command = self.command(resume=resume)
                     self.assertIn('model="gpt-6-sol"', command)
-                    self.assertIn('model_reasoning_effort="high"', command)
+                    self.assertIn('model_reasoning_effort="xhigh"', command)
                     if resume:
                         self.assertIn('resume', command)
 
