@@ -171,7 +171,7 @@ class ParallelTest(unittest.TestCase):
             run.assert_not_called()
             touch.assert_not_called()
 
-    def test_stop_keeps_desktop_until_exit_preserves_work_and_settles_once(self):
+    def test_stop_keeps_desktop_until_exit_preserves_work_and_finishes_once(self):
         s = self.service(start_worker=False)
         a = s.hierarchy.main
         b = s.create_agent(dict(name='Second', role='Assistant'))['id']
@@ -180,7 +180,8 @@ class ParallelTest(unittest.TestCase):
         for agid in (a, b):
             self.assertTrue(self.factories[agid].started.wait(3))
         s.acquire_computer(a)
-        s.workspace.save(s._agent(a), dict(name='partial.md', content='Saved before Stop'))
+        saved = s.workspace.root(s._agent(a)) / 'partial.md'
+        saved.write_text('Saved before Stop')
         for _ in range(2):
             s.turn_action(a, turns[a], 'cancel')
         self.assertTrue(s.snapshot()['activity'][a]['stopping'])
@@ -192,8 +193,7 @@ class ParallelTest(unittest.TestCase):
         turn = next(t for t in s.snapshot()['turns'] if t['id'] == turns[a])
         self.assertEqual(turn['status'], 'interrupted')
         self.assertIsNone(turn['output'])
-        self.assertEqual(s._agent(a).budget_status()['reserved'], 0)
-        self.assertEqual(s.workspace.path(s._agent(a), 'partial.md').read_text(), 'Saved before Stop')
+        self.assertEqual(saved.read_text(), 'Saved before Stop')
         self.assertNotIn(a, s.snapshot()['activity'])
         self.assertEqual(s.acquire_computer(b), {'owner': b})
         self.assertFalse(self.factories[b].gate.is_set())

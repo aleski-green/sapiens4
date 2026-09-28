@@ -69,9 +69,7 @@ def acquire():
 def main(argv):
     if argv and argv[0] in {'blindly', 'read'}:
         binary = Path(__file__).resolve().parent.parent / 'blindly4/.build/release/blindly4'
-        settings = Path.cwd() / 'computer-limits.json'
-        limit = json.loads(settings.read_text()).get('output_chars', 4800) if settings.exists() else 4800
-        limit = max(800, min(320000, int(limit)))
+        limit = 48000  # Bound individual UI observations; paginate larger subtrees.
         acquire()
         Path('.computer-used').touch()
         def invoke(args):

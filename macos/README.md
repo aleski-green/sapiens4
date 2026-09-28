@@ -12,7 +12,7 @@ open "$HOME/Applications/Sapiens4.app"
 ```
 
 Before making installation changes, the installer checks Codex's version,
-login and a real **GPT-6 Sol / xhigh** request (or the configured Sapiens4
+login and a real **GPT-6 Sol / high** request (or the configured Sapiens4
 overrides). This small model check runs in an isolated temporary directory with
 a read-only sandbox. Failure leaves an existing installation and data intact.
 You can run it independently with `python3 -m sapiens.preflight`.
@@ -52,7 +52,7 @@ The status bar shows the target commit. Checks compare exact revisions, so a rew
 
 The first install snapshots the current checkout and pinned Blindly4 submodule into an independent release. A server already running from the original checkout is reused until the first approved update or a later cold start. Reinstallation preserves the managed release pointer and saved data. Releases and backups are retained; there is no automatic cleanup policy yet.
 
-The recorded Python executable must remain installed. The app is locally ad-hoc signed, not notarized or portable. Native file selection, normal editing shortcuts and external links are supported. External links open in the default browser; the workspace's WebKit storage does not inherit browser sign-ins. The Dock icon is rendered from the exact favicon SVG in `web/bootstrap.js`.
+The recorded Python executable must remain installed. The app is locally ad-hoc signed, not notarized or portable. Native file selection, normal editing shortcuts and external links are supported. Chat links open in native workspace tabs; other shell links open in the default browser. Workspace WebKit tabs do not inherit browser sign-ins. Tabs support URLs, local files, bookmarks, back/forward, reload and per-tab zoom. Plain text follows the app theme, using black in dark mode. The Dock icon is rendered from the exact favicon SVG in `web/bootstrap.js`.
 
 ## Verification
 

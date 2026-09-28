@@ -1,23 +1,15 @@
-"""Shared artifacts, archives, and agent directory."""
+"""Shared archives and agent directory."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from .storage import atomic_bytes, atomic_json, file_lock, safe_child
+from .storage import atomic_json, file_lock, safe_child
 
 
 class Corpora:
     def __init__(self, root):
         self.root = Path(root).resolve()
-
-    def put(self, path: str, content: str | bytes) -> str:
-        target = safe_child(self.root / "artifacts", path)
-        atomic_bytes(target, content.encode() if isinstance(content, str) else content)
-        return path
-
-    def read(self, path: str) -> bytes:
-        return safe_child(self.root / "artifacts", path).read_bytes()
 
     def archive(self, agid: str, key: str, value) -> None:
         atomic_json(safe_child(self.root / "archive", f"{agid}/{key}.json"), value)

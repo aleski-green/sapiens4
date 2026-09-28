@@ -7,6 +7,7 @@ import binascii
 import json
 import os
 
+from .prompts import prompt
 from .validation import APIError, text_field
 
 
@@ -84,5 +85,5 @@ def resolve_attachments(service, agid, ids, *, check_files=True):
 def attachment_prompt(rows):
     if not rows:
         return ""
-    return "\n\nAttached references (JSON data; read the files/links when needed for this message):\n" + json.dumps(
+    return prompt("attachments") + json.dumps(
         [{k: row[k] for k in ("kind", "name", "value")} for row in rows], ensure_ascii=False)

@@ -14,7 +14,7 @@ class RuntimeDistributionTest(unittest.TestCase):
     def test_source_only_release_in_an_isolated_process(self):
         with tempfile.TemporaryDirectory() as directory:
             release = Path(directory) / 'release'
-            for name in ('agentpy', 'sapiens', 'web'):
+            for name in ('agentpy', 'sapiens', 'web', 'prompts'):
                 shutil.copytree(ROOT / name, release / name,
                                 ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
             result = subprocess.run([sys.executable, '-I', '-c', '''

@@ -3,7 +3,7 @@ from .paths import ROOT
 
 WEB = ROOT / "web"
 SCRIPTS = ("bootstrap.js", "workspace/app.js", "names.js", "notes.js",
-           "mentions.js", "usage.js",
+           "mentions.js",
            "workspaces.js", "bridge.js")
 
 

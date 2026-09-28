@@ -32,15 +32,13 @@ class CodexLLM:
     id: str = field(default_factory=lambda: f"pending_{uuid4().hex[:8]}")
     resume: bool = False
     event_sink: EventSink = _print_event
-    timeout_seconds: float = 120
-    usage: dict[str, int] | None = None
+    timeout_seconds: float | None = None
     cancel_event: Event = field(default_factory=Event, repr=False)
     activity: dict = field(default_factory=dict)
     _tools: dict = field(default_factory=dict, repr=False)
 
     def complete(self, prompt: str) -> str:
-        self.usage = None
-        if self.timeout_seconds <= 0:
+        if self.timeout_seconds is not None and self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
         if self.cancel_event.is_set():
             raise InterruptedError('Stopped before starting the model')
@@ -99,7 +97,7 @@ class CodexLLM:
                         pass
 
         def watch() -> None:
-            deadline = monotonic() + self.timeout_seconds
+            deadline = monotonic() + self.timeout_seconds if self.timeout_seconds is not None else float('inf')
             while not finished.wait(.05):
                 if self.cancel_event.is_set() or monotonic() >= deadline:
                     if not self.cancel_event.is_set():
@@ -194,15 +192,7 @@ class CodexLLM:
         elif event_type == "turn.started":
             self.event_sink("🧠 Codex is working…")
         elif event_type == "turn.completed":
-            usage = event.get("usage", {})
-            if "input_tokens" in usage and "output_tokens" in usage:
-                self.usage = usage
-            self.event_sink(
-                "✅ Codex turn completed "
-                f"(input={usage.get('input_tokens', '?')}, "
-                f"output={usage.get('output_tokens', '?')}, "
-                f"reasoning={usage.get('reasoning_output_tokens', '?')})"
-            )
+            self.event_sink("✅ Codex turn completed")
         elif event_type in {"turn.failed", "error"}:
             self.event_sink(f"❌ Codex error: {event.get('message', event)}")
         elif event_type in {"item.started", "item.completed"}:
@@ -246,7 +236,7 @@ class CodexFactory:
 
     workdir: Path = field(default_factory=Path.cwd)
     event_sink: EventSink = _print_event
-    timeout_seconds: float = 120
+    timeout_seconds: float | None = None
 
     def spawn(self, spec: LLMSpec) -> CodexLLM:
         return CodexLLM(

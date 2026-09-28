@@ -25,7 +25,7 @@ function makeInitialState(data) {
     autonomy:'assist', preview:'Ready for your message.', lastActivity:Date.parse(a.created), unread:false}));
   const selected = agents.some(a => a.id === prefs.selected && !a.retired) ? prefs.selected : agents[0].id;
   const workspaces = prefs.workspaces || {};
-  const ws = workspaces[selected] || {tabs:[{id:`blank-${selected}`,type:'blank',title:'New tab'}]};
+  const ws = workspaces[selected] || {tabs:[]};
   return {agents, mainSapiId:agents[0].id, selected, scope:prefs.scope || 'all',
     panel:['chat','notes','log'].includes(prefs.panel) ? prefs.panel : 'chat', mode:'assist', panes:{sidebar:true,chat:true,workspace:true,...prefs.panes},
     tabs:ws.tabs, activeTab:ws.activeTab || ws.tabs[0]?.id || null, workspaces,

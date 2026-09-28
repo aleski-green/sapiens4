@@ -5,8 +5,8 @@ import tempfile
 import json
 from unittest.mock import patch
 
-from sapiens.runtime import LocalLLM, LocalFactory
-from sapiens.usage import DEFAULTS, settings, validate
+from sapiens.runtime import LocalLLM, LocalFactory, execution_settings
+from sapiens.service import Service
 from sapiens.validation import APIError
 from agentpy.interfaces import LLMSpec
 
@@ -15,21 +15,35 @@ class ModelDefaultsTest(unittest.TestCase):
     def test_modes_bound_saved_legacy_limits_and_choose_reasoning(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
             root = Path(directory)
-            agent = type('Agent', (), {'root': root})()
             factory = LocalFactory(workdir=root, timeout_seconds=3000)
+            factory.execution = lambda: execution_settings(root)
             for mode, ceiling, effort in [('normal', 300, 'high'), ('deep', 1200, 'xhigh')]:
-                policy = {**DEFAULTS, 'mode': mode, 'timeout_seconds': 6000}
-                validate(policy)
+                policy = dict(mode=mode, timeout_seconds=6000)
                 (root / 'execution.json').write_text(json.dumps(policy))
-                factory.execution = settings(agent)
                 llm = factory.spawn(LLMSpec())
                 self.assertEqual(llm.timeout_seconds, ceiling)
                 self.assertEqual(llm.reasoning_effort, effort)
             policy.pop('mode')
             (root / 'execution.json').write_text(json.dumps(policy))
-            self.assertEqual(settings(agent)['timeout_seconds'], 300)
-            with self.assertRaises(APIError):
-                validate({**policy, 'mode': 'automatic'})
+            self.assertEqual(execution_settings(root)['timeout_seconds'], 300)
+
+    def test_mode_api_persists_without_overwriting_legacy_budgets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            service = Service(directory, start_worker=False)
+            try:
+                agent = service._agent(service.hierarchy.main)
+                legacy = agent.root / 'execution.json'
+                legacy.write_text('{"max_tools":1}')
+                data = dict(name='SapiTheMain', role='Assistant', execution=dict(mode='deep', timeout_seconds=1200))
+                service.update_agent(agent.agid, data)
+                self.assertEqual(service.snapshot()['orchestration'][agent.agid]['execution'], data['execution'])
+                self.assertEqual(agent.factory.spawn(LLMSpec()).timeout_seconds, 1200)
+                self.assertEqual(legacy.read_text(), '{"max_tools":1}')
+                for invalid in (None, {}, dict(mode='automatic', timeout_seconds=300), dict(mode='normal', timeout_seconds=1200)):
+                    with self.assertRaises(APIError):
+                        service.update_agent(agent.agid, {**data, 'execution': invalid})
+            finally:
+                service.close()
 
     def command(self, model='default', resume=False):
         with patch('sapiens.runtime.codex_binary', return_value='/bin/codex'):

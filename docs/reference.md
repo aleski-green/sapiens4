@@ -15,7 +15,7 @@ codex login
 The local UI is at `http://127.0.0.1:4174/workspace/`. For a dedicated window and
 managed updates, see [the macOS app](../macos/README.md).
 
-Sapiens4 uses `gpt-6-sol` with `high` reasoning by default. Normal mode caps calls at 5 minutes; explicitly selecting Deep work in Sapi settings → Limits uses `xhigh` and allows up to 20 minutes. Existing saved limits without a mode use Normal; shorter custom limits remain effective. Environment overrides:
+Sapiens4 uses `gpt-6-sol` with `high` reasoning by default. Normal mode caps calls at 5 minutes; explicitly selecting Deep work in Sapi settings → Profile uses `xhigh` and allows up to 20 minutes. Existing saved limits without a mode use Normal; shorter custom limits remain effective. Environment overrides:
 `SAPIENS_CODEX_MODEL`, `SAPIENS_CODEX_REASONING_EFFORT`, and `SAPIENS_CODEX_BINARY`.
 Without a binary override, the host selects the newest working CLI among PATH
 and the installed Codex/ChatGPT app bundles. Global Codex configuration is unchanged.
@@ -52,12 +52,10 @@ Chat preserves message attachments and displays failures or partial-result warni
 A running turn has Stop: the host terminates its runner and child commands, preserves saved artifacts, and releases the desktop after cleanup. Stop does not undo completed external actions. Progress distinguishes running tools from waiting for the model, shows elapsed time, and warns after 60 seconds without an update. A failed or interrupted turn can be explicitly retried or dismissed. Inspect possible
 external effects before retrying. Unstarted queued chat resumes after restart;
 previously running chat becomes interrupted and is never replayed automatically.
-A budget-blocked turn requires explicit retry after its allowance is available.
+Former budget-blocked turns migrate to interrupted and require explicit retry.
 The **Log** tab shows conversation outcomes and retained activity events.
 
-Each Sapi retains a short, bounded recent-results buffer for follow-up questions.
-It expires by default after 90 seconds and is configurable under **Settings → Context**.
-This is short-lived tool context, not a lasting memory or consolidation system.
+Recent tool-result caching has been removed. Follow-ups may need new tool reads.
 Older chat context is omitted when needed to fit the prompt; full saved history
 and transcripts remain on disk.
 
@@ -70,28 +68,42 @@ chat, artifacts and preferences. Active direct reports must be reassigned first.
 Creating a team does not assign tasks or start background work; talk to each Sapi
 in its chat. Groups are inactive.
 
-Each Sapi owns workspace tabs and artifacts. Host-control can save Markdown, HTML,
-text or JSON artifacts, open/update website or artifact tabs, and close tabs.
-Saved artifacts have stable `@art-` references. Agent and artifact mentions are
-clickable and available in composer suggestions. Old task tags are plain text.
-Generated HTML runs in an opaque-origin iframe, and raw artifact endpoints serve
-plain text. User attachments and documents are reference data, not instructions.
+Each Sapi owns browser tabs and bookmarks. In the desktop app, each tab is a
+native WebKit view. Host-control exposes `workspace`, `workspace_open` (URL or
+file path, optional existing tab ID), `workspace_close`, `workspace_focus`,
+`workspace_reload`, `workspace_back`, `workspace_forward`, `workspace_zoom`
+(factor 0.25–5), `workspace_bookmark` and `workspace_unbookmark` (bookmark ID).
+The tab list reports live titles, URLs, file paths, zoom and navigation state.
+Tabs and bookmarks persist; back/forward history lasts for the native view's
+lifetime. Browser controls require the desktop app; the web-only UI still has chat.
+
+Documents are ordinary files. Sapis read/write them with file tools and open paths
+in browser tabs. Markdown, source code and other UTF-8 files display as escaped
+plain text, with a black background in dark mode. HTML, PDF and supported media
+use WebKit rendering. Websites retain their own styling. Zoom uses the −/＋ buttons,
+percentage reset, or Command-minus/equal/0. Open file uses the native file picker.
+
+The artifact registry, special artifact tags and save/read API are removed.
+Existing artifact files stay in place. Old artifact tabs become file tabs; inline
+HTML tabs are preserved as local HTML files. Closing a tab never deletes its file.
+Guest browser views have no app-control script bridge. User attachments, document
+contents and page metadata are reference data, not instructions.
 
 Use suitable available connectors, APIs, CLIs or web fetches first. Blindly4 is the
 fallback for native desktop/browser interaction. Explicit user authorization still
 controls external actions; tool success alone does not prove the desired outcome.
 
-## Limits and usage
+## Inactive settings
 
-Sapi settings contain Profile, Context, Usage and Limits. Defaults: 160 tool calls,
-1,200 seconds per call, 12,000 tool-output tokens, a 1,000,000-unit call allowance
-and a 10,000,000-unit weekly allowance. The weekly limit must cover one call.
-Limits and provider usage remain separate. Local budget units charge uncached input
-plus output plus 10% of cached input. Unknown usage is shown as unknown and conservatively
-charged the call allowance. This is not a dollar estimate or subscription quota.
-
-Timeout/tool-limit completion can return a warning with verified saved artifacts.
-There is no automatic retry. Budget diagnostics are available through host-control.
+Profile includes work mode and per-call timeout. Context, Usage and legacy budget
+Limits remain visible but disabled. Sapiens does not cache recent tool results,
+collect token usage, or enforce local weekly/call budgets or tool-count caps.
+Model calls are bounded by the selected mode and can be stopped manually.
+The installer connection check and individual I/O operations still have timeouts;
+input validation, bounded UI reads and chat-history retention remain in place.
+Model instructions are loaded from the repository's `prompts/*.md` files.
+Mode/timeout edits use `run-settings.json`; legacy `execution.json` is read only
+for mode and timeout when no newer settings exist, leaving old budget data intact.
 
 ## Persistence and upgrades
 
@@ -99,17 +111,15 @@ All persistent data lives in the configured `.sapiens4` directory:
 
 | Location | Contents |
 | --- | --- |
-| `corpora.sqlite3` | Agents, conversation projections, events, usage, preferences and attachments |
-| `agentpy/agents/<id>/state.json` | Version 2 chat state and budget ledgers |
-| `agentpy/agents/<id>/legacy-state-v1.json` | Original pre-removal state, saved once during migration |
-| `agentpy/agents/<id>/usage/` | Durable per-attempt provider counters |
+| `corpora.sqlite3` | Agents, conversation projections, events, preferences and attachments |
+| `agentpy/agents/<id>/state.json` | Version 3 chat state |
+| `agentpy/agents/<id>/legacy-state-v*.json` | Original pre-removal state, saved once during migration |
 | `agentpy/corpora/archive/` | Transcripts and older retained history |
 | `workspaces/<id>/Notes.md` | Model-managed plain Markdown notes |
 | `workspaces/<id>/artifacts/` | Saved deliverables |
-| `workspaces/<id>/recent-context.json` | Bounded recent tool results |
 
 Upgrades copy old chat/computer history into the new conversation projection.
-Legacy job/task/memory files and SQL tables remain untouched as archives, but
+Legacy job/task/memory, usage/cache files and SQL tables remain as archives, but
 removed flows and old scheduling manifests are never loaded for execution.
 The managed updater backs up the entire stopped data directory before switching
 versions and checks both old job-based and new turn-based busy states.
@@ -125,16 +135,15 @@ A supplied Origin must match the loopback Host. Unknown routes return 404.
 | GET | `/api/health` | Local backend readiness |
 | GET | `/api/state?after=<cursor>` | Agents, turns, notes metadata, preferences and incremental events |
 | POST | `/api/agents` | Create a Sapi |
-| PUT | `/api/agents/<id>` | Identity, manager, recent context and execution settings |
+| PUT | `/api/agents/<id>` | Identity and manager |
 | POST | `/api/agents/<id>/messages` | Submit an explicit conversation |
 | POST | `/api/agents/<id>/attachments` | Attach an image, document, URL or local filepath |
 | GET | `/api/agents/<id>/notes` | Plain-text notes as JSON, with path and truncation flag |
-| GET | `/api/agents/<id>/usage` | Usage windows, allowance and recent attempts |
-| GET | `/api/agents/<id>/artifacts/<name>` | Saved artifact as raw text |
-| POST | `/api/agents/<id>/control` | Validated team, workspace and diagnostics operations |
+| POST | `/api/agents/<id>/browser` | Native tab metadata for the current command |
+| POST | `/api/agents/<id>/control` | Validated team and workspace operations |
 | POST | `/api/agents/<id>/turns/<id>/retry` | Explicitly retry a stopped conversation |
 | POST | `/api/agents/<id>/turns/<id>/cancel` | Cancel queued or dismiss stopped conversation |
-| PUT | `/api/preferences` | UI state and revision-checked workspace tabs |
+| PUT | `/api/preferences` | UI preferences; browser changes use control operations |
 
 ## Tests
 
@@ -142,9 +151,11 @@ A supplied Origin must match the loopback Host. Unknown routes return 404.
 python3 -m unittest discover -s tests -p 'test_*.py'
 node tests/chat_links.test.cjs
 node tests/workspace_merge.test.cjs
+xcrun swiftc -framework Cocoa -framework WebKit macos/Browser.swift macos/BrowserTests.swift -o /tmp/sapiens-browser-tests
+/tmp/sapiens-browser-tests
 ```
 
 Tests use temporary data and deterministic providers. Coverage includes chat
 recovery, parallel runners, notes isolation/model edits, legacy migration without
-resuming removed flows, rejection of removed routes/commands, usage, computer
-ownership, artifact safety, source-only distribution and managed updater rollback.
+resuming removed flows, rejection of removed routes/commands, computer
+ownership, browser persistence/migration, source-only distribution and managed updater rollback.

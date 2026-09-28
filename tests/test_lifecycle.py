@@ -29,7 +29,9 @@ class LifecycleTest(IntegrationFixture):
         history = agent.state['chat']
         notes = service.workspace.root(agent) / "Notes.md"
         notes.write_text("Keep these findings")
-        artifact = control(child, dict(op='artifact_save', name='research.md', content='# Findings'))['artifact']
+        file = service.workspace.root(agent) / 'research.md'
+        file.write_text('# Findings')
+        tab = control(child, dict(op='workspace_open', path=str(file)))['workspace']['tabs'][0]
         service.save_preferences(dict(selected=child, drafts={child:'Keep my draft'}))
         retired = control(chief, dict(op='retire_agent', target='Seneca', reason='Role not currently needed'))
         self.assertTrue(retired['retired'])
@@ -42,7 +44,7 @@ class LifecycleTest(IntegrationFixture):
         self.assertEqual(status['retired_team'][0]['id'], child)
         self.assertEqual(status['retired_team'][0]['reason'], 'Role not currently needed')
         self.assertTrue(next(r for r in service.snapshot()['agents'] if r['id'] == child)['retired'])
-        self.assertEqual(control(chief, dict(op='status', target=child))['workspace']['artifacts'][0]['reference'], artifact['reference'])
+        self.assertEqual(control(chief, dict(op='status', target=child))['workspace']['tabs'][0]['path'], str(file))
         rehired = control(chief, dict(op='rehire_agent', target='Seneca'))
         self.assertEqual(rehired['id'], child)
         self.assertFalse(rehired['retired'])
@@ -52,7 +54,7 @@ class LifecycleTest(IntegrationFixture):
         self.assertEqual(len(service.store.agents()), 2)
         self.assertEqual(agent.state['chat'], history)
         self.assertEqual(notes.read_text(), "Keep these findings")
-        self.assertEqual(Path(artifact['path']).read_text(), '# Findings')
+        self.assertEqual(file.read_text(), '# Findings')
         self.assertEqual(service.store.read_preferences()['drafts'][child], 'Keep my draft')
         self.assertEqual(next(j for j in service.snapshot()['turns'] if j['id'] == turn)['output'], 'Connected through AgentPy.')
         self.assertFalse(service.lifecycle.retired(agent))
@@ -100,10 +102,11 @@ class LifecycleTest(IntegrationFixture):
     def test_retired_sapis_cannot_receive_run_or_resume_work(self):
         service, chief, child = self.team()
         control = service.orchestration.control
-        control(child, dict(op='artifact_save', name='saved.md', content='Retain this'))
+        file = service.workspace.root(service._agent(child)) / 'saved.md'
+        file.write_text('Retain this')
         turn = service._agent(child).tell('Blocked work')
         with service._agent(child).store.transaction() as state:
-            state['turns'][0]['status'] = 'budget_blocked'
+            state['turns'][0]['status'] = 'interrupted'
         control(chief, dict(op='retire_agent', target=child))
         with self.assertRaisesRegex(APIError, 'retired'):
             service.submit(child, dict(text='Do work'))
@@ -111,10 +114,10 @@ class LifecycleTest(IntegrationFixture):
             service.turn_action(child, turn, 'retry')
         with self.assertRaisesRegex(APIError, 'retired'):
             service.update_agent(child, dict(name='Seneca', role='Changed role'))
-        self.assertEqual(control(child, dict(op='artifact_read', name='saved.md'))['content'], 'Retain this')
+        self.assertEqual(file.read_text(), 'Retain this')
         service = self.restart(service)
         self.assertEqual(self.factory.prompts, [])
-        self.assertEqual(service._agent(child).state['turns'][0]['status'], 'budget_blocked')
+        self.assertEqual(service._agent(child).state['turns'][0]['status'], 'interrupted')
 
     def test_host_http_receipts_and_manifests_support_chief_lifecycle(self):
         service, chief, child = self.team()

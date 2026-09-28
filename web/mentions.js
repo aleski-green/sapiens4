@@ -1,11 +1,10 @@
 // One entity catalog powers text links and composer suggestions.
 function mentionEntities() {
   const entities = state.agents.map(a => ({type:a.kind === 'group' ? 'group' : 'sapi',id:a.id,name:a.name,owner:a.id}));
-  entities.push(...(live.artifacts || []));
   return entities;
 }
 function entityLink(entity, label=entity.name) {
-  if (entity.type === 'artifact') return `<button type="button" class="entity-mention" data-artifact-link="${esc(entity.tag)}" data-artifact-owner="${esc(entity.owner)}" aria-label="Open artifact ${esc(entity.name)}">@${esc(label)}</button>`;
+
   return mention(entity.id);
 }
 function formatMentions(value) {
@@ -24,8 +23,8 @@ function formatMentions(value) {
 };
 // Parse link tokens before mentions so names inside URLs never become buttons.
 function chatLink(destination, label) {
-  const artifact = (live.artifacts || []).find(a => destination === a.path || destination === a.url);
-  if (artifact) return entityLink(artifact);
+  if (destination.startsWith('/') || destination.startsWith('file://'))
+    return `<button type="button" class="entity-mention" data-file-link="${esc(destination)}">${esc(label || destination)}</button>`;
   let url;
   try { url = new URL(destination); } catch { return esc(label || destination); }
   if (!['http:','https:'].includes(url.protocol)) return esc(label || destination);
@@ -73,8 +72,8 @@ function updateMentions() {
 }
 function drawMentions() {
   let menu=$('#mention-suggestions');
-  if (!menu) { menu=document.createElement('div');menu.id='mention-suggestions';menu.className='mention-suggestions';menu.setAttribute('role','listbox');menu.setAttribute('aria-label','Sapis, groups and artifacts');$('#chat-form').append(menu); }
-  menu.innerHTML=mentionChoices.length ? mentionChoices.map((e,i) => `<button type="button" role="option" id="mention-option-${i}" aria-selected="${i===mentionIndex}" data-mention-choice="${i}"><strong>@${esc(e.name)}</strong><small>${esc(e.type === 'artifact' ? `Artifact · ${agent(e.owner).name}` : e.type === 'group' ? 'Group' : 'Sapi')}</small></button>`).join('') : '<div class="empty">No matching Sapis, groups or artifacts.</div>';
+  if (!menu) { menu=document.createElement('div');menu.id='mention-suggestions';menu.className='mention-suggestions';menu.setAttribute('role','listbox');menu.setAttribute('aria-label','Sapis and groups');$('#chat-form').append(menu); }
+  menu.innerHTML=mentionChoices.length ? mentionChoices.map((e,i) => `<button type="button" role="option" id="mention-option-${i}" aria-selected="${i===mentionIndex}" data-mention-choice="${i}"><strong>@${esc(e.name)}</strong><small>${esc(e.type === 'group' ? 'Group' : 'Sapi')}</small></button>`).join('') : '<div class="empty">No matching Sapis or groups.</div>';
   const input=$('#message-input');input.setAttribute('aria-controls',menu.id);input.setAttribute('aria-expanded','true');
   if (mentionChoices.length) input.setAttribute('aria-activedescendant',`mention-option-${mentionIndex}`);
 }
@@ -88,15 +87,14 @@ document.addEventListener('input',e => { if(e.target.id==='message-input') updat
 document.addEventListener('click',async e => {
   const choice=e.target.closest('[data-mention-choice]');
   if (choice) { e.preventDefault();e.stopImmediatePropagation();chooseMention(Number(choice.dataset.mentionChoice));return; }
-  const artifactLink=e.target.closest('[data-artifact-link]');
-  if (artifactLink) {
-    e.preventDefault();e.stopImmediatePropagation();closeMentions();
-    const entity=mentionEntities().find(a=>a.type==='artifact' && a.tag===artifactLink.dataset.artifactLink && a.owner===artifactLink.dataset.artifactOwner);
-    if (!entity) return;
-    try {
-      await api(`/api/agents/${entity.owner}/control`, 'POST', {op:'workspace_open',artifact:entity.tag});
-      await refresh();openChat(entity.owner);state.panes.workspace=true;render();
-    } catch (error) {toast(error.message);}
+  const pageLink=e.target.closest('a.chat-link');
+  if(pageLink && window.webkit?.messageHandlers?.browser){
+    e.preventDefault();e.stopImmediatePropagation();browserAction('open',{url:pageLink.href});return;
+  }
+  const fileLink=e.target.closest('[data-file-link]');
+  if (fileLink) {
+    e.preventDefault();closeMentions();
+    browserAction('open',browserDestination(fileLink.dataset.fileLink));
     return;
   }
   if (e.target.id==='message-input') updateMentions(); else closeMentions();
