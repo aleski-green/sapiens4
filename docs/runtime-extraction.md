@@ -1,4 +1,4 @@
-> Historical extraction record. The later chat-only refactor removes scheduling, tasks, structured memory, adaptive behavior and the memory-tree UI described below. See [current reference](reference.md).
+> Historical extraction record. Later refactors removed scheduling, tasks, structured memory, adaptive behavior and the memory-tree UI. Owned Python now lives under `sapiens/{corpora,runtime,computer}` and web source under `web/{shell,features,theme}`. See [current reference](reference.md) and [code guidelines](../CONTRIBUTING.md).
 
 # Runtime source boundaries
 
@@ -18,9 +18,8 @@ The UI excludes portable prototype builds, example pages, fixture payloads,
 simulated chats/tasks/computer controls, and the JSON tree's example editor.
 The existing API controls in `web/` remain responsible for live behavior.
 
-The `agentpy` namespace is retained for adaptive `config.py` files already saved
-in agent state. Default behavior sources now live beside `agentpy/config.py`;
-`morphos.py` validates copies against the repository package. Persistent JSON,
-SQLite, artifact locations and HTTP asset URLs are unchanged. No user-state
-migration is required. The lab repositories remain available in Git history;
-future runtime changes are made directly in Sapiens4.
+At extraction time, the `agentpy` namespace supported saved adaptive behavior.
+Those behaviors and that Python package have since been removed. The `agentpy/`
+directory inside user data still holds existing states and archives; the source
+reorganization does not move that data, SQLite, artifacts or public HTTP URLs.
+The lab repositories remain available in Git history.

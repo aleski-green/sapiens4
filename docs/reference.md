@@ -107,6 +107,11 @@ for mode and timeout when no newer settings exist, leaving old budget data intac
 
 ## Persistence and upgrades
 
+Source ownership is described in [CONTRIBUTING.md](../CONTRIBUTING.md). The old
+`agentpy` Python package is removed; its name remains in persistent paths for
+compatibility. This source refactor needs no data migration. Installed desktop
+updaters retain their existing import entrypoints and rollback behavior.
+
 All persistent data lives in the configured `.sapiens4` directory:
 
 | Location | Contents |

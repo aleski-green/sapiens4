@@ -1,6 +1,6 @@
 """Reversible Sapi retirement; persistent history is never deleted."""
-from .clock import utcnow
-from .validation import APIError
+from sapiens.clock import utcnow
+from sapiens.validation import APIError
 
 
 class Lifecycle:
@@ -17,7 +17,7 @@ class Lifecycle:
     def change(self, agid, retire, reason=''):
         with self.service._lock:
             agent = self.service._agent(agid)
-            if agid == self.service.hierarchy.main:
+            if agid == self.service.registry.main:
                 raise APIError(400, 'The main orchestrator cannot be retired')
             if not isinstance(reason, str) or len(reason) > 500:
                 raise APIError(400, 'reason must be text, at most 500 characters')
@@ -29,14 +29,14 @@ class Lifecycle:
                         j['status'] in {'queued', 'running'} for j in agent.state['turns']):
                     raise APIError(409, 'Finish or cancel queued work before retiring this Sapi')
                 if any(entry.get('parent') == agid and not self.retired(self.service._agent(child))
-                       for child, entry in agent.corpora.directory().items()):
+                       for child, entry in self.service.registry.directory().items()):
                     raise APIError(409, 'Reassign this Sapi\'s direct reports before retiring it')
                 settings.update(retired_at=utcnow().isoformat(), retirement_reason=reason)
             else:
                 settings.update(retired_at=None, retirement_reason='')
-                parent = agent.corpora.directory()[agid].get('parent')
+                parent = self.service.registry.directory()[agid].get('parent')
                 if parent and self.retired(self.service._agent(parent)):
-                    self.service.hierarchy.assign(agent, self.service.hierarchy.main)
+                    self.service.registry.assign(agent, self.service.registry.main)
             self.service.orchestration.save(agent, settings)
             self.service.store.event(agid, 'retired' if retire else 'restored', reason or
                                      ('Sapi retired; history preserved' if retire else 'Sapi restored'))
@@ -51,5 +51,5 @@ class Lifecycle:
             if settings.get('retired_at'):
                 result.append(dict(id=row['id'], name=row['name'], role=row['role'],
                     retired_at=settings['retired_at'], reason=settings.get('retirement_reason', ''),
-                    manager=agent.corpora.directory().get(agent.agid, {}).get('parent')))
+                    manager=self.service.registry.directory().get(agent.agid, {}).get('parent')))
         return result

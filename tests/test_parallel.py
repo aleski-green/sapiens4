@@ -6,9 +6,9 @@ import time
 import unittest
 from unittest.mock import patch
 
-from sapiens import computer
-from sapiens.service import APIError, Service
-from sapiens.server import Server
+from sapiens.computer import commands as computer
+from sapiens.corpora.host.service import APIError, Service
+from sapiens.corpora.host.server import Server
 from test_integration import ScriptedFactory
 
 
@@ -47,7 +47,7 @@ class ParallelTest(unittest.TestCase):
 
     def test_parallel_calls_are_bounded_and_same_sapi_wakes_coalesce(self):
         s = self.service(start_worker=False, max_parallel_agents=2)
-        a = s.hierarchy.main
+        a = s.registry.main
         b = s.create_agent(dict(name='Second', role='Assistant'))['id']
         c = s.create_agent(dict(name='Third', role='Assistant'))['id']
         for agid in (a,b,c):
@@ -70,7 +70,7 @@ class ParallelTest(unittest.TestCase):
 
     def test_close_waits_for_all_runners_and_preserves_queued_work(self):
         s = self.service(start_worker=False, max_parallel_agents=2)
-        ids = [s.hierarchy.main] + [s.create_agent(dict(name=n,role='Assistant'))['id'] for n in ('Second','Third')]
+        ids = [s.registry.main] + [s.create_agent(dict(name=n,role='Assistant'))['id'] for n in ('Second','Third')]
         for agid in ids:
             s.submit(agid, dict(text='Keep this turn'))
         s.start()
@@ -96,7 +96,7 @@ class ParallelTest(unittest.TestCase):
 
     def test_desktop_ownership_is_lazy_exclusive_and_released_on_failure(self):
         s = self.service(start_worker=False)
-        a = s.hierarchy.main
+        a = s.registry.main
         b = s.create_agent(dict(name='Second',role='Assistant'))['id']
         with self.assertRaises(APIError):
             s.acquire_computer(a)
@@ -121,7 +121,7 @@ class ParallelTest(unittest.TestCase):
 
     def test_cancelled_queued_job_is_not_started_by_a_stale_wakeup(self):
         s = self.service(start_worker=False, max_parallel_agents=1)
-        a = s.hierarchy.main
+        a = s.registry.main
         b = s.create_agent(dict(name='Second', role='Assistant'))['id']
         s.submit(a, dict(text='First'))
         second = s.submit(b, dict(text='Cancel this queued turn'))
@@ -138,7 +138,7 @@ class ParallelTest(unittest.TestCase):
 
     def test_computer_wrapper_reserves_through_real_host_endpoint(self):
         s = self.service(start_worker=False)
-        a = s.hierarchy.main
+        a = s.registry.main
         b = s.create_agent(dict(name='Second', role='Assistant'))['id']
         server = Server(0, s)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -173,7 +173,7 @@ class ParallelTest(unittest.TestCase):
 
     def test_stop_keeps_desktop_until_exit_preserves_work_and_finishes_once(self):
         s = self.service(start_worker=False)
-        a = s.hierarchy.main
+        a = s.registry.main
         b = s.create_agent(dict(name='Second', role='Assistant'))['id']
         turns = {agid: s.submit(agid, dict(text='Work'))['id'] for agid in (a, b)}
         s.start()

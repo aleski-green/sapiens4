@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-const source=fs.readFileSync('web/mentions.js','utf8').split('let mentionRange')[0];
+const source=fs.readFileSync('web/features/mentions.js','utf8').split('let mentionRange')[0];
 const esc = v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sandbox={esc,URL,state:{agents:[{id:'sapi',name:'Nova'}]},mention:id=>`<button>${id}</button>`};
 vm.createContext(sandbox);vm.runInContext(source,sandbox);
@@ -34,12 +34,12 @@ assert.doesNotMatch(render(':codex-file-citation{path="/tmp/<img src=x onerror=a
 assert.match(render(String.raw`:codex-file-citation{path="/tmp/a\"b.pdf"}`),/data-file-link="\/tmp\/a&quot;b.pdf"/);
 sandbox.state.agents.push({id:'retired',name:'Old',retired:true});assert.equal(render('@Old'),'<button>retired</button>');
 sandbox.state.agents.push({id:'other',name:'Nova'});assert.equal(render('@Nova'),'@Nova');sandbox.state.agents.pop();
-const app=fs.readFileSync('web/workspace/app.js','utf8'), host={innerHTML:''};
+const app=fs.readFileSync('web/shell/app.js','utf8'), host={innerHTML:''};
 Object.assign(sandbox,{$:()=>host,selected:()=>({id:'sapi'}),getMessages:()=>[{role:'assistant',time:'now',text:`[PDF](<${report}>)\n\n${citation}`}],avatar:()=>'',renderAttachment:()=>{}});
 vm.runInContext(app.slice(app.indexOf('function renderConversation()'),app.indexOf('const actions =')),sandbox);sandbox.renderConversation();
 assert.equal((host.innerHTML.match(/data-file-link=/g)||[]).length,1);assert.doesNotMatch(host.innerHTML,/:codex-file-citation/);
 console.log('Chat links and local filepath references passed');
-const bridge=fs.readFileSync('web/bridge.js','utf8');
+const bridge=fs.readFileSync('web/shell/bridge.js','utf8');
 sandbox.online=true;
 sandbox.live={activity:{sapi:{turn:'current',started:1000,updated:2000,phase:'Waiting for model',last_action:'<completed>'}}};
 vm.runInContext(bridge.slice(bridge.indexOf('function turnProgress('),bridge.indexOf('function updateProgress(')),sandbox);

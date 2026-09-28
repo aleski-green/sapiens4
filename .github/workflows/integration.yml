@@ -19,7 +19,7 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Frontend syntax
         run: |
-          python -c 'from sapiens.assets import javascript; from pathlib import Path; Path("/tmp/sapiens4-app.js").write_text(javascript())'
+          python -c 'from sapiens.corpora.host.assets import javascript; from pathlib import Path; Path("/tmp/sapiens4-app.js").write_text(javascript())'
           node --check /tmp/sapiens4-app.js
           node tests/chat_links.test.cjs
           node tests/workspace_merge.test.cjs

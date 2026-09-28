@@ -42,7 +42,7 @@ def page(snapshot, offset, limit):
 
 
 def read(argv, invoke, directory, limit):
-    parser = argparse.ArgumentParser(prog='computer.py read')
+    parser = argparse.ArgumentParser(prog='commands.py read')
     parser.add_argument('--pid', type=int)
     parser.add_argument('--path', default='')
     parser.add_argument('--depth', type=int, default=12)

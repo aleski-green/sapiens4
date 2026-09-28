@@ -8,9 +8,9 @@ from urllib.request import Request, urlopen
 
 
 if __package__:
-    from .computer_read import compact, read
-else:  # Support the agent-facing `python /path/to/sapiens/computer.py` command.
-    from computer_read import compact, read
+    from .reader import compact, read
+else:  # Support the agent-facing `python /path/to/sapiens/computer/commands.py` command.
+    from reader import compact, read
 
 
 def bounded_output(text, limit):
@@ -68,7 +68,7 @@ def acquire():
 
 def main(argv):
     if argv and argv[0] in {'blindly', 'read'}:
-        binary = Path(__file__).resolve().parent.parent / 'blindly4/.build/release/blindly4'
+        binary = Path(__file__).resolve().parents[2] / 'blindly4/.build/release/blindly4'
         limit = 48000  # Bound individual UI observations; paginate larger subtrees.
         acquire()
         Path('.computer-used').touch()
@@ -83,7 +83,7 @@ def main(argv):
             print(result.stderr[:2000], file=sys.stderr)
         return result.returncode
     if len(argv) != 2 or argv[0] != 'launch' or not argv[1].strip() or argv[1].startswith('-') or len(argv[1]) > 120:
-        raise ValueError('Usage: computer.py launch "Application Name"')
+        raise ValueError('Usage: commands.py launch "Application Name"')
     if sys.platform != 'darwin':
         raise ValueError('App launch requires macOS')
     acquire()

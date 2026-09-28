@@ -8,7 +8,8 @@ import unittest
 from unittest.mock import Mock, patch
 
 from macos import install
-from sapiens import codex_config, preflight
+from sapiens.runtime import settings as codex_config
+from sapiens import preflight
 
 
 class PreflightTest(unittest.TestCase):

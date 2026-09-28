@@ -3,8 +3,8 @@ from pathlib import Path
 from urllib.parse import urlsplit, unquote
 from uuid import uuid4
 
-from .sdk import atomic_bytes
-from .validation import APIError
+from sapiens.files import atomic_bytes
+from sapiens.validation import APIError
 
 
 class Workspace:

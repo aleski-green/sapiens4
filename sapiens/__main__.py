@@ -4,10 +4,10 @@ import signal
 import threading
 import webbrowser
 
-from .assets import index, javascript
-from .paths import ROOT
-from .server import Server
-from .service import Service
+from sapiens.corpora.host.assets import index, javascript
+from sapiens.paths import ROOT
+from sapiens.corpora.host.server import Server
+from sapiens.corpora.host.service import Service
 
 
 def main():

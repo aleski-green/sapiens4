@@ -54,27 +54,3 @@ def safe_child(root: Path, name: str) -> Path:
     if path == root.resolve() or root.resolve() not in path.parents:
         raise ValueError("Path escapes its store")
     return path
-
-
-class StateStore:
-    def __init__(self, root: Path):
-        self.root = root
-        self.path = root / "state.json"
-
-    def read(self):
-        state = json.loads(self.path.read_bytes())
-        if state.get("schema_version") not in (1, 2, 3):
-            raise ValueError("Unsupported agent state schema")
-        return state
-
-    @contextmanager
-    def transaction(self):
-        with file_lock(self.root / ".state.lock"):
-            state = self.read()
-            yield state
-            self.write(state)
-
-    def write(self, state):
-        state["revision"] += 1
-        raw = encode(state)
-        atomic_bytes(self.path, raw)

@@ -1,7 +1,7 @@
 """A Sapi's own plain Markdown file; no learning or background processing."""
 from pathlib import Path
 
-from .validation import APIError
+from sapiens.validation import APIError
 
 
 class Notes:

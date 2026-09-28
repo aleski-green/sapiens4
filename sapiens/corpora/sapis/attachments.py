@@ -7,8 +7,8 @@ import binascii
 import json
 import os
 
-from .prompts import prompt
-from .validation import APIError, text_field
+from sapiens.prompts import prompt
+from sapiens.validation import APIError, text_field
 
 
 MAX_FILE = 10 * 1024 * 1024

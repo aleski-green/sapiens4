@@ -1,5 +1,5 @@
 const fs=require('node:fs'), vm=require('node:vm'), assert=require('node:assert/strict');
-const source=fs.readFileSync('web/workspaces.js','utf8').split('async function browserAction')[0];
+const source=fs.readFileSync('web/features/workspaces.js','utf8').split('async function browserAction')[0];
 const state={workspaces:{}};
 const context={bootstrap:{preferences:{workspace_revision:2}},state,syncWorkspace:()=>{}};
 vm.createContext(context);vm.runInContext(source,context);
@@ -11,7 +11,7 @@ assert.equal(state.workspaces.a.tabs.length,0);
 assert.equal(context.browserDestination('/Users/My files/notes.md').path,'/Users/My files/notes.md');
 assert.equal(context.browserDestination('https://example.com').url,'https://example.com');
 assert.equal(context.browserDestination('file:///tmp/a.md').url,'file:///tmp/a.md');
-const app=fs.readFileSync('web/workspace/app.js','utf8');
+const app=fs.readFileSync('web/shell/app.js','utf8');
 vm.runInContext(app.slice(app.indexOf('function syncWorkspace()'),app.indexOf("let search =")),context);
 const legacy={id:'blank-a',url:'about:blank'}, file={id:'tab-file',url:'file:///tmp/a.md'}, blank={id:'tab-new',url:'about:blank'};
 state.selected='a';state.workspaces.a={tabs:[legacy,file],activeTab:legacy.id};context.syncWorkspace();
@@ -20,7 +20,7 @@ state.workspaces.a={tabs:[legacy,file,blank],activeTab:blank.id};context.syncWor
 assert.deepEqual(Array.from(state.tabs),[file,blank]);assert.equal(state.activeTab,blank.id);
 state.workspaces.a={tabs:[legacy],activeTab:legacy.id};context.syncWorkspace();assert.equal(state.tabs[0],legacy);
 state.workspaces.a={tabs:[]};context.syncWorkspace();assert.equal(state.tabs.length,0);assert.equal(state.activeTab,null);
-const sourceAll=fs.readFileSync('web/workspaces.js','utf8'), dom={};
+const sourceAll=fs.readFileSync('web/features/workspaces.js','utf8'), dom={};
 context.esc=String;context.$=selector=>dom[selector] ||= {innerHTML:'',setAttribute(k,v){this[k]=v;},querySelector:()=>null};
 vm.runInContext(sourceAll.slice(sourceAll.indexOf('const bookmarks ='),sourceAll.indexOf('function renderWorkspace()')),context);
 Object.assign(context.$('#browser-tabs'),{clientWidth:200,scrollWidth:400,children:[]});

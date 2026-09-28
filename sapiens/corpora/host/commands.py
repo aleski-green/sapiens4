@@ -3,11 +3,11 @@ import json
 import shlex
 import sys
 
-from .notes import Notes
-from .paths import ROOT
-from .prompts import prompt
-from .sdk import atomic_bytes
-from .validation import APIError, sapi_name, text_field
+from sapiens.corpora.sapis.notes import Notes
+from sapiens.paths import ROOT
+from sapiens.prompts import prompt
+from sapiens.files import atomic_bytes
+from sapiens.validation import APIError, sapi_name, text_field
 
 
 class Orchestration:
@@ -84,12 +84,12 @@ class Orchestration:
                 target = self.resolve(data['target'], include_retired=True) if 'target' in data else agent
                 return self.status(target)
             if op in {'retire_agent', 'rehire_agent'}:
-                if agent.agid != self.service.hierarchy.main:
+                if agent.agid != self.service.registry.main:
                     raise APIError(403, 'Only the main Sapi can retire or rehire Sapis through host-control')
                 target = self.resolve(data.get('target'), include_retired=True)
                 result = self.service.lifecycle.change(target.agid, op == 'retire_agent', data.get('reason', ''))
             elif op == 'create_agent':
-                if agent.agid != self.service.hierarchy.main:
+                if agent.agid != self.service.registry.main:
                     raise APIError(403, 'Only the main Sapiens can create agents through host-control')
                 name, role = sapi_name(data), text_field(data, 'role', 60)
                 matches = [r for r in self.service.store.agents() if r['name'].casefold() == name.casefold()]
@@ -99,7 +99,7 @@ class Orchestration:
                         raise APIError(409, 'Name already exists with a different role; use status to inspect it')
                     child = self.service._agent(matches[0]['id'])
                     self.service.lifecycle.require_active(child)
-                    if child.corpora.directory()[child.agid]['parent'] != parent:
+                    if self.service.registry.directory()[child.agid]['parent'] != parent:
                         raise APIError(409, 'Name already exists with a different manager')
                     result = {'agent': matches[0], 'created': False}
                 else:
@@ -111,8 +111,8 @@ class Orchestration:
                 if "manager" not in data:
                     raise APIError(400, "manager is required; use null to clear it")
                 target = self.resolve(data["target"]) if "target" in data else agent
-                parent = self.service.hierarchy.validate(target.agid, data["manager"])
-                self.service.hierarchy.assign(target, parent)
+                parent = self.service.registry.validate(target.agid, data["manager"])
+                self.service.registry.assign(target, parent)
                 result = {"target": target.agid, "manager": parent}
             if op != "status":
                 audit = {k: v for k, v in data.items() if k != 'content'}
@@ -127,7 +127,7 @@ class Orchestration:
         if self.url:
             path = self.service.workspace.root(agent) / 'host-control.json'
             atomic_bytes(path, json.dumps({'url': f'{self.url}/api/agents/{agent.agid}/control'}).encode())
-            command = ' '.join(shlex.quote(str(p)) for p in (sys.executable, ROOT / 'sapiens/control.py', path))
+            command = ' '.join(shlex.quote(str(p)) for p in (sys.executable, ROOT / 'sapiens/corpora/host/client.py', path))
             agent.set_manifest('host-control', prompt('host-control', command=command))
         facts = self.status(agent)
         facts['notes'] = Notes(self.service.workspace.root(agent)).context()
@@ -139,12 +139,12 @@ class Orchestration:
             agent = self.service._agent(row['id'])
             if not self.service.lifecycle.retired(agent):
                 result.append(dict(id=row['id'], name=row['name'], role=row['role'],
-                    manager=agent.corpora.directory().get(agent.agid, {}).get('parent'),
+                    manager=self.service.registry.directory().get(agent.agid, {}).get('parent'),
                     busy=any(t['status'] in {'queued','running'} for t in agent.state['turns'])))
         return result
 
     def status(self, agent):
-        return dict(self_id=agent.agid, main_agent_id=self.service.hierarchy.main,
+        return dict(self_id=agent.agid, main_agent_id=self.service.registry.main,
                     team=self.team(), retired_team=self.service.lifecycle.catalog(),
                     workspace=self.service.workspace.summary(agent),
                     notes=Notes(self.service.workspace.root(agent)).metadata())

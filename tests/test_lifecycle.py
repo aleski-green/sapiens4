@@ -8,14 +8,14 @@ import threading
 from unittest.mock import patch
 
 from test_integration import IntegrationFixture
-from sapiens.server import Server
+from sapiens.corpora.host.server import Server
 from sapiens.validation import APIError
 
 
 class LifecycleTest(IntegrationFixture):
     def team(self):
         service = self.service(start_worker=False)
-        chief = service.hierarchy.main
+        chief = service.registry.main
         child = service.create_agent(dict(name='Seneca', role='Researcher'))['id']
         return service, chief, child
 
@@ -24,7 +24,7 @@ class LifecycleTest(IntegrationFixture):
         control = service.orchestration.control
         turn = service.submit(child, dict(text='Remember the research'))['id']
         agent = service._agent(child)
-        asyncio.run(agent.run())
+        asyncio.run(agent.runner.run())
         service._sync(agent)
         history = agent.state['chat']
         notes = service.workspace.root(agent) / "Notes.md"
@@ -87,25 +87,25 @@ class LifecycleTest(IntegrationFixture):
         control(chief, dict(op='retire_agent', target=report))
         turn = service.submit(child, dict(text='Queued work'))['id']
         for state in ['queued', 'running']:
-            with service._agent(child).store.transaction() as saved:
+            with service._agent(child).transaction() as saved:
                 saved['turns'][0]['status'] = state
             with self.assertRaisesRegex(APIError, 'Finish or cancel'):
                 control(chief, dict(op='retire_agent', target=child))
-        with service._agent(child).store.transaction() as saved:
+        with service._agent(child).transaction() as saved:
             saved['turns'][0]['status'] = 'queued'
         service.turn_action(child, turn, 'cancel')
         control(chief, dict(op='retire_agent', target=child))
         control(chief, dict(op='retire_agent', target=child))
         control(chief, dict(op='rehire_agent', target=report))
-        self.assertEqual(service._agent(report).corpora.directory()[report]['parent'], chief)
+        self.assertEqual(service.registry.directory()[report]['parent'], chief)
 
     def test_retired_sapis_cannot_receive_run_or_resume_work(self):
         service, chief, child = self.team()
         control = service.orchestration.control
         file = service.workspace.root(service._agent(child)) / 'saved.md'
         file.write_text('Retain this')
-        turn = service._agent(child).tell('Blocked work')
-        with service._agent(child).store.transaction() as state:
+        turn = service._agent(child).runner.tell('Blocked work')
+        with service._agent(child).transaction() as state:
             state['turns'][0]['status'] = 'interrupted'
         control(chief, dict(op='retire_agent', target=child))
         with self.assertRaisesRegex(APIError, 'retired'):

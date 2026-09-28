@@ -1,4 +1,4 @@
-/* Live workspace styles layered over web/workspace/styles.css. */
+/* Live workspace styles layered over web/theme/styles.css. */
 [hidden] { display: none !important; }
 .live-status { padding:12px 14px; border:1px solid var(--line); border-radius:10px; margin:14px 0; }
 .live-status p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
