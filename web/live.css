@@ -165,13 +165,7 @@
 :root body.sapi-workspace .message-bubble p+p { margin-top:10px; }
 :root body.sapi-workspace .entity-mention { color:var(--ink);text-decoration-color:var(--sapi-line);text-underline-offset:3px; }
 :root body.sapi-workspace .message-bubble [data-artifact] { display:inline-block;margin:3px 0;border:1px solid var(--line);padding:4px 8px;border-radius:7px;text-decoration:none;background:var(--sapi-surface);font-size:12px; }
-:root body.sapi-workspace .execution-card { border:1px solid var(--line);border-radius:8px;background:var(--sapi-surface); }
-:root body.sapi-workspace .execution-title { background:transparent;border-color:var(--line);color:var(--ink);font-size:11px; }
-:root body.sapi-workspace .execution-line { color:var(--muted);font-size:11px; }
-:root body.sapi-workspace .artifact-link { border:1px solid var(--line);background:var(--sapi-surface);border-radius:9px;padding:9px; }
-:root body.sapi-workspace .artifact-link strong { font-size:12px; }
-:root body.sapi-workspace .artifact-link small,:root body.sapi-workspace .message-foot { font-size:10px;color:var(--muted); }
-:root body.sapi-workspace .file-icon { border:0;border-radius:5px;background:var(--sapi-purple-tint);color:var(--muted); }
+:root body.sapi-workspace .message-foot{ font-size:10px;color:var(--muted); }
 :root body.sapi-workspace .suggestions { flex-wrap:wrap; }
 :root body.sapi-workspace .suggestions button { border:1px solid var(--line);border-radius:7px;background:var(--sapi-white);color:var(--muted);padding:6px 8px;font-size:11px; }
 :root body.sapi-workspace .composer-area { padding:10px 16px 13px;background:var(--sapi-white); }
@@ -193,7 +187,6 @@
 :root body.sapi-workspace .browser-address-bar input { font-size:10px;color:var(--muted); }
 :root body.sapi-workspace .browser-address-bar .icon-button { height:23px;font-size:16px; }
 :root body.sapi-workspace .workspace-footer { background:var(--sapi-white);font-size:10px;padding:3px 10px;min-height:20px;border-color:var(--line); }
-:root body.sapi-workspace :is(.repo-item,.artifact-item,.connection-card) { border:1px solid var(--line);border-radius:10px;background:var(--sapi-white);padding:13px; }
 :root body.sapi-workspace :is(.list-heading h3) { font:600 13px/1.5 var(--sapi-font);letter-spacing:0; }
 :root body.sapi-workspace .task-card-bottom { font-size:11px;flex-wrap:wrap; }
 :root body.sapi-workspace .button { font:500 11px var(--sapi-font);border:1px solid var(--line);border-radius:7px;background:var(--sapi-white);min-height:28px; }
@@ -207,24 +200,18 @@
 :root body.sapi-workspace dialog::backdrop { background:#0005;backdrop-filter:blur(5px); }
 :root body.sapi-workspace #modal-content h2 { font:600 20px/1.4 var(--sapi-font);letter-spacing:-.4px; }
 :root body.sapi-workspace :is(.form-stack input,.form-stack textarea,.form-stack select,.settings-row select) { background:var(--sapi-surface);border:1px solid var(--line);border-radius:7px;font-size:13px; }
-:root body.sapi-workspace :is(.auto-choice,.tab-type) { border-color:var(--line);border-radius:9px;background:var(--sapi-surface); }
-:root body.sapi-workspace .auto-choice.selected { border-color:var(--muted);background:var(--sapi-purple-tint); }
 :root body.sapi-workspace .tiny-label { font:10px var(--sapi-font);letter-spacing:.5px;color:var(--muted); }
 :root body.sapi-workspace .icon-button { border-radius:6px; }
 :root body.sapi-workspace .icon-button:hover,:root body.sapi-workspace .theme-toggle:hover { background:var(--sapi-purple-tint); }
 :root body.sapi-workspace .toast { background:var(--ink);color:var(--sapi-white);border:0;border-radius:10px;font:12px/1.5 var(--sapi-font);box-shadow:0 6px 24px #0002; }
 /* Neutral control colors also win over legacy dark-theme button variants. */
 :root[data-theme] body.sapi-workspace .send-button { background:var(--ink);color:var(--sapi-white);border:0; }
-:root body.sapi-workspace :is(.lock-banner,.computer-window,.computer-toolbar,.computer-caption,.mock-rail,.posted-card,.address,.doc-callout) { background:var(--sapi-surface);border-color:var(--line);color:var(--ink);border-radius:8px;box-shadow:none; }
-:root body.sapi-workspace :is(.lock-banner p,.lock-banner .tag,.computer-caption span:first-child,.doc-page p,.doc-page li,.log-detail) { color:var(--muted); }
-:root body.sapi-workspace .lock-banner .tag { background:var(--sapi-purple-tint);border-color:var(--line); }
+:root body.sapi-workspace :is(.log-detail){ color:var(--muted); }
 :root body.sapi-workspace .log-detail { font-size:12px;line-height:1.6;overflow-wrap:anywhere; }
 :root body.sapi-workspace .settings-row { border-color:var(--line); }
-:root body.sapi-workspace .screen-cursor span { background:var(--ink);color:var(--sapi-white); }
-:root body.sapi-workspace .screen-cursor .entity-mention { color:inherit; }
 
 /* Color belongs to Sapi identities and interaction, while the shell stays neutral. */
-:root body.sapi-workspace .avatar:not(.group-avatar) {
+:root body.sapi-workspace .avatar {
   background:radial-gradient(circle at 30% 25%,#ffffff66,transparent 65%),var(--avatar-color);
   border-color:color-mix(in srgb,var(--avatar-color) 72%,#343442);color:#272137;
 }

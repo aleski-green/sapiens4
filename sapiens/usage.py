@@ -12,7 +12,7 @@ from .validation import APIError
 
 
 DEFAULTS = dict(weekly_limit=10_000_000, call_allowance=1_000_000,
-                max_tools=160, timeout_seconds=1200, output_tokens=12000)
+                max_tools=160, timeout_seconds=300, output_tokens=12000, mode='normal')
 
 
 def counters(usage):
@@ -27,14 +27,18 @@ def counters(usage):
 
 def settings(agent):
     path = agent.root / 'execution.json'
-    return {**DEFAULTS, **(json.loads(path.read_text()) if path.exists() else {})}
+    policy = {**DEFAULTS, **(json.loads(path.read_text()) if path.exists() else {})}
+    policy['timeout_seconds'] = min(policy['timeout_seconds'], 1200 if policy['mode'] == 'deep' else 300)
+    return policy
 
 
 def validate(data):
     ranges = dict(weekly_limit=(1000, 1_000_000_000), call_allowance=(1000, 10_000_000),
                   max_tools=(1, 1000), timeout_seconds=(15, 6000), output_tokens=(200, 80000))
-    if not isinstance(data, dict) or set(data) != set(ranges):
+    if not isinstance(data, dict) or set(data) - {'mode'} != set(ranges):
         raise APIError(400, 'Provide all execution limit fields')
+    if data.get('mode', 'normal') not in ('normal', 'deep'):
+        raise APIError(400, 'Execution mode must be normal or deep')
     for key, (lo, hi) in ranges.items():
         if type(data[key]) is not int or not lo <= data[key] <= hi:
             raise APIError(400, f'{key} must be an integer from {lo} to {hi}')

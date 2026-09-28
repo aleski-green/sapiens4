@@ -1,9 +1,4 @@
-"""Codex CLI implementation of the AgentPy LLM contracts.
-
-Codex runs locally without sandboxing, streams JSONL lifecycle events to the
-caller, and keeps the Codex thread ID so ``LLMFactory.iterate`` can resume the
-same session.
-"""
+"""Bounded local Codex processes and their public JSONL lifecycle events."""
 
 from __future__ import annotations
 
@@ -13,11 +8,12 @@ import os
 import signal
 from pathlib import Path
 import subprocess
-from threading import Event, Thread, Timer
+from threading import Event, Thread
+from time import monotonic, time
 from typing import Any, Callable
 from uuid import uuid4
 
-from agentpy.interfaces import LLM, LLMFactory, LLMSpec, SessionLog
+from agentpy.interfaces import LLMSpec
 
 
 EventSink = Callable[[str], None]
@@ -28,7 +24,7 @@ def _print_event(message: str) -> None:
 
 
 @dataclass
-class CodexLLM(LLM):
+class CodexLLM:
     """One resumable local ``codex exec`` thread."""
 
     spec: LLMSpec
@@ -38,11 +34,18 @@ class CodexLLM(LLM):
     event_sink: EventSink = _print_event
     timeout_seconds: float = 120
     usage: dict[str, int] | None = None
+    cancel_event: Event = field(default_factory=Event, repr=False)
+    activity: dict = field(default_factory=dict)
+    _tools: dict = field(default_factory=dict, repr=False)
 
     def complete(self, prompt: str) -> str:
         self.usage = None
         if self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
+        if self.cancel_event.is_set():
+            raise InterruptedError('Stopped before starting the model')
+        self.activity = dict(started=time()*1000, updated=time()*1000, phase='Waiting for model', last_action='')
+        self._tools.clear()
         command = self._command(prompt)
         final_message: str | None = None
         recent_output: list[str] = []
@@ -69,21 +72,43 @@ class CodexLLM(LLM):
         stderr_thread = Thread(target=drain_stderr, daemon=True)
         stderr_thread.start()
 
-        timed_out = Event()
+        finished, timed_out = Event(), Event()
 
         def stop_process() -> None:
+            if process.returncode is not None:
+                return
+            # Freeze and collect descendants before killing: command tools may
+            # create their own process groups. Never reap the root before this.
+            pending, stopped = {process.pid}, set()
             try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+                while pending:
+                    for pid in pending:
+                        try:
+                            os.kill(pid, signal.SIGSTOP)
+                        except ProcessLookupError:
+                            pass
+                    stopped.update(pending)
+                    rows = subprocess.check_output(['ps', '-axo', 'pid=,ppid='], text=True, timeout=2)
+                    pending = {int(pid) for pid, parent in map(str.split, rows.splitlines())
+                               if int(parent) in stopped} - stopped
+            finally:
+                for pid in reversed(sorted(stopped)):
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
 
-        def expire() -> None:
-            timed_out.set()
-            stop_process()
+        def watch() -> None:
+            deadline = monotonic() + self.timeout_seconds
+            while not finished.wait(.05):
+                if self.cancel_event.is_set() or monotonic() >= deadline:
+                    if not self.cancel_event.is_set():
+                        timed_out.set()
+                    stop_process()
+                    return
 
-        timer = Timer(self.timeout_seconds, expire)
-        timer.daemon = True
-        timer.start()
+        watcher = Thread(target=watch, daemon=True)
+        watcher.start()
         try:
             for raw_line in process.stdout:
                 line = raw_line.rstrip()
@@ -103,17 +128,21 @@ class CodexLLM(LLM):
                     final_message = message
             returncode = process.wait()
         finally:
-            timer.cancel()
-            timer.join()
-            stop_process()
-            process.wait()
-            stderr_thread.join(timeout=2)
-            process.stdout.close()
-            process.stderr.close()
+            finished.set()
+            watcher.join()
+            try:
+                stop_process()
+            finally:
+                returncode = process.wait()
+                stderr_thread.join(timeout=2)
+                process.stdout.close()
+                process.stderr.close()
+        if self.cancel_event.is_set():
+            raise InterruptedError('Stopped by Admin; review external effects before retrying')
         if timed_out.is_set():
             detail = "\n".join(stderr_output[-5:])
             raise TimeoutError(
-                f"Codex exceeded {self.timeout_seconds}s; its process group was stopped. "
+                f"Codex exceeded {self.timeout_seconds}s; its process tree was stopped. "
                 f"Session: {self.id}.\n{detail}"
             )
         if returncode != 0:
@@ -147,6 +176,17 @@ class CodexLLM(LLM):
 
     def _consume_event(self, event: dict[str, Any]) -> str | None:
         event_type = event.get("type")
+        item = event.get('item', {})
+        if item.get('type') in {'command_execution', 'mcp_tool_call', 'web_search', 'file_change'}:
+            label = str(item.get('command') or item.get('tool') or item['type'])[:200]
+            if event_type == 'item.started':
+                self._tools[item.get('id', label)] = label
+            elif event_type == 'item.completed':
+                self._tools.pop(item.get('id', label), None)
+                self.activity = {**self.activity, 'last_action': label}
+        self.activity = {**self.activity, 'updated': time()*1000,
+                         'phase': 'Running tool' if self._tools else 'Waiting for model',
+                         'tool': next(iter(self._tools.values()), '')}
 
         if event_type == "thread.started":
             self.id = event["thread_id"]
@@ -201,39 +241,17 @@ class CodexLLM(LLM):
 
 
 @dataclass
-class CodexFactory(LLMFactory):
-    """Create and resume unrestricted local Codex CLI sessions."""
+class CodexFactory:
+    """Create unrestricted local Codex CLI sessions."""
 
     workdir: Path = field(default_factory=Path.cwd)
     event_sink: EventSink = _print_event
     timeout_seconds: float = 120
 
-    def spawn(self, spec: LLMSpec) -> LLM:
+    def spawn(self, spec: LLMSpec) -> CodexLLM:
         return CodexLLM(
             spec=spec,
             workdir=self.workdir,
             event_sink=self.event_sink,
             timeout_seconds=self.timeout_seconds,
         )
-
-    def iterate(self, session: SessionLog) -> LLM:
-        if session.llm_id.startswith("pending_"):
-            raise RuntimeError(f"Session {session.key!r} has no Codex thread ID yet.")
-        return CodexLLM(
-            spec=session.spec,
-            workdir=self.workdir,
-            id=session.llm_id,
-            resume=True,
-            event_sink=self.event_sink,
-            timeout_seconds=self.timeout_seconds,
-        )
-
-
-def run_codex(prompt: str, *, workdir: Path, model: str | None = None) -> str:
-    """Backward-compatible one-shot Codex call."""
-
-    llm = CodexLLM(
-        spec=LLMSpec(model=model or "default"),
-        workdir=workdir,
-    )
-    return llm.complete(prompt)

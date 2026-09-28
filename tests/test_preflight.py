@@ -50,11 +50,11 @@ class PreflightTest(unittest.TestCase):
             result = preflight.check()
         probe, prompt = complete.call_args.args
         self.assertEqual(result['model'], 'gpt-6-sol')
-        self.assertEqual(result['reasoning'], 'xhigh')
+        self.assertEqual(result['reasoning'], 'high')
         command = probe._command(prompt)
         self.assertEqual(command[:2], ['/test/codex', 'exec'])
         self.assertIn('model="gpt-6-sol"', command)
-        self.assertIn('model_reasoning_effort="xhigh"', command)
+        self.assertIn('model_reasoning_effort="high"', command)
         self.assertIn('--ephemeral', command)
         self.assertEqual(command[command.index('--sandbox') + 1], 'read-only')
         self.assertNotIn('--dangerously-bypass-approvals-and-sandbox', command)

@@ -68,6 +68,8 @@ class SapiAgent(PersistentAgent):
                 if result.tokens+self.limits.tokens_per_call > turn['reserved']:
                     raise ValueError('Flow budget allowance exhausted')
                 llm = self.factory.spawn(LLMSpec(role=step, model=role.model))
+                llm.cancel_event = self.cancel_event
+                self.active_llm = llm
                 started = datetime.now(timezone.utc).isoformat()
                 row = dict(id=uuid4().hex, turn=turn['id'], flow=turn['flow'], role=step,
                            time=started, started=started, status='running', usage=None,
@@ -111,6 +113,8 @@ class SapiAgent(PersistentAgent):
             result.output = context['last']
         except Exception as error:
             result.error = f'{type(error).__name__}: {error}'
+        finally:
+            self.active_llm = None
         return result
 
 

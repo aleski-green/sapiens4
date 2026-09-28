@@ -200,7 +200,7 @@ class LocalLLM(CodexLLM):
         # Apply host defaults to every role, including resumed calls.
         # Explicit SDK models still take precedence over the default model.
         model, reasoning = model_defaults()
-        defaults = ['-c', 'model_reasoning_effort=' + json.dumps(reasoning)]
+        defaults = ['-c', 'model_reasoning_effort=' + json.dumps(getattr(self, 'reasoning_effort', reasoning))]
         if self.spec.model == 'default':
             defaults += ['-c', 'model=' + json.dumps(model)]
         command[2:2] = defaults
@@ -220,6 +220,7 @@ class LocalFactory(CodexFactory):
             llm.finish_computer = self.finish_computer
         llm.max_tools = policy['max_tools']
         llm.output_tokens = policy['output_tokens']
+        llm.reasoning_effort = 'xhigh' if policy.get('mode') == 'deep' else model_defaults()[1]
         atomic_bytes(self.workdir / 'computer-limits.json', json.dumps({'output_chars': policy['output_tokens']*4}).encode())
         llm.retain_context = self.keep_recent() if hasattr(self, 'keep_recent') else True
         llm.current_request = self.current_request() if hasattr(self, 'current_request') else ''
@@ -243,6 +244,8 @@ Independent Sapis run concurrently. The wrapper reserves the shared desktop on
 first use until this model call finishes. If another Sapi owns it, the wrapper
 returns a busy error before taking action. Continue non-UI work or report that
 blocker; do not bypass the wrapper, spin, or retry uncertain external actions.
+Within one Sapi turn, run desktop commands sequentially, never in parallel subprocesses;
+host ownership excludes other Sapis but does not serialize calls from the same owner.
 The wrapper preserves Blindly4 exit codes and safety checks; truncated results are explicitly marked.
 For opening a closed application use {launcher} launch 'Application Name'.
 This helper ONLY launches a local app; do not navigate Finder/Recent Items to open apps.
@@ -258,8 +261,8 @@ Use a fresh read after navigation or before mutations. Coverage/truncation is ex
 a message list containing old posts does not prove you have reached the latest messages.
 Prefer find by semantic role/description at sufficient depth, then read that container.
 Do not incrementally dump the application root. inspect returns ONE element, not its children.
-snapshot/changes require a persistent Blindly session; the one-shot wrapper does not
-preserve those in-memory snapshots. Use the wrapper read pagination instead.
+Blindly is stateless and has no snapshot/changes commands. Use the wrapper read
+pagination instead; the host owns observation storage and desktop coordination.
 After a login/sync/permission blocker is confirmed, stop, save the blocker, and report it.
 Aim for fewer than ten tool calls per run. Reuse unchanged observations within the run;
 avoid repeated schema/apps calls except to verify a launch. Do not loop over failed menu paths.

@@ -316,6 +316,9 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
             snapshot["computer"] = {"owner": self._active,
                                     "built": os.access(self.binary, os.X_OK)}
             snapshot["provider"] = "codex"
+            snapshot['activity'] = {a.agid: {**getattr(a.active_llm, 'activity', {}),
+                'turn': self._active_turn(a.agid), 'stopping': a.cancel_event.is_set()}
+                for a in self._agents.values() if self._active_turn(a.agid)}
             snapshot["artifacts"] = self.artifacts.catalog()
             snapshot["main_agent_id"] = self.hierarchy.main
             snapshot["attachment_drafts"] = {

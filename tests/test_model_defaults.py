@@ -1,13 +1,36 @@
 import os
 from pathlib import Path
 import unittest
+import tempfile
+import json
 from unittest.mock import patch
 
-from sapiens.runtime import LocalLLM
+from sapiens.runtime import LocalLLM, LocalFactory
+from sapiens.usage import DEFAULTS, settings, validate
+from sapiens.validation import APIError
 from agentpy.interfaces import LLMSpec
 
 
 class ModelDefaultsTest(unittest.TestCase):
+    def test_modes_bound_saved_legacy_limits_and_choose_reasoning(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
+            root = Path(directory)
+            agent = type('Agent', (), {'root': root})()
+            factory = LocalFactory(workdir=root, timeout_seconds=3000)
+            for mode, ceiling, effort in [('normal', 300, 'high'), ('deep', 1200, 'xhigh')]:
+                policy = {**DEFAULTS, 'mode': mode, 'timeout_seconds': 6000}
+                validate(policy)
+                (root / 'execution.json').write_text(json.dumps(policy))
+                factory.execution = settings(agent)
+                llm = factory.spawn(LLMSpec())
+                self.assertEqual(llm.timeout_seconds, ceiling)
+                self.assertEqual(llm.reasoning_effort, effort)
+            policy.pop('mode')
+            (root / 'execution.json').write_text(json.dumps(policy))
+            self.assertEqual(settings(agent)['timeout_seconds'], 300)
+            with self.assertRaises(APIError):
+                validate({**policy, 'mode': 'automatic'})
+
     def command(self, model='default', resume=False):
         with patch('sapiens.runtime.codex_binary', return_value='/bin/codex'):
             return LocalLLM(spec=LLMSpec(model=model), workdir=Path('/tmp'),
@@ -19,7 +42,7 @@ class ModelDefaultsTest(unittest.TestCase):
                 with self.subTest(resume=resume):
                     command = self.command(resume=resume)
                     self.assertIn('model="gpt-6-sol"', command)
-                    self.assertIn('model_reasoning_effort="xhigh"', command)
+                    self.assertIn('model_reasoning_effort="high"', command)
                     if resume:
                         self.assertIn('resume', command)
 

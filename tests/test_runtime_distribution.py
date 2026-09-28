@@ -29,7 +29,7 @@ assert sys.path == before, 'Importing the runtime must not alter module search p
 assert 'config' not in sys.modules, 'Behavior config must have a qualified module name'
 for url in ('/', '/workspace/', '/workspace/app.js', '/workspace/styles.css',
             '/assets/sapi-theme.css', '/assets/sapi-theme.js',
-            '/assets/group-avatar.js', '/live.css'):
+            '/live.css'):
     mime, body = asset(url)
     assert body and mime, url
 for url in ('/agentpy/config.py', '/web/bootstrap.js', '/.git/config',

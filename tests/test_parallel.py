@@ -170,3 +170,31 @@ class ParallelTest(unittest.TestCase):
                     computer.main(argv)
             run.assert_not_called()
             touch.assert_not_called()
+
+    def test_stop_keeps_desktop_until_exit_preserves_work_and_settles_once(self):
+        s = self.service(start_worker=False)
+        a = s.hierarchy.main
+        b = s.create_agent(dict(name='Second', role='Assistant'))['id']
+        turns = {agid: s.submit(agid, dict(text='Work'))['id'] for agid in (a, b)}
+        s.start()
+        for agid in (a, b):
+            self.assertTrue(self.factories[agid].started.wait(3))
+        s.acquire_computer(a)
+        s.workspace.save(s._agent(a), dict(name='partial.md', content='Saved before Stop'))
+        for _ in range(2):
+            s.turn_action(a, turns[a], 'cancel')
+        self.assertTrue(s.snapshot()['activity'][a]['stopping'])
+        self.assertEqual(s.snapshot()['computer']['owner'], a)
+        with self.assertRaises(APIError):
+            s.acquire_computer(b)
+        self.factories[a].gate.set()
+        self.until(lambda: a not in s._runners)
+        turn = next(t for t in s.snapshot()['turns'] if t['id'] == turns[a])
+        self.assertEqual(turn['status'], 'interrupted')
+        self.assertIsNone(turn['output'])
+        self.assertEqual(s._agent(a).budget_status()['reserved'], 0)
+        self.assertEqual(s.workspace.path(s._agent(a), 'partial.md').read_text(), 'Saved before Stop')
+        self.assertNotIn(a, s.snapshot()['activity'])
+        self.assertEqual(s.acquire_computer(b), {'owner': b})
+        self.assertFalse(self.factories[b].gate.is_set())
+        self.assertEqual(len(self.factories[a].prompts), 1)

@@ -21,21 +21,9 @@ function syncWorkspace(){
 let search = '', toastTimer, dragId, pending = new Set();
 const agent = id => state.agents.find(a=>a.id===id) || state.agents[0];
 const selected = () => agent(state.selected);
-const isGroup = a => a.kind==='group';
 const isMainSapi = a => a.id===state.mainSapiId;
 
-const groupAvatarCache = new Map();
-function groupAvatar(a){
-  const key=JSON.stringify([a.id,a.name,a.face,a.color,a.groupAvatar]);
-  if(!groupAvatarCache.has(key)){
-    const safeColor=/^#[a-f0-9]{6}$/i.test(a.color)?a.color:'#dbd0f7';
-    const group=a.groupAvatar || {id:a.id,name:a.name,lead:{id:a.id+'-lead',expression:a.face,colour:safeColor},peers:[{id:a.id+'-peer-1',expression:'◕‿◕',colour:'#c9f3f1'},{id:a.id+'-peer-2',expression:'◠‿◠',colour:'#f7d6d1'}],groups:[]};
-    const svg=SapiGroupAvatar.render(group,{tight:true});
-    groupAvatarCache.set(key,'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));
-  }
-  return groupAvatarCache.get(key);
-}
-const avatar = (a, size='', presence=false) => `<span class="avatar ${size} ${isGroup(a)?'group-avatar':''}" style="--avatar-color:${/^#[a-f0-9]{6}$/i.test(a.color)?a.color:'#fdd997'}" aria-hidden="true">${isGroup(a)?`<img src="${esc(groupAvatar(a))}" alt="">`:`(${esc(a.face)})`}${presence?`<i class="presence ${a.status==='busy'?'busy':a.status==='idle'?'idle':''}"></i>`:''}</span>`;
+const avatar = (a, size='', presence=false) => `<span class="avatar ${size}" style="--avatar-color:${/^#[a-f0-9]{6}$/i.test(a.color)?a.color:'#fdd997'}" aria-hidden="true">(${esc(a.face)})${presence?`<i class="presence ${a.status==='busy'?'busy':a.status==='idle'?'idle':''}"></i>`:''}</span>`;
 function mention(id){
   const a=state.agents.find(a=>a.id===id);
   return a?`<button type="button" class="entity-mention" data-mention="${esc(a.id)}" aria-label="Open chat with ${esc(a.name)}">@${esc(a.name)}</button>`:esc(id==='you'?'You':id);
@@ -45,7 +33,7 @@ function openChat(id){
   const a=state.agents.find(a=>a.id===id);if(!a)return;
   state.drafts ??= {};state.drafts[state.selected]=$('#message-input').value;
   state.selected=id;state.panel='chat';state.panes.chat=true;a.unread=false;
-  if(state.scope!=='all')state.scope=isGroup(a)?'groups':'sapis';
+  if(state.scope!=='all')state.scope='sapis';
   search='';$('#agent-search').value='';$('#message-input').value=state.drafts[id]||'';
   closeModal();render();$('#conversation-body').scrollTop=$('#conversation-body').scrollHeight;
 }
@@ -76,7 +64,7 @@ function renderPanes(){
 function renderSidebar(){
   $('#agent-count').textContent=String(state.agents.length).padStart(2,'0');
   $$('[data-scope]').forEach(b=>{b.classList.toggle('active',b.dataset.scope===state.scope);b.setAttribute('aria-pressed',b.dataset.scope===state.scope);});
-  const list=state.agents.filter(a=>isMainSapi(a)||((state.scope==='all'||(state.scope==='groups'?isGroup(a):!isGroup(a)))&&`${a.name} ${a.role}`.toLowerCase().includes(search.toLowerCase())))
+  const list=state.agents.filter(a=>isMainSapi(a)||(state.scope!=='groups'&&`${a.name} ${a.role}`.toLowerCase().includes(search.toLowerCase())))
     .sort((a,b)=>Number(isMainSapi(b))-Number(isMainSapi(a))||(b.lastActivity||0)-(a.lastActivity||0));
   $('#agent-list').innerHTML=list.map(a=>`<button class="agent-row ${a.id===state.selected?'active':''} ${isMainSapi(a)?'main-sapi-row':''}" data-agent="${esc(a.id)}" aria-pressed="${a.id===state.selected}">${avatar(a,isMainSapi(a)?'main-sapi-avatar':'',true)}<span class="agent-row-copy"><span class="agent-row-name">${esc(a.name)}<small>${esc(new Date(a.lastActivity).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false}))}</small></span><p>${esc(a.preview)}</p></span>${a.unread&&!isMainSapi(a)?'<span class="unread-dot"></span>':''}</button>`).join('');
 }

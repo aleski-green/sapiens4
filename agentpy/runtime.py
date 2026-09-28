@@ -5,6 +5,7 @@ from dataclasses import asdict
 from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
+from threading import Event
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -22,6 +23,7 @@ class PersistentAgent:
         self.agid = agid
         self.root = safe_child(Path(root).resolve() / 'agents', agid)
         self.config, self.factory = config, factory
+        self.cancel_event, self.active_llm = Event(), None
         self.limits = limits or Limits()
         self.store = StateStore(self.root, self.limits)
         self.corpora = Corpora(Path(root).resolve() / 'corpora')
@@ -182,12 +184,14 @@ class PersistentAgent:
         return dict(context=json.dumps(blocks, ensure_ascii=False), task=text, last='', proposal='', critique='')
 
     def _finish(self, turn_id, outcome):
-        self.corpora.archive(self.agid, f'runs/{turn_id}', asdict(outcome))
         with self.store.transaction() as state:
+            if self.cancel_event.is_set():
+                outcome.error = 'Stopped by Admin. Saved work is preserved; review external effects before retrying.'
+            self.corpora.archive(self.agid, f'runs/{turn_id}', asdict(outcome))
             turn = next(t for t in state['turns'] if t['id'] == turn_id)
             self._settle(state, turn, outcome.tokens)
             if outcome.error:
-                turn.update(status='failed', error=outcome.error)
+                turn.update(status='interrupted' if self.cancel_event.is_set() else 'failed', error=outcome.error)
             else:
                 turn['status'] = 'done'
                 state['chat'].append(dict(role='agent', content=outcome.output, turn=turn_id, time=utcnow().isoformat()))
@@ -203,6 +207,7 @@ class PersistentAgent:
             return
         try:
             with self.store.transaction() as state:
+                self.cancel_event.clear()
                 self._recover(state)
                 turn = next((t for t in state['turns'] if t['status'] == 'queued'), None)
                 if turn is None or self._reserve(state, turn, self.limits.tokens_per_loop, utcnow()) is None:
@@ -228,6 +233,9 @@ class PersistentAgent:
     def cancel(self, turn_id):
         with self.store.transaction() as state:
             turn = next(t for t in state['turns'] if t['id'] == turn_id)
-            if turn['status'] in {'running','done'}:
-                raise ValueError('Only queued or stopped turns can be dismissed')
+            if turn['status'] == 'running':
+                self.cancel_event.set()
+                return  # The runner alone settles usage and releases the desktop.
+            if turn['status'] == 'done':
+                raise ValueError('Completed turns cannot be dismissed')
             turn['status'] = 'cancelled'

@@ -64,9 +64,28 @@ async function flushPreferences() {
 getMessages = id => state.messages[id] || [];
 
 function turnActions(turn) {
+  if (turn.status === 'running') return `<div class="actions"><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}" ${!online || live.activity?.[turn.agent]?.stopping ? 'disabled' : ''}>Stop</button><small>Already completed actions are not undone.</small></div>`;
   if (attention.has(turn.status)) return `<div class="actions"><button class="button" data-live-turn="retry" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Retry</button><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Dismiss</button></div>`;
   if (turn.status === 'queued') return `<div class="actions"><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Cancel queued turn</button></div>`;
   return '';
+}
+
+function turnProgress(turn, now = Date.now()) {
+  if (turn.status === 'budget_blocked') return `<strong>Budget blocked</strong><p>${esc(turn.error || 'Waiting for available budget.')}</p>`;
+  const current = live.activity?.[turn.agent];
+  const a = current?.turn === turn.id ? current : {};
+  const elapsed = Math.max(0, Math.floor((now - (a.started || Date.parse(turn.created))) / 1000));
+  const quiet = Math.max(0, Math.floor((now - (a.updated || a.started || now)) / 1000));
+  const phase = !online ? 'Disconnected' : a.stopping ? 'Stopping…' : turn.status === 'queued' ? 'Queued' : a.phase || 'Starting model';
+  const detail = a.tool ? `Current tool: ${a.tool}` : a.last_action ? `Last completed action: ${a.last_action}` : '';
+  return `<strong>${esc(phase)} · ${elapsed}s</strong><p>${esc(detail)}</p>${quiet >= 60 ? `<small>No recent update · ${quiet}s since last activity</small>` : ''}`;
+}
+
+function updateProgress() {
+  $$('[data-turn-progress]').forEach(node => {
+    const turn = live.turns.find(t => t.id === node.dataset.turnProgress);
+    if (turn) node.innerHTML = turnProgress(turn);
+  });
 }
 
 document.addEventListener('click', e => {
@@ -192,10 +211,7 @@ renderConversation = function() {
     if (!getMessages(state.selected).length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
     const turn = turns.find(j => blocksChat(j) && !(attention.has(j.status) && ['chat','computer'].includes(j.flow)));
     if (turn) {
-      const started = eventRows.slice().reverse().find(e => e.turn === turn.id && e.kind === 'started');
-      const event = eventRows.slice().reverse().find(e => e.turn === turn.id && e.kind === 'codex' && (!started || e.time >= started.time));
-      const detail = turn.status === 'queued' ? 'Waiting for an available runner.' : turn.error || event?.detail || 'Codex is working…';
-      host.insertAdjacentHTML('beforeend', `<section class="live-status" role="status"><strong>${esc(statusNames[turn.status])}</strong><p>${esc(detail)}</p>${turn.status === 'interrupted' ? '<p>The previous run stopped. Check what happened before retrying a computer task.</p>' : ''}${turnActions(turn)}</section>`);
+      host.insertAdjacentHTML('beforeend', `<section class="live-status"><div data-turn-progress="${esc(turn.id)}">${turnProgress(turn)}</div>${turnActions(turn)}</section>`);
     }
   } else if (state.panel === 'notes') {
     $('#composer-area').hidden = true;
@@ -304,6 +320,7 @@ document.addEventListener('submit', async e => {
       data.manager = data.manager || null;
       data.recent = {enabled:form.elements.recent_enabled.checked,seconds:Number(data.recent_seconds)};
       data.execution = Object.fromEntries(['weekly_limit','call_allowance','max_tools','timeout_seconds','output_tokens'].map(k=>[k,Number(data[k])]));
+      data.execution.mode = data.mode;
       for (const key of Object.keys(data.execution)) delete data[key];
       delete data.recent_enabled; delete data.recent_seconds;
     }
@@ -428,7 +445,7 @@ async function refresh() {
   refreshing = (async () => {
     try {
       const snapshot = await api(`/api/state?after=${cursor}`);
-      const changed = JSON.stringify([snapshot.agents,snapshot.turns,snapshot.computer,snapshot.orchestration,snapshot.artifacts]) !== JSON.stringify([live.agents,live.turns,live.computer,live.orchestration,live.artifacts]) || snapshot.events.length;
+      const changed = ['agents','turns','computer','orchestration','artifacts','activity'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k])) || snapshot.events.length;
       const reconnected = !online;
       online = true;
       const tabsChanged = (snapshot.preferences.workspace_revision || 0) > workspaceRevision;
@@ -449,6 +466,7 @@ savedPreferences = JSON.stringify(preferences());
 render();
 async function poll() {
   await refresh();
+  updateProgress();
   setTimeout(poll, online ? 750 : 2000);
 }
 setTimeout(poll, 750);

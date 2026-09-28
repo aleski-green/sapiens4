@@ -9,7 +9,7 @@ import sys
 
 MIN_CODEX_VERSION = (0, 156, 1)
 DEFAULT_MODEL = 'gpt-6-sol'
-DEFAULT_REASONING = 'xhigh'
+DEFAULT_REASONING = 'high'
 
 
 def model_defaults():

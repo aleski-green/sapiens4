@@ -37,7 +37,6 @@ def asset(path):
         "/workspace/styles.css": ("text/css", "workspace/styles.css"),
         "/assets/sapi-theme.css": ("text/css", "assets/sapi-theme.css"),
         "/assets/sapi-theme.js": ("text/javascript", "assets/sapi-theme.js"),
-        "/assets/group-avatar.js": ("text/javascript", "assets/group-avatar.js"),
     }
     if path in files:
         mime, name = files[path]

@@ -15,7 +15,7 @@ codex login
 The local UI is at `http://127.0.0.1:4174/workspace/`. For a dedicated window and
 managed updates, see [the macOS app](../macos/README.md).
 
-Sapiens4 uses `gpt-6-sol` with `xhigh` reasoning by default. Environment overrides:
+Sapiens4 uses `gpt-6-sol` with `high` reasoning by default. Normal mode caps calls at 5 minutes; explicitly selecting Deep work in Sapi settings → Limits uses `xhigh` and allows up to 20 minutes. Existing saved limits without a mode use Normal; shorter custom limits remain effective. Environment overrides:
 `SAPIENS_CODEX_MODEL`, `SAPIENS_CODEX_REASONING_EFFORT`, and `SAPIENS_CODEX_BINARY`.
 Without a binary override, the host selects the newest working CLI among PATH
 and the installed Codex/ChatGPT app bundles. Global Codex configuration is unchanged.
@@ -49,7 +49,7 @@ There are no unattended model calls or timers for Sapi work. The desktop app's
 normal software-update checks still operate.
 
 Chat preserves message attachments and displays failures or partial-result warnings.
-A failed or interrupted turn can be explicitly retried or dismissed. Inspect possible
+A running turn has Stop: the host terminates its runner and child commands, preserves saved artifacts, and releases the desktop after cleanup. Stop does not undo completed external actions. Progress distinguishes running tools from waiting for the model, shows elapsed time, and warns after 60 seconds without an update. A failed or interrupted turn can be explicitly retried or dismissed. Inspect possible
 external effects before retrying. Unstarted queued chat resumes after restart;
 previously running chat becomes interrupted and is never replayed automatically.
 A budget-blocked turn requires explicit retry after its allowance is available.

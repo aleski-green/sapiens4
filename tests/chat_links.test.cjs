@@ -21,3 +21,18 @@ assert.match(render('https://example.com/Nova'),/<a /);assert.doesNotMatch(rende
 assert.match(render('https://example.com/a_(b).'),/href="https:\/\/example.com\/a_\(b\)"/);
 assert.match(render('**Admin**'),/<strong>Admin<\/strong>/);
 console.log('Chat links and artifact mentions passed');
+const bridge=fs.readFileSync('web/bridge.js','utf8');
+sandbox.online=true;
+sandbox.live.activity={sapi:{turn:'current',started:1000,updated:2000,phase:'Waiting for model',last_action:'<completed>'}};
+vm.runInContext(bridge.slice(bridge.indexOf('function turnProgress('),bridge.indexOf('function updateProgress(')),sandbox);
+const current={id:'current',agent:'sapi',status:'running',created:new Date(1000).toISOString()};
+assert.match(sandbox.turnProgress(current,65000),/Waiting for model · 64s/);
+assert.match(sandbox.turnProgress(current,65000),/No recent update · 63s/);
+assert.match(sandbox.turnProgress(current,65000),/&lt;completed&gt;/);
+assert.doesNotMatch(sandbox.turnProgress({...current,id:'retry'},65000),/completed/);
+assert.match(sandbox.turnProgress({...current,status:'budget_blocked',error:'Allowance exhausted'},65000),/Budget blocked.*Allowance exhausted/);
+sandbox.live.activity.sapi.stopping=true;
+assert.match(sandbox.turnProgress(current,65000),/Stopping/);
+sandbox.online=false;
+assert.match(sandbox.turnProgress(current,65000),/Disconnected/);
+console.log('Progress, silence, escaping and retry isolation passed');
