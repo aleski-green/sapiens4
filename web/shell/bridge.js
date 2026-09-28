@@ -18,7 +18,6 @@ const blocksChat = turn => ['queued','running'].includes(turn.status);
 const statusNames = {queued:'Queued',running:'Running',done:'Completed',warning:'Warning',failed:'Failed',
   interrupted:'Interrupted',conflict:'Needs review',cancelled:'Dismissed'};
 const displayTime = value => new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-const originalConversation = renderConversation;
 
 function preferences() {
   return {selected:state.selected,panel:state.panel,scope:state.scope,panes:state.panes,
@@ -107,8 +106,8 @@ function applySnapshot(snapshot) {
   eventRows = eventRows.slice(-1000);
   cursor = snapshot.cursor;
   const old = new Map(state.agents.map(a => [a.id,a]));
-  state.agents = snapshot.agents.map(a => ({...old.get(a.id),...a,kind:'sapi',scope:'personal',
-    autonomy:'assist',status:'online',lastActivity:Date.parse(a.created),preview:'Ready for your message.'}));
+  state.agents = snapshot.agents.map(a => ({...old.get(a.id),...a,
+    status:'online',lastActivity:Date.parse(a.created),preview:'Ready for your message.'}));
   state.messages = {};
   for (const turn of snapshot.turns) {
     const messages = state.messages[turn.agent] ||= [];
@@ -152,8 +151,19 @@ renderAgentHeader = function() {
   $('.send-button').disabled = a.retired || !online || Boolean(turn) || submitting.has(a.id) || uploading > 0;
 };
 
+function renderMessage(message, a) {
+  const request = message.requestTurn, status = request && requestStatus(request);
+  const warning = status || (message.warning && {label:'Warning', detail:message.warning});
+  const key = status ? `request-${request.id}` : message.turnId;
+  const controls = status ? key : `warning-${key}`, expanded = expandedWarnings.has(key);
+  const badge = warning ? `<button type="button" class="warning-badge" data-warning-toggle="${esc(key)}" aria-expanded="${expanded}" aria-controls="${esc(controls)}">${esc(warning.label)}</button>` : '';
+  const details = warning ? `<div class="warning-details" id="${esc(controls)}" ${expanded ? '' : 'hidden'}>${status ? `<p>${esc(warning.detail)}</p><p>No final reply was saved for this request.</p>${turnActions(request)}` : esc(warning.detail)}</div>` : '';
+  const attachments = message.role === 'user' && message.attachments?.length ? `<div class="message-attachments">${message.attachments.map(attachmentLabel).join('')}</div>` : '';
+  return `<div class="message ${message.role === 'user' ? 'user' : ''} ${message.warning ? 'warning-message' : ''}"><div class="message-meta">${message.role === 'assistant' ? avatar(a,'mini') : '<span>↗</span>'}<strong>${message.role === 'user' ? 'Admin' : mention(a.id)}</strong><time>${esc(message.time)}</time>${badge}</div><div class="message-bubble">${details}${formatText(message.text).split('\n\n').map(p=>`<p>${p.replace(/\n/g,'<br>')}</p>`).join('')}${attachments}</div></div>`;
+}
+
 let renderedConversation = '';
-renderConversation = function() {
+function renderConversation() {
   const host = $('#conversation-body');
   const turns = live.turns.filter(j => j.agent === state.selected);
   const key = state.selected + ':' + state.panel;
@@ -161,44 +171,23 @@ renderConversation = function() {
   renderedConversation = key;
   const scroll = changedView ? 0 : host.scrollTop;
   const bottom = state.panel === 'chat' && (changedView || host.scrollHeight - host.scrollTop - host.clientHeight < 80);
+  $('#composer-area').hidden = state.panel !== 'chat';
   if (state.panel === 'chat') {
-    originalConversation();
-    host.querySelectorAll('.message').forEach((node,i) => {
-      const message=getMessages(state.selected)[i];
-      const request = message?.requestTurn, requestState = request && requestStatus(request);
-      if (requestState) {
-        const key = `request-${request.id}`, expanded = expandedWarnings.has(key);
-        node.querySelector('.message-meta').insertAdjacentHTML('beforeend', `<button type="button" class="warning-badge" data-warning-toggle="${esc(key)}" aria-expanded="${expanded}" aria-controls="${esc(key)}">${esc(requestState.label)}</button>`);
-        node.querySelector('.message-bubble').insertAdjacentHTML('afterbegin', `<div class="warning-details" id="${esc(key)}" ${expanded ? '' : 'hidden'}><p>${esc(requestState.detail)}</p><p>No final reply was saved for this request.</p>${turnActions(request)}</div>`);
-      }
-      if (message?.warning) {
-        node.classList.add('warning-message');
-        const expanded = expandedWarnings.has(message.turnId);
-        node.querySelector('.message-meta').insertAdjacentHTML('beforeend', `<button type="button" class="warning-badge" data-warning-toggle="${esc(message.turnId)}" aria-expanded="${expanded}" aria-controls="warning-${esc(message.turnId)}">Warning</button>`);
-        node.querySelector('.message-bubble').insertAdjacentHTML('afterbegin', `<div class="warning-details" id="warning-${esc(message.turnId)}" ${expanded ? '' : 'hidden'}>${esc(message.warning)}</div>`);
-      }
-    });
-    const humanMessages = getMessages(state.selected).filter(m => m.role === 'user');
-    host.querySelectorAll('.message.user').forEach((node, i) => {
-      node.querySelector('.message-meta strong').textContent = 'Admin';
-      const attachments = humanMessages[i]?.attachments || [];
-      if (attachments.length) node.querySelector('.message-bubble').insertAdjacentHTML('beforeend', `<div class="message-attachments">${attachments.map(attachmentLabel).join('')}</div>`);
-    });
-    if (!getMessages(state.selected).length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
-    const turn = turns.find(j => blocksChat(j) && !(attention.has(j.status) && ['chat','computer'].includes(j.flow)));
+    const messages = getMessages(state.selected), a = selected();
+    host.innerHTML = '<div class="day-divider">CONVERSATION</div>' + (messages.length ? messages.map(m => renderMessage(m,a)).join('') : '<div class="empty">Start a conversation.</div>');
+    renderAttachment();
+    const turn = turns.find(blocksChat);
     if (turn) {
       host.insertAdjacentHTML('beforeend', `<section class="live-status"><div data-turn-progress="${esc(turn.id)}">${turnProgress(turn)}</div>${turnActions(turn)}</section>`);
     }
   } else if (state.panel === 'notes') {
-    $('#composer-area').hidden = true;
     renderNotes(host);
   } else {
-    $('#composer-area').hidden = true;
     host.innerHTML = activityLog(turns);
   }
   renderAgentHeader(); renderGlobal();
   host.scrollTop = bottom ? host.scrollHeight : scroll;
-};
+}
 
 sendChat = async function(value) {
   const text = value.trim();
@@ -385,7 +374,7 @@ async function refresh() {
       applySnapshot(snapshot);
       if (tabsChanged) {renderTabs(); renderWorkspace();}
       if (changed || reconnected) {
-        renderSidebar(); renderConversation(); renderGlobal();
+        renderSidebar(); renderConversation();
         if ($('#modal').open && $('#modal-title')?.textContent === 'Shared computer') computerDialog();
       }
     } catch (error) {

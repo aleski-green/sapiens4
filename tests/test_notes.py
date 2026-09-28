@@ -1,5 +1,4 @@
 """Plain notes, chat-only runtime, and non-destructive legacy migration."""
-import asyncio
 from copy import deepcopy
 from http.client import HTTPConnection
 import json
@@ -130,7 +129,10 @@ class NotesTest(IntegrationFixture):
         service = self.service(start_worker=False)
         a = service._agent(service.registry.main)
         turn = service.submit(a.agid, dict(text='Historic chat'))['id']
-        asyncio.run(a.runner.run())
+        threads = []
+        self.factory.on_complete = lambda _: threads.append(threading.current_thread())
+        service._run_queued(a.agid)
+        self.assertEqual(threads, [threading.current_thread()])
         service._sync(a)
         saved = a.state
         saved['schema_version'] = 1

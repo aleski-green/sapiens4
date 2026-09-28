@@ -93,6 +93,10 @@ class TurnRunner:
             self.store.trim(state)
 
     async def run(self):
+        await asyncio.to_thread(self.run_sync)
+
+    def run_sync(self):
+        """Own the runner lock and finish the turn on the caller's worker thread."""
         try:
             lock = file_lock(self.store.root / '.runner.lock', blocking=False)
             lock.__enter__()
@@ -111,7 +115,7 @@ class TurnRunner:
                 snapshot = deepcopy(state)
                 snapshot['current_turn'] = turn['id']
                 turn = deepcopy(turn)
-            outcome = await asyncio.to_thread(self._work, turn, snapshot, self.config)
+            outcome = self._work(turn, snapshot, self.config)
             self._finish(turn['id'], outcome)
         finally:
             lock.__exit__(None, None, None)

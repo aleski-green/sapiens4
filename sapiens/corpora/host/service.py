@@ -1,7 +1,6 @@
 """One local host, parallel Sapi runners, and recoverable UI projections."""
 from pathlib import Path
 from uuid import uuid4
-import asyncio
 import fcntl
 import json
 import os
@@ -165,8 +164,8 @@ class Service:
             return next((j["id"] for j in agent.state["turns"] if j["status"] == "running"), None)
         return None
 
-    def _sync(self, agent):
-        snapshot = agent.state
+    def _sync(self, agent, snapshot=None):
+        snapshot = agent.state if snapshot is None else snapshot
         if self._revisions.get(agent.agid) == snapshot["revision"]:
             return
         outputs = {m["turn"]: m["content"] for m in snapshot["chat"] if m.get("turn") and m["role"] == "agent"}
@@ -200,8 +199,7 @@ class Service:
             parent = self.registry.validate(row["id"], data.get("manager"))
             self.store.add_agent(row)
             self.registry.register(row["id"], parent=parent)
-            agent = self._agent(row["id"])
-            self.orchestration.settings(agent)
+            self._agent(row["id"])
             self.store.event(row["id"], "created", "Sapi created")
             return row
 
@@ -286,8 +284,11 @@ class Service:
         with self._lock:
             if agid:
                 self._agent(agid)
+            active = {}
             for agent in self._agents.values():
-                self._sync(agent)
+                state = agent.state
+                self._sync(agent, state)
+                active[agent.agid] = next((t['id'] for t in state['turns'] if t['status'] == 'running'), None)
             snapshot = self.store.snapshot(after, agid)
             for row in snapshot['agents']:
                 row['retired'] = self.lifecycle.retired(self._agent(row['id']))
@@ -295,15 +296,16 @@ class Service:
                                     "built": os.access(self.binary, os.X_OK)}
             snapshot["provider"] = "codex"
             snapshot['activity'] = {a.agid: {**getattr(a.runner.active_llm, 'activity', {}),
-                'turn': self._active_turn(a.agid), 'stopping': a.runner.cancel_event.is_set()}
-                for a in self._agents.values() if self._active_turn(a.agid)}
+                'turn': active[a.agid], 'stopping': a.runner.cancel_event.is_set()}
+                for a in self._agents.values() if active.get(a.agid)}
             snapshot["main_agent_id"] = self.registry.main
             snapshot["attachment_drafts"] = {
                 agid: [a for a in self.store.attachments(agid) if a["id"] in ids]
                 for agid, ids in snapshot["preferences"].get("attachment_drafts", {}).items()}
 
+            directory = self.registry.directory()
             snapshot["orchestration"] = {
-                a.agid: {"manager": self.registry.directory().get(a.agid, {}).get("parent"),
+                a.agid: {"manager": directory.get(a.agid, {}).get("parent"),
                          "execution": execution_settings(a.root),
                          "notes": Notes(self.workspace.root(a)).metadata()}
                 for a in self._agents.values()}
@@ -345,7 +347,7 @@ class Service:
                     j['status'] in {'queued', 'running'} for j in agent.state['turns']):
                 return
             self.orchestration.prepare(agent)
-        asyncio.run(agent.runner.run())
+        agent.runner.run_sync()
 
     def _dispatch(self, agid):
         with self._lock:

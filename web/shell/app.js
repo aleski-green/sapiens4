@@ -38,7 +38,7 @@ function toast(message){$('#toast').textContent=message;$('#toast').classList.ad
 
 function modal(title,content,eyebrow='SAPI WORKSPACE'){$('#modal-eyebrow').textContent=eyebrow;$('#modal-content').innerHTML=`<h2 id="modal-title">${esc(title)}</h2>${content}`;if(!$('#modal').open)$('#modal').showModal();}
 function closeModal(){$('#modal').close();}
-function render(){if($('#modal').open&&$('#modal-title')?.textContent==='Shared computer')computerDialog();renderPanes();renderSidebar();renderAgentHeader();renderConversation();renderTabs();renderWorkspace();renderGlobal();save();}
+function render(){if($('#modal').open&&$('#modal-title')?.textContent==='Shared computer')computerDialog();renderPanes();renderSidebar();renderConversation();renderTabs();renderWorkspace();save();}
 function renderPanes(){
   state.panes ??= {sidebar:true,chat:true,workspace:true};
   const names={sidebar:'chat list',chat:'chat',workspace:'workspace'};
@@ -68,13 +68,6 @@ function renderSidebar(){
 // Live modules assign these before the first render.
 let save, getMessages, formatText, renderGlobal, renderAgentHeader, sendChat;
 let addAgent, agentSettings, computerDialog, autonomyDialog, renderAttachment;
-function renderConversation() {
-  const host = $('#conversation-body'), a = selected();
-  $('#composer-area').hidden = state.panel !== 'chat';
-  host.innerHTML = '<div class="day-divider">CONVERSATION</div>' + getMessages(a.id).map(m =>
-    `<div class="message ${m.role==='user'?'user':''}"><div class="message-meta">${m.role==='assistant'?avatar(a,'mini'):'<span>↗</span>'}<strong>${m.role==='user'?'You':mention(a.id)}</strong><time>${esc(m.time)}</time></div><div class="message-bubble">${formatText(m.text).split('\n\n').map(p=>`<p>${p.replace(/\n/g,'<br>')}</p>`).join('')}</div></div>`).join('');
-  renderAttachment();
-}
 
 const actions = {'new-tab':openNewTab};
 

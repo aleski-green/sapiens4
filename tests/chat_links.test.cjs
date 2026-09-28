@@ -34,12 +34,20 @@ assert.doesNotMatch(render(':codex-file-citation{path="/tmp/<img src=x onerror=a
 assert.match(render(String.raw`:codex-file-citation{path="/tmp/a\"b.pdf"}`),/data-file-link="\/tmp\/a&quot;b.pdf"/);
 sandbox.state.agents.push({id:'retired',name:'Old',retired:true});assert.equal(render('@Old'),'<button>retired</button>');
 sandbox.state.agents.push({id:'other',name:'Nova'});assert.equal(render('@Nova'),'@Nova');sandbox.state.agents.pop();
-const app=fs.readFileSync('web/shell/app.js','utf8'), host={innerHTML:''};
-Object.assign(sandbox,{$:()=>host,selected:()=>({id:'sapi'}),getMessages:()=>[{role:'assistant',time:'now',text:`[PDF](<${report}>)\n\n${citation}`}],avatar:()=>'',renderAttachment:()=>{}});
-vm.runInContext(app.slice(app.indexOf('function renderConversation()'),app.indexOf('const actions =')),sandbox);sandbox.renderConversation();
+const bridge=fs.readFileSync('web/shell/bridge.js','utf8'), host={innerHTML:'',scrollTop:100,scrollHeight:1000,clientHeight:200,insertAdjacentHTML:(_,s)=>host.innerHTML+=s};
+Object.assign(sandbox,{$:()=>host,selected:()=>({id:'sapi'}),getMessages:()=>[{role:'assistant',time:'now',text:`[PDF](<${report}>)\n\n${citation}`}],avatar:()=>'',renderAttachment:()=>{},renderAgentHeader:()=>{},renderGlobal:()=>{},live:{turns:[]},expandedWarnings:new Set(),blocksChat:t=>['queued','running'].includes(t.status),requestStatus:t=>t.status==='failed'?{label:'Failed',detail:t.error}:null,turnActions:()=>'<button>Retry</button>',attachmentLabel:a=>esc(a.name)});
+sandbox.state.selected='sapi';sandbox.state.panel='chat';
+vm.runInContext(bridge.slice(bridge.indexOf('function renderMessage('),bridge.indexOf('sendChat =')),sandbox);sandbox.renderConversation();
 assert.equal((host.innerHTML.match(/data-file-link=/g)||[]).length,1);assert.doesNotMatch(host.innerHTML,/:codex-file-citation/);
+host.scrollTop=100;sandbox.renderConversation();assert.equal(host.scrollTop,100);
+host.scrollTop=850;sandbox.renderConversation();assert.equal(host.scrollTop,1000);
+const request={role:'user',text:'<input>',time:'now',requestTurn:{id:'failed',status:'failed',error:'<failure>'},attachments:[{name:'<report>'}]};
+value=sandbox.renderMessage(request,{id:'sapi'});assert.match(value,/>Admin<\/strong>/);assert.match(value,/id="request-failed" hidden/);assert.match(value,/Retry/);assert.match(value,/message-attachments.*&lt;report&gt;/);assert.doesNotMatch(value,/<input>|<failure>/);
+sandbox.expandedWarnings.add('request-failed');assert.match(sandbox.renderMessage(request,{id:'sapi'}),/aria-expanded="true"/);
+value=sandbox.renderMessage({role:'assistant',text:'partial',warning:'<limit>',turnId:'warn'},{id:'sapi'});assert.match(value,/warning-message/);assert.match(value,/aria-controls="warning-warn"/);assert.match(value,/&lt;limit&gt;/);
+Object.assign(sandbox,{renderNotes:h=>h.innerHTML='Notes',activityLog:()=> 'Log'});
+for(const panel of ['notes','log','chat']){sandbox.state.panel=panel;sandbox.renderConversation();assert.equal(host.hidden,panel!=='chat');}
 console.log('Chat links and local filepath references passed');
-const bridge=fs.readFileSync('web/shell/bridge.js','utf8');
 sandbox.online=true;
 sandbox.live={activity:{sapi:{turn:'current',started:1000,updated:2000,phase:'Waiting for model',last_action:'<completed>'}}};
 vm.runInContext(bridge.slice(bridge.indexOf('function turnProgress('),bridge.indexOf('function updateProgress(')),sandbox);

@@ -111,6 +111,15 @@ finally:
             service._agent(child)
             registry.register.assert_called_once()
             grandchild = service.create_agent(dict(name='Grandchild', role='Assistant', manager=child))['id']
+            registry.directory = Mock(wraps=registry.directory)
+            agent = service._agent(child)
+            agent.read = Mock(wraps=agent.read)
+            service.snapshot()
+            agent.read.assert_called_once()
+            registry.directory.assert_called_once()
+            registry.directory.reset_mock()
+            service.orchestration.team()
+            registry.directory.assert_called_once()
             before = (registry.root / 'directory.json').read_bytes()
             for parent in (child, grandchild, 'missing'):
                 with self.assertRaises(APIError):
