@@ -1,4 +1,4 @@
-"""Load the pinned SDK and configure the host's two user-facing flows."""
+"""Configure Sapiens4 flows using the repository-owned runtime."""
 from datetime import datetime, timezone
 from functools import lru_cache
 from hashlib import sha256

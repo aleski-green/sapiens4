@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")"
-git submodule update --init --recursive
+git submodule update --init --recursive -- blindly4
 if [ "$(uname -s)" = Darwin ]; then
   swift build --package-path blindly4 -c release
 else

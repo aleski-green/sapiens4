@@ -21,7 +21,7 @@ cd sapiens4
 Open **http://127.0.0.1:4174/workspace/**. The first launch creates one real Sapi
 without making an LLM call. Use **＋** beside CORPORA to create more.
 
-`start.sh` initializes the pinned submodules, builds Blindly4 on macOS, and
+`start.sh` initializes the Blindly4 submodule, builds it on macOS, and
 starts the Python server. Subsequent Swift builds are incremental. To run an
 already prepared checkout directly:
 
@@ -224,20 +224,19 @@ disallow framing can be opened with the tab's external-link button.
 
 ```text
 sapiens4/
-  lab-corpora-ui/       # Git submodule: original CORPORA shell, styles, workspace tabs
-  lab-sapiens-rnd/      # Git submodule: persistent AgentPy orchestration and Codex backend
-  blindly4/            # Existing Git submodule: native macOS computer-use CLI
-  sapiens/             # Local HTTP API, SDK adapter, SQLite projections, static asset seam
-  web/                 # Live behavior adapter for the CORPORA interface
-  tests/               # Integration tests using the real SDK and scripted workers
+  agentpy/             # Persistent runtime, Codex backend, behavior config and prompts
+  blindly4/            # Sole Git submodule: native macOS computer-use CLI
+  sapiens/             # Local HTTP API, runtime adapter, SQLite projections, asset serving
+  web/                 # Workspace renderer, live controls, themes and memory tree
+  tests/               # Runtime and integration tests with scripted workers
   start.sh
 ```
 
-Each submodule is pinned to a commit; upstream sources are unmodified. The
-parent repo holds Git links rather than copies of their source/history or
-compiled binaries. `sapiens/assets.py` checks the small frontend loading seam
-and appends the live adapter. If an upstream update changes that seam, startup
-fails explicitly instead of silently reverting to demo behavior.
+The Python runtime and served UI are ordinary source files owned by this repo.
+Only Blindly4 is pinned to an upstream commit. `sapiens/assets.py` assembles the
+workspace scripts in an explicit order and serves an allowlist of public assets;
+it does not load or patch a separate lab checkout. See
+[runtime extraction](runtime-extraction.md) for the source boundaries.
 
 ## Storage and recovery
 
@@ -305,7 +304,8 @@ as static files.
 
 ```sh
 python3 -m unittest discover -s tests -v
-(cd lab-sapiens-rnd && python3 -m unittest test_runtime test_adversarial test_codex_process -v)
+node tests/chat_links.test.cjs
+node tests/workspace_merge.test.cjs
 swift run --package-path blindly4 blindly4 --self-test
 swift run --package-path blindly4 blindly4 schema
 ```
@@ -317,9 +317,10 @@ retry/dismiss, event pagination, restart recovery, schedule/manager persistence,
 idle and overdue checks, task execution, memory commits and the local HTTP boundary.
 Real Codex and Accessibility checks are separate local smoke tests.
 
-To update a component, check out the desired commit inside its submodule,
-run these checks and the browser smoke test, then commit the changed Git link
-in `sapiens4`. Runtime data, generated assets and binaries stay out of Git.
+Edit the Python runtime and UI directly in this repository. To update Blindly4,
+check out the desired commit inside `blindly4`, run these checks and the browser
+smoke test, then commit its changed Git link. Runtime data and binaries stay out
+of Git.
 
 ### Token usage and execution limits
 

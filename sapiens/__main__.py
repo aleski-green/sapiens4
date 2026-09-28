@@ -19,7 +19,7 @@ def main():
     args = parser.parse_args()
     if args.timeout <= 0:
         parser.error("--timeout must be positive")
-    index(), javascript()  # Fail early if the pinned frontend contract changed.
+    index(), javascript()  # Check required frontend assets before starting workers.
     service = Service(args.data_dir, timeout=args.timeout, start_worker=False)
     try:
         server = Server(args.port, service)

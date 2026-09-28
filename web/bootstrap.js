@@ -1,4 +1,4 @@
-// Executed in the same closure as the pinned CORPORA app. No demo state is loaded.
+// Initialize the workspace from the local API.
 // Set tab branding before loading state, including when the backend is unavailable.
 document.title = 'Sapi4: Corpora';
 const favicon = document.createElement('link');
@@ -29,7 +29,6 @@ function makeInitialState(data) {
   return {agents, mainSapiId:agents[0].id, selected, scope:prefs.scope || 'all',
     panel:prefs.panel || 'chat', mode:'assist', panes:{sidebar:true,chat:true,workspace:true,...prefs.panes},
     tabs:ws.tabs, activeTab:ws.activeTab || ws.tabs[0]?.id || null, workspaces,
-    drafts:prefs.drafts || {}, messages:{}, tasks:[], logs:[], schedules:[],
-    computer:{owner:null,lastUsed:null,paused:false,queue:[],completed:0},
-    document:{}, connections:{}, posts:[], attachment:false};
+    drafts:prefs.drafts || {}, messages:{}, tasks:[], logs:[],
+    computer:{owner:null}};
 }

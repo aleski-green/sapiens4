@@ -20,7 +20,7 @@ from .hierarchy import Hierarchy
 from .lifecycle import Lifecycle
 from .memory import current_fingerprint, current_run, last_fingerprint
 from .orchestration import Orchestration
-from .paths import ROOT, SDK
+from .paths import ROOT, BEHAVIOR_SOURCE
 from .recent import RecentContext
 from .runtime import Config, LocalFactory, codex_binary, computer_guide, computer_manifest
 from .sdk import Limits
@@ -117,7 +117,7 @@ class Service:
             factory = (self.factory_builder(agid, sink) if self.factory_builder else
                        LocalFactory(workdir=workdir, event_sink=sink, timeout_seconds=self.timeout))
             agent = SapiAgent(agid=agid, config=Config(), factory=factory,
-                                 root=self.root / "agentpy", source=SDK,
+                                 root=self.root / "agentpy", source=BEHAVIOR_SOURCE,
                                  limits=Limits(parallel_jobs=1, tokens_per_call=32000, tokens_per_loop=256000))
             if not self.factory_builder:
                 factory.finish_computer = lambda restore: self.release_computer(agid, restore)

@@ -66,10 +66,10 @@ Sapis. Team checks logged attention counts but did not deliver chat notices.
 
 ## SDK boundary
 
-`SapiAgent` extends the pinned SDK runtime in the integration repository. Its
+`SapiAgent` extends the repository-owned runtime in `agentpy/`. Its
 `_work`, `_reserve`, `_settle` hooks preserve flow/transaction semantics while
 separating raw usage from budget units. Regression tests cover this dependency;
-review these hooks when updating the SDK submodule. No submodule changes needed.
+review these hooks when changing the core runtime.
 
 ## Validation
 

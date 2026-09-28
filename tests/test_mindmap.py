@@ -123,7 +123,7 @@ class MindMapTest(IntegrationFixture):
         self.assertFalse(service.orchestration.settings(service._agent(owner))['consolidate_requested'])
         self.assertEqual(service.snapshot()['orchestration'][owner]['memory']['status'], 'failed')
 
-    def test_read_api_and_pinned_viewer(self):
+    def test_read_api_and_memory_viewer(self):
         service, owner = self.prepare()
         server = Server(0, service)
         thread = threading.Thread(target=server.serve_forever, daemon=True)

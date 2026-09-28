@@ -152,10 +152,10 @@ class Manager:
 
     def prepare(self, sha):
         destination = self.home / 'releases' / (sha + '-' + uuid.uuid4().hex[:8])
-        self.status('preparing', 'Downloading main and pinned submodules…')
+        self.status('preparing', 'Downloading main and Blindly4…')
         command(['git', 'clone', '--no-checkout', '--single-branch', '--branch', 'main', UPSTREAM, str(destination)], timeout=600)
         command(['git', 'checkout', '--detach', sha], cwd=destination)
-        command(['git', 'submodule', 'update', '--init', '--recursive'], cwd=destination, timeout=900)
+        command(['git', 'submodule', 'update', '--init', '--recursive', '--', 'blindly4'], cwd=destination, timeout=900)
         self.status('preparing', 'Building Blindly4…')
         env = swift_environment()
         build_blindly(destination, env)

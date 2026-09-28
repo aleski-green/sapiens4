@@ -1,4 +1,4 @@
-/* The visual system and layouts come from lab-corpora-ui. */
+/* Live workspace styles layered over web/workspace/styles.css. */
 [hidden] { display: none !important; }
 .live-status { padding:12px 14px; border:1px solid var(--line); border-radius:10px; margin:14px 0; }
 .live-status p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
@@ -90,7 +90,7 @@
 .warning-details[hidden] { display:none; }
 .warning-badge:focus-visible { outline:2px solid #a97600; outline-offset:2px; }
 
-/* Style-only port of lab-corpora-ui 1e57652. Keep live navigation and content intact. */
+/* Workspace theme refinements. */
 
 :root body.sapi-workspace {
   --sapi-brand-gradient:linear-gradient(to bottom right,#ed3995 0%,#df2eea 35%,#783cf0 65%,#35c5e8 100%);

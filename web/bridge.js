@@ -1,4 +1,4 @@
-// Live adapters replace prototype behavior while retaining its UI and workspace renderer.
+// Connect the workspace renderer to the local Sapiens4 API.
 let live = bootstrap;
 let cursor = 0;
 let eventRows = [];
@@ -449,7 +449,7 @@ document.addEventListener('submit', async e => {
   finally { button.disabled = false; }
 }, true);
 
-// Keep live branding aligned with the UI lab.
+// Apply Sapiens4 branding.
 $('.wordmark').innerHTML = '<span class="brand-name">Sapiens4</span>';
 $('.wordmark').setAttribute('aria-label', 'Sapiens4 home');
 $('.wordmark').addEventListener('click', () => {
@@ -457,7 +457,7 @@ $('.wordmark').addEventListener('click', () => {
   if (main) openChat(main.id);
 });
 
-// Remove simulation entry points; workspace tabs and appearance remain upstream UI.
+// Configure workspace controls.
 $('#attach-button').setAttribute('aria-label', 'Add attachment');
 $('#profile-button').innerHTML = 'Admin <span aria-hidden="true">⌄</span>';
 $('#profile-button').setAttribute('aria-label','Admin settings');

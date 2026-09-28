@@ -1,4 +1,4 @@
-"""Host policy on the pinned SDK's transactional runtime.
+"""Host policy on the core transactional runtime.
 
 The small _work override preserves SDK flow semantics and adds per-attempt
 telemetry and cache-aware admission. No provider counters are rewritten.

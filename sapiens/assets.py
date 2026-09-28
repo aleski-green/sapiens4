@@ -1,33 +1,15 @@
-"""Serve the pinned CORPORA shell with a small, checked integration seam."""
-from html import unescape
-
+"""Serve Sapiens4's runtime UI from an explicit public asset allowlist."""
 from .paths import ROOT
 
-
-UI = ROOT / "lab-corpora-ui"
 WEB = ROOT / "web"
-
-
-def replace_once(source, before, after):
-    if source.count(before) != 1:
-        raise RuntimeError(f"CORPORA integration seam changed: {before[:80]!r}")
-    return source.replace(before, after, 1)
+SCRIPTS = ("bootstrap.js", "workspace/app.js", "names.js", "work-ui.js",
+           "task-dialog.js", "mentions.js", "mindmap.js", "usage.js",
+           "workspaces.js", "bridge.js")
 
 
 def javascript():
-    source = (UI / "workspace/app.js").read_text()
-    source = replace_once(source, 'const fixture = globalThis.CorporaFixture;',
-                          'const fixture = {state:makeInitialState(bootstrap),artifacts:[]};')
-    source = replace_once(source,
-                          "try { state = JSON.parse(localStorage.getItem(STORAGE)); } catch {}",
-                          "state = makeInitialState(bootstrap);")
-    source = replace_once(source, "\nrender();\n", "\n" + "\n".join((WEB / name).read_text() for name in ("names.js", "work-ui.js", "task-dialog.js", "mentions.js", "mindmap.js", "usage.js", "workspaces.js", "bridge.js")) + "\n")
-    # These direct listeners must resolve the adapter functions at click time.
-    for selector, function in (("add-agent", "addAgent"), ("autonomy-button", "autonomyDialog")):
-        source = replace_once(source, f"$('#{selector}').addEventListener('click',{function});",
-                              f"$('#{selector}').addEventListener('click',()=>{function}());")
-    loader = (WEB / "bootstrap.js").read_text()
-    return "(async () => {\n" + loader + "\n" + source + "\n})().catch(error => {\n" + """
+    source = "\n".join((WEB / name).read_text() for name in SCRIPTS)
+    return "(async () => {\n" + source + "\n})().catch(error => {\n" + """
         document.body.replaceChildren();
         const panel = document.createElement('main');
         panel.style.cssText = 'padding:40px;font:16px monospace';
@@ -41,44 +23,18 @@ def javascript():
 
 
 def index():
-    html = (UI / "workspace/index.html").read_text()
-    html = replace_once(html, '  <script src="fixtures/sapiens-cases.js"></script>\n', '')
-    html = replace_once(html, '<link rel="stylesheet" href="styles.css">',
-                        '<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="/live.css">')
-    for before, after in (
-        ('id="agent-count">05', 'id="agent-count">0'),
-        ('id="task-count">3', 'id="task-count">0'),
-        ('id="resource-owner">In use · Aaron', 'id="resource-owner">Connecting…'),
-        ('placeholder="Message Aaron…"', 'placeholder="Message your Sapi…"'),
-        ('id="autonomy-label">Autonomous', 'id="autonomy-label">Connecting…'),
-        ('aria-label="Workspace settings">AP', 'aria-label="Workspace settings">Admin'),
-    ):
-        html = replace_once(html, before, after)
-    return html
+    return (WEB / "workspace/index.html").read_text()
 
 
 def memory_viewer():
-    """Reuse the pinned JSON tree component, without its demo editor or shell."""
-    source = (UI / 'agent-state-explorer.html').read_text()
-    document = unescape(source.split('srcdoc="', 1)[1].split('"></iframe>', 1)[0])
-    start = document.index('<div id="json-tree-lab">')
-    end = document.index('</script>', document.index('<script>', start)) + len('</script>')
-    component = document[start:end]
-    component = replace_once(component, "  loadExample('commerce');", """
-  let current = null;
-  window.addEventListener('message', event => {
-    if (event.source !== parent || event.data?.type !== 'sapiens-memory') return;
-    root.style.colorScheme = event.data.dark ? 'dark' : 'light';
-    const value = JSON.stringify(event.data.memx);
-    if (value === current) return;
-    current = value; input.value = value; applyJson();
-  });
-  parent.postMessage({type:'sapiens-memory-ready'}, '*');
-""")
-    return '''<!doctype html><html><head><meta charset="utf-8">
+    # Inline styles keep the memory iframe independent of its opaque origin.
+    styles = "\n".join((WEB / name).read_text() for name in ("memory-tree.css", "mindmap-viewer.css"))
+    header = '''<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'">
-<title>Consolidated memory</title></head><body>''' + component + '<style>' + (WEB / 'mindmap-viewer.css').read_text() + '</style></body></html>'
+<title>Consolidated memory</title>'''
+    return (header + '<style>' + styles + '</style></head><body>'
+            + (WEB / 'memory-tree.html').read_text() + '</body></html>')
 
 
 def asset(path):
@@ -86,18 +42,17 @@ def asset(path):
         return "text/html; charset=utf-8", index().encode()
     if path == "/workspace/app.js":
         return "text/javascript; charset=utf-8", javascript().encode()
-    if path == "/live.css":
-        return "text/css; charset=utf-8", (WEB / "live.css").read_bytes()
     if path == '/mindmap.html':
         return 'text/html; charset=utf-8', memory_viewer().encode()
-    # Explicit public assets only: never expose submodule sources, runtime data or .git.
+    # Never expose Python sources, runtime data, or Git metadata.
     files = {
-        "/workspace/styles.css": ("text/css", UI / "workspace/styles.css"),
-        "/assets/sapi-theme.css": ("text/css", UI / "assets/sapi-theme.css"),
-        "/assets/sapi-theme.js": ("text/javascript", UI / "assets/sapi-theme.js"),
-        "/assets/group-avatar.js": ("text/javascript", UI / "assets/group-avatar.js"),
+        "/live.css": ("text/css", "live.css"),
+        "/workspace/styles.css": ("text/css", "workspace/styles.css"),
+        "/assets/sapi-theme.css": ("text/css", "assets/sapi-theme.css"),
+        "/assets/sapi-theme.js": ("text/javascript", "assets/sapi-theme.js"),
+        "/assets/group-avatar.js": ("text/javascript", "assets/group-avatar.js"),
     }
     if path in files:
-        mime, file = files[path]
-        return mime + "; charset=utf-8", file.read_bytes()
+        mime, name = files[path]
+        return mime + "; charset=utf-8", (WEB / name).read_bytes()
     return None
