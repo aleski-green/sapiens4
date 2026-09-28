@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-const source=fs.readFileSync('web/mentions.js','utf8').split('let mentionRange')[0];
+const source=fs.readFileSync('web/features/mentions.js','utf8').split('let mentionRange')[0];
 const esc = v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sandbox={esc,URL,state:{agents:[{id:'sapi',name:'Nova'}]},mention:id=>`<button>${id}</button>`};
 vm.createContext(sandbox);vm.runInContext(source,sandbox);
@@ -20,7 +20,7 @@ assert.match(render('https://example.com/Nova'),/<a /);assert.doesNotMatch(rende
 assert.match(render('https://example.com/a_(b).'),/href="https:\/\/example.com\/a_\(b\)"/);
 assert.match(render('**Admin**'),/<strong>Admin<\/strong>/);
 console.log('Chat links and local filepath references passed');
-const bridge=fs.readFileSync('web/bridge.js','utf8');
+const bridge=fs.readFileSync('web/shell/bridge.js','utf8');
 sandbox.online=true;
 sandbox.live={activity:{sapi:{turn:'current',started:1000,updated:2000,phase:'Waiting for model',last_action:'<completed>'}}};
 vm.runInContext(bridge.slice(bridge.indexOf('function turnProgress('),bridge.indexOf('function updateProgress(')),sandbox);

@@ -1,5 +1,5 @@
 const fs=require('node:fs'), vm=require('node:vm'), assert=require('node:assert/strict');
-const source=fs.readFileSync('web/workspaces.js','utf8').split('async function browserAction')[0];
+const source=fs.readFileSync('web/features/workspaces.js','utf8').split('async function browserAction')[0];
 const state={workspaces:{}};
 const context={bootstrap:{preferences:{workspace_revision:2}},state,syncWorkspace:()=>{}};
 vm.createContext(context);vm.runInContext(source,context);

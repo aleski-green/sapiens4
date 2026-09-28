@@ -6,9 +6,10 @@ import subprocess
 import sys
 import tempfile
 
-from .codex_config import MIN_CODEX_VERSION, cli_version, codex_binary, model_defaults
-from .prompts import prompt
-from .sdk import CodexLLM, LLMSpec
+from sapiens.runtime.settings import MIN_CODEX_VERSION, cli_version, codex_binary, model_defaults
+from sapiens.prompts import prompt
+from sapiens.runtime.codex import CodexLLM
+from sapiens.runtime.contracts import LLMSpec
 
 
 @dataclass

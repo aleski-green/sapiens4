@@ -1,6 +1,7 @@
 """Codex selection shared by the runtime and installation checks."""
 from functools import lru_cache
 import os
+import json
 import re
 import shutil
 import subprocess
@@ -43,3 +44,14 @@ def codex_binary():
         except (OSError, RuntimeError, subprocess.SubprocessError):
             continue
     return max(versions, default=((), None))[1]
+
+
+def execution_settings(root):
+    path = root / 'run-settings.json'
+    if not path.exists():
+        path = root / 'execution.json'  # Read legacy mode/timeout without restoring budgets.
+    saved = json.loads(path.read_text()) if path.exists() else {}
+    mode = 'deep' if saved.get('mode') == 'deep' else 'normal'
+    ceiling = 1200 if mode == 'deep' else 300
+    timeout = saved.get('timeout_seconds', ceiling)
+    return dict(mode=mode, timeout_seconds=min(ceiling, max(15, timeout)) if type(timeout) is int else ceiling)

@@ -9,12 +9,12 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$BUILD/AppIcon.iconset
 xcrun swiftc -module-cache-path "$BUILD/module-cache" -O -framework Cocoa -framework WebKit "$ROOT/macos/Sapiens4.swift" "$ROOT/macos/Browser.swift" "$ROOT/macos/NavigationPolicy.swift" "$ROOT/macos/ServerReadiness.swift" -o "$APP/Contents/MacOS/Sapiens4"
 xcrun swiftc -module-cache-path "$BUILD/module-cache" -framework Cocoa "$ROOT/macos/icon.swift" -o "$BUILD/make-icon"
 # Extract the browser favicon so the desktop icon cannot drift from its source.
-"$PYTHON" - "$ROOT/web/bootstrap.js" "$BUILD/favicon.svg" <<'PYICON'
+"$PYTHON" - "$ROOT/web/shell/bootstrap.js" "$BUILD/favicon.svg" <<'PYICON'
 import pathlib, re, sys
 source = pathlib.Path(sys.argv[1]).read_text()
 match = re.search(r"encodeURIComponent\('(<svg[^\n]+</svg>)'\)", source)
 if not match:
-    raise SystemExit("Workspace favicon SVG was not found in web/bootstrap.js")
+    raise SystemExit("Workspace favicon SVG was not found in web/shell/bootstrap.js")
 pathlib.Path(sys.argv[2]).write_text(match.group(1))
 PYICON
 "$BUILD/make-icon" "$BUILD/AppIcon.iconset" "$BUILD/favicon.svg"

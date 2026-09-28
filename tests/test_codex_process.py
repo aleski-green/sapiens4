@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agentpy import LLMSpec
-from agentpy.codex import CodexLLM
+from sapiens.runtime.contracts import LLMSpec
+from sapiens.runtime.codex import CodexLLM
 
 
 class ProcessTests(unittest.TestCase):

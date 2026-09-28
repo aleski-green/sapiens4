@@ -1,4 +1,4 @@
-"""SQLite UI metadata and durable projections. AgentPy owns runtime state."""
+"""SQLite UI metadata and durable projections. Sapi conversations own durable state."""
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path

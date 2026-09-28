@@ -9,13 +9,13 @@ import unittest
 
 from test_integration import IntegrationFixture
 from sapiens.validation import APIError
-from sapiens.server import Server
+from sapiens.corpora.host.server import Server
 
 
 class WorkspaceTest(IntegrationFixture):
     def test_files_tabs_bookmarks_and_zoom_survive_restart(self):
         service = self.service(start_worker=False)
-        owner = service.hierarchy.main
+        owner = service.registry.main
         agent = service._agent(owner)
         file = service.workspace.root(agent) / 'notes with spaces.md'
         file.write_text('# Notes\n<script>literal</script>')
@@ -44,7 +44,7 @@ class WorkspaceTest(IntegrationFixture):
 
     def test_live_navigation_and_stale_reports(self):
         service = self.service(start_worker=False)
-        agent = service._agent(service.hierarchy.main)
+        agent = service._agent(service.registry.main)
         control = lambda op, **fields: service.orchestration.control(agent.agid, dict(op=op, **fields))
         tab = control('workspace_open', url='https://example.com')['workspace']['tabs'][0]
         report = dict(id=tab['id'], seq=tab['command']['seq'], url='https://example.com/redirected', title='Actual page title', can_back=True)
@@ -61,7 +61,7 @@ class WorkspaceTest(IntegrationFixture):
 
     def test_legacy_documents_become_files_without_data_loss(self):
         service = self.service(start_worker=False)
-        owner = service.hierarchy.main
+        owner = service.registry.main
         file = service.workspace.root(service._agent(owner)) / 'artifacts' / 'old.md'
         file.parent.mkdir(); file.write_text('Saved work')
         prefs = service.store.read_preferences()
@@ -81,7 +81,7 @@ class WorkspaceTest(IntegrationFixture):
 
     def test_validation_and_independent_owners(self):
         service = self.service(start_worker=False)
-        a = service.hierarchy.main
+        a = service.registry.main
         b = service.create_agent(dict(name='Nova', role='Researcher'))['id']
         control = service.orchestration.control
         tab = control(a, dict(op='workspace_open', url='https://example.com'))['workspace']['tabs'][0]
@@ -127,7 +127,7 @@ class WorkspaceTest(IntegrationFixture):
                 self.wfile.write(f'<title>{title}</title><h1>Not embeddable</h1>'.encode())
 
         service = self.service(start_worker=False)
-        owner = service.hierarchy.main
+        owner = service.registry.main
         file = service.workspace.root(service._agent(owner)) / 'integration.md'
         file.write_text('Native browser integration')
         service.orchestration.control(owner, dict(op='workspace_open', path=str(file)))
@@ -153,13 +153,13 @@ class WorkspaceTest(IntegrationFixture):
 
     def test_new_chat_after_failure_does_not_retry_failed_run(self):
         service = self.service(start_worker=False)
-        a = service._agent(service.hierarchy.main)
+        a = service._agent(service.registry.main)
         self.factory.fail = True
         first = service.submit(a.agid,dict(text='Create a document'))['id']
-        asyncio.run(a.run())
+        asyncio.run(a.runner.run())
         self.factory.fail = False
         second = service.submit(a.agid,dict(text='Use the saved file'))['id']
-        asyncio.run(a.run())
+        asyncio.run(a.runner.run())
         turns = {j['id']:j for j in a.state['turns']}
         self.assertEqual(turns[first]['status'],'failed')
         self.assertEqual(turns[second]['status'],'done')

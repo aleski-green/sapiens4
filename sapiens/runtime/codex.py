@@ -13,7 +13,8 @@ from time import monotonic, time
 from typing import Any, Callable
 from uuid import uuid4
 
-from agentpy.interfaces import LLMSpec
+from sapiens.runtime.contracts import LLMSpec
+from sapiens.runtime.settings import codex_binary, model_defaults
 
 
 EventSink = Callable[[str], None]
@@ -31,6 +32,7 @@ class CodexLLM:
     workdir: Path
     id: str = field(default_factory=lambda: f"pending_{uuid4().hex[:8]}")
     resume: bool = False
+    reasoning_effort: str | None = None
     event_sink: EventSink = _print_event
     timeout_seconds: float | None = None
     cancel_event: Event = field(default_factory=Event, repr=False)
@@ -151,26 +153,20 @@ class CodexLLM:
         return final_message
 
     def _command(self, prompt: str) -> list[str]:
-        common = [
-            "--json",
-            "--dangerously-bypass-approvals-and-sandbox",
-        ]
+        executable = codex_binary()
+        if not executable:
+            raise RuntimeError("Codex CLI was not found. Install Codex and run codex login.")
+        model, reasoning = model_defaults()
+        defaults = ['-c', 'model_reasoning_effort=' + json.dumps(self.reasoning_effort or reasoning)]
+        if self.spec.model == 'default':
+            defaults += ['-c', 'model=' + json.dumps(model)]
+        common = ["--json", "--dangerously-bypass-approvals-and-sandbox"]
         if self.spec.model != "default":
-            common.extend(["--model", self.spec.model])
-
+            common += ["--model", self.spec.model]
+        command = [executable, "exec", *defaults, "--skip-git-repo-check"]
         if self.resume:
-            return ["codex", "exec", "resume", *common, self.id, prompt]
-
-        return [
-            "codex",
-            "exec",
-            *common,
-            "--cd",
-            str(self.workdir),
-            "--color",
-            "never",
-            prompt,
-        ]
+            return [*command, "resume", *common, self.id, prompt]
+        return [*command, *common, "--cd", str(self.workdir), "--color", "never", prompt]
 
     def _consume_event(self, event: dict[str, Any]) -> str | None:
         event_type = event.get("type")
@@ -238,10 +234,10 @@ class CodexFactory:
     event_sink: EventSink = _print_event
     timeout_seconds: float | None = None
 
+    execution: Callable | None = None
+
     def spawn(self, spec: LLMSpec) -> CodexLLM:
-        return CodexLLM(
-            spec=spec,
-            workdir=self.workdir,
-            event_sink=self.event_sink,
-            timeout_seconds=self.timeout_seconds,
-        )
+        policy = self.execution() if self.execution else dict(mode='normal', timeout_seconds=300)
+        return CodexLLM(spec=spec, workdir=self.workdir, event_sink=self.event_sink,
+            timeout_seconds=min(self.timeout_seconds or policy['timeout_seconds'], policy['timeout_seconds']),
+            reasoning_effort='xhigh' if policy['mode'] == 'deep' else model_defaults()[1])

@@ -6,10 +6,10 @@ import threading
 import time
 import unittest
 
-from sapiens.assets import javascript
-from sapiens.runtime import LocalFactory
-from sapiens.server import Server
-from sapiens.service import APIError, Service
+from sapiens.corpora.host.assets import javascript
+from sapiens.runtime.codex import CodexFactory
+from sapiens.corpora.host.server import Server
+from sapiens.corpora.host.service import APIError, Service
 
 
 class ScriptedLLM:
@@ -152,7 +152,7 @@ class IntegrationTest(IntegrationFixture):
         turn = service.submit(agid, {"text":"May already have acted", "flow":"computer"})
         agent = service._agent(agid)
         # Emulate a crash after a turn started but before it committed a result.
-        with agent.store.transaction() as state:
+        with agent.transaction() as state:
             state["turns"][0]["status"] = "running"
         service = self.restart(service)
         self.wait_turn(service, turn["id"], "interrupted")
@@ -170,13 +170,13 @@ class IntegrationTest(IntegrationFixture):
 
     def test_old_budgets_and_cached_results_are_inert_after_migration(self):
         service = self.service(start_worker=False)
-        agent = service._agent(service.hierarchy.main)
+        agent = service._agent(service.registry.main)
         turn = service.submit(agent.agid, {'text': 'Continue'})['id']
-        with agent.store.transaction() as state:
+        with agent.transaction() as state:
             state.update(schema_version=2, budgets={'old': {'spent': 999999999}},
                          limits={'tokens_per_call': 1}, budget_calendar={})
             state['turns'][0].update(status='budget_blocked', tokens=999, reserved=999)
-        original = agent.store.path.read_bytes()
+        original = agent.path.read_bytes()
         workspace = service.workspace.root(agent)
         legacy = {agent.root / 'execution.json': '{"max_tools":1}',
                   workspace / 'recent-context.json': '[{"answer":"STALE_TOOL_RESULT"}]'}
@@ -260,12 +260,12 @@ class IntegrationTest(IntegrationFixture):
         self.assertIn("state = makeInitialState(bootstrap)", source)
         self.assertNotIn("state = JSON.parse(localStorage.getItem(STORAGE))", source)
         self.assertNotIn('globalThis.CorporaFixture', source)
-        from sapiens.assets import index
+        from sapiens.corpora.host.assets import index
         self.assertNotIn('fixtures/sapiens-cases.js', index())
-        from agentpy.interfaces import LLMSpec
+        from sapiens.runtime.contracts import LLMSpec
         from unittest.mock import patch
-        with patch("sapiens.runtime.codex_binary", return_value="/usr/local/bin/codex"):
-            command = LocalFactory(workdir=Path(self.directory.name)).spawn(LLMSpec())._command("hello")
+        with patch("sapiens.runtime.codex.codex_binary", return_value="/usr/local/bin/codex"):
+            command = CodexFactory(workdir=Path(self.directory.name)).spawn(LLMSpec())._command("hello")
         self.assertIn("--skip-git-repo-check", command)
         self.assertIn(self.directory.name, command)
 

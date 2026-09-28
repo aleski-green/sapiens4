@@ -5,9 +5,9 @@ import threading
 from pathlib import Path
 
 from test_integration import IntegrationFixture
-from sapiens.attachments import create_attachment
-from sapiens.server import Server
-from sapiens.service import APIError
+from sapiens.corpora.sapis.attachments import create_attachment
+from sapiens.corpora.host.server import Server
+from sapiens.corpora.host.service import APIError
 
 
 class ChatControlsTest(IntegrationFixture):

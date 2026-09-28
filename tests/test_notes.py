@@ -8,17 +8,17 @@ import threading
 import time
 
 from test_integration import IntegrationFixture
-from sapiens.assets import asset, javascript
-from sapiens.notes import Notes
-from sapiens.runtime import Config
-from sapiens.server import Server
+from sapiens.corpora.host.assets import asset, javascript
+from sapiens.corpora.sapis.notes import Notes
+from sapiens.corpora.sapis.conversations import Config
+from sapiens.corpora.host.server import Server
 from sapiens.validation import APIError
 
 
 class NotesTest(IntegrationFixture):
     def test_model_edits_file_and_next_chat_reads_latest_notes(self):
         service = self.service()
-        agid = service.hierarchy.main
+        agid = service.registry.main
         path = service.workspace.root(service._agent(agid)) / 'Notes.md'
         self.assertEqual(path.read_text(), '')
         self.factory.on_complete = lambda prompt: path.write_text('# Preferences\nCall me Aleksi.\n')
@@ -37,7 +37,7 @@ class NotesTest(IntegrationFixture):
 
     def test_notes_are_isolated_and_external_file_edits_change_revision(self):
         service = self.service(start_worker=False)
-        a = service._agent(service.hierarchy.main)
+        a = service._agent(service.registry.main)
         b = service._agent(service.create_agent(dict(name='Nova', role='Assistant'))['id'])
         notes = Notes(service.workspace.root(a))
         revision = notes.metadata()['revision']
@@ -51,7 +51,7 @@ class NotesTest(IntegrationFixture):
 
     def test_notes_reading_is_bounded_and_invalid_files_do_not_block_chat(self):
         service = self.service(start_worker=False)
-        a = service._agent(service.hierarchy.main)
+        a = service._agent(service.registry.main)
         notes = Notes(service.workspace.root(a))
         notes.path.write_text('x' * 70000)
         self.assertEqual(len(notes.read()['content']), 64000)
@@ -75,7 +75,7 @@ class NotesTest(IntegrationFixture):
 
     def test_removed_commands_and_flows_are_rejected_including_batches(self):
         service = self.service(start_worker=False)
-        a = service._agent(service.hierarchy.main)
+        a = service._agent(service.registry.main)
         for op in ('consolidate','task','finish_task','run_task','rename_task','task_comment',
                    'dismiss_task','request_agent','recurring_job','run_job','checkpoint',
                    'strategy','job_diagnostics','schedule','budget_diagnostics','execution'):
@@ -86,7 +86,7 @@ class NotesTest(IntegrationFixture):
                     service.orchestration.control(a.agid, dict(op='batch', operations=[dict(op=op)]))
         for flow in ('learning','scheduled','task','strategy','team_review','morphosis'):
             with self.assertRaises(ValueError):
-                a.submit(flow, 'Must not execute')
+                a.runner.submit(flow, 'Must not execute')
             with self.assertRaises(APIError):
                 service.submit(a.agid, dict(text='Must not execute', flow=flow))
         self.assertEqual(a.state['turns'], [])
@@ -97,7 +97,7 @@ class NotesTest(IntegrationFixture):
 
     def test_notes_http_and_removed_routes(self):
         service = self.service(start_worker=False)
-        a = service._agent(service.hierarchy.main)
+        a = service._agent(service.registry.main)
         content = '<script>alert("notes")</script>\n# Plain markdown'
         Notes(service.workspace.root(a)).path.write_text(content)
         server = Server(0, service)
@@ -128,9 +128,9 @@ class NotesTest(IntegrationFixture):
 
     def test_legacy_data_is_archived_but_never_scheduled_or_used_as_memory(self):
         service = self.service(start_worker=False)
-        a = service._agent(service.hierarchy.main)
+        a = service._agent(service.registry.main)
         turn = service.submit(a.agid, dict(text='Historic chat'))['id']
-        asyncio.run(a.run())
+        asyncio.run(a.runner.run())
         service._sync(a)
         saved = a.state
         saved['schema_version'] = 1
@@ -154,12 +154,12 @@ class NotesTest(IntegrationFixture):
             db.execute('PRAGMA user_version=2')
         service.store.preferences(dict(selected=a.agid, panel='mindmap', work_views={'tasks':'past'}))
         service.close()
-        a.store.path.write_text(json.dumps(saved))
+        a.path.write_text(json.dumps(saved))
         (a.root / 'host.json').write_text(json.dumps(dict(enabled=True, consolidate_requested=True, next_check=None)))
         (a.root / 'recurring.json').write_text('[{"enabled":true,"prompt":"DO NOT RUN"}]')
         a.set_manifest('operating-policy','OLD POLICY MUST NOT BE USED')
         a.set_manifest('task-comments','OLD TASK COMMENT MUST NOT BE USED')
-        original = a.store.path.read_bytes()
+        original = a.path.read_bytes()
         service = self.restart(service)
         current = service._agent(a.agid)
         self.assertEqual((a.root / 'legacy-state-v1.json').read_bytes(), original)
@@ -181,8 +181,8 @@ class NotesTest(IntegrationFixture):
 
     def test_long_history_does_not_require_consolidation_to_continue(self):
         service = self.service(start_worker=False)
-        agent = service._agent(service.hierarchy.main)
-        with agent.store.transaction() as state:
+        agent = service._agent(service.registry.main)
+        with agent.transaction() as state:
             state['chat'] = [dict(role='agent', content='old context ' * 2000) for _ in range(10)]
         notes = Notes(service.workspace.root(agent))
         notes.path.write_text('Keep my name Aleksi.')
