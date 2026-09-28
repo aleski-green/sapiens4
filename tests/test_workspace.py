@@ -29,6 +29,10 @@ class WorkspaceTest(IntegrationFixture):
         control('workspace_bookmark')
         control('workspace_bookmark')
         self.assertEqual(len(control('workspace')['bookmarks']), 1)
+        duplicate = control('workspace_open', path=file.name)['workspace']['tabs'][-1]
+        control('workspace_bookmark', id=duplicate['id'])
+        self.assertEqual([(b['url'], b['tab_id']) for b in control('workspace')['bookmarks']], [(file.as_uri(), duplicate['id'])])
+        control('workspace_close', id=duplicate['id'])
         control('workspace_open', url='https://example.com')
         control('workspace_focus', id=tab['id'])
         control('workspace_reload')
