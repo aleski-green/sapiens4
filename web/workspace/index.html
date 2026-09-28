@@ -45,7 +45,20 @@
       <main class="workspace" id="workspace-panel" aria-label="Agent workspace">
         <div class="workspace-heading"><span class="workspace-owner" id="workspace-owner"></span><button class="icon-button" id="workspace-menu" aria-label="Workspace options">···</button></div>
         <div class="browser-tabs-wrap"><div id="browser-tabs" class="browser-tabs" aria-label="Workspace tabs"></div><button id="add-tab" class="add-tab" aria-label="Add workspace tab">＋</button></div>
-        <form id="browser-address-form" class="browser-address-bar"><button type="button" class="icon-button" id="reload-page" aria-label="Reload page" title="Reload page">↻</button><input id="browser-address" aria-label="Page address" placeholder="Enter a URL" autocomplete="off" spellcheck="false"><a id="open-page" aria-label="Open page in new tab" title="Open page in new tab" target="_blank" rel="noopener noreferrer" hidden>↗</a></form>
+        <form id="browser-address-form" class="browser-address-bar">
+          <button type="button" class="icon-button" data-browser-action="back" aria-label="Back">←</button>
+          <button type="button" class="icon-button" data-browser-action="forward" aria-label="Forward">→</button>
+          <button type="button" class="icon-button" data-browser-action="reload" aria-label="Reload">↻</button>
+          <input id="browser-address" aria-label="URL or file path" placeholder="URL or file path" autocomplete="off" spellcheck="false">
+          <button type="button" class="icon-button" data-browser-action="bookmark" aria-label="Bookmark tab">☆</button>
+        </form>
+        <div class="browser-tools">
+          <button type="button" id="open-file">Open file…</button>
+          <span id="browser-status" role="status"></span>
+          <button type="button" data-zoom="-0.1" aria-label="Zoom out">−</button>
+          <button type="button" id="browser-zoom" data-zoom="reset" aria-label="Reset zoom">100%</button>
+          <button type="button" data-zoom="0.1" aria-label="Zoom in">＋</button>
+        </div>
         <div id="workspace-content" class="workspace-content"></div>
         <footer class="workspace-footer"><a href="https://sapiens4.ai" target="_blank" rel="noopener noreferrer">sapiens4.ai ↗</a></footer>
       </main>

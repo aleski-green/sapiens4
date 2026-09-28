@@ -10,19 +10,16 @@ import re
 import secrets
 import threading
 
-from .agent import SapiAgent
-from .artifacts import Artifacts
 from .attachments import attachment_prompt, resolve_attachments
 from .hierarchy import Hierarchy
 from .lifecycle import Lifecycle
 from .orchestration import Orchestration
 from .paths import ROOT
+from .prompts import prompt
 from .notes import Notes
-from .recent import RecentContext
-from .runtime import Config, LocalFactory, codex_binary, computer_guide, computer_manifest
-from .sdk import Limits
+from .runtime import Config, LocalFactory, codex_binary, computer_manifest
+from .sdk import PersistentAgent
 from .store import Store, now
-from .usage import Usage, settings as execution_settings, validate as validate_execution
 from .validation import APIError, sapi_name, text_field
 from .workspace import Workspace
 
@@ -39,7 +36,7 @@ def random_avatar(used):
 
 
 class Service:
-    def __init__(self, data_dir, *, factory_builder=None, start_worker=True, timeout=3000, max_parallel_agents=4):
+    def __init__(self, data_dir, *, factory_builder=None, start_worker=True, max_parallel_agents=4):
         if type(max_parallel_agents) is not int or not 1 <= max_parallel_agents <= 32:
             raise ValueError("max_parallel_agents must be between 1 and 32")
         self.root = Path(data_dir).resolve()
@@ -51,9 +48,7 @@ class Service:
             self._file_lock.close()
             raise RuntimeError("Another Sapiens4 server is using this data directory") from None
         self.store = Store(self.root / "corpora.sqlite3")
-        self.usage = Usage(self.store)
         self.workspace = Workspace(self)
-        self.artifacts = Artifacts(self)
         # Repair old repeated default faces once; the resulting avatars persist.
         used = set()
         for row in self.store.agents():
@@ -63,7 +58,6 @@ class Service:
             used.add(row["face"])
         self.binary = ROOT / "blindly4/.build/release/blindly4"
         self.factory_builder = factory_builder
-        self.timeout = timeout
         self._agents = {}
         self._revisions = {}
         self._lock = threading.RLock()
@@ -106,52 +100,19 @@ class Service:
                 self.store.event(agid, "codex", message, turn=self._active_turn(agid))
 
             factory = (self.factory_builder(agid, sink) if self.factory_builder else
-                       LocalFactory(workdir=workdir, event_sink=sink, timeout_seconds=self.timeout))
+                       LocalFactory(workdir=workdir, event_sink=sink))
             Notes(workdir).ensure()
-            agent = SapiAgent(agid=agid, config=Config(), factory=factory,
-                                 root=self.root / "agentpy",
-                                 limits=Limits(tokens_per_call=32000, tokens_per_loop=256000))
+            agent = PersistentAgent(agid=agid, config=Config(), factory=factory,
+                                 root=self.root / "agentpy")
             if not self.factory_builder:
                 factory.finish_computer = lambda restore: self.release_computer(agid, restore)
-                factory.keep_recent = lambda: any(j['status'] == 'running' and j['flow'] in {'chat', 'computer'}
-                                                  for j in agent.state['turns'])
-                factory.current_request = lambda: next((j['input'].split('Mention references (')[0]
-                    for j in agent.state['turns'] if j['status'] == 'running'), '')
             self._agents[agid] = agent
             self._manifests(agent, row)
         return self._agents[agid]
 
     def _manifests(self, agent, row):
-        agent.set_manifest("identity", f"""Your name is {row['name']}. Your role is {row['role']}.
-
-Sapi identity, origin and purpose:
-You are a Sapi, an anthropomorphic AI agent (boto sapiens) in Sapiens4.
-Your creator is Aleksi P - an agentic engineer from Utana Agentic Technologies LLC, UAE.
-When Admin or another human asks who your creator is, answer with this attribution.
-The purpose of creation is to help humans enhance productivity by engagement with
-anthropomorphic AI agents: boto sapiens. When asked why you were created or what
-your purpose is, explain this purpose first, then relate it to your individual role.
-Sapiens4 is the project and system that runs Sapis, their conversations, notes, teams
-and work. The Sapi app and CORPORA provide the workspace and interface for
-interacting with Sapis and their artifacts. The project source is hosted on GitHub:
-https://github.com/aleski-green/sapiens4
-GitHub hosts the source code; it is not the creator. OpenAI supplies the underlying
-AI technology; distinguish that provider from the creator of Sapiens4 and its Sapis
-when the human specifically asks about the model or technology provider.
-
-Interpret 'you' and related self-references in chat hierarchically:
-1. First, the individual Sapi being addressed, with its current name and role.
-2. Second, the Sapi app and CORPORA.
-3. Third, the Sapiens4 project in general.
-Use the level that fits the question and surrounding conversation, defaulting to
-the individual Sapi. Explain multiple levels when the human asks broadly; do not
-automatically interpret 'you' as only the underlying model provider. These origin
-and purpose facts also apply to creator questions phrased at the individual level.
-Use these facts over conflicting or uncertain claims in earlier chat or memory.
-""")
+        agent.set_manifest("identity", prompt('identity', name=row['name'], role=row['role']))
         agent.set_manifest("computer-use", computer_manifest(self.binary))
-        if self.binary.exists():
-            agent.set_manifest('computer-tools', computer_guide(self.binary, self.binary.stat().st_mtime_ns))
 
     def acquire_computer(self, agid):
         with self._lock:
@@ -192,7 +153,6 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
                     outputs[turn["id"]] = agent.result(turn["id"])
                 except FileNotFoundError:
                     pass  # An explicitly pruned archive need not block projection.
-        self.usage.sync(agent)
         self.store.project(agent.agid, snapshot, outputs)
         self._revisions[agent.agid] = snapshot["revision"]
 
@@ -223,26 +183,17 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
             return row
 
     def update_agent(self, agid, data):
-        if "schedule" in data:
-            raise APIError(400, "Scheduled work is disabled")
+        if set(data) - {"name", "role", "manager"}:
+            raise APIError(400, "Unknown or inactive setting")
         row = {"name": sapi_name(data), "role": text_field(data, "role", 60)}
         with self._lock:
             agent = self._agent(agid)
             self.lifecycle.require_active(agent)
             if any(j["status"] in {"queued", "running"} for j in agent.state["turns"]):
                 raise APIError(409, "Wait for this Sapi's current turn before changing its identity")
-            recent = RecentContext(self.root / 'workspaces' / agid)
-            if 'recent' in data:
-                recent.validate(data['recent'])
-            if 'execution' in data:
-                validate_execution(data['execution'])
             if "manager" in data:
                 parent = self.hierarchy.validate(agid, data["manager"])
                 self.hierarchy.assign(agent, parent)
-            if 'recent' in data:
-                recent.configure(data['recent'])
-            if 'execution' in data:
-                agent.configure(data['execution'])
             self.store.update_agent(agid, row)
             self._manifests(agent, row)
             self.store.event(agid, "updated", "Sapi identity updated")
@@ -256,7 +207,7 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
         attachments = resolve_attachments(self, agid, data.get("attachments", []))
         if not text and not attachments:
             raise APIError(400, "Write a message or attach a file")
-        prompt = text + attachment_prompt(attachments)
+        message = text + attachment_prompt(attachments)
         flow = data.get("flow", "chat")
         if flow not in ("chat", "computer"):
             raise APIError(400, "Choose chat or computer")
@@ -270,13 +221,10 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
             agent = self._agent(agid)
             # A failed attempt remains reviewable; a new message is not a retry.
             self.lifecycle.require_active(agent)
-            waiting = any(j['status'] in {'queued', 'running', 'budget_blocked'} for j in agent.state['turns'])
+            waiting = any(j['status'] in {'queued', 'running'} for j in agent.state['turns'])
             if waiting:
                 raise APIError(409, "Wait for this Sapi's turn, or retry/dismiss the turn needing attention")
-            if not agent.can_admit(flow):
-                raise APIError(409, 'Budget allowance unavailable. Open Sapi settings for remaining allowance, reset time, and limits.')
-            prompt += self.artifacts.references(text)
-            turn = agent.tell(prompt) if flow == "chat" else agent.submit("computer", prompt)
+            turn = agent.tell(message) if flow == "chat" else agent.submit("computer", message)
             self.store.message(turn, text, attachments)
             self._sync(agent)
             self._queue.put(agid)
@@ -316,7 +264,6 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
             snapshot["computer"] = {"owner": self._active,
                                     "built": os.access(self.binary, os.X_OK)}
             snapshot["provider"] = "codex"
-            snapshot["artifacts"] = self.artifacts.catalog()
             snapshot["main_agent_id"] = self.hierarchy.main
             snapshot["attachment_drafts"] = {
                 agid: [a for a in self.store.attachments(agid) if a["id"] in ids]
@@ -324,18 +271,16 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
 
             snapshot["orchestration"] = {
                 a.agid: {"manager": a.corpora.directory().get(a.agid, {}).get("parent"),
-                         "notes": Notes(self.workspace.root(a)).metadata(),
-                         "recent": RecentContext(self.workspace.root(a)).settings(),
-                         "execution": execution_settings(a), "budget": a.budget_status()}
+                         "notes": Notes(self.workspace.root(a)).metadata()}
                 for a in self._agents.values()}
             return snapshot
 
 
     def save_preferences(self, data):
         # Browser state never gets authority over runtime turns, agents or computer ownership.
-        if set(data) - {"selected", "panel", "scope", "panes", "workspaces", "drafts", "attachment_drafts", "workspace_revision"}:
+        if set(data) - {"selected", "panel", "scope", "panes", "drafts", "attachment_drafts"}:
             raise APIError(400, "Unknown preference field")
-        for field in ("panes", "workspaces", "drafts", "attachment_drafts"):
+        for field in ("panes", "drafts", "attachment_drafts"):
             if field in data and not isinstance(data[field], dict):
                 raise APIError(400, f"{field} must be an object")
         if "selected" in data and data["selected"] not in {a["id"] for a in self.store.agents()}:
@@ -352,24 +297,9 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
                 raise APIError(400, "Invalid draft")
         for agid, ids in data.get("attachment_drafts", {}).items():
             resolve_attachments(self, agid, ids, check_files=False)
-        for key, workspace in data.get("workspaces", {}).items():
-            if not isinstance(workspace, dict) or not isinstance(workspace.get("tabs"), list):
-                raise APIError(400, "Invalid workspace")
-            for tab in workspace["tabs"]:
-                if not isinstance(tab, dict) or not all(isinstance(tab.get(k), str) for k in ("id", "type", "title")):
-                    raise APIError(400, "Invalid tab")
-                if tab["type"] not in {"blank", "custom", "html"}:
-                    raise APIError(400, "Unknown tab type")
-                if any(k in tab and tab[k] is not None and not isinstance(tab[k], str) for k in ("url", "html")):
-                    raise APIError(400, "Invalid tab content")
         with self._lock:
             current = self.store.read_preferences()
-            revision = current.get('workspace_revision', 0)
-            if 'workspaces' in data and data.get('workspace_revision', 0) != revision:
-                raise APIError(409, 'Workspace changed; refresh before saving')
-            changed = 'workspaces' in data and data['workspaces'] != current.get('workspaces', {})
             current.update(data)
-            current['workspace_revision'] = revision + int(changed)
             self.store.preferences(current)
             return {"saved": True, "preferences": current}
 
@@ -437,6 +367,6 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
         with self._lock:
             runners = list(self._runners.values())
         for runner in runners:
-            runner.join()  # Retain host.lock until every bounded call has finished.
+            runner.join()  # Retain host.lock until every call has finished.
         fcntl.flock(self._file_lock, fcntl.LOCK_UN)
         self._file_lock.close()

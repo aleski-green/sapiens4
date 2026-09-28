@@ -6,12 +6,6 @@ import json
 import sys
 
 
-if __package__:
-    from .execution import read
-else:  # Support the agent-facing `python /path/to/sapiens/control.py` command.
-    from execution import read
-
-
 def main():
     try:
         config = json.loads(Path(sys.argv[1]).read_text())
@@ -22,9 +16,6 @@ def main():
             "Content-Type": "application/json", "X-Sapiens-Local": "1"})
         with urlopen(request, timeout=20) as response:
             result = json.loads(response.read())
-        clock = read(Path(sys.argv[1]).parent)
-        if clock and isinstance(result, dict):
-            result['execution'] = clock
         print(json.dumps(result, ensure_ascii=False))
     except HTTPError as error:
         print(error.read().decode())

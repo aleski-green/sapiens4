@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from test_integration import IntegrationFixture
-from sapiens.runtime import LocalLLM, ToolLimitReached
+from sapiens.runtime import LocalLLM
 from agentpy.interfaces import LLMSpec
 from sapiens.computer import bounded_output
 from sapiens.computer_read import read
@@ -55,50 +55,9 @@ class ReadWrapperTest(unittest.TestCase):
 
 
 class RecoveryTest(IntegrationFixture):
-    def test_limit_returns_warning_link_and_projected_result_survives_restart(self):
-        service=self.service(start_worker=False)
-        agent=service._agent(service.hierarchy.main)
-        root=service.workspace.root(agent)
-        class Factory:
-            def spawn(self,spec):
-                llm=LocalLLM(spec=spec,workdir=root,event_sink=lambda _:None)
-                llm.max_tools=2
-                return llm
-        agent.factory=Factory()
-        def run(instance,prompt):
-            service.workspace.save(agent,dict(name='partial.md',content='# Partial\nCoverage incomplete.'))
-            for i in range(3):
-                instance._consume_event(dict(type='item.completed',item=dict(id=str(i),type='command_execution',command='read',aggregated_output='observed')))
-            self.fail('Tool execution must stop at the bound')
-        turn=service.submit(agent.agid,dict(text='Read the channel'))['id']
-        with patch('sapiens.runtime.CodexLLM.complete',run):asyncio.run(agent.run())
-        state=next(j for j in agent.state['turns'] if j['id']==turn)
-        self.assertEqual(state['status'],'done') # SDK terminal state; warning is a result classification.
-        self.assertTrue(state['warning'])
-        service._sync(agent)
-        projected=next(j for j in service.snapshot()['turns'] if j['id']==turn)
-        self.assertEqual(projected['status'],'warning')
-        self.assertIn('@art-md',projected['output'])
-        self.assertIn('unverified',projected['output'])
-        self.assertFalse(any(t['status'] in {'queued','running','budget_blocked'} for t in agent.state['turns']))
-        self.assertEqual(state['budget_units'],agent.limits.tokens_per_call)
-        service=self.restart(service,start_worker=False)
-        projected=next(j for j in service.snapshot()['turns'] if j['id']==turn)
-        self.assertEqual(projected['status'],'warning')
-
-    def test_no_artifact_does_not_claim_warning_deliverable(self):
-        root=Path(self.directory.name)
-        llm=LocalLLM(spec=LLMSpec(role='conversation'),workdir=root,event_sink=lambda _:None)
-        llm.max_tools=1
-        def run(instance,prompt):
-            instance._consume_event(dict(type='item.completed',item=dict(id='1',type='command_execution',command='read',aggregated_output='no result')))
-        with patch('sapiens.runtime.CodexLLM.complete',run):
-            with self.assertRaises(ToolLimitReached):llm.complete('Read')
-        self.assertIsNone(llm.warning)
-
     def test_foreground_restoration_runs_on_success_error_and_limit(self):
         root=Path(self.directory.name)
-        for outcome in ('ok',RuntimeError('provider error'),ToolLimitReached('limit')):
+        for outcome in ('ok',RuntimeError('provider error')):
             llm=LocalLLM(spec=LLMSpec(role='conversation'),workdir=root,event_sink=lambda _:None)
             with patch('sapiens.runtime.ForegroundReturn') as foreground, patch('sapiens.runtime.CodexLLM.complete',side_effect=outcome if isinstance(outcome,Exception) else None,return_value='ok'):
                 foreground.return_value.restore.return_value=None

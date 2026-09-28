@@ -88,17 +88,6 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) == 4 and parts[:2] == ['api','agents'] and parts[3] == 'notes':
                 with service._lock:
                     return self._send(200, Notes(service.workspace.root(service._agent(parts[2]))).read())
-            if len(parts) == 4 and parts[:2] == ['api','agents'] and parts[3] == 'usage':
-                with service._lock:
-                    return self._send(200, service.usage.report(service._agent(parts[2])))
-            if len(parts) == 5 and parts[:2] == ['api', 'agents'] and parts[3] == 'artifacts':
-                with service._lock:
-                    agent = service._agent(parts[2])
-                    file = service.workspace.path(agent, unquote(parts[4]))
-                    if not file.is_file():
-                        raise APIError(404, 'Artifact not found')
-                    # Raw text only: generated HTML is never served as same-origin script.
-                    return self._send(200, file.read_bytes(), 'text/plain; charset=utf-8')
             if path == "/api/health":
                 return self._send(200, {"status": "ok", "provider": "codex"})
             if path == "/":
@@ -122,6 +111,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(201, create_attachment(service, parts[2], data))
                 if len(parts) == 4 and parts[3] == "messages" and self.command == "POST":
                     return self._send(202, service.submit(parts[2], data))
+                if len(parts) == 4 and parts[3] == "browser" and self.command == "POST":
+                    with service._lock:
+                        return self._send(200, service.workspace.observed(service._agent(parts[2]), data))
                 if len(parts) == 4 and parts[3] == "control" and self.command == "POST":
                     return self._send(200, service.orchestration.control(parts[2], data))
                 if len(parts) == 6 and parts[3] == "turns" and self.command == "POST":

@@ -36,12 +36,10 @@ class CodexLLM(LLM):
     id: str = field(default_factory=lambda: f"pending_{uuid4().hex[:8]}")
     resume: bool = False
     event_sink: EventSink = _print_event
-    timeout_seconds: float = 120
-    usage: dict[str, int] | None = None
+    timeout_seconds: float | None = None
 
     def complete(self, prompt: str) -> str:
-        self.usage = None
-        if self.timeout_seconds <= 0:
+        if self.timeout_seconds is not None and self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
         command = self._command(prompt)
         final_message: str | None = None
@@ -81,9 +79,10 @@ class CodexLLM(LLM):
             timed_out.set()
             stop_process()
 
-        timer = Timer(self.timeout_seconds, expire)
-        timer.daemon = True
-        timer.start()
+        timer = Timer(self.timeout_seconds, expire) if self.timeout_seconds is not None else None
+        if timer:
+            timer.daemon = True
+            timer.start()
         try:
             for raw_line in process.stdout:
                 line = raw_line.rstrip()
@@ -103,8 +102,9 @@ class CodexLLM(LLM):
                     final_message = message
             returncode = process.wait()
         finally:
-            timer.cancel()
-            timer.join()
+            if timer:
+                timer.cancel()
+                timer.join()
             stop_process()
             process.wait()
             stderr_thread.join(timeout=2)
@@ -154,15 +154,7 @@ class CodexLLM(LLM):
         elif event_type == "turn.started":
             self.event_sink("🧠 Codex is working…")
         elif event_type == "turn.completed":
-            usage = event.get("usage", {})
-            if "input_tokens" in usage and "output_tokens" in usage:
-                self.usage = usage
-            self.event_sink(
-                "✅ Codex turn completed "
-                f"(input={usage.get('input_tokens', '?')}, "
-                f"output={usage.get('output_tokens', '?')}, "
-                f"reasoning={usage.get('reasoning_output_tokens', '?')})"
-            )
+            self.event_sink("✅ Codex turn completed")
         elif event_type in {"turn.failed", "error"}:
             self.event_sink(f"❌ Codex error: {event.get('message', event)}")
         elif event_type in {"item.started", "item.completed"}:
@@ -206,7 +198,7 @@ class CodexFactory(LLMFactory):
 
     workdir: Path = field(default_factory=Path.cwd)
     event_sink: EventSink = _print_event
-    timeout_seconds: float = 120
+    timeout_seconds: float | None = None
 
     def spawn(self, spec: LLMSpec) -> LLM:
         return CodexLLM(

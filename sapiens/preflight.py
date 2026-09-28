@@ -7,6 +7,7 @@ import sys
 import tempfile
 
 from .codex_config import MIN_CODEX_VERSION, cli_version, codex_binary, model_defaults
+from .prompts import prompt
 from .sdk import CodexLLM, LLMSpec
 
 
@@ -44,8 +45,7 @@ def check():
                            executable=binary, reasoning=reasoning, timeout_seconds=90,
                            event_sink=lambda _: None)
         try:
-            answer = probe.complete('This is a connection check. Do not use tools, read files, '
-                                    'or perform any actions. Reply with exactly SAPIENS_PREFLIGHT_OK.')
+            answer = probe.complete(prompt('preflight'))
         except (OSError, RuntimeError, TimeoutError) as error:
             raise RuntimeError(f'Codex model check failed for {model} / {reasoning} using {binary}. '
                                'Confirm model access for this login and client; '

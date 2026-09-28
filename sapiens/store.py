@@ -111,10 +111,9 @@ class Store:
             for turn in snapshot["turns"]:
                 db.execute("""INSERT INTO turns VALUES (?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(id) DO UPDATE SET status=excluded.status,
-                    output=COALESCE(excluded.output,turns.output), error=excluded.error,
-                    tokens=excluded.tokens""",
+                    output=COALESCE(excluded.output,turns.output), error=excluded.error""",
                            (turn["id"], agent, turn["flow"], turn["input"], "warning" if turn["status"] == "done" and turn.get("warning") else turn["status"],
-                            outputs.get(turn["id"]), turn.get("error") or turn.get("warning"), turn["tokens"], turn["created"]))
+                            outputs.get(turn["id"]), turn.get("error") or turn.get("warning"), 0, turn["created"]))
             for event in snapshot["events"]:
                 db.execute("""INSERT OR IGNORE INTO events
                     (agent,job,source_key,kind,detail,time) VALUES (?,?,?,?,?,?)""",
@@ -127,6 +126,7 @@ class Store:
             turns = [dict(row) for row in db.execute(query + " ORDER BY created, id", (agent,) if agent else ())]
             messages = {row["job"]: row for row in db.execute("SELECT * FROM message_inputs")}
             for turn in turns:
+                turn.pop("tokens", None)  # Legacy SQL column stays archived, not exposed.
                 message = messages.get(turn["id"])
                 turn["attachments"] = json.loads(message["attachments"]) if message else []
                 if message:

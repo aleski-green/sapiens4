@@ -14,13 +14,10 @@ def main():
     parser = argparse.ArgumentParser(description="Run local Sapiens4 / CORPORA")
     parser.add_argument("--port", type=int, default=4174)
     parser.add_argument("--data-dir", type=Path, default=ROOT / ".sapiens4")
-    parser.add_argument("--timeout", type=int, default=3000, help="Codex call deadline in seconds")
     parser.add_argument("--open", action="store_true", help="Open the UI in your browser")
     args = parser.parse_args()
-    if args.timeout <= 0:
-        parser.error("--timeout must be positive")
     index(), javascript()  # Check required frontend assets before starting workers.
-    service = Service(args.data_dir, timeout=args.timeout, start_worker=False)
+    service = Service(args.data_dir, start_worker=False)
     try:
         server = Server(args.port, service)
     except BaseException:
@@ -31,7 +28,7 @@ def main():
     print(f"Sapiens4: {url}\nUI database: {service.store.path}", flush=True)
 
     def shutdown(signum, frame):
-        print("Stopping; waiting for the current bounded Codex call to finish…", flush=True)
+        print("Stopping; waiting for the current Codex call to finish…", flush=True)
         threading.Thread(target=server.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGTERM, shutdown)

@@ -78,7 +78,7 @@ class NotesTest(IntegrationFixture):
         a = service._agent(service.hierarchy.main)
         for op in ('consolidate','task','finish_task','run_task','rename_task','task_comment',
                    'dismiss_task','request_agent','recurring_job','run_job','checkpoint',
-                   'strategy','job_diagnostics','schedule'):
+                   'strategy','job_diagnostics','schedule','budget_diagnostics','execution'):
             with self.subTest(op=op):
                 with self.assertRaises(APIError):
                     service.orchestration.control(a.agid, dict(op=op))
@@ -110,7 +110,7 @@ class NotesTest(IntegrationFixture):
         response = connection.getresponse()
         self.assertEqual(response.status, 200)
         self.assertEqual(json.loads(response.read())['content'], content)
-        for suffix in ('memory','tasks/missing'):
+        for suffix in ('memory','tasks/missing','usage'):
             connection.request('GET', f'/api/agents/{a.agid}/{suffix}')
             response = connection.getresponse(); response.read()
             self.assertEqual(response.status, 404)
@@ -163,7 +163,7 @@ class NotesTest(IntegrationFixture):
         service = self.restart(service)
         current = service._agent(a.agid)
         self.assertEqual((a.root / 'legacy-state-v1.json').read_bytes(), original)
-        self.assertEqual(current.state['schema_version'], 2)
+        self.assertEqual(current.state['schema_version'], 3)
         self.assertEqual([t['id'] for t in current.state['turns']], [turn])
         self.assertEqual(service.snapshot()['turns'][0]['output'], 'Connected through AgentPy.')
         self.assertEqual(service.snapshot()['preferences']['panel'], 'notes')
@@ -190,7 +190,7 @@ class NotesTest(IntegrationFixture):
         request = service.submit(agent.agid, dict(text='Current request ' * 900))
         self.wait_turn(service, request['id'])
         prompt = self.factory.prompts[-1]
-        self.assertLessEqual(len(prompt), agent.limits.context_chars)
+        self.assertLessEqual(len(prompt), 60_000)
         self.assertIn('Keep my name Aleksi.', prompt)
         self.assertIn(('Current request ' * 900).strip(), prompt)
         self.assertIn('history_truncated', prompt)

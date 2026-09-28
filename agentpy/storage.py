@@ -57,14 +57,13 @@ def safe_child(root: Path, name: str) -> Path:
 
 
 class StateStore:
-    def __init__(self, root: Path, limits):
+    def __init__(self, root: Path):
         self.root = root
-        self.limits = limits
         self.path = root / "state.json"
 
     def read(self):
         state = json.loads(self.path.read_bytes())
-        if state.get("schema_version") not in (1, 2):
+        if state.get("schema_version") not in (1, 2, 3):
             raise ValueError("Unsupported agent state schema")
         return state
 
@@ -78,6 +77,4 @@ class StateStore:
     def write(self, state):
         state["revision"] += 1
         raw = encode(state)
-        if len(raw) > self.limits.state_bytes:
-            raise ValueError("Active state size limit exceeded; reduce retained chat history")
         atomic_bytes(self.path, raw)

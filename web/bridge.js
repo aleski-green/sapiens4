@@ -13,10 +13,10 @@ const attachmentDrafts = bootstrap.attachment_drafts || {};
 let uploading = 0;
 const nameRule = /^[A-Z][A-Za-z0-9_.:#+|()&$^\-]*$/;
 const nameHelp = 'Start with A–Z. Letters, numbers, and - _ . : # + | ( ) & $ ^ are allowed. No spaces.';
-const attention = new Set(['failed','interrupted','conflict','budget_blocked']);
-const blocksChat = turn => ['queued','running','budget_blocked'].includes(turn.status);
+const attention = new Set(['failed','interrupted','conflict']);
+const blocksChat = turn => ['queued','running'].includes(turn.status);
 const statusNames = {queued:'Queued',running:'Running',done:'Completed',warning:'Warning',failed:'Failed',
-  interrupted:'Interrupted',conflict:'Needs review',budget_blocked:'Budget blocked',cancelled:'Dismissed'};
+  interrupted:'Interrupted',conflict:'Needs review',cancelled:'Dismissed'};
 const displayTime = value => new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 const originalConversation = renderConversation;
 const originalSidebar = renderSidebar;
@@ -29,9 +29,8 @@ renderSidebar = function() {
 };
 
 function preferences() {
-  storeWorkspace();
   return {selected:state.selected,panel:state.panel,scope:state.scope,panes:state.panes,
-    workspaces:state.workspaces,workspace_revision:workspaceRevision,drafts:state.drafts,
+    drafts:state.drafts,
     attachment_drafts:Object.fromEntries(Object.entries(attachmentDrafts).map(([id, items]) => [id, items.map(a => a.id)]))};
 }
 save = function() {
@@ -45,19 +44,13 @@ async function flushPreferences() {
   saving = true;
   try {
     const sent = JSON.parse(value);
-    workspacePending = sent.workspaces;
     const response = await api('/api/preferences', 'PUT', sent);
-    receiveWorkspaces(response.preferences, sent.workspaces);
-    savedPreferences = JSON.stringify({...sent,workspace_revision:response.preferences.workspace_revision});
+    receiveWorkspaces(response.preferences);
+    savedPreferences = value;
   } catch (error) {
-    if (error.message.includes('Workspace changed')) {
-      const snapshot = await api('/api/state');
-      receiveWorkspaces(snapshot.preferences);
-      renderTabs(); renderWorkspace();
-    } else toast(`Workspace changes are not saved yet: ${error.message}`);
+    toast(`Settings are not saved yet: ${error.message}`);
   } finally {
     saving = false;
-    workspacePending = null;
     if (JSON.stringify(preferences()) !== savedPreferences) saveTimer = setTimeout(flushPreferences, 2000);
   }
 }
@@ -142,7 +135,7 @@ renderGlobal = function() {
   $('#resource-owner').textContent = owner ? `In use · ${agent(owner).name}` : live.computer.built ? 'Blindly4 · Available' : 'Blindly4 · Build required';
   $('#resource-status').classList.toggle('idle', !owner);
   $('#resource-status').classList.remove('paused');
-  $('#workspace-owner').innerHTML = `${mention(workspaceOwner)}<span>’s workspace</span>`;
+  $('#workspace-owner').innerHTML = `${mention(workspaceOwner)}<span>’s browser</span>`;
 };
 
 renderAgentHeader = function() {
@@ -233,54 +226,17 @@ addAgent = function() {
 };
 agentSettings = function() {
   const a = selected();
-  const info = live.orchestration[a.id];
-  const turn = live.turns.find(j => j.agent === a.id && !['done','warning','cancelled'].includes(j.status));
   modal(`${a.name} settings`, `<form id="live-settings-form" data-id="${esc(a.id)}" class="form-stack">
-    <div class="settings-tabs" role="tablist" aria-label="Sapi settings">${[['profile','Profile'],['context','Context'],['usage','Usage'],['limits','Limits']].map(([key,label],i)=>`<button type="button" role="tab" id="settings-tab-${key}" aria-controls="settings-panel-${key}" aria-selected="${i===0}" tabindex="${i===0?0:-1}" data-settings-tab="${key}">${label}</button>`).join('')}</div>
+    <div class="settings-tabs" role="tablist" aria-label="Sapi settings">${[['profile','Profile'],['context','Context'],['usage','Usage'],['limits','Limits']].map(([key,label],i)=>`<button type="button" role="tab" id="settings-tab-${key}" aria-controls="settings-panel-${key}" aria-selected="${i===0}" tabindex="${i===0?0:-1}" ${i ? 'disabled aria-disabled="true" title="Inactive"' : ''}>${label}</button>`).join('')}</div>
     <section class="settings-panel form-stack" role="tabpanel" id="settings-panel-profile" aria-labelledby="settings-tab-profile" data-settings-panel="profile">
     <label>Name<input name="name" value="${esc(a.name)}" required maxlength="24" aria-describedby="name-help" autocomplete="off"></label>
     ${nameSuggestions()}
     <label>Role<input name="role" value="${esc(a.role)}" required maxlength="60"></label>
     ${managerOptions(a)}
     </section>
-    <section class="settings-panel form-stack" role="tabpanel" id="settings-panel-context" aria-labelledby="settings-tab-context" data-settings-panel="context" hidden>
-    <fieldset class="context-fields"><legend>Recent results</legend>
-      <label class="check-label"><input name="recent_enabled" type="checkbox" ${info.recent.enabled ? 'checked' : ''}> Reuse recent results for follow-ups</label>
-      <label>Fresh for (seconds)<input name="recent_seconds" type="number" min="1" max="3600" step="1" required value="${info.recent.seconds}"></label>
-      <small>“Do it again” or “check current state” always checks afresh.</small>
-    </fieldset>
-    <p>Lasting notes are managed by this Sapi in the Notes tab.</p>
-    </section>
-    <section class="settings-panel" role="tabpanel" id="settings-panel-usage" aria-labelledby="settings-tab-usage" data-settings-panel="usage" hidden>${usageSettings(info,'usage')}</section>
-    <section class="settings-panel" role="tabpanel" id="settings-panel-limits" aria-labelledby="settings-tab-limits" data-settings-panel="limits" hidden>${usageSettings(info,'limits')}</section>
+    ${['context','usage','limits'].map(key => `<section class="settings-panel" role="tabpanel" id="settings-panel-${key}" aria-labelledby="settings-tab-${key}" hidden>Inactive</section>`).join('')}
     <button type="submit" class="button primary">Save</button></form>`, 'SAPIENS4');
-  loadUsage(a.id);
 };
-function settingsTab(key) {
-  const form = $('#live-settings-form');
-  if (!form) return;
-  form.querySelectorAll('[data-settings-panel]').forEach(p => { p.hidden = p.dataset.settingsPanel !== key; });
-  form.querySelectorAll('[data-settings-tab]').forEach(b => {
-    const active = b.dataset.settingsTab === key;
-    b.setAttribute('aria-selected', String(active)); b.tabIndex = active ? 0 : -1;
-  });
-}
-document.addEventListener('click', e => {
-  const b = e.target.closest('[data-settings-tab]');
-  if (b) settingsTab(b.dataset.settingsTab);
-});
-document.addEventListener('keydown', e => {
-  const b = e.target.closest('[data-settings-tab]');
-  if (!b || !['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
-  e.preventDefault();
-  const tabs = [...b.parentElement.querySelectorAll('[data-settings-tab]')];
-  const i = e.key==='Home' ? 0 : e.key==='End' ? tabs.length-1 : (tabs.indexOf(b)+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
-  settingsTab(tabs[i].dataset.settingsTab); tabs[i].focus();
-});
-document.addEventListener('invalid', e => {
-  const p = e.target.closest('[data-settings-panel]');
-  if (p && p.hidden) settingsTab(p.dataset.settingsPanel);
-}, true);
 actions['agent-settings'] = agentSettings;
 computerDialog = function() {
   modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : 'Build required: run ./start.sh'}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Sapis share one computer. macOS Accessibility access is required for desktop interaction; permission failures appear in chat and the activity log.</p>`, 'BLINDLY4');
@@ -302,10 +258,7 @@ document.addEventListener('submit', async e => {
     const created = form.id === 'live-agent-form';
     if (!created) {
       data.manager = data.manager || null;
-      data.recent = {enabled:form.elements.recent_enabled.checked,seconds:Number(data.recent_seconds)};
-      data.execution = Object.fromEntries(['weekly_limit','call_allowance','max_tools','timeout_seconds','output_tokens'].map(k=>[k,Number(data[k])]));
-      for (const key of Object.keys(data.execution)) delete data[key];
-      delete data.recent_enabled; delete data.recent_seconds;
+
     }
     const row = await api(created ? '/api/agents' : `/api/agents/${form.dataset.id}`, created ? 'POST' : 'PUT', data);
     await refresh();
@@ -428,7 +381,7 @@ async function refresh() {
   refreshing = (async () => {
     try {
       const snapshot = await api(`/api/state?after=${cursor}`);
-      const changed = JSON.stringify([snapshot.agents,snapshot.turns,snapshot.computer,snapshot.orchestration,snapshot.artifacts]) !== JSON.stringify([live.agents,live.turns,live.computer,live.orchestration,live.artifacts]) || snapshot.events.length;
+      const changed = JSON.stringify([snapshot.agents,snapshot.turns,snapshot.computer,snapshot.orchestration]) !== JSON.stringify([live.agents,live.turns,live.computer,live.orchestration]) || snapshot.events.length;
       const reconnected = !online;
       online = true;
       const tabsChanged = (snapshot.preferences.workspace_revision || 0) > workspaceRevision;

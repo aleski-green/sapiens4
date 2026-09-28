@@ -37,13 +37,15 @@ class ChatControlsTest(IntegrationFixture):
         service = self.service(start_worker=False)
         a = service.store.agents()[0]
         b = service.create_agent({'name': 'Nova', 'role': 'Tester'})
-        settings = {'name': 'Nova', 'role': 'Research', 'manager': a['id'],
-                    'recent': {'enabled': True, 'seconds': 120}}
+        settings = {'name': 'Nova', 'role': 'Research', 'manager': a['id']}
         service.update_agent(b['id'], settings)
         service = self.restart(service, start_worker=False)
         saved = service.snapshot()['orchestration'][b['id']]
         self.assertEqual(saved['manager'], a['id'])
-        self.assertEqual(saved['recent']['seconds'], 120)
+        self.assertNotIn('recent', saved)
+        for field in ('recent', 'execution'):
+            with self.assertRaises(APIError):
+                service.update_agent(b['id'], {**settings, 'name': 'Changed', field: {}})
         with self.assertRaises(APIError):
             service.update_agent(a['id'], {'name': 'Renamed', 'role': 'Tester', 'manager': b['id'],
                                            'schedule': {'minutes': 20}})

@@ -2,14 +2,14 @@
 import asyncio
 from copy import deepcopy
 from dataclasses import asdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 from .corpora import Corpora
-from .lifecycle import Limits
+from .lifecycle import Outcome
+from .interfaces import LLMSpec
 from .storage import StateStore, atomic_bytes, file_lock, safe_child
 
 
@@ -18,50 +18,41 @@ def utcnow():
 
 
 class PersistentAgent:
-    def __init__(self, *, config, factory, agid, root, limits=None):
+    def __init__(self, *, config, factory, agid, root):
         self.agid = agid
         self.root = safe_child(Path(root).resolve() / 'agents', agid)
         self.config, self.factory = config, factory
-        self.limits = limits or Limits()
-        self.store = StateStore(self.root, self.limits)
+        self.store = StateStore(self.root)
         self.corpora = Corpora(Path(root).resolve() / 'corpora')
         with file_lock(self.root / '.state.lock'):
             if not self.store.path.exists():
-                self.store.write(dict(schema_version=2, agid=agid, revision=0,
-                    limits=asdict(self.limits), budget_calendar=dict(sprint_days=7,
-                        timezone='Asia/Dubai', sprint_anchor='2026-01-05'),
-                    turns=[], chat=[], events=[], event_sequence=0, budgets={}, last_output=None))
+                self.store.write(dict(schema_version=3, agid=agid, revision=0,
+                    turns=[], chat=[], events=[], event_sequence=0, last_output=None))
             saved = self.store.read()
             if saved['agid'] != agid:
                 raise ValueError('Agent ID does not match saved state')
-            if saved['schema_version'] == 1:
-                # Preserve the complete old state once. No removed flow is resumed
-                # or included in the next prompt; old runtime files stay on disk.
-                backup = self.root / 'legacy-state-v1.json'
+            if saved['schema_version'] < 3:
+                version = saved['schema_version']
+                backup = self.root / f'legacy-state-v{version}.json'
                 if not backup.exists():
                     atomic_bytes(backup, self.store.path.read_bytes())
                 turns = []
-                for old in saved['jobs']:
-                    if old['flow'] in {'chat', 'computer'}:
-                        turn = {k: v for k, v in old.items() if k in {
-                            'id','flow','status','created','tokens','error','warning','reserved','sprint','budget_units'}}
-                        turn['input'] = old['task']
-                        turns.append(turn)
-                    elif old['status'] == 'running' and old.get('sprint') in saved['budgets']:
-                        ledger = saved['budgets'][old['sprint']]
-                        reserved = old.get('reserved', 0)
-                        ledger['reserved'] = max(0, ledger['reserved'] - reserved)
-                        ledger['spent'] += reserved  # Unknown in-flight usage remains charged.
-                saved = {k: saved[k] for k in ('agid','revision','limits','budget_calendar',
-                    'chat','events','event_sequence','budgets','last_output')}
-                saved.update(schema_version=2, turns=turns, budget_policy='cache-10-percent-v1')
+                for old in saved['jobs' if version == 1 else 'turns']:
+                    if old['flow'] not in {'chat', 'computer'}:
+                        continue
+                    turn = {k: v for k, v in old.items() if k in {
+                        'id','flow','status','created','error','warning'}}
+                    turn['input'] = old['task' if version == 1 else 'input']
+                    if turn['status'] == 'budget_blocked':
+                        turn.update(status='interrupted', error='Former budget block removed; retry to continue')
+                    turns.append(turn)
+                saved = {k: saved[k] for k in ('agid','revision','chat','events','event_sequence','last_output')}
+                saved.update(schema_version=3, turns=turns)
                 for field in ('chat', 'events'):
                     for row in saved[field]:
                         if 'job' in row:
                             row['turn'] = row.pop('job')
                 self.store.write(saved)
-        self.budget_calendar = {k: v for k, v in saved['budget_calendar'].items()
-                                if k in {'sprint_days', 'timezone', 'sprint_anchor'}}
         if agid not in self.corpora.directory():
             self.corpora.register(agid)
 
@@ -73,7 +64,7 @@ class PersistentAgent:
     def manifests(self):
         # Explicit allowlist keeps legacy scheduling/learning instructions inert.
         return {name: (self.root / 'manifests' / (name + '.md')).read_text()
-                for name in ('identity','computer-use','computer-tools','host-control','host-facts')
+                for name in ('identity','computer-use','host-control','host-facts')
                 if (self.root / 'manifests' / (name + '.md')).is_file()}
 
     def set_manifest(self, name, text):
@@ -97,14 +88,11 @@ class PersistentAgent:
         state['events'].append(dict(sequence=state['event_sequence'], time=utcnow().isoformat(), kind=kind, **details))
 
     def _trim(self, state):
-        for sprint in sorted(state['budgets'])[:-2]:
-            if state['budgets'][sprint]['reserved'] == 0:
-                self.corpora.archive(self.agid, 'budgets/' + sprint, state['budgets'].pop(sprint))
         for field in ('chat', 'events', 'turns'):
             rows = state[field]
             # A bounded chat window; full transcripts and UI history stay durable.
-            settled = [r for r in rows if r.get('status') not in {'queued','running','budget_blocked'}]
-            removed = settled[:-min(self.limits.max_records, 100)]
+            settled = [r for r in rows if r.get('status') not in {'queued','running'}]
+            removed = settled[:-100]
             if removed:
                 self.corpora.archive(self.agid, f'{field}/{uuid4().hex}', removed)
                 state[field] = [r for r in rows if r not in removed]
@@ -112,9 +100,9 @@ class PersistentAgent:
         for field in ('chat', 'events', 'turns'):
             removed = []
             for row in list(state[field]):
-                if len(json.dumps(state, ensure_ascii=False).encode()) <= self.limits.state_bytes * .8:
+                if len(json.dumps(state, ensure_ascii=False).encode()) <= 800_000:
                     break
-                if row.get('status') not in {'queued','running','budget_blocked'} and not (field == 'turns' and row == state[field][-1]):
+                if row.get('status') not in {'queued','running'} and not (field == 'turns' and row == state[field][-1]):
                     state[field].remove(row)
                     removed.append(row)
             if removed:
@@ -124,9 +112,9 @@ class PersistentAgent:
         if flow not in {'chat', 'computer'}:
             raise ValueError('Only chat turns are supported')
         with self.store.transaction() as state:
-            if any(t['status'] in {'queued','running','budget_blocked'} for t in state['turns']):
+            if any(t['status'] in {'queued','running'} for t in state['turns']):
                 raise ValueError('A conversation turn is already pending')
-            turn = dict(id=uuid4().hex, flow=flow, input=text, status='queued', tokens=0, created=utcnow().isoformat())
+            turn = dict(id=uuid4().hex, flow=flow, input=text, status='queued', created=utcnow().isoformat())
             state['turns'].append(turn)
             state['chat'].append(dict(role='user', content=text, turn=turn['id'], time=turn['created']))
             self._event(state, 'queued', turn=turn['id'], flow=flow)
@@ -136,38 +124,9 @@ class PersistentAgent:
     def tell(self, text):
         return self.submit('chat', text)
 
-    def _sprint(self, now):
-        calendar = self.budget_calendar
-        day = now.astimezone(ZoneInfo(calendar['timezone'])).date()
-        anchor = date.fromisoformat(calendar['sprint_anchor'])
-        days = calendar['sprint_days']
-        return (anchor + timedelta(days=((day - anchor).days // days) * days)).isoformat()
-
-    def _reserve(self, state, turn, loop_remaining, now):
-        reserved = self.limits.tokens_per_call
-        sprint = self._sprint(now)
-        ledger = state['budgets'].setdefault(sprint, dict(spent=0, reserved=0))
-        if reserved > loop_remaining or ledger['spent'] + ledger['reserved'] + reserved > self.limits.tokens_per_sprint:
-            turn.update(status='budget_blocked', error='Budget allowance unavailable. Review limits in Sapi settings.')
-            self._event(state, 'budget_blocked', turn=turn['id'])
-            return None
-        turn.update(status='running', reserved=reserved, sprint=sprint)
-        turn.pop('error', None)
-        ledger['reserved'] += reserved
-        self._event(state, 'started', turn=turn['id'], flow=turn['flow'])
-        return reserved
-
-    @staticmethod
-    def _settle(state, turn, tokens):
-        ledger = state['budgets'][turn['sprint']]
-        ledger['reserved'] -= turn['reserved']
-        ledger['spent'] += tokens
-        turn['tokens'] = tokens
-
     def _recover(self, state):
         for turn in state['turns']:
             if turn['status'] == 'running':
-                self._settle(state, turn, turn['reserved'])
                 turn.update(status='interrupted', error='Runner stopped before saving a reply; inspect effects before retrying')
                 self._event(state, 'interrupted', turn=turn['id'])
 
@@ -175,17 +134,46 @@ class PersistentAgent:
         chat = [m for m in snapshot['chat'][-10:] if m.get('turn') != snapshot.get('current_turn')]
         blocks = dict(manifests=self.manifests, chat=chat)
         # Keep the current request and fresh notes ahead of older conversation.
-        allowance = self.limits.context_chars - len(text) - len(self.config.roles['conversation'].prompt) - 100
+        allowance = 60_000 - len(text) - len(self.config.roles['conversation'].prompt) - 100
         while len(json.dumps(blocks, ensure_ascii=False)) > allowance and chat:
             chat.pop(0)
             blocks['history_truncated'] = True
         return dict(context=json.dumps(blocks, ensure_ascii=False), task=text, last='', proposal='', critique='')
 
+    def _work(self, turn, snapshot, config):
+        result = Outcome()
+        try:
+            context = self._context(snapshot, turn['input'])
+            for step in config.flows[turn['flow']].steps:
+                role = config.roles[step]
+                prompt = role.prompt.format_map(context).strip()
+                llm = self.factory.spawn(LLMSpec(role=step, model=role.model))
+                log = dict(role=step, prompt=prompt, session=llm.id)
+                result.logs.append(log)
+                try:
+                    answer = llm.complete(prompt)
+                    if not isinstance(answer, str):
+                        raise ValueError('LLM output must be text')
+                    log['answer'] = answer
+                    if getattr(llm, 'warning', None):
+                        log['warning'] = llm.warning
+                    context['last'] = answer
+                finally:
+                    log['session'] = llm.id
+            result.output = context['last']
+        except Exception as error:
+            result.error = f'{type(error).__name__}: {error}'
+        return result
+
     def _finish(self, turn_id, outcome):
         self.corpora.archive(self.agid, f'runs/{turn_id}', asdict(outcome))
         with self.store.transaction() as state:
             turn = next(t for t in state['turns'] if t['id'] == turn_id)
-            self._settle(state, turn, outcome.tokens)
+            warnings = [log['warning'] for log in outcome.logs if log.get('warning')]
+            if warnings:
+                turn['warning'] = ' '.join(warnings)
+            else:
+                turn.pop('warning', None)
             if outcome.error:
                 turn.update(status='failed', error=outcome.error)
             else:
@@ -205,8 +193,11 @@ class PersistentAgent:
             with self.store.transaction() as state:
                 self._recover(state)
                 turn = next((t for t in state['turns'] if t['status'] == 'queued'), None)
-                if turn is None or self._reserve(state, turn, self.limits.tokens_per_loop, utcnow()) is None:
+                if turn is None:
                     return
+                turn['status'] = 'running'
+                turn.pop('error', None)
+                self._event(state, 'started', turn=turn['id'], flow=turn['flow'])
                 snapshot = deepcopy(state)
                 snapshot['current_turn'] = turn['id']
                 turn = deepcopy(turn)
@@ -218,7 +209,7 @@ class PersistentAgent:
     def retry(self, turn_id):
         with self.store.transaction() as state:
             turn = next(t for t in state['turns'] if t['id'] == turn_id)
-            if turn['status'] not in {'failed','interrupted','budget_blocked'}:
+            if turn['status'] not in {'failed','interrupted'}:
                 raise ValueError('Only stopped conversation turns can be retried')
             if any(t['status'] in {'queued','running'} for t in state['turns']):
                 raise ValueError('A conversation turn is already pending')

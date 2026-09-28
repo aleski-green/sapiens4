@@ -4,21 +4,15 @@ const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid = () => 'id-' + Math.random().toString(36).slice(2, 10);
 
-const tabTypes = {custom:['↗','Website'],blank:['','New tab'],html:['◇','HTML']};
 let state = makeInitialState(bootstrap);
 let workspaceOwner = state.selected;
-const browserFrames = new Map();
-
-function storeWorkspace(){state.workspaces[workspaceOwner]={tabs:state.tabs,activeTab:state.activeTab};}
 function syncWorkspace(){
-  if(workspaceOwner===state.selected)return;
-  storeWorkspace();workspaceOwner=state.selected;
-  const ws=state.workspaces[workspaceOwner] || {tabs:[{id:uid(),type:'blank',title:'New tab'}]};
-  state.tabs=ws.tabs;state.activeTab=ws.activeTab??ws.tabs[0]?.id??null;
+  workspaceOwner=state.selected;
+  const ws=state.workspaces[workspaceOwner] || {tabs:[]};
+  state.tabs=ws.tabs;state.activeTab=ws.activeTab || null;
 }
 
-
-let search = '', toastTimer, dragId, pending = new Set();
+let search = '', toastTimer, pending = new Set();
 const agent = id => state.agents.find(a=>a.id===id) || state.agents[0];
 const selected = () => agent(state.selected);
 const isGroup = a => a.kind==='group';
@@ -92,48 +86,6 @@ function renderConversation() {
   renderAttachment();
 }
 
-function renderTabs(){syncWorkspace();const host=$('#browser-tabs');host.innerHTML=state.tabs.map(t=>`<div class="workspace-tab ${t.id===state.activeTab?'active':''}" draggable="true" data-drag-tab="${esc(t.id)}"><button class="tab-select" data-tab="${esc(t.id)}" aria-pressed="${t.id===state.activeTab}"><span class="tab-icon">${tabTypes[t.type]?.[0]??'↗'}</span>${esc(t.title)}</button><button class="tab-close" data-close-tab="${esc(t.id)}" aria-label="Close ${esc(t.title)}">×</button></div>`).join('');
-  $$('[data-drag-tab]').forEach(el=>{el.addEventListener('dragstart',e=>{dragId=el.dataset.dragTab;e.dataTransfer.setData('text/plain',dragId);e.dataTransfer.effectAllowed='move';});el.addEventListener('dragover',e=>e.preventDefault());el.addEventListener('drop',e=>{e.preventDefault();const target=el.dataset.dragTab;const from=state.tabs.findIndex(t=>t.id===dragId),to=state.tabs.findIndex(t=>t.id===target);if(from<0||to<0)return;state.tabs.splice(to,0,state.tabs.splice(from,1)[0]);renderTabs();save();});el.addEventListener('dblclick',e=>{if(!e.target.closest('[data-close-tab]'))tabSettings(el.dataset.dragTab);});});
-}
-function openTab(type='blank',title,extra={}){
-  syncWorkspace();
-  const t={id:uid(),type,title:title||tabTypes[type]?.[1]||'New tab',...extra};
-  state.tabs.push(t);state.activeTab=t.id;state.panes.workspace=true;
-  renderPanes();renderTabs();renderWorkspace();save();
-}
-function renderWorkspace(){
-  syncWorkspace();
-  $('#workspace-owner').innerHTML=`${mention(workspaceOwner)}<span>’s workspace</span>`;
-  const t=state.tabs.find(t=>t.id===state.activeTab),host=$('#workspace-content');
-  $('#browser-address-form').hidden=!t;
-  $('#browser-address').value=t?.type==='custom'?t.url:t?.type==='html'?'HTML document':'';
-  $('#open-page').hidden=t?.type!=='custom';
-  if(t?.type==='custom')$('#open-page').href=t.url;else $('#open-page').removeAttribute('href');
-  storeWorkspace();
-  const liveIds=new Set(Object.values(state.workspaces).flatMap(ws=>ws.tabs.map(t=>t.id)).concat(state.tabs.map(t=>t.id)));
-  for(const [id,entry] of browserFrames)if(!liveIds.has(id)){entry.frame.remove();browserFrames.delete(id);}
-  for(const entry of browserFrames.values())entry.frame.hidden=true;
-  if(!t)return;
-  const signature=JSON.stringify([t.type,t.url,t.html]);
-  let entry=browserFrames.get(t.id);
-  if(!entry||entry.signature!==signature){
-    entry?.frame.remove();
-    const frame=document.createElement('iframe');
-    frame.className='workspace-browser';
-    // Guest scripts run in an opaque origin, separated from app data and controls.
-    frame.setAttribute('sandbox','allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads');
-    frame.referrerPolicy='no-referrer';
-    if(t.type==='custom'&&safeUrl(t.url))frame.src=safeUrl(t.url);
-    else if(t.type==='html')frame.srcdoc=t.html||'';
-    else frame.srcdoc='<!doctype html><html><head><meta name="color-scheme" content="light dark"></head><body></body></html>';
-    entry={frame,signature};browserFrames.set(t.id,entry);host.append(frame);
-  }
-  entry.frame.title=t.title;entry.frame.hidden=false;
-}
-function safeUrl(value){try{const u=new URL(value);return /^https?:$/.test(u.protocol)?u.href:null;}catch{return null;}}
-function addTabDialog(){modal('Add tab',`<form id="custom-tab-form" class="form-stack"><label>Tab name<input name="title" placeholder="New tab" maxlength="48"></label><label>Website URL<input name="url" type="url" placeholder="https://…"></label><label>Or paste HTML<textarea name="html" aria-label="HTML source" placeholder="<!doctype html>" rows="5"></textarea></label><button type="submit" class="button primary">Add tab</button></form>`);}
-function tabSettings(id){const t=state.tabs.find(t=>t.id===id);if(!t)return;modal('Tab settings',`<form class="form-stack" id="tab-settings-form" data-id="${esc(id)}"><label>Tab name<input name="title" value="${esc(t.title)}" maxlength="48" required></label><label>Website URL<input name="url" type="url" value="${esc(t.url||'')}" placeholder="https://…"></label><label>HTML source<textarea name="html" rows="5">${esc(t.html||'')}</textarea></label><button class="button primary" type="submit">Save tab</button></form><div class="modal-actions"><button class="button" data-move-tab="left" data-id="${esc(id)}">← Move left</button><button class="button" data-move-tab="right" data-id="${esc(id)}">Move right →</button><button class="button danger" data-close-tab="${esc(id)}">Close tab</button></div>`);}
-
 const actions = {'new-tab':addTabDialog};
 
 document.addEventListener('click',e=>{
@@ -145,40 +97,17 @@ document.addEventListener('click',e=>{
   if(d.agent){openChat(d.agent);return;}
   if(d.scope){state.scope=d.scope;renderSidebar();save();return;}
   if(d.panel && !b.disabled && ['chat','notes','log'].includes(d.panel)){state.panel=d.panel;renderConversation();save();return;}
-  if(d.tab){state.activeTab=d.tab;renderTabs();renderWorkspace();save();return;}
-  if(d.closeTab){const i=state.tabs.findIndex(t=>t.id===d.closeTab);if(i<0)return;state.tabs.splice(i,1);if(state.activeTab===d.closeTab)state.activeTab=state.tabs[Math.max(0,i-1)]?.id||null;closeModal();renderTabs();renderWorkspace();save();return;}
-  if(d.newTabType){openTab(d.newTabType);closeModal();return;}
-  if(d.editTab){tabSettings(d.editTab);return;}
-  if(d.moveTab){const i=state.tabs.findIndex(t=>t.id===d.id),j=i+(d.moveTab==='left'?-1:1);if(j<0||j>=state.tabs.length){toast('That tab is already at the edge.');return;}[state.tabs[i],state.tabs[j]]=[state.tabs[j],state.tabs[i]];renderTabs();save();return;}
+  if(d.tab){browserAction('focus',{id:d.tab});return;}
+  if(d.closeTab){browserAction('close',{id:d.closeTab});return;}
+
 
 });
 
-document.addEventListener('submit',e=>{const f=e.target;if(f.id==='chat-form'){e.preventDefault();sendChat($('#message-input').value);return;}if(!['custom-tab-form','tab-settings-form'].includes(f.id))return;e.preventDefault();const data=Object.fromEntries(new FormData(f));
-
-  if(f.id==='custom-tab-form'||f.id==='tab-settings-form'){
-    if(data.url.trim()&&data.html.trim()){toast('Use a website URL or HTML, one source per tab.');return;}
-    const url=data.url.trim()?safeUrl(data.url.trim()):null;
-    if(data.url.trim()&&!url){toast('Use an http:// or https:// website address.');return;}
-    const type=url?'custom':data.html.trim()?'html':'blank';
-    const title=data.title.trim()||(url?new URL(url).hostname:tabTypes[type][1]);
-    if(f.id==='custom-tab-form')openTab(type,title,{url,html:data.html});
-    else Object.assign(state.tabs.find(t=>t.id===f.dataset.id),{type,title,url,html:data.html});
-  }
-
-  closeModal();render();
-});
+document.addEventListener('submit',e=>{if(e.target.id==='chat-form'){e.preventDefault();sendChat($('#message-input').value);}});
 
 $('#close-modal').addEventListener('click',closeModal);
 $('#modal').addEventListener('click',e=>{if(e.target===$('#modal')){const r=$('#modal').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeModal();}});
 
-$('#browser-address-form').addEventListener('submit',e=>{
-  e.preventDefault();const value=$('#browser-address').value.trim();
-  const url=safeUrl(value);if(!url){toast('Use an http:// or https:// website address.');return;}
-  const t=state.tabs.find(t=>t.id===state.activeTab);if(!t)return;
-  Object.assign(t,{type:'custom',url,html:'',title:new URL(url).hostname});renderTabs();renderWorkspace();save();
-});
-$('#reload-page').addEventListener('click',()=>{const entry=browserFrames.get(state.activeTab);if(entry){entry.frame.remove();browserFrames.delete(state.activeTab);}renderWorkspace();});
-$('#add-tab').addEventListener('click',addTabDialog);
 $('#add-agent').addEventListener('click',()=>addAgent());
 $('#autonomy-button').addEventListener('click',()=>autonomyDialog());
 $('#resource-button').addEventListener('click',()=>computerDialog());
@@ -188,6 +117,6 @@ $('#agent-search').addEventListener('input',e=>{search=e.target.value;renderSide
 
 $('#message-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat(e.target.value);}});
 $('.wordmark').addEventListener('click',e=>{e.preventDefault();state.panes={sidebar:true,chat:true,workspace:true};renderPanes();save();});
-$('#workspace-menu').addEventListener('click',()=>{if(state.activeTab)tabSettings(state.activeTab);else addTabDialog();});
+$('#workspace-menu').addEventListener('click',showBookmarks);
 
 document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&!$('#modal').open){e.preventDefault();state.panes.sidebar=true;renderPanes();save();$('#agent-search').focus();}});

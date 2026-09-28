@@ -14,7 +14,6 @@ from sapiens.service import APIError, Service
 
 class ScriptedLLM:
     id = "test-session"
-    usage = {"input_tokens": 4, "output_tokens": 3}
 
     def __init__(self, factory):
         self.factory = factory
@@ -88,7 +87,7 @@ class IntegrationTest(IntegrationFixture):
         turn = service.submit(agid, {"text": "Hello"})
         done = self.wait_turn(service, turn["id"])
         self.assertEqual(done["output"], "Connected through AgentPy.")
-        self.assertEqual(done["tokens"], 7)
+        self.assertNotIn("tokens", done)
         service.save_preferences({"selected":agid,"drafts":{agid:"Keep this"}})
         count = len(service.snapshot()["events"])
         service = self.restart(service)
@@ -152,10 +151,9 @@ class IntegrationTest(IntegrationFixture):
         agid = service.store.agents()[0]["id"]
         turn = service.submit(agid, {"text":"May already have acted", "flow":"computer"})
         agent = service._agent(agid)
-        # Emulate a crash after the SDK reserved a call but before it committed a result.
-        from datetime import datetime, timezone
+        # Emulate a crash after a turn started but before it committed a result.
         with agent.store.transaction() as state:
-            agent._reserve(state, state["turns"][0], agent.limits.tokens_per_loop, datetime.now(timezone.utc))
+            state["turns"][0]["status"] = "running"
         service = self.restart(service)
         self.wait_turn(service, turn["id"], "interrupted")
         self.assertEqual(self.factory.prompts, [])
@@ -169,6 +167,35 @@ class IntegrationTest(IntegrationFixture):
         service = self.restart(service)
         self.wait_turn(service, turn["id"])
         self.assertEqual(len(self.factory.prompts), 1)
+
+    def test_old_budgets_and_cached_results_are_inert_after_migration(self):
+        service = self.service(start_worker=False)
+        agent = service._agent(service.hierarchy.main)
+        turn = service.submit(agent.agid, {'text': 'Continue'})['id']
+        with agent.store.transaction() as state:
+            state.update(schema_version=2, budgets={'old': {'spent': 999999999}},
+                         limits={'tokens_per_call': 1}, budget_calendar={})
+            state['turns'][0].update(status='budget_blocked', tokens=999, reserved=999)
+        original = agent.store.path.read_bytes()
+        workspace = service.workspace.root(agent)
+        legacy = {agent.root / 'execution.json': '{"max_tools":1}',
+                  workspace / 'recent-context.json': '[{"answer":"STALE_TOOL_RESULT"}]'}
+        for path, value in legacy.items():
+            path.write_text(value)
+        service = self.restart(service)
+        agent = service._agent(agent.agid)
+        self.assertEqual(agent.state['schema_version'], 3)
+        self.assertEqual((agent.root / 'legacy-state-v2.json').read_bytes(), original)
+        self.assertEqual(agent.state['turns'][0]['status'], 'interrupted')
+        self.assertNotIn('budgets', agent.state)
+        self.assertEqual(self.factory.prompts, [])
+        service.turn_action(agent.agid, turn, 'retry')
+        self.wait_turn(service, turn)
+        self.assertNotIn('STALE_TOOL_RESULT', self.factory.prompts[-1])
+        self.assertFalse((agent.root / 'usage').exists())
+        self.assertFalse((workspace / 'execution-clock.json').exists())
+        for path, value in legacy.items():
+            self.assertEqual(path.read_text(), value)
 
     def test_event_cursor_catches_up_without_gaps(self):
         service = self.service(start_worker=False)
