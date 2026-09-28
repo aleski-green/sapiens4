@@ -11,7 +11,7 @@
 <body class="sapi-workspace">
   <div class="app">
     <header class="app-header">
-      <a class="wordmark" href="#" aria-label="sapi * 4 ◠‿◠ AI home"><span class="brand-name">sapi * 4</span><span class="brand-face">◠‿◠</span><span class="brand-ai">AI</span></a>
+      <a class="wordmark" href="#" aria-label="Sapiens4 home"><span class="brand-name">Sapiens4</span></a>
       <button class="icon-button menu-button" id="app-menu" aria-label="Menu" title="Menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
       <nav class="pane-controls" aria-label="Panel visibility">
         <button class="pane-toggle" data-toggle-pane="sidebar" aria-controls="chat-list-panel" aria-pressed="true" aria-label="Hide chat list" title="Hide chat list"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path class="pane-fill" d="M4 5h5v14H4z"/><path d="M12 9h6M12 13h6M12 17h4"/></svg></button>
@@ -20,12 +20,12 @@
       </nav>
       <button class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme" title="Switch to dark theme">☾</button>
       <button class="pill" id="autonomy-button"><span>✦</span> <span id="autonomy-label">Connecting…</span> <span>⌄</span></button>
-      <button class="user-avatar" id="profile-button" aria-label="Workspace settings">Admin</button>
+      <button class="user-avatar" id="profile-button" aria-label="Admin settings">Admin <span aria-hidden="true">⌄</span></button>
     </header>
     <div class="main-grid">
       <aside class="sidebar" id="chat-list-panel" aria-label="Chat list">
         <div class="sidebar-heading"><h1>CORPORA<span id="agent-count">0</span></h1><button class="icon-button" id="add-agent" aria-label="Add an agent">＋</button></div>
-        <div class="scope-switch" aria-label="Agent views"><button data-scope="all" class="active">All</button><button data-scope="sapis">Sapis</button><button data-scope="groups">Groups</button></div>
+        <div class="scope-switch" aria-label="Agent views"><button data-scope="all" class="active">All</button><button data-scope="sapis">Sapis</button><button data-scope="groups" disabled title="Groups are coming in the next iteration">Groups</button></div>
         <label class="search-field"><span aria-hidden="true">⌕</span><input id="agent-search" type="search" placeholder="Find a Sapi…" aria-label="Search agents"><kbd>/</kbd></label>
         <div id="agent-list" class="agent-list"></div>
         <footer class="sidebar-bottom">
@@ -38,26 +38,21 @@
         <div class="conversation-body" id="conversation-body"></div>
         <div class="composer-area" id="composer-area">
           <div id="attachment-chip"></div>
-          <form class="composer" id="chat-form"><textarea rows="2" id="message-input" placeholder="Message your Sapi…" aria-label="Message agent"></textarea><div class="composer-bottom"><button type="button" id="attach-button" class="icon-button" aria-label="Add attachment">＋</button><button type="submit" class="send-button" aria-label="Send message">↑</button></div></form>
-          <div class="composer-hint"><span>Autonomous</span><span>Enter ↵</span></div>
+          <form class="composer" id="chat-form"><textarea rows="2" id="message-input" maxlength="16000" placeholder="Message your Sapi…" aria-label="Message agent"></textarea><div class="composer-bottom"><button type="button" id="attach-button" class="icon-button" aria-label="Add attachment">＋</button><button type="submit" class="send-button" aria-label="Send message">↑</button></div></form>
         </div>
       </section>
       <main class="workspace" id="workspace-panel" aria-label="Agent workspace">
-        <div class="workspace-heading"><span class="workspace-owner" id="workspace-owner"></span><button class="icon-button" id="workspace-menu" aria-label="Workspace options">···</button></div>
-        <div class="browser-tabs-wrap"><div id="browser-tabs" class="browser-tabs" aria-label="Workspace tabs"></div><button id="add-tab" class="add-tab" aria-label="Add workspace tab">＋</button></div>
-        <form id="browser-address-form" class="browser-address-bar">
-          <button type="button" class="icon-button" data-browser-action="back" aria-label="Back">←</button>
-          <button type="button" class="icon-button" data-browser-action="forward" aria-label="Forward">→</button>
-          <button type="button" class="icon-button" data-browser-action="reload" aria-label="Reload">↻</button>
-          <input id="browser-address" aria-label="URL or file path" placeholder="URL or file path" autocomplete="off" spellcheck="false">
-          <button type="button" class="icon-button" data-browser-action="bookmark" aria-label="Bookmark tab">☆</button>
-        </form>
-        <div class="browser-tools">
-          <button type="button" id="open-file">Open file…</button>
+        <div class="browser-tabs-wrap"><div id="browser-tabs" class="browser-tabs" aria-label="Workspace tabs"></div><button id="browser-overflow" aria-label="All open tabs" aria-expanded="false" hidden></button><button id="add-tab" class="add-tab" aria-label="Add workspace tab">＋</button><button class="icon-button" id="workspace-menu" aria-label="Workspace options" aria-expanded="false">···</button></div>
+        <form id="browser-address-form" class="browser-address-bar" hidden><input id="browser-address" aria-label="URL or file path" placeholder="URL or file path" autocomplete="off" spellcheck="false"><button type="submit" aria-label="Open address">→</button></form>
+        <div id="browser-menu" class="browser-menu" role="dialog" aria-label="Workspace options" hidden>
+          <div id="browser-options">
+            <div id="workspace-owner" class="workspace-owner"></div><button data-edit-address>URL or file path…</button><button id="open-file">Open file…</button>
+            <div class="browser-menu-row"><button data-browser-action="back">← Back</button><button data-browser-action="forward">Forward →</button><button data-browser-action="reload">Reload</button></div>
+            <div class="browser-menu-row"><span>Zoom</span><button data-zoom="-0.1" aria-label="Zoom out">−</button><button id="browser-zoom" data-zoom="reset" aria-label="Reset zoom">100%</button><button data-zoom="0.1" aria-label="Zoom in">＋</button></div>
+            <div class="browser-menu-label">Bookmarks</div><div id="browser-bookmarks"></div>
+          </div>
+          <div id="browser-all-tabs" hidden></div>
           <span id="browser-status" role="status"></span>
-          <button type="button" data-zoom="-0.1" aria-label="Zoom out">−</button>
-          <button type="button" id="browser-zoom" data-zoom="reset" aria-label="Reset zoom">100%</button>
-          <button type="button" data-zoom="0.1" aria-label="Zoom in">＋</button>
         </div>
         <div id="workspace-content" class="workspace-content"></div>
         <footer class="workspace-footer"><a href="https://sapiens4.ai" target="_blank" rel="noopener noreferrer">sapiens4.ai ↗</a></footer>

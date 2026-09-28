@@ -19,6 +19,25 @@ assert.match(render('[Reference](https://example.com/docs)'),/>Reference ↗<\/a
 assert.match(render('https://example.com/Nova'),/<a /);assert.doesNotMatch(render('https://example.com/Nova'),/<button/);
 assert.match(render('https://example.com/a_(b).'),/href="https:\/\/example.com\/a_\(b\)"/);
 assert.match(render('**Admin**'),/<strong>Admin<\/strong>/);
+const report='/Users/Admin/My files/sapi_team.pdf', citation=`:codex-file-citation{path="${report}" purpose="output"}`;
+assert.match(render(citation),/data-file-link="\/Users\/Admin\/My files\/sapi_team.pdf">sapi_team.pdf<\/button>/);
+for (const message of [`[PDF](<${report}>) ${citation}`, `${citation}\n\n[PDF](<${report}>)`, `${citation} ${citation}`]) {
+  const html=render(message);
+  assert.equal((html.match(/data-file-link=/g)||[]).length,1);assert.doesNotMatch(html,/:codex-file-citation/);
+}
+assert.equal(render('`'+citation+'`'),'<code>'+esc(citation)+'</code>');
+assert.equal(render(':codex-file-citation{path="javascript:alert(1)"}'),esc(':codex-file-citation{path="javascript:alert(1)"}'));
+assert.equal(render(':codex-file-citation{purpose="output"}'),esc(':codex-file-citation{purpose="output"}'));
+assert.match(render(String.raw`:codex-file-citation{purpose="output" path="/tmp/sapi\_team.pdf"}`),/data-file-link="\/tmp\/sapi_team.pdf"/);
+assert.match(render(':codex-file-citation{path="file:///tmp/report.pdf"}'),/data-file-link="file:\/\/\/tmp\/report.pdf"/);
+assert.doesNotMatch(render(':codex-file-citation{path="/tmp/<img src=x onerror=alert(1)>.pdf"}'),/<img/);
+assert.match(render(String.raw`:codex-file-citation{path="/tmp/a\"b.pdf"}`),/data-file-link="\/tmp\/a&quot;b.pdf"/);
+sandbox.state.agents.push({id:'retired',name:'Old',retired:true});assert.equal(render('@Old'),'<button>retired</button>');
+sandbox.state.agents.push({id:'other',name:'Nova'});assert.equal(render('@Nova'),'@Nova');sandbox.state.agents.pop();
+const app=fs.readFileSync('web/shell/app.js','utf8'), host={innerHTML:''};
+Object.assign(sandbox,{$:()=>host,selected:()=>({id:'sapi'}),getMessages:()=>[{role:'assistant',time:'now',text:`[PDF](<${report}>)\n\n${citation}`}],avatar:()=>'',renderAttachment:()=>{}});
+vm.runInContext(app.slice(app.indexOf('function renderConversation()'),app.indexOf('const actions =')),sandbox);sandbox.renderConversation();
+assert.equal((host.innerHTML.match(/data-file-link=/g)||[]).length,1);assert.doesNotMatch(host.innerHTML,/:codex-file-citation/);
 console.log('Chat links and local filepath references passed');
 const bridge=fs.readFileSync('web/shell/bridge.js','utf8');
 sandbox.online=true;

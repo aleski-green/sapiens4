@@ -108,8 +108,11 @@ class Workspace:
                 tab['zoom'] = value
             elif action == 'bookmark':
                 bookmarks = ws.setdefault('bookmarks', [])
-                if not any(b['url'] == tab['url'] for b in bookmarks):
-                    bookmarks.append(dict(id=uuid4().hex, **{k: tab[k] for k in ('url', 'title', 'path') if k in tab}))
+                saved = next((b for b in bookmarks if b['url'] == tab['url']), None)
+                if saved is None:
+                    saved = dict(id=uuid4().hex, **{k: tab[k] for k in ('url', 'title', 'path') if k in tab})
+                    bookmarks.append(saved)
+                saved['tab_id'] = tab['id']
             elif action in ('reload', 'back', 'forward'):
                 tab['command'] = dict(seq=uuid4().hex, action=action)
             else:

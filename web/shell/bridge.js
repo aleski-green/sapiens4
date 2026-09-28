@@ -19,14 +19,6 @@ const statusNames = {queued:'Queued',running:'Running',done:'Completed',warning:
   interrupted:'Interrupted',conflict:'Needs review',cancelled:'Dismissed'};
 const displayTime = value => new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 const originalConversation = renderConversation;
-const originalSidebar = renderSidebar;
-renderSidebar = function() {
-  originalSidebar();
-  for (const row of $('#agent-list').querySelectorAll('[data-agent]')) {
-    if (state.agents.find(a => a.id === row.dataset.agent)?.retired) row.remove();
-  }
-  $('#agent-count').textContent = String(state.agents.filter(a => !a.retired).length).padStart(2,'0');
-};
 
 function preferences() {
   return {selected:state.selected,panel:state.panel,scope:state.scope,panes:state.panes,
@@ -118,7 +110,6 @@ function applySnapshot(snapshot) {
   state.agents = snapshot.agents.map(a => ({...old.get(a.id),...a,kind:'sapi',scope:'personal',
     autonomy:'assist',status:'online',lastActivity:Date.parse(a.created),preview:'Ready for your message.'}));
   state.messages = {};
-  pending.clear();
   for (const turn of snapshot.turns) {
     const messages = state.messages[turn.agent] ||= [];
     const timestamp = Date.parse(turn.created);
@@ -132,7 +123,6 @@ function applySnapshot(snapshot) {
       a.preview = (['done','warning'].includes(turn.status) && turn.output !== null ? chatResult(turn).text : turn.input).replace(/\s+/g,' ').slice(0,150);
     }
     if (a && turn.status === 'running') a.status = 'busy';
-    if (turn.status === 'queued' || turn.status === 'running') pending.add(turn.agent);
   }
   for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp);
   if (!state.agents.some(a => a.id === state.selected) ||
@@ -142,8 +132,6 @@ function applySnapshot(snapshot) {
     $('#message-input').value = state.drafts[state.selected] || '';
     renderTabs(); renderWorkspace();
   }
-  state.logs = eventRows.slice().reverse().map(e => ({agent:e.agent,time:displayTime(e.time),title:e.kind,detail:e.detail}));
-  state.computer.owner = snapshot.computer.owner;
 }
 
 renderGlobal = function() {
@@ -153,7 +141,6 @@ renderGlobal = function() {
   $('#resource-owner').textContent = owner ? `In use · ${agent(owner).name}` : live.computer.built ? 'Blindly4 · Available' : 'Blindly4 · Build required';
   $('#resource-status').classList.toggle('idle', !owner);
   $('#resource-status').classList.remove('paused');
-  $('#workspace-owner').innerHTML = `${mention(workspaceOwner)}<span>’s browser</span>`;
 };
 
 renderAgentHeader = function() {
@@ -176,9 +163,6 @@ renderConversation = function() {
   const bottom = state.panel === 'chat' && (changedView || host.scrollHeight - host.scrollTop - host.clientHeight < 80);
   if (state.panel === 'chat') {
     originalConversation();
-    host.querySelector('.day-divider').textContent = 'CONVERSATION';
-    host.querySelector('.suggestions')?.remove();
-    host.querySelector('.typing')?.remove();
     host.querySelectorAll('.message').forEach((node,i) => {
       const message=getMessages(state.selected)[i];
       const request = message?.requestTurn, requestState = request && requestStatus(request);
@@ -381,22 +365,11 @@ document.addEventListener('submit', async e => {
   finally { button.disabled = false; }
 }, true);
 
-// Apply Sapiens4 branding.
-$('.wordmark').innerHTML = '<span class="brand-name">Sapiens4</span>';
-$('.wordmark').setAttribute('aria-label', 'Sapiens4 home');
 $('.wordmark').addEventListener('click', () => {
   const main = state.agents.find(isMainSapi);
   if (main) openChat(main.id);
 });
 
-// Configure workspace controls.
-$('#attach-button').setAttribute('aria-label', 'Add attachment');
-$('#profile-button').innerHTML = 'Admin <span aria-hidden="true">⌄</span>';
-$('#profile-button').setAttribute('aria-label','Admin settings');
-$('.composer-hint').remove();
-$('[data-scope="groups"]').disabled = true;
-$('[data-scope="groups"]').title = 'Groups are coming in the next iteration';
-$('#message-input').maxLength = 16000;
 $('#message-input').value = state.drafts[state.selected] || '';
 $('#message-input').addEventListener('input', () => {state.drafts[state.selected] = $('#message-input').value; save();});
 

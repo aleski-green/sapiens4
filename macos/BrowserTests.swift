@@ -58,7 +58,7 @@ struct BrowserTests {
         let html = folder.appendingPathComponent("page.html")
         try "<title>Live title</title><script>document.title='Changed title'</script><h1>Web page</h1>".write(to:html,atomically:true,encoding:.utf8)
         tab["url"] = html.absoluteString; tab["command"] = ["seq":"three","action":"navigate"]
-        sync(); wait { !native.view.isLoading && !native.awaitingCommit }
+        sync(); wait { !native.view.isLoading && !native.awaitingCommit && native.view.title == "Changed title" }
         check(native.view.title == "Changed title","HTML title reflects script updates")
         wait { (js(shell,"events.some(e=>e.title==='Changed title' && e.url.endsWith('/page.html'))") as? Bool) == true }
         let pdf = folder.appendingPathComponent("report.pdf")
@@ -77,12 +77,24 @@ struct BrowserTests {
             wait { integrated.active != nil && integrated.active?.view.isLoading == false }
             let page = integrated.active!
             check(page.document?.lastPathComponent == "integration.md", "App API opens native file tab")
+            _ = js(shell, "document.querySelector('#workspace-menu').click();document.querySelector('#open-file').click()")
+            wait { window.attachedSheet is NSOpenPanel }
+            let picker = window.attachedSheet as! NSOpenPanel
+            check(picker.directoryURL?.standardizedFileURL == page.document?.deletingLastPathComponent().standardizedFileURL, "File picker starts in the selected Sapi workspace")
+            check(picker.showsHiddenFiles, "File picker exposes files inside the hidden workspace root")
+            picker.cancel(nil); wait { window.attachedSheet == nil }
+            _ = js(shell, "document.querySelector('#add-tab').click()")
+            wait { integrated.active !== page && integrated.active?.view.url?.absoluteString == "about:blank" }
+            check(js(shell, "!document.querySelector('#modal').open && document.activeElement.id==='browser-address' && document.activeElement.value==='' && document.querySelectorAll('#browser-tabs [data-tab]').length===2") as? Bool == true, "Plus opens a focused blank tab without a menu or discarding existing tabs")
+            _ = js(shell, "document.querySelector('.workspace-tab.active [data-close-tab]').click()")
+            wait { integrated.active === page && integrated.tabs.count == 1 }
             _ = js(shell, "document.querySelector('[data-zoom=\"0.1\"]').click()")
             wait { page.view.pageZoom > 1 }
-            _ = js(shell, "document.querySelector('[data-browser-action=bookmark]').click()")
+            _ = js(shell, "document.querySelector('#browser-tabs [data-star-tab]').click()")
+            wait { js(shell, "document.querySelector('#browser-tabs [data-star-tab]').getAttribute('aria-pressed')==='true'") as? Bool == true }
             _ = js(shell, "document.querySelector('#workspace-menu').click()")
             wait { page.view.isHidden }
-            _ = js(shell, "document.querySelector('#close-modal').click()")
+            _ = js(shell, "document.querySelector('#workspace-menu').click()")
             wait { !page.view.isHidden }
             func navigate(_ address: String) {
                 let encoded = String(data: try! JSONSerialization.data(withJSONObject: [address]), encoding: .utf8)!
@@ -115,6 +127,7 @@ struct BrowserTests {
             check(js(page.view,"getComputedStyle(document.body).backgroundColor") as? String == "rgb(0, 0, 0)", "Remote plain text has black background")
             _ = js(shell,"document.querySelector('[data-close-tab]').click()")
             wait { integrated.tabs.isEmpty }
+            check(js(shell, "document.querySelector('[data-action=\"new-tab\"]').textContent==='New tab'") as? Bool == true, "An empty workspace shows one new-tab placeholder")
             shell.configuration.userContentController.removeScriptMessageHandler(forName:"browser")
             print("App integration passed: host bridge, controls, bookmarks, modal overlay, redirect URL, frame-denying website, back/forward, close")
         }

@@ -62,13 +62,3 @@ class Registry:
     def assign(self, agent, parent):
         entry = self.directory()[agent.agid]
         self.register(agent.agid, parent=parent, scope=entry['scope'])
-
-    def manages(self, manager, agent):
-        directory = self.directory()
-        parent, seen = directory.get(agent.agid, {}).get('parent'), set()
-        while parent and parent not in seen:
-            if parent == manager.agid:
-                return True
-            seen.add(parent)
-            parent = directory.get(parent, {}).get('parent')
-        return False

@@ -83,7 +83,8 @@ final class Browser: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
               ["/workspace", "/workspace/", "/workspace/index.html"].contains(source.path),
               let data = message.body as? [String: Any] else { return }
         if data["pickFile"] as? Bool == true, let owner = data["owner"] as? String, let window = shell?.window {
-            let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = true
+            let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = true; panel.showsHiddenFiles = true
+            if let directory = data["directory"] as? String, directory.hasPrefix("/") { panel.directoryURL = URL(fileURLWithPath: directory, isDirectory: true) }
             panel.beginSheetModal(for: window) { result in
                 if result == .OK { for url in panel.urls { self.emit(["owner": owner, "file": url.path]) } }
             }

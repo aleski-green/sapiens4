@@ -2,17 +2,19 @@
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const uid = () => 'id-' + Math.random().toString(36).slice(2, 10);
 
 let state = makeInitialState(bootstrap);
 let workspaceOwner = state.selected;
 function syncWorkspace(){
   workspaceOwner=state.selected;
   const ws=state.workspaces[workspaceOwner] || {tabs:[]};
-  state.tabs=ws.tabs;state.activeTab=ws.activeTab || null;
+  // Old UI placeholders are unnecessary beside real or explicitly opened tabs.
+  state.tabs=ws.tabs.filter(t=>t.url!=='about:blank' || t.path || !/^(blank-|id-)/.test(t.id));
+  if(!state.tabs.length)state.tabs=ws.tabs;
+  state.activeTab=state.tabs.some(t=>t.id===ws.activeTab)?ws.activeTab:state.tabs[0]?.id || null;
 }
 
-let search = '', toastTimer, pending = new Set();
+let search = '', toastTimer;
 const agent = id => state.agents.find(a=>a.id===id) || state.agents[0];
 const selected = () => agent(state.selected);
 const isMainSapi = a => a.id===state.mainSapiId;
@@ -29,7 +31,7 @@ function openChat(id){
   state.selected=id;state.panel='chat';state.panes.chat=true;a.unread=false;
   if(state.scope!=='all')state.scope='sapis';
   search='';$('#agent-search').value='';$('#message-input').value=state.drafts[id]||'';
-  closeModal();render();$('#conversation-body').scrollTop=$('#conversation-body').scrollHeight;
+  closeModal();setBrowserMenu();render();$('#conversation-body').scrollTop=$('#conversation-body').scrollHeight;
 }
 
 function toast(message){$('#toast').textContent=message;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),3200);}
@@ -56,9 +58,9 @@ function renderPanes(){
 }
 
 function renderSidebar(){
-  $('#agent-count').textContent=String(state.agents.length).padStart(2,'0');
+  $('#agent-count').textContent=String(state.agents.filter(a=>!a.retired).length).padStart(2,'0');
   $$('[data-scope]').forEach(b=>{b.classList.toggle('active',b.dataset.scope===state.scope);b.setAttribute('aria-pressed',b.dataset.scope===state.scope);});
-  const list=state.agents.filter(a=>isMainSapi(a)||(state.scope!=='groups'&&`${a.name} ${a.role}`.toLowerCase().includes(search.toLowerCase())))
+  const list=state.agents.filter(a=>!a.retired&&(isMainSapi(a)||(state.scope!=='groups'&&`${a.name} ${a.role}`.toLowerCase().includes(search.toLowerCase()))))
     .sort((a,b)=>Number(isMainSapi(b))-Number(isMainSapi(a))||(b.lastActivity||0)-(a.lastActivity||0));
   $('#agent-list').innerHTML=list.map(a=>`<button class="agent-row ${a.id===state.selected?'active':''} ${isMainSapi(a)?'main-sapi-row':''}" data-agent="${esc(a.id)}" aria-pressed="${a.id===state.selected}">${avatar(a,isMainSapi(a)?'main-sapi-avatar':'',true)}<span class="agent-row-copy"><span class="agent-row-name">${esc(a.name)}<small>${esc(new Date(a.lastActivity).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false}))}</small></span><p>${esc(a.preview)}</p></span>${a.unread&&!isMainSapi(a)?'<span class="unread-dot"></span>':''}</button>`).join('');
 }
@@ -70,11 +72,11 @@ function renderConversation() {
   const host = $('#conversation-body'), a = selected();
   $('#composer-area').hidden = state.panel !== 'chat';
   host.innerHTML = '<div class="day-divider">CONVERSATION</div>' + getMessages(a.id).map(m =>
-    `<div class="message ${m.role==='user'?'user':''}"><div class="message-meta">${m.role==='assistant'?avatar(a,'mini'):'<span>↗</span>'}<strong>${m.role==='user'?'You':mention(a.id)}</strong><time>${esc(m.time)}</time></div><div class="message-bubble">${m.text.split('\n\n').map(p=>`<p>${formatText(p).replace(/\n/g,'<br>')}</p>`).join('')}</div></div>`).join('');
+    `<div class="message ${m.role==='user'?'user':''}"><div class="message-meta">${m.role==='assistant'?avatar(a,'mini'):'<span>↗</span>'}<strong>${m.role==='user'?'You':mention(a.id)}</strong><time>${esc(m.time)}</time></div><div class="message-bubble">${formatText(m.text).split('\n\n').map(p=>`<p>${p.replace(/\n/g,'<br>')}</p>`).join('')}</div></div>`).join('');
   renderAttachment();
 }
 
-const actions = {'new-tab':addTabDialog};
+const actions = {'new-tab':openNewTab};
 
 document.addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;const d=b.dataset;
@@ -105,6 +107,5 @@ $('#agent-search').addEventListener('input',e=>{search=e.target.value;renderSide
 
 $('#message-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat(e.target.value);}});
 $('.wordmark').addEventListener('click',e=>{e.preventDefault();state.panes={sidebar:true,chat:true,workspace:true};renderPanes();save();});
-$('#workspace-menu').addEventListener('click',showBookmarks);
 
 document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&!$('#modal').open){e.preventDefault();state.panes.sidebar=true;renderPanes();save();$('#agent-search').focus();}});
