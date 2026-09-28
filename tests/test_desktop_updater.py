@@ -12,6 +12,8 @@ import urllib.error
 import unittest
 from unittest.mock import patch, Mock
 
+from macos import install
+
 spec = importlib.util.spec_from_file_location('desktop_updater', Path(__file__).resolve().parents[1] / 'macos/updater.py')
 updater = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(updater)
@@ -30,6 +32,85 @@ class DesktopUpdaterTests(unittest.TestCase):
         updater.atomic(self.home / 'config.json', dict(data=str(self.data), legacy_root='/dev'))
         updater.atomic(self.home / 'current.json', self.old)
         self.manager = updater.Manager(self.home)
+
+    def test_first_launch_after_old_updater_install_cleans_existing_caches(self):
+        caches = [self.home / 'releases' / name / '.build/macos/module-cache' for name in ('old', 'new')]
+        for running in (True, False):
+            with self.subTest(server_already_running=running):
+                for cache in caches:
+                    cache.mkdir(parents=True)
+                    (cache / 'module.pcm').write_text('left by previous updater')
+                with patch.object(updater, 'healthy', return_value=running), patch.object(self.manager, 'spawn') as spawn:
+                    self.manager.launch()
+                if running:
+                    spawn.assert_not_called()
+                else:
+                    spawn.assert_called_once_with(self.old)
+                self.assertTrue(all(not cache.exists() for cache in caches))
+                self.assertEqual((self.data / 'agent.txt').read_text(), 'original')
+
+    def test_cache_cleanup_preserves_binaries_symlinks_and_user_files(self):
+        caches = ['.build/macos/module-cache', 'blindly4/.build/ModuleCache',
+                  'blindly4/.build/arm64-apple-macosx/release/ModuleCache',
+                  'blindly4/.build/arm64-apple-macosx/debug/ModuleCache']
+        keep = ['.build/macos/Sapiens4.app/Contents/MacOS/Sapiens4',
+                'blindly4/.build/arm64-apple-macosx/release/blindly4',
+                '.sapiens4/workspaces/Notes.md', '.sapiens4/ModuleCache/keep']
+        for name in [*(name + '/module.pcm' for name in caches), *keep]:
+            path = self.home / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(name)
+        binary = self.home / keep[1]
+        binary.chmod(0o755)
+        link = self.home / 'blindly4/.build/release'
+        link.symlink_to('arm64-apple-macosx/release')
+        updater.clean_build_caches(self.home)
+        updater.clean_build_caches(self.home)  # Reinstallation is harmless.
+        self.assertTrue(all(not (self.home / name).exists() for name in caches))
+        for name in keep:
+            self.assertEqual((self.home / name).read_text(), name)
+        self.assertTrue(link.is_symlink())
+        self.assertEqual((link / 'blindly4').stat().st_mode & 0o777, 0o755)
+
+    def test_cache_cleanup_never_follows_links_outside_release(self):
+        outside = self.home / 'outside'
+        cache = outside / 'macos/module-cache'
+        cache.mkdir(parents=True)
+        (cache / 'keep').write_text('keep')
+        root = self.home / 'release'
+        root.mkdir()
+        (root / '.build').symlink_to(outside)
+        updater.clean_build_caches(root)
+        self.assertTrue((cache / 'keep').is_file())
+        (root / '.build').unlink()
+        (root / '.build/macos').mkdir(parents=True)
+        (root / '.build/macos/module-cache').symlink_to(cache)
+        updater.clean_build_caches(root)
+        self.assertFalse((root / '.build/macos/module-cache').is_symlink())
+        self.assertTrue((cache / 'keep').is_file())
+        alias = self.home / 'release-link'
+        alias.symlink_to(outside)
+        updater.clean_build_caches(alias)
+        self.assertTrue((cache / 'keep').is_file())
+
+    def test_installer_cleans_checkout_and_old_releases_only_after_success(self):
+        checkout = self.home / 'checkout'
+        roots = [checkout, self.home / 'releases/old']
+        caches = [root / '.build/macos/module-cache' for root in roots]
+        for cache in caches:
+            cache.mkdir(parents=True)
+            (cache / 'module.pcm').write_text('cache')
+        with patch.object(install, 'ROOT', checkout), patch.object(install, 'HOME', self.home), \
+                patch.object(install, 'APP', self.home / 'Sapiens4.app'), \
+                patch.object(install.shutil, 'copy2'), patch('builtins.print'):
+            with patch.object(install.subprocess, 'run', side_effect=[Mock(), Mock(), OSError('copy failed')]):
+                with self.assertRaisesRegex(OSError, 'copy failed'):
+                    install.install()
+            self.assertTrue(all(cache.exists() for cache in caches))
+            with patch.object(install.subprocess, 'run'):
+                install.install()
+        self.assertTrue(all(not cache.exists() for cache in caches))
+        self.assertEqual((self.data / 'agent.txt').read_text(), 'original')
 
     def test_sdk_probe_skips_incompatible_sdk(self):
         selected = self.home / 'MacOSX26.sdk'
@@ -143,6 +224,10 @@ class DesktopUpdaterTests(unittest.TestCase):
         self.assertFalse(updater.busy({'jobs': [{'status': 'done'}]}))
 
     def test_success_backs_up_and_activates_after_commit(self):
+        caches = [self.home / 'releases' / name / '.build/macos/module-cache' for name in ('old', 'new')]
+        for cache in caches:
+            cache.mkdir(parents=True)
+            (cache / 'module.pcm').write_text('cache')
         activation = self.home / 'activate-test'
         def spawn(release, paused=False):
             self.assertTrue(paused)
@@ -156,6 +241,7 @@ class DesktopUpdaterTests(unittest.TestCase):
         self.assertEqual(self.manager.current(), self.new)
         self.assertEqual((self.data / 'agent.txt').read_text(), 'original')
         self.assertFalse((self.home / 'transaction.json').exists())
+        self.assertTrue(all(not cache.exists() for cache in caches))
 
     def test_failed_start_restores_data_and_old_release(self):
         def spawn(release, paused=False):
