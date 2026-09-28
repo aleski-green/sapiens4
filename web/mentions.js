@@ -1,17 +1,12 @@
 // One entity catalog powers text links and composer suggestions.
 function mentionEntities() {
   const entities = state.agents.map(a => ({type:a.kind === 'group' ? 'group' : 'sapi',id:a.id,name:a.name,owner:a.id}));
-  for (const [owner, info] of Object.entries(live.orchestration || {})) {
-    for (const task of [...info.tasks, ...info.past_tasks]) {
-      if (task.name) entities.push({type:'task',id:task.id,name:task.name,tag:task.tag,slug:task.slug,aliases:task.aliases || [],owner,past:info.past_tasks.includes(task),title:task.title});
-    }
-  }
   entities.push(...(live.artifacts || []));
   return entities;
 }
 function entityLink(entity, label=entity.name) {
   if (entity.type === 'artifact') return `<button type="button" class="entity-mention" data-artifact-link="${esc(entity.tag)}" data-artifact-owner="${esc(entity.owner)}" aria-label="Open artifact ${esc(entity.name)}">@${esc(label)}</button>`;
-  return entity.type === 'task' ? `<button type="button" class="entity-mention" data-task-link="${esc(entity.id)}" data-task-owner="${esc(entity.owner)}" aria-label="Open task ${esc(entity.name)}">@${esc(label)}</button>` : mention(entity.id);
+  return mention(entity.id);
 }
 function formatMentions(value) {
   const text = String(value ?? '');
@@ -78,8 +73,8 @@ function updateMentions() {
 }
 function drawMentions() {
   let menu=$('#mention-suggestions');
-  if (!menu) { menu=document.createElement('div');menu.id='mention-suggestions';menu.className='mention-suggestions';menu.setAttribute('role','listbox');menu.setAttribute('aria-label','Sapis, groups, tasks and artifacts');$('#chat-form').append(menu); }
-  menu.innerHTML=mentionChoices.length ? mentionChoices.map((e,i) => `<button type="button" role="option" id="mention-option-${i}" aria-selected="${i===mentionIndex}" data-mention-choice="${i}"><strong>@${esc(e.name)}</strong><small>${esc(e.type === 'task' ? `Task · ${agent(e.owner).name}${e.past ? ' · Past' : ''}` : e.type === 'artifact' ? `Artifact · ${agent(e.owner).name}` : e.type === 'group' ? 'Group' : 'Sapi')}</small></button>`).join('') : '<div class="empty">No matching Sapis, groups, tasks or artifacts.</div>';
+  if (!menu) { menu=document.createElement('div');menu.id='mention-suggestions';menu.className='mention-suggestions';menu.setAttribute('role','listbox');menu.setAttribute('aria-label','Sapis, groups and artifacts');$('#chat-form').append(menu); }
+  menu.innerHTML=mentionChoices.length ? mentionChoices.map((e,i) => `<button type="button" role="option" id="mention-option-${i}" aria-selected="${i===mentionIndex}" data-mention-choice="${i}"><strong>@${esc(e.name)}</strong><small>${esc(e.type === 'artifact' ? `Artifact · ${agent(e.owner).name}` : e.type === 'group' ? 'Group' : 'Sapi')}</small></button>`).join('') : '<div class="empty">No matching Sapis, groups or artifacts.</div>';
   const input=$('#message-input');input.setAttribute('aria-controls',menu.id);input.setAttribute('aria-expanded','true');
   if (mentionChoices.length) input.setAttribute('aria-activedescendant',`mention-option-${mentionIndex}`);
 }
@@ -102,15 +97,6 @@ document.addEventListener('click',async e => {
       await api(`/api/agents/${entity.owner}/control`, 'POST', {op:'workspace_open',artifact:entity.tag});
       await refresh();openChat(entity.owner);state.panes.workspace=true;render();
     } catch (error) {toast(error.message);}
-    return;
-  }
-  const link=e.target.closest('[data-task-link]');
-  if (link) {
-    e.preventDefault();e.stopImmediatePropagation();closeMentions();
-    const entity=mentionEntities().find(t=>t.type==='task' && t.id===link.dataset.taskLink && t.owner===link.dataset.taskOwner);
-    if (!entity) return;
-    openChat(entity.owner);state.panel='tasks';workViews.tasks=entity.past?'past':'ongoing';renderConversation();save();
-    taskDialog(entity.owner,entity.id);
     return;
   }
   if (e.target.id==='message-input') updateMentions(); else closeMentions();

@@ -1,3 +1,5 @@
+> Historical extraction record. The later chat-only refactor removes scheduling, tasks, structured memory, adaptive behavior and the memory-tree UI described below. See [current reference](reference.md).
+
 # Runtime source boundaries
 
 Sapiens4 owns the code it executes. Blindly4 remains its only Git submodule.

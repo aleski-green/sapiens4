@@ -70,20 +70,20 @@ class RecoveryTest(IntegrationFixture):
             for i in range(3):
                 instance._consume_event(dict(type='item.completed',item=dict(id=str(i),type='command_execution',command='read',aggregated_output='observed')))
             self.fail('Tool execution must stop at the bound')
-        job=service.submit(agent.agid,dict(text='Read the channel'))['id']
+        turn=service.submit(agent.agid,dict(text='Read the channel'))['id']
         with patch('sapiens.runtime.CodexLLM.complete',run):asyncio.run(agent.run())
-        state=next(j for j in agent.state['jobs'] if j['id']==job)
+        state=next(j for j in agent.state['turns'] if j['id']==turn)
         self.assertEqual(state['status'],'done') # SDK terminal state; warning is a result classification.
         self.assertTrue(state['warning'])
         service._sync(agent)
-        projected=next(j for j in service.snapshot()['jobs'] if j['id']==job)
+        projected=next(j for j in service.snapshot()['turns'] if j['id']==turn)
         self.assertEqual(projected['status'],'warning')
         self.assertIn('@art-md',projected['output'])
         self.assertIn('unverified',projected['output'])
-        self.assertEqual(service.work.blocking(agent),[])
+        self.assertFalse(any(t['status'] in {'queued','running','budget_blocked'} for t in agent.state['turns']))
         self.assertEqual(state['budget_units'],agent.limits.tokens_per_call)
         service=self.restart(service,start_worker=False)
-        projected=next(j for j in service.snapshot()['jobs'] if j['id']==job)
+        projected=next(j for j in service.snapshot()['turns'] if j['id']==turn)
         self.assertEqual(projected['status'],'warning')
 
     def test_no_artifact_does_not_claim_warning_deliverable(self):

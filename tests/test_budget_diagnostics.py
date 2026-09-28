@@ -18,20 +18,22 @@ class DiagnosticsTest(IntegrationFixture):
         agent = service._agent(service.hierarchy.main)
         other = service.create_agent({'name': 'Nova', 'role': 'Assistant'})['id']
         timeout = agent.submit('chat', 'Investigate')
-        blocked = agent.submit('learning')
+        agent.cancel(timeout)
+        blocked = agent.submit('chat', 'Waiting')
+        agent.cancel(blocked)
         limited = agent.submit('chat', 'Check')
         with agent.store.transaction() as state:
-            for job in state['jobs']:
-                if job['id'] == timeout:
-                    job.update(status='cancelled', error='TimeoutError: Codex exceeded 120s\nCLI noise')
-                elif job['id'] == blocked:
-                    job.update(status='budget_blocked', error='Budget allowance unavailable')
+            for turn in state['turns']:
+                if turn['id'] == timeout:
+                    turn.update(status='cancelled', error='TimeoutError: Codex exceeded 120s\nCLI noise')
+                elif turn['id'] == blocked:
+                    turn.update(status='budget_blocked', error='Budget allowance unavailable')
                 else:
-                    job.update(status='failed', error='RuntimeError: Tool-step limit reached')
+                    turn.update(status='failed', error='RuntimeError: Tool-step limit reached')
             state['budgets'][agent._sprint(datetime.now(timezone.utc))] = dict(spent=agent.limits.tokens_per_sprint - 150000, reserved=0)
-        save_record(agent, dict(id='unknown-timeout', job=timeout, flow='chat', status='failed',
+        save_record(agent, dict(id='unknown-timeout', turn=timeout, flow='chat', status='failed',
             time=datetime.now(timezone.utc).isoformat(), usage=None, budget_units=100000))
-        save_record(agent, dict(id='active', job='still-running', status='running',
+        save_record(agent, dict(id='active', turn='still-running', status='running',
             time=datetime.now(timezone.utc).isoformat(), usage=None))
         control = service.orchestration.control
         first = control(other, dict(op='budget_diagnostics', target=agent.agid, limit=1))
@@ -42,7 +44,6 @@ class DiagnosticsTest(IntegrationFixture):
         self.assertNotIn('CLI noise', first['issues'][0]['error'])
         self.assertEqual(first['agents'][0]['unknown_usage_attempts'], 1)
         self.assertEqual(first['agents'][0]['fallback_units_retained_history'], 100000)
-        self.assertEqual(first['agents'][0]['admission']['learning']['shortfall_units'], agent.limits.tokens_per_call * 3 - 150000)
         self.assertEqual(first['agents'][0]['admission']['chat']['shortfall_units'], max(0, agent.limits.tokens_per_call - 150000))
         second = control(other, dict(op='budget_diagnostics', target=agent.agid, offset=1, limit=2))
         self.assertEqual(len(second['issues']), 2)
@@ -83,11 +84,11 @@ class DiagnosticsTest(IntegrationFixture):
         def complete(instance, prompt):
             service.workspace.save(agent, dict(name='budget-findings.md', content='# Partial findings'))
             raise TimeoutError('Codex exceeded 120s')
-        job = service.submit(agent.agid, dict(text='Inspect budgets'))['id']
+        turn = service.submit(agent.agid, dict(text='Inspect budgets'))['id']
         with patch('sapiens.runtime.CodexLLM.complete', complete):
             asyncio.run(agent.run())
         service._sync(agent)
-        result = next(j for j in service.snapshot()['jobs'] if j['id'] == job)
+        result = next(j for j in service.snapshot()['turns'] if j['id'] == turn)
         self.assertEqual(result['status'], 'warning')
         self.assertIn('@art-md', result['output'])
         self.assertIn('time limit', result['output'])

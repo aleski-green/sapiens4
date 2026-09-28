@@ -14,7 +14,7 @@ let uploading = 0;
 const nameRule = /^[A-Z][A-Za-z0-9_.:#+|()&$^\-]*$/;
 const nameHelp = 'Start with A–Z. Letters, numbers, and - _ . : # + | ( ) & $ ^ are allowed. No spaces.';
 const attention = new Set(['failed','interrupted','conflict','budget_blocked']);
-const blocksChat = job => ['queued','running','budget_blocked'].includes(job.status) && !(['learning','team_review'].includes(job.flow) && attention.has(job.status));
+const blocksChat = turn => ['queued','running','budget_blocked'].includes(turn.status);
 const statusNames = {queued:'Queued',running:'Running',done:'Completed',warning:'Warning',failed:'Failed',
   interrupted:'Interrupted',conflict:'Needs review',budget_blocked:'Budget blocked',cancelled:'Dismissed'};
 const displayTime = value => new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
@@ -31,7 +31,7 @@ renderSidebar = function() {
 function preferences() {
   storeWorkspace();
   return {selected:state.selected,panel:state.panel,scope:state.scope,panes:state.panes,
-    workspaces:state.workspaces,workspace_revision:workspaceRevision,drafts:state.drafts,work_views:workViews,
+    workspaces:state.workspaces,workspace_revision:workspaceRevision,drafts:state.drafts,
     attachment_drafts:Object.fromEntries(Object.entries(attachmentDrafts).map(([id, items]) => [id, items.map(a => a.id)]))};
 }
 save = function() {
@@ -63,9 +63,9 @@ async function flushPreferences() {
 }
 getMessages = id => state.messages[id] || [];
 
-function jobActions(job) {
-  if (attention.has(job.status)) return `<div class="actions"><button class="button" data-live-job="retry" data-id="${esc(job.id)}" data-owner="${esc(job.agent)}">Retry</button><button class="button" data-live-job="cancel" data-id="${esc(job.id)}" data-owner="${esc(job.agent)}">Dismiss</button></div>`;
-  if (job.status === 'queued') return `<div class="actions"><button class="button" data-live-job="cancel" data-id="${esc(job.id)}" data-owner="${esc(job.agent)}">Cancel queued job</button></div>`;
+function turnActions(turn) {
+  if (attention.has(turn.status)) return `<div class="actions"><button class="button" data-live-turn="retry" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Retry</button><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Dismiss</button></div>`;
+  if (turn.status === 'queued') return `<div class="actions"><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Cancel queued turn</button></div>`;
   return '';
 }
 
@@ -79,21 +79,21 @@ document.addEventListener('click', e => {
   document.getElementById(button.getAttribute('aria-controls')).hidden = !expanded;
 });
 
-function chatResult(job) {
-  const text = job.output || '';
-  if (job.status !== 'warning') return {text};
+function chatResult(turn) {
+  const text = turn.output || '';
+  if (turn.status !== 'warning') return {text};
   // Only split the host-generated limit notice; preserve ordinary Sapi answers.
   const notice = /^Warning — partial result\.\n\n(Saved: [\s\S]+?)\n\n(The (?:tool|time) limit was reached after [\s\S]+)$/.exec(text);
-  return {text:notice ? notice[1] : text, warning:notice ? notice[2] : job.error || 'Partial result; review before relying on it.'};
+  return {text:notice ? notice[1] : text, warning:notice ? notice[2] : turn.error || 'Partial result; review before relying on it.'};
 }
 
-function requestStatus(job) {
-  if (!attention.has(job.status) && job.status !== 'cancelled') return null;
-  const error = job.error || '';
+function requestStatus(turn) {
+  if (!attention.has(turn.status) && turn.status !== 'cancelled') return null;
+  const error = turn.error || '';
   const reason = /TimeoutError|time limit|exceeded \d+(?:\.\d+)?s/i.test(error) ? 'Timed out' :
     /tool-step limit|tool limit/i.test(error) ? 'Tool limit reached' : null;
-  return {label: reason ? reason + (job.status === 'cancelled' ? ' · Dismissed' : '') : statusNames[job.status],
-    detail: error.split('\n')[0] || (job.status === 'cancelled' ? 'This request was dismissed.' : 'This request needs attention.')};
+  return {label: reason ? reason + (turn.status === 'cancelled' ? ' · Dismissed' : '') : statusNames[turn.status],
+    detail: error.split('\n')[0] || (turn.status === 'cancelled' ? 'This request was dismissed.' : 'This request needs attention.')};
 }
 
 function applySnapshot(snapshot) {
@@ -108,48 +108,20 @@ function applySnapshot(snapshot) {
     autonomy:'assist',status:'online',lastActivity:Date.parse(a.created),preview:'Ready for your message.'}));
   state.messages = {};
   pending.clear();
-  for (const job of snapshot.jobs) {
-    const messages = state.messages[job.agent] ||= [];
-    const timestamp = Date.parse(job.created);
-    if (['chat','computer'].includes(job.flow)) messages.push({role:'user',text:job.input,time:displayTime(job.created),timestamp,attachments:job.attachments,requestJob:job});
-    if (['chat','computer','team_review'].includes(job.flow) && ['done','warning'].includes(job.status) && job.output !== null) {
-      messages.push({role:'assistant',...chatResult(job),time:displayTime(job.created),timestamp,jobId:job.id});
+  for (const turn of snapshot.turns) {
+    const messages = state.messages[turn.agent] ||= [];
+    const timestamp = Date.parse(turn.created);
+    if (['chat','computer'].includes(turn.flow)) messages.push({role:'user',text:turn.input,time:displayTime(turn.created),timestamp,attachments:turn.attachments,requestTurn:turn});
+    if (['chat','computer'].includes(turn.flow) && ['done','warning'].includes(turn.status) && turn.output !== null) {
+      messages.push({role:'assistant',...chatResult(turn),time:displayTime(turn.created),timestamp,turnId:turn.id});
     }
-    const a = state.agents.find(a => a.id === job.agent);
-    if (a && (['chat','computer'].includes(job.flow) || (job.flow === 'team_review' && ['done','warning'].includes(job.status) && job.output !== null))) {
+    const a = state.agents.find(a => a.id === turn.agent);
+    if (a && (['chat','computer'].includes(turn.flow))) {
       a.lastActivity = timestamp;
-      a.preview = (['done','warning'].includes(job.status) && job.output !== null ? chatResult(job).text : job.input).replace(/\s+/g,' ').slice(0,150);
+      a.preview = (['done','warning'].includes(turn.status) && turn.output !== null ? chatResult(turn).text : turn.input).replace(/\s+/g,' ').slice(0,150);
     }
-    if (a && job.status === 'running') a.status = 'busy';
-    if (job.status === 'queued' || job.status === 'running') pending.add(job.agent);
-  }
-  for (const notice of snapshot.task_assignments || []) {
-    for (const owner of new Set([notice.agent, notice.assigned_by])) {
-      const timestamp=Date.parse(notice.time);
-      (state.messages[owner] ||= []).push({role:'assistant',speaker:notice.assigned_by,
-        text:`@${agent(notice.assigned_by).name} assigned @${notice.name} to @${agent(notice.agent).name}.`,time:displayTime(notice.time),timestamp,assignment:true});
-      const a=state.agents.find(a=>a.id===owner);
-      if (a && timestamp > a.lastActivity) {a.lastActivity=timestamp;a.preview=`New @${notice.name} assigned.`;}
-    }
-  }
-  for (const update of snapshot.task_updates || []) {
-    for (const owner of new Set([update.agent,update.assigned_by])) {
-      const timestamp=Date.parse(update.time), text=`@${update.name} · ${update.text}`;
-      (state.messages[owner] ||= []).push({role:'assistant',speaker:update.agent,text,
-        time:displayTime(update.time),timestamp,assignment:true});
-      const a=state.agents.find(a=>a.id===owner);
-      if (a && timestamp>a.lastActivity) {a.lastActivity=timestamp;a.preview=text.replace(/\s+/g,' ').slice(0,150);}
-    }
-  }
-  for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp);
-  for (const notice of snapshot.notifications || []) {
-    for (const owner of notice.owners) {
-      const timestamp = Date.parse(notice.time);
-      (state.messages[owner] ||= []).push({role:'assistant',speaker:notice.agent,text:notice.text,
-        time:displayTime(notice.time),timestamp,assignment:true});
-      const a = state.agents.find(a=>a.id===owner);
-      if (a && timestamp>a.lastActivity) {a.lastActivity=timestamp;a.preview=notice.text;}
-    }
+    if (a && turn.status === 'running') a.status = 'busy';
+    if (turn.status === 'queued' || turn.status === 'running') pending.add(turn.agent);
   }
   for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp);
   if (!state.agents.some(a => a.id === state.selected) ||
@@ -161,7 +133,6 @@ function applySnapshot(snapshot) {
   }
   state.logs = eventRows.slice().reverse().map(e => ({agent:e.agent,time:displayTime(e.time),title:e.kind,detail:e.detail}));
   state.computer.owner = snapshot.computer.owner;
-  state.tasks = snapshot.jobs.map(j => ({id:j.id,agent:j.agent,status:statusNames[j.status]}));
 }
 
 renderGlobal = function() {
@@ -172,24 +143,26 @@ renderGlobal = function() {
   $('#resource-status').classList.toggle('idle', !owner);
   $('#resource-status').classList.remove('paused');
   $('#workspace-owner').innerHTML = `${mention(workspaceOwner)}<span>’s workspace</span>`;
-  $('#task-count').textContent = live.orchestration?.[state.selected]?.tasks.length || 0;
-  $('#job-count').textContent = live.orchestration?.[state.selected]?.recurring.length || 0;
 };
 
 renderAgentHeader = function() {
   const a = selected();
-  const job = live.jobs.find(j => j.agent === a.id && blocksChat(j));
+  const turn = live.turns.find(j => j.agent === a.id && blocksChat(j));
   $('#agent-heading').innerHTML = `${avatar(a,isMainSapi(a)?'large main-sapi-avatar':'large')}<div><h2>${esc(a.name)}</h2><p class="agent-role">${esc(a.role)}</p></div><button class="icon-button" data-action="agent-settings" aria-label="Sapi settings">···</button>`;
   $('#message-input').placeholder = `Message ${a.name}…`;
   $$('[data-panel]').forEach(b => {b.classList.toggle('active',b.dataset.panel === state.panel);b.setAttribute('aria-pressed',b.dataset.panel === state.panel);});
-  $('.send-button').disabled = a.retired || !online || Boolean(job) || submitting.has(a.id) || uploading > 0;
+  $('.send-button').disabled = a.retired || !online || Boolean(turn) || submitting.has(a.id) || uploading > 0;
 };
 
+let renderedConversation = '';
 renderConversation = function() {
   const host = $('#conversation-body');
-  const jobs = live.jobs.filter(j => j.agent === state.selected);
-  const scroll = host.scrollTop;
-  const bottom = host.scrollHeight - host.scrollTop - host.clientHeight < 80;
+  const turns = live.turns.filter(j => j.agent === state.selected);
+  const key = state.selected + ':' + state.panel;
+  const changedView = renderedConversation !== key;
+  renderedConversation = key;
+  const scroll = changedView ? 0 : host.scrollTop;
+  const bottom = state.panel === 'chat' && (changedView || host.scrollHeight - host.scrollTop - host.clientHeight < 80);
   if (state.panel === 'chat') {
     originalConversation();
     host.querySelector('.day-divider').textContent = 'CONVERSATION';
@@ -197,22 +170,17 @@ renderConversation = function() {
     host.querySelector('.typing')?.remove();
     host.querySelectorAll('.message').forEach((node,i) => {
       const message=getMessages(state.selected)[i];
-      const request = message?.requestJob, requestState = request && requestStatus(request);
+      const request = message?.requestTurn, requestState = request && requestStatus(request);
       if (requestState) {
         const key = `request-${request.id}`, expanded = expandedWarnings.has(key);
         node.querySelector('.message-meta').insertAdjacentHTML('beforeend', `<button type="button" class="warning-badge" data-warning-toggle="${esc(key)}" aria-expanded="${expanded}" aria-controls="${esc(key)}">${esc(requestState.label)}</button>`);
-        node.querySelector('.message-bubble').insertAdjacentHTML('afterbegin', `<div class="warning-details" id="${esc(key)}" ${expanded ? '' : 'hidden'}><p>${esc(requestState.detail)}</p><p>No final reply was saved for this request.</p>${jobActions(request)}</div>`);
+        node.querySelector('.message-bubble').insertAdjacentHTML('afterbegin', `<div class="warning-details" id="${esc(key)}" ${expanded ? '' : 'hidden'}><p>${esc(requestState.detail)}</p><p>No final reply was saved for this request.</p>${turnActions(request)}</div>`);
       }
       if (message?.warning) {
         node.classList.add('warning-message');
-        const expanded = expandedWarnings.has(message.jobId);
-        node.querySelector('.message-meta').insertAdjacentHTML('beforeend', `<button type="button" class="warning-badge" data-warning-toggle="${esc(message.jobId)}" aria-expanded="${expanded}" aria-controls="warning-${esc(message.jobId)}">Warning</button>`);
-        node.querySelector('.message-bubble').insertAdjacentHTML('afterbegin', `<div class="warning-details" id="warning-${esc(message.jobId)}" ${expanded ? '' : 'hidden'}>${esc(message.warning)}</div>`);
-      }
-      if (message?.assignment) {
-        const speaker=agent(message.speaker);
-        node.classList.add('assignment-message');
-        node.querySelector('.message-meta').innerHTML=`${avatar(speaker,'mini')}<strong>${mention(speaker.id)}</strong><time>${esc(message.time)}</time>`;
+        const expanded = expandedWarnings.has(message.turnId);
+        node.querySelector('.message-meta').insertAdjacentHTML('beforeend', `<button type="button" class="warning-badge" data-warning-toggle="${esc(message.turnId)}" aria-expanded="${expanded}" aria-controls="warning-${esc(message.turnId)}">Warning</button>`);
+        node.querySelector('.message-bubble').insertAdjacentHTML('afterbegin', `<div class="warning-details" id="warning-${esc(message.turnId)}" ${expanded ? '' : 'hidden'}>${esc(message.warning)}</div>`);
       }
     });
     const humanMessages = getMessages(state.selected).filter(m => m.role === 'user');
@@ -222,19 +190,19 @@ renderConversation = function() {
       if (attachments.length) node.querySelector('.message-bubble').insertAdjacentHTML('beforeend', `<div class="message-attachments">${attachments.map(attachmentLabel).join('')}</div>`);
     });
     if (!getMessages(state.selected).length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
-    const job = jobs.find(j => blocksChat(j) && !(attention.has(j.status) && ['chat','computer'].includes(j.flow)));
-    if (job) {
-      const started = eventRows.slice().reverse().find(e => e.job === job.id && e.kind === 'started');
-      const event = eventRows.slice().reverse().find(e => e.job === job.id && e.kind === 'codex' && (!started || e.time >= started.time));
-      const detail = job.status === 'queued' ? 'Waiting for an available runner.' : job.error || event?.detail || 'Codex is working…';
-      host.insertAdjacentHTML('beforeend', `<section class="live-status" role="status"><strong>${esc(statusNames[job.status])}</strong><p>${esc(detail)}</p>${job.status === 'interrupted' ? '<p>The previous run stopped. Check what happened before retrying a computer task.</p>' : ''}${jobActions(job)}</section>`);
+    const turn = turns.find(j => blocksChat(j) && !(attention.has(j.status) && ['chat','computer'].includes(j.flow)));
+    if (turn) {
+      const started = eventRows.slice().reverse().find(e => e.turn === turn.id && e.kind === 'started');
+      const event = eventRows.slice().reverse().find(e => e.turn === turn.id && e.kind === 'codex' && (!started || e.time >= started.time));
+      const detail = turn.status === 'queued' ? 'Waiting for an available runner.' : turn.error || event?.detail || 'Codex is working…';
+      host.insertAdjacentHTML('beforeend', `<section class="live-status" role="status"><strong>${esc(statusNames[turn.status])}</strong><p>${esc(detail)}</p>${turn.status === 'interrupted' ? '<p>The previous run stopped. Check what happened before retrying a computer task.</p>' : ''}${turnActions(turn)}</section>`);
     }
-  } else if (state.panel === 'mindmap') {
+  } else if (state.panel === 'notes') {
     $('#composer-area').hidden = true;
-    renderMindMap(host);
+    renderNotes(host);
   } else {
     $('#composer-area').hidden = true;
-    host.innerHTML = workPanel(state.panel, jobs);
+    host.innerHTML = activityLog(turns);
   }
   renderAgentHeader(); renderGlobal();
   host.scrollTop = bottom ? host.scrollHeight : scroll;
@@ -266,33 +234,22 @@ addAgent = function() {
 agentSettings = function() {
   const a = selected();
   const info = live.orchestration[a.id];
-  const schedule = info.schedule;
-  const job = live.jobs.find(j => j.agent === a.id && !['done','warning','cancelled'].includes(j.status));
+  const turn = live.turns.find(j => j.agent === a.id && !['done','warning','cancelled'].includes(j.status));
   modal(`${a.name} settings`, `<form id="live-settings-form" data-id="${esc(a.id)}" class="form-stack">
-    <div class="settings-tabs" role="tablist" aria-label="Sapi settings">${[['profile','Profile'],['schedule','Schedule'],['memory','Memory'],['usage','Usage'],['limits','Limits']].map(([key,label],i)=>`<button type="button" role="tab" id="settings-tab-${key}" aria-controls="settings-panel-${key}" aria-selected="${i===0}" tabindex="${i===0?0:-1}" data-settings-tab="${key}">${label}</button>`).join('')}</div>
+    <div class="settings-tabs" role="tablist" aria-label="Sapi settings">${[['profile','Profile'],['context','Context'],['usage','Usage'],['limits','Limits']].map(([key,label],i)=>`<button type="button" role="tab" id="settings-tab-${key}" aria-controls="settings-panel-${key}" aria-selected="${i===0}" tabindex="${i===0?0:-1}" data-settings-tab="${key}">${label}</button>`).join('')}</div>
     <section class="settings-panel form-stack" role="tabpanel" id="settings-panel-profile" aria-labelledby="settings-tab-profile" data-settings-panel="profile">
     <label>Name<input name="name" value="${esc(a.name)}" required maxlength="24" aria-describedby="name-help" autocomplete="off"></label>
     ${nameSuggestions()}
     <label>Role<input name="role" value="${esc(a.role)}" required maxlength="60"></label>
     ${managerOptions(a)}
     </section>
-    <section class="settings-panel form-stack" role="tabpanel" id="settings-panel-schedule" aria-labelledby="settings-tab-schedule" data-settings-panel="schedule" hidden>
-    <fieldset class="schedule-fields"><legend>Scheduled checks</legend>
-      <label class="check-label"><input name="enabled" type="checkbox" ${schedule.enabled ? 'checked' : ''}> Enable checks</label>
-      <label>Check every (minutes)<input name="minutes" type="number" min="1" max="1440" step="1" required value="${schedule.minutes}"></label>
-      <label class="check-label"><input name="monitor_team" type="checkbox" ${schedule.monitor_team ? 'checked' : ''}> Include team progress</label>
-    </fieldset>
-    <small>Agent checks manage due work and team status. Each recurring job has its own change detector and wake-up limits in Jobs.</small>
-    <dl class="sapi-details"><dt>Status</dt><dd>${esc(job ? statusNames[job.status] : 'Ready')}</dd><dt>Next check</dt><dd>${schedule.enabled && schedule.next_check ? esc(new Date(schedule.next_check).toLocaleString()) : 'Paused'}</dd><dt>Last check</dt><dd>${schedule.last_check ? esc(new Date(schedule.last_check).toLocaleString()) : 'Not yet'}</dd></dl>
-    <small>Checks run while the local server is running.</small>
-    </section>
-    <section class="settings-panel form-stack" role="tabpanel" id="settings-panel-memory" aria-labelledby="settings-tab-memory" data-settings-panel="memory" hidden>
-    <fieldset class="schedule-fields"><legend>Recent memory</legend>
+    <section class="settings-panel form-stack" role="tabpanel" id="settings-panel-context" aria-labelledby="settings-tab-context" data-settings-panel="context" hidden>
+    <fieldset class="context-fields"><legend>Recent results</legend>
       <label class="check-label"><input name="recent_enabled" type="checkbox" ${info.recent.enabled ? 'checked' : ''}> Reuse recent results for follow-ups</label>
       <label>Fresh for (seconds)<input name="recent_seconds" type="number" min="1" max="3600" step="1" required value="${info.recent.seconds}"></label>
       <small>“Do it again” or “check current state” always checks afresh.</small>
     </fieldset>
-    <p>${info.memory_entries} consolidated memory ${info.memory_entries === 1 ? 'entry' : 'entries'}. Start consolidation from MemX.</p>
+    <p>Lasting notes are managed by this Sapi in the Notes tab.</p>
     </section>
     <section class="settings-panel" role="tabpanel" id="settings-panel-usage" aria-labelledby="settings-tab-usage" data-settings-panel="usage" hidden>${usageSettings(info,'usage')}</section>
     <section class="settings-panel" role="tabpanel" id="settings-panel-limits" aria-labelledby="settings-tab-limits" data-settings-panel="limits" hidden>${usageSettings(info,'limits')}</section>
@@ -326,10 +283,10 @@ document.addEventListener('invalid', e => {
 }, true);
 actions['agent-settings'] = agentSettings;
 computerDialog = function() {
-  modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : 'Build required: run ./start.sh'}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Jobs run one at a time. macOS Accessibility access is required for desktop interaction; permission failures appear in the job and activity log.</p>`, 'BLINDLY4');
+  modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : 'Build required: run ./start.sh'}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Sapis share one computer. macOS Accessibility access is required for desktop interaction; permission failures appear in chat and the activity log.</p>`, 'BLINDLY4');
 };
 autonomyDialog = function() {
-  modal('Local workspace', '<p>Connected to your local Codex CLI. Chat can set wake-up intervals, assign managers, create tasks, inspect team progress, and request memory learning.</p><p>Scheduled checks run while this server is running. Ask a Sapi to pause its checks or change the interval. Sapi settings shows its saved schedule and memory count. Groups are planned for the next iteration.</p>', 'SAPIENS4');
+  modal('Local workspace', '<p>Connected to your local Codex CLI. Talk to your Sapis in chat, manage their notes, and save documents in their workspaces.</p><p>Tasks and Jobs are inactive. Sapis respond only to chat messages.</p>', 'SAPIENS4');
 };
 
 document.addEventListener('submit', async e => {
@@ -345,12 +302,10 @@ document.addEventListener('submit', async e => {
     const created = form.id === 'live-agent-form';
     if (!created) {
       data.manager = data.manager || null;
-      data.schedule = {enabled:form.elements.enabled.checked,minutes:Number(data.minutes),monitor_team:form.elements.monitor_team.checked};
       data.recent = {enabled:form.elements.recent_enabled.checked,seconds:Number(data.recent_seconds)};
       data.execution = Object.fromEntries(['weekly_limit','call_allowance','max_tools','timeout_seconds','output_tokens'].map(k=>[k,Number(data[k])]));
       for (const key of Object.keys(data.execution)) delete data[key];
       delete data.recent_enabled; delete data.recent_seconds;
-      delete data.enabled; delete data.minutes; delete data.monitor_team;
     }
     const row = await api(created ? '/api/agents' : `/api/agents/${form.dataset.id}`, created ? 'POST' : 'PUT', data);
     await refresh();
@@ -367,10 +322,10 @@ document.addEventListener('click', async e => {
   if (b.id === 'profile-button' || b.id === 'app-menu') {
     e.preventDefault(); e.stopImmediatePropagation(); autonomyDialog(); return;
   }
-  if (!b.dataset.liveJob) return;
+  if (!b.dataset.liveTurn) return;
   e.preventDefault(); e.stopImmediatePropagation(); b.disabled = true;
   try {
-    await api(`/api/agents/${b.dataset.owner}/jobs/${b.dataset.id}/${b.dataset.liveJob}`, 'POST', {});
+    await api(`/api/agents/${b.dataset.owner}/turns/${b.dataset.id}/${b.dataset.liveTurn}`, 'POST', {});
     await refresh();
   } catch (error) { toast(error.message); }
   finally { b.disabled = false; }
@@ -464,11 +419,6 @@ $('#profile-button').setAttribute('aria-label','Admin settings');
 $('.composer-hint').remove();
 $('[data-scope="groups"]').disabled = true;
 $('[data-scope="groups"]').title = 'Groups are coming in the next iteration';
-$('[data-panel="cron"]').hidden = false;
-$('[data-panel="cron"]').innerHTML = 'Jobs <span id="job-count" title="Recurring jobs">0</span>';
-$('.conversation-tabs').insertBefore($('[data-panel="cron"]'), $('[data-panel="log"]'));
-$('[data-panel="log"]').insertAdjacentHTML('beforebegin', '<button type="button" data-panel="mindmap" aria-pressed="false">MemX</button>');
-$('[data-panel="tasks"]').innerHTML = 'Tasks <span id="task-count">0</span>';
 $('#message-input').maxLength = 16000;
 $('#message-input').value = state.drafts[state.selected] || '';
 $('#message-input').addEventListener('input', () => {state.drafts[state.selected] = $('#message-input').value; save();});
@@ -478,7 +428,7 @@ async function refresh() {
   refreshing = (async () => {
     try {
       const snapshot = await api(`/api/state?after=${cursor}`);
-      const changed = JSON.stringify([snapshot.agents,snapshot.jobs,snapshot.computer,snapshot.orchestration,snapshot.task_assignments,snapshot.task_updates,snapshot.artifacts]) !== JSON.stringify([live.agents,live.jobs,live.computer,live.orchestration,live.task_assignments,live.task_updates,live.artifacts]) || snapshot.events.length;
+      const changed = JSON.stringify([snapshot.agents,snapshot.turns,snapshot.computer,snapshot.orchestration,snapshot.artifacts]) !== JSON.stringify([live.agents,live.turns,live.computer,live.orchestration,live.artifacts]) || snapshot.events.length;
       const reconnected = !online;
       online = true;
       const tabsChanged = (snapshot.preferences.workspace_revision || 0) > workspaceRevision;
@@ -486,7 +436,6 @@ async function refresh() {
       if (tabsChanged) {renderTabs(); renderWorkspace();}
       if (changed || reconnected) {
         renderSidebar(); renderConversation(); renderGlobal();
-        if ($('#task-details-body')) refreshTaskDialog();
         if ($('#modal').open && $('#modal-title')?.textContent === 'Shared computer') computerDialog();
       }
     } catch (error) {

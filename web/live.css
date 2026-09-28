@@ -3,16 +3,16 @@
 .live-status { padding:12px 14px; border:1px solid var(--line); border-radius:10px; margin:14px 0; }
 .live-status p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
 .live-status .actions { display:flex; gap:8px; margin-top:10px; }
-.live-job { margin:12px 0; padding:14px; border:1px solid var(--line); border-radius:10px; overflow-wrap:anywhere; }
-.live-job h3 { font-size:13px; margin:8px 0; }
-.live-job p { white-space:pre-wrap; font-size:12px; }
+.live-turn { margin:12px 0; padding:14px; border:1px solid var(--line); border-radius:10px; overflow-wrap:anywhere; }
+.live-turn h3 { font-size:13px; margin:8px 0; }
+.live-turn p { white-space:pre-wrap; font-size:12px; }
 .live-disconnected { color:#b74350; }
 .live-connection { font-size:12px; }
 #profile-button { width:auto; min-width:76px; height:34px; padding:0 10px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; gap:8px; font:inherit; font-size:12px; background:var(--panel); color:var(--ink); border:1px solid var(--line); }
 .agent-heading > div { min-width:0; flex:1; }
 .agent-heading h2, .agent-heading .agent-role { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.schedule-fields { display:grid; gap:12px; border:1px solid var(--line); padding:12px; margin:0; }
-.schedule-fields legend { padding:0 6px; font-size:13px; }
+.context-fields { display:grid; gap:12px; border:1px solid var(--line); padding:12px; margin:0; }
+.context-fields legend { padding:0 6px; font-size:13px; }
 .form-stack .check-label { display:flex; align-items:center; gap:9px; }
 .form-stack .check-label input { width:16px; height:16px; margin:0; accent-color:var(--pink, #ed008c); }
 .sapi-details { display:grid; grid-template-columns:auto 1fr; gap:8px 16px; font-size:12px; margin:0; }
@@ -26,20 +26,11 @@
 
 .name-suggestions { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
 .name-suggestions .button { margin:0; padding:5px 10px; font-size:12px; }
-.work-views { display:flex; gap:14px; border-bottom:1px solid var(--line); margin-bottom:12px; }
-.work-views button { border:0; background:transparent; color:inherit; padding:9px 2px; font:inherit; font-size:12px; cursor:pointer; }
-.work-views button.active { color:#ec008c; border-bottom:2px solid currentColor; }
-.live-job .actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
-.live-job summary, .event-history > summary { font-size:12px; cursor:pointer; padding-top:10px; }
+.live-turn .actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+.live-turn summary, .event-history > summary { font-size:12px; cursor:pointer; padding-top:10px; }
 .event-history { margin-top:20px; }
 .conversation-tabs { gap:14px; overflow-x:auto; flex-shrink:0; }
 .conversation-tabs button { white-space:nowrap; }
-#mindmap-panel { display:flex; flex-direction:column; height:100%; min-height:400px; gap:10px; }
-#mindmap-panel .list-heading { flex-wrap:wrap; gap:8px; margin:0; }
-#mindmap-panel p { font-size:12px; margin:0; }
-#memory-viewer { width:100%; flex:1; min-height:300px; border:0; }
-#memory-status:empty { display:none; }
-#memory-status .actions { display:flex; gap:8px; margin-top:8px; }
 #chat-form { position:relative; overflow:visible; }
 .mention-suggestions { position:absolute; bottom:100%; left:0; right:0; max-height:280px; overflow-y:auto; background:var(--panel, #fff); border:1px solid var(--line, #cab9dd); box-shadow:0 -4px 18px #0002; z-index:10; }
 .mention-suggestions button { display:flex; width:100%; justify-content:space-between; gap:12px; padding:10px 12px; border:0; border-bottom:1px solid #8882; background:transparent; color:inherit; text-align:left; font:inherit; cursor:pointer; }
@@ -47,17 +38,8 @@
 .mention-suggestions small { opacity:.7; }
 .entity-mention, #modal-title, .mention-suggestions strong { overflow-wrap:anywhere; }
 .mention-suggestions strong { min-width:0; }
-.assignment-message .message-bubble { border-left:3px solid var(--accent, #de007a); }
-.live-job:focus { outline:2px solid var(--accent, #de007a); outline-offset:2px; }
-.task-description, .task-result, .task-history, .task-comments { margin-top:18px; }
-.task-result p, .task-comment p { white-space:pre-wrap; overflow-wrap:anywhere; margin-top:8px; }
-.task-history .log-row { display:block; padding:10px 0; border-bottom:1px solid var(--line); }
-.task-history .log-row p { white-space:pre-wrap; overflow-wrap:anywhere; }
-.task-history time, .task-comment time { font-size:11px; opacity:.7; }
-.task-comment { padding:12px 0; border-bottom:1px solid var(--line); }
-.task-comments form { margin-top:14px; }
+.live-turn:focus { outline:2px solid var(--accent, #de007a); outline-offset:2px; }
 
-.task-comments textarea { min-height:90px; height:90px; resize:vertical; }
 .usage-section { border-bottom: 1px solid var(--line, #d4cddd); padding-bottom: 16px; }
 .usage-section h3 { margin: 0; font-size: 16px; }
 .usage-table-wrap { overflow-x: auto; }
@@ -211,8 +193,8 @@
 :root body.sapi-workspace .browser-address-bar input { font-size:10px;color:var(--muted); }
 :root body.sapi-workspace .browser-address-bar .icon-button { height:23px;font-size:16px; }
 :root body.sapi-workspace .workspace-footer { background:var(--sapi-white);font-size:10px;padding:3px 10px;min-height:20px;border-color:var(--line); }
-:root body.sapi-workspace :is(.task-card,.schedule-card,.repo-item,.artifact-item,.connection-card) { border:1px solid var(--line);border-radius:10px;background:var(--sapi-white);padding:13px; }
-:root body.sapi-workspace :is(.task-card h3,.schedule-card h3,.list-heading h3) { font:600 13px/1.5 var(--sapi-font);letter-spacing:0; }
+:root body.sapi-workspace :is(.repo-item,.artifact-item,.connection-card) { border:1px solid var(--line);border-radius:10px;background:var(--sapi-white);padding:13px; }
+:root body.sapi-workspace :is(.list-heading h3) { font:600 13px/1.5 var(--sapi-font);letter-spacing:0; }
 :root body.sapi-workspace .task-card-bottom { font-size:11px;flex-wrap:wrap; }
 :root body.sapi-workspace .button { font:500 11px var(--sapi-font);border:1px solid var(--line);border-radius:7px;background:var(--sapi-white);min-height:28px; }
 :root body.sapi-workspace .button.primary,:root body.sapi-workspace .button.primary:hover { border-color:var(--ink);background:var(--ink);color:var(--sapi-white);box-shadow:none; }
@@ -220,7 +202,7 @@
 :root body.sapi-workspace .log-row { border-color:var(--line); }
 :root body.sapi-workspace .log-row::before { background:var(--muted);border-color:var(--sapi-white); }
 :root body.sapi-workspace .log-row strong { font-size:12px;font-weight:500; }
-:root body.sapi-workspace .log-row p,:root body.sapi-workspace .schedule-card p { color:var(--muted);font-size:12px; }
+:root body.sapi-workspace .log-row p { color:var(--muted);font-size:12px; }
 :root body.sapi-workspace dialog { padding:22px;border:1px solid var(--line);border-radius:16px;background:var(--sapi-white);box-shadow:0 20px 80px #0003;color:var(--ink); }
 :root body.sapi-workspace dialog::backdrop { background:#0005;backdrop-filter:blur(5px); }
 :root body.sapi-workspace #modal-content h2 { font:600 20px/1.4 var(--sapi-font);letter-spacing:-.4px; }
@@ -268,13 +250,13 @@
 :root body.sapi-workspace .agent-row-name small { display:block;font:11px var(--sapi-font);margin:0;text-align:right;white-space:nowrap; }
 :root body.sapi-workspace .message-meta time { font-size:10px;color:var(--muted); }
 :root body.sapi-workspace .message-meta .avatar { width:20px;height:20px;font-size:9px; }
-:root body.sapi-workspace :is(.live-job,.live-status,.schedule-fields) { padding:12px;border-color:var(--line);border-radius:10px;background:var(--sapi-surface); }
-:root body.sapi-workspace :is(.work-views,.settings-tabs) button { font-size:11px;border-radius:5px 5px 0 0; }
-:root body.sapi-workspace :is(.work-views button.active,.settings-tabs [aria-selected=true]) { color:var(--ink); }
+:root body.sapi-workspace :is(.live-turn,.live-status,.context-fields) { padding:12px;border-color:var(--line);border-radius:10px;background:var(--sapi-surface); }
+:root body.sapi-workspace :is(.settings-tabs) button { font-size:11px;border-radius:5px 5px 0 0; }
+:root body.sapi-workspace :is(.settings-tabs [aria-selected=true]) { color:var(--ink); }
 :root body.sapi-workspace .mention-suggestions { border-radius:10px;background:var(--sapi-white);border-color:var(--line); }
 :root body.sapi-workspace .mention-suggestions button[aria-selected=true] { color:var(--sapi-accent);background:var(--sapi-hover); }
 :root body.sapi-workspace .message-bubble .chat-link { color:var(--sapi-accent); }
-:root body.sapi-workspace :is(.assignment-message,.warning-message) .message-bubble { padding-left:12px; }
+:root body.sapi-workspace :is(.warning-message) .message-bubble { padding-left:12px; }
 :root[data-theme=dark] body.sapi-workspace .warning-badge { color:#eac681;background:#3a3020;border-color:#786037; }
 :root[data-theme=dark] body.sapi-workspace .warning-details { color:#ead9b8;background:#30291d;border-color:#786037;border-radius:8px; }
 @media(max-width:600px) {
@@ -285,7 +267,7 @@
   :root body.sapi-workspace .app-header { height:72px;min-height:72px; }
 }
 :root[data-theme] body.sapi-workspace #profile-button:hover,
-:root[data-theme] body.sapi-workspace :is(.work-views,.settings-tabs) button:hover { color:var(--sapi-accent);background:var(--sapi-hover); }
+:root[data-theme] body.sapi-workspace :is(.settings-tabs) button:hover { color:var(--sapi-accent);background:var(--sapi-hover); }
 
 /* Keep connection text and its settings action; omit decorative glyphs. */
 :root body.sapi-workspace #autonomy-button > span:not(#autonomy-label) { display:none; }
@@ -294,3 +276,8 @@
 /* Search uses a single focus indicator around the complete control. */
 :root[data-theme] body.sapi-workspace .search-field:focus-within { outline:none;box-shadow:inset 0 0 0 1px var(--sapi-accent); }
 :root[data-theme] body.sapi-workspace .search-field input:is(:hover,:focus,:focus-visible) { outline:none;box-shadow:none; }
+
+.conversation-tabs button:disabled { opacity:.35; cursor:not-allowed; }
+.notes-help, .notes-notice { color:var(--muted); font-size:12px; }
+.notes-path { display:block; overflow-wrap:anywhere; color:var(--muted); }
+.notes-content { white-space:pre-wrap; overflow-wrap:anywhere; font:14px/1.65 var(--sapi-font,system-ui); padding:20px 0; }

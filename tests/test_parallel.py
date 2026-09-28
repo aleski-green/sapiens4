@@ -58,7 +58,7 @@ class ParallelTest(unittest.TestCase):
         self.assertTrue(self.factories[a].started.wait(3))
         self.assertTrue(self.factories[b].started.wait(3))
         self.assertFalse(self.factories[c].started.is_set())
-        self.assertEqual(s._agent(c).state['jobs'][-1]['status'], 'queued')
+        self.assertEqual(s._agent(c).state['turns'][-1]['status'], 'queued')
         self.assertIsNone(s.snapshot()['computer']['owner'])
         with self.assertRaises(APIError):
             s.submit(a, dict(text='Duplicate'))
@@ -67,38 +67,12 @@ class ParallelTest(unittest.TestCase):
         self.assertFalse(self.factories[b].gate.is_set())
         self.assertEqual(len(self.factories[a].prompts),1)
 
-    def test_scheduled_task_does_not_block_another_sapis_chat(self):
-        s = self.service(start_worker=False)
-        a = s.hierarchy.main
-        b = s.create_agent(dict(name='Second', role='Assistant'))['id']
-        s.orchestration.control(a, dict(op='task', title='Do the scheduled task', due='2000-01-01T00:00:00+00:00'))
-        s.start()
-        self.assertTrue(self.factories[a].started.wait(3))
-        s.submit(b, dict(text='Answer now'))
-        self.assertTrue(self.factories[b].started.wait(3))
-        self.assertFalse(self.factories[a].gate.is_set())
-
-    def test_memory_maintenance_does_not_block_chat(self):
-        s = self.service(start_worker=False)
-        a = s.hierarchy.main
-        b = s.create_agent(dict(name='Second', role='Assistant'))['id']
-        agent = s._agent(a)
-        with agent.store.transaction() as state:
-            state['notes'].append(dict(flow='task', content='Remember the verified result'))
-            state['chat_revision'] += 1
-        s.orchestration.control(a, dict(op='consolidate'))
-        s.start()
-        self.assertTrue(self.factories[a].started.wait(3))
-        self.assertTrue(any(j['flow']=='learning' and j['status']=='running' for j in agent.state['jobs']))
-        s.submit(b, dict(text='Answer now'))
-        self.assertTrue(self.factories[b].started.wait(3))
-        self.assertFalse(self.factories[a].gate.is_set())
 
     def test_close_waits_for_all_runners_and_preserves_queued_work(self):
         s = self.service(start_worker=False, max_parallel_agents=2)
         ids = [s.hierarchy.main] + [s.create_agent(dict(name=n,role='Assistant'))['id'] for n in ('Second','Third')]
         for agid in ids:
-            s.submit(agid, dict(text='Keep this job'))
+            s.submit(agid, dict(text='Keep this turn'))
         s.start()
         for agid in ids[:2]:
             self.assertTrue(self.factories[agid].started.wait(3))
@@ -106,7 +80,7 @@ class ParallelTest(unittest.TestCase):
         closing.start()
         self.until(s._stopping.is_set)
         self.factories[ids[0]].gate.set()
-        self.until(lambda: not any(j['status']=='running' for j in s._agent(ids[0]).state['jobs']))
+        self.until(lambda: not any(j['status']=='running' for j in s._agent(ids[0]).state['turns']))
         self.assertTrue(closing.is_alive())
         with self.assertRaises(RuntimeError):
             Service(self.temp.name, start_worker=False)
@@ -114,7 +88,7 @@ class ParallelTest(unittest.TestCase):
         closing.join(3)
         self.assertFalse(closing.is_alive())
         self.assertFalse(self.factories[ids[2]].started.is_set())
-        self.assertEqual(s._agent(ids[2]).state['jobs'][-1]['status'],'queued')
+        self.assertEqual(s._agent(ids[2]).state['turns'][-1]['status'],'queued')
         resumed = self.service()
         self.assertTrue(self.factories[ids[2]].started.wait(3))
         for agid in ids[:2]:
@@ -150,17 +124,17 @@ class ParallelTest(unittest.TestCase):
         a = s.hierarchy.main
         b = s.create_agent(dict(name='Second', role='Assistant'))['id']
         s.submit(a, dict(text='First'))
-        second = s.submit(b, dict(text='Cancel this queued job'))
+        second = s.submit(b, dict(text='Cancel this queued turn'))
         s.start()
         self.assertTrue(self.factories[a].started.wait(3))
-        s.job_action(b, second['id'], 'cancel')
+        s.turn_action(b, second['id'], 'cancel')
         self.factories[a].gate.set()
         self.until(lambda:not s._runners)
         self.assertFalse(self.factories[b].started.is_set())
         third = s.submit(b, dict(text='New request'))
         self.assertTrue(self.factories[b].started.wait(3))
         self.assertEqual(len(self.factories[b].prompts), 1)
-        self.assertEqual(next(j for j in s._agent(b).state['jobs'] if j['id']==second['id'])['status'], 'cancelled')
+        self.assertEqual(next(j for j in s._agent(b).state['turns'] if j['id']==second['id'])['status'], 'cancelled')
 
     def test_computer_wrapper_reserves_through_real_host_endpoint(self):
         s = self.service(start_worker=False)

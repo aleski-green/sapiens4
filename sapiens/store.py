@@ -17,19 +17,19 @@ class Store:
         with self.connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2):
+            if version not in (0, 1, 2, 3):
                 raise RuntimeError(f"Unsupported CORPORA schema: {version}")
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS agents (
                     id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL,
                     color TEXT NOT NULL, face TEXT NOT NULL, created TEXT NOT NULL
                 );
-                CREATE TABLE IF NOT EXISTS jobs (
+                CREATE TABLE IF NOT EXISTS turns (
                     id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(id),
                     flow TEXT NOT NULL, input TEXT NOT NULL, status TEXT NOT NULL,
                     output TEXT, error TEXT, tokens INTEGER NOT NULL, created TEXT NOT NULL
                 );
-                CREATE INDEX IF NOT EXISTS jobs_agent ON jobs(agent, created);
+                CREATE INDEX IF NOT EXISTS turns_agent ON turns(agent, created);
                 CREATE TABLE IF NOT EXISTS events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     agent TEXT NOT NULL REFERENCES agents(id), job TEXT,
@@ -47,8 +47,19 @@ class Store:
                 CREATE TABLE IF NOT EXISTS message_inputs (
                     job TEXT PRIMARY KEY, text TEXT NOT NULL, attachments TEXT NOT NULL
                 );
-                PRAGMA user_version=2;
             """)
+            if version in (1, 2):
+                db.execute("INSERT OR IGNORE INTO turns SELECT * FROM jobs WHERE flow IN ('chat','computer')")
+            preferences = db.execute('SELECT value FROM preferences WHERE id=1').fetchone()
+            if preferences:
+                value = json.loads(preferences[0])
+                if value.get('panel') == 'mindmap':
+                    value['panel'] = 'notes'
+                elif value.get('panel') in {'tasks','cron'}:
+                    value['panel'] = 'chat'
+                value.pop('work_views', None)
+                db.execute('UPDATE preferences SET value=? WHERE id=1', (json.dumps(value),))
+            db.execute('PRAGMA user_version=3')
 
     @contextmanager
     def connect(self):
@@ -85,46 +96,48 @@ class Store:
         with self.connect() as db:
             return [json.loads(row[0]) for row in db.execute("SELECT value FROM attachments WHERE agent=?", (agid,))]
 
-    def message(self, job, text, attachments):
+    def message(self, turn, text, attachments):
         with self.connect() as db:
-            db.execute("INSERT INTO message_inputs VALUES (?,?,?)", (job, text, json.dumps(attachments)))
+            db.execute("INSERT INTO message_inputs VALUES (?,?,?)", (turn, text, json.dumps(attachments)))
 
-    def event(self, agent, kind, detail, job=None, source_key=None, time=None):
+    def event(self, agent, kind, detail, turn=None, source_key=None, time=None):
         with self.connect() as db:
             db.execute("""INSERT OR IGNORE INTO events
                 (agent,job,source_key,kind,detail,time) VALUES (?,?,?,?,?,?)""",
-                       (agent, job, source_key, kind, str(detail), time or now()))
+                       (agent, turn, source_key, kind, str(detail), time or now()))
 
     def project(self, agent, snapshot, outputs):
         with self.connect() as db:
-            for job in snapshot["jobs"]:
-                db.execute("""INSERT INTO jobs VALUES (?,?,?,?,?,?,?,?,?)
+            for turn in snapshot["turns"]:
+                db.execute("""INSERT INTO turns VALUES (?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(id) DO UPDATE SET status=excluded.status,
-                    output=COALESCE(excluded.output,jobs.output), error=excluded.error,
+                    output=COALESCE(excluded.output,turns.output), error=excluded.error,
                     tokens=excluded.tokens""",
-                           (job["id"], agent, job["flow"], job["task"], "warning" if job["status"] == "done" and job.get("warning") else job["status"],
-                            outputs.get(job["id"]), job.get("error") or job.get("warning"), job["tokens"], job["created"]))
+                           (turn["id"], agent, turn["flow"], turn["input"], "warning" if turn["status"] == "done" and turn.get("warning") else turn["status"],
+                            outputs.get(turn["id"]), turn.get("error") or turn.get("warning"), turn["tokens"], turn["created"]))
             for event in snapshot["events"]:
                 db.execute("""INSERT OR IGNORE INTO events
                     (agent,job,source_key,kind,detail,time) VALUES (?,?,?,?,?,?)""",
-                           (agent, event.get("job"), f"{agent}:{event['sequence']}",
+                           (agent, event.get("turn"), f"{agent}:{event['sequence']}",
                             event["kind"], json.dumps(event), event["time"]))
 
     def snapshot(self, after=0, agent=None):
         with self.connect() as db:
-            query = "SELECT * FROM jobs" + (" WHERE agent=?" if agent else "")
-            jobs = [dict(row) for row in db.execute(query + " ORDER BY created, id", (agent,) if agent else ())]
+            query = "SELECT * FROM turns" + (" WHERE agent=?" if agent else "")
+            turns = [dict(row) for row in db.execute(query + " ORDER BY created, id", (agent,) if agent else ())]
             messages = {row["job"]: row for row in db.execute("SELECT * FROM message_inputs")}
-            for job in jobs:
-                message = messages.get(job["id"])
-                job["attachments"] = json.loads(message["attachments"]) if message else []
+            for turn in turns:
+                message = messages.get(turn["id"])
+                turn["attachments"] = json.loads(message["attachments"]) if message else []
                 if message:
-                    job["input"] = message["text"]
+                    turn["input"] = message["text"]
             events = [dict(row) for row in db.execute(
                 "SELECT * FROM events WHERE id>? ORDER BY id LIMIT 500", (after,))]
+            for event in events:
+                event['turn'] = event.pop('job')
             latest = db.execute("SELECT COALESCE(MAX(id),0) FROM events").fetchone()[0]
             preferences = db.execute("SELECT value FROM preferences WHERE id=1").fetchone()
-        return {"agents": self.agents(), "jobs": jobs, "events": events,
+        return {"agents": self.agents(), "turns": turns, "events": events,
                 "cursor": events[-1]["id"] if events else after, "latest_cursor": latest,
                 "preferences": json.loads(preferences[0]) if preferences else {}}
 

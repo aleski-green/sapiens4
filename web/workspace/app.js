@@ -144,7 +144,7 @@ document.addEventListener('click',e=>{
   if(d.mention){openChat(d.mention);return;}
   if(d.agent){openChat(d.agent);return;}
   if(d.scope){state.scope=d.scope;renderSidebar();save();return;}
-  if(d.panel){state.panel=d.panel;renderConversation();save();return;}
+  if(d.panel && !b.disabled && ['chat','notes','log'].includes(d.panel)){state.panel=d.panel;renderConversation();save();return;}
   if(d.tab){state.activeTab=d.tab;renderTabs();renderWorkspace();save();return;}
   if(d.closeTab){const i=state.tabs.findIndex(t=>t.id===d.closeTab);if(i<0)return;state.tabs.splice(i,1);if(state.activeTab===d.closeTab)state.activeTab=state.tabs[Math.max(0,i-1)]?.id||null;closeModal();renderTabs();renderWorkspace();save();return;}
   if(d.newTabType){openTab(d.newTabType);closeModal();return;}

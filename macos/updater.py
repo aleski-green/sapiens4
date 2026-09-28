@@ -115,7 +115,7 @@ def healthy():
 
 def busy(state):
     return bool(state.get('computer', {}).get('owner')) or any(
-        j.get('status') in {'queued', 'running'} for j in state.get('jobs', []))
+        j.get('status') in {'queued', 'running'} for j in state.get('turns', state.get('jobs', [])))
 
 
 class Manager:

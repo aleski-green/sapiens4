@@ -91,7 +91,7 @@ class WorkspaceTest(IntegrationFixture):
         self.factory.fail = False
         second = service.submit(a.agid,dict(text='Use the saved file'))['id']
         asyncio.run(a.run())
-        jobs = {j['id']:j for j in a.state['jobs']}
+        jobs = {j['id']:j for j in a.state['turns']}
         self.assertEqual(jobs[first]['status'],'failed')
         self.assertEqual(jobs[second]['status'],'done')
         self.assertEqual(len(self.factory.prompts),2)

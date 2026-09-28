@@ -1,10 +1,8 @@
-"""Shared artifacts, archives, agent directory, and durable mailboxes."""
+"""Shared artifacts, archives, and agent directory."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
 from pathlib import Path
-from uuid import uuid4
 
 from .storage import atomic_bytes, atomic_json, file_lock, safe_child
 
@@ -41,28 +39,3 @@ class Corpora:
     def directory(self):
         path = self.root / "directory.json"
         return json.loads(path.read_bytes()) if path.exists() else {}
-
-    def send(self, sender: str, recipient: str, text: str, *, reply_to=None, message_id=None) -> str:
-        directory = self.directory()
-        if sender not in directory or recipient not in directory:
-            raise ValueError("Sender and recipient must be registered agents")
-        message_id = message_id or uuid4().hex
-        message = dict(id=message_id, sender=sender, recipient=recipient, text=text,
-                       reply_to=reply_to, time=datetime.now(timezone.utc).isoformat())
-        if not self.received(recipient, message_id):
-            atomic_json(safe_child(self.root / "mailboxes", f"{recipient}/{message_id}.json"), message)
-        return message_id
-
-    def pending(self, recipient):
-        directory = safe_child(self.root / "mailboxes", recipient)
-        return sorted((json.loads(p.read_bytes()) for p in directory.glob("*.json")),
-                      key=lambda row: (row["time"], row["id"]))
-
-    def acknowledge(self, recipient, message_id):
-        atomic_json(safe_child(self.root / "receipts", f"{recipient}/{message_id}.json"), True)
-        path = safe_child(self.root / "mailboxes", f"{recipient}/{message_id}.json")
-        if path.exists():
-            path.unlink()
-
-    def received(self, recipient, message_id):
-        return safe_child(self.root / "receipts", f"{recipient}/{message_id}.json").exists()

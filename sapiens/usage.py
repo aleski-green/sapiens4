@@ -38,8 +38,8 @@ def validate(data):
     for key, (lo, hi) in ranges.items():
         if type(data[key]) is not int or not lo <= data[key] <= hi:
             raise APIError(400, f'{key} must be an integer from {lo} to {hi}')
-    if data['call_allowance'] * 3 > data['weekly_limit']:
-        raise APIError(400, 'Weekly allowance must cover three calls for consolidation')
+    if data['call_allowance'] > data['weekly_limit']:
+        raise APIError(400, 'Weekly allowance must cover one conversation call')
     return data
 
 
@@ -55,19 +55,19 @@ def backfill(agent):
     if marker.exists():
         return
     state = agent.state
-    jobs = {j['id']: j for j in state['jobs']}
-    end = {e['job']: e['time'] for e in state['events']
-           if e.get('job') and e['kind'] in {'done', 'failed', 'conflict', 'interrupted'}}
+    turns = {j['id']: j for j in state['turns']}
+    end = {e['turn']: e['time'] for e in state['events']
+           if e.get('turn') and e['kind'] in {'done', 'failed', 'conflict', 'interrupted'}}
     for path in (agent.corpora.root / 'archive' / agent.agid / 'runs').glob('*.json'):
-        job = jobs.get(path.stem, {})
+        turn = turns.get(path.stem, {})
         for i, log in enumerate(json.loads(path.read_text()).get('logs', [])):
             identity = f'legacy-{path.stem}-{i}'
             if (agent.root / 'usage' / (identity + '.json')).exists():
                 continue
-            save_record(agent, dict(id=identity, job=path.stem, flow=job.get('flow', 'unknown'),
+            save_record(agent, dict(id=identity, turn=path.stem, flow=turn.get('flow', 'unknown'),
                 role=log.get('role'), session=log.get('session'), usage=log.get('usage'),
                 time=end.get(path.stem) or datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
-                status=job.get('status', 'unknown'), historical=True, approximate_time=True,
+                status=turn.get('status', 'unknown'), historical=True, approximate_time=True,
                 prompt_chars=len(log.get('prompt', '')), tools=None, output_chars=None))
     atomic_bytes(marker, b'{"version":1}')
 
@@ -82,17 +82,19 @@ class Usage:
                 CREATE INDEX IF NOT EXISTS usage_time ON usage_calls(agent,time);''')
 
     def sync(self, agent):
-        jobs = {j['id']: j for j in agent.state['jobs']}
+        turns = {j['id']: j for j in agent.state['turns']}
         for path in (agent.root / 'usage').glob('*.json'):
             key = (agent.agid, path.name, path.stat().st_mtime_ns)
             if key in self.seen:
                 continue
             row = json.loads(path.read_text())
-            job = jobs.get(row.get('job'))
-            if row.get('status') == 'running' and job and job['status'] not in {'running','queued'}:
+            if 'job' in row:
+                row['turn'] = row.pop('job')
+            turn = turns.get(row.get('turn'))
+            if row.get('status') == 'running' and turn and turn['status'] not in {'running','queued'}:
                 # A killed process cannot report final counters. Keep it unknown
                 # and expose the recovered state instead of a perpetual spinner.
-                row['status'] = job['status']
+                row['status'] = turn['status']
                 save_record(agent, row)
             with self.store.connect() as db:
                 db.execute('INSERT INTO usage_calls VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET time=excluded.time,value=excluded.value',

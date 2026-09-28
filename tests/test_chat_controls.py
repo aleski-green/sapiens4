@@ -38,12 +38,12 @@ class ChatControlsTest(IntegrationFixture):
         a = service.store.agents()[0]
         b = service.create_agent({'name': 'Nova', 'role': 'Tester'})
         settings = {'name': 'Nova', 'role': 'Research', 'manager': a['id'],
-                    'schedule': {'minutes': 5, 'enabled': True, 'monitor_team': True}}
+                    'recent': {'enabled': True, 'seconds': 120}}
         service.update_agent(b['id'], settings)
         service = self.restart(service, start_worker=False)
         saved = service.snapshot()['orchestration'][b['id']]
         self.assertEqual(saved['manager'], a['id'])
-        self.assertEqual(saved['schedule']['minutes'], 5)
+        self.assertEqual(saved['recent']['seconds'], 120)
         with self.assertRaises(APIError):
             service.update_agent(a['id'], {'name': 'Renamed', 'role': 'Tester', 'manager': b['id'],
                                            'schedule': {'minutes': 20}})
@@ -51,9 +51,8 @@ class ChatControlsTest(IntegrationFixture):
             service.update_agent(b['id'], {**settings, 'name': 'Changed', 'schedule': {'minutes': 0}})
         self.assertEqual(service.store.agents()[0]['name'], a['name'])
         self.assertEqual(service.store.agents()[1]['name'], 'Nova')
-        service.update_agent(b['id'], {**settings, 'manager': None, 'schedule': {'enabled': False}})
+        service.update_agent(b['id'], {**settings, 'manager': None})
         self.assertEqual(service.snapshot()['orchestration'][b['id']]['manager'], a['id'])
-        self.assertFalse(service.snapshot()['orchestration'][b['id']]['schedule']['enabled'])
 
     def test_attachments_reach_agent_and_keep_original_message(self):
         service = self.service(start_worker=False)
@@ -66,16 +65,16 @@ class ChatControlsTest(IntegrationFixture):
         service.save_preferences({'attachment_drafts': {agid: [doc['id']]}})
         service = self.restart(service, start_worker=False)
         self.assertEqual(service.snapshot()['attachment_drafts'][agid][0]['id'], doc['id'])
-        job = service.submit(agid, {'text': 'Summarize', 'attachments': [doc['id'], link['id'], file['id']]})
+        turn = service.submit(agid, {'text': 'Summarize', 'attachments': [doc['id'], link['id'], file['id']]})
         service = self.restart(service)
-        done = self.wait_job(service, job['id'])
+        done = self.wait_turn(service, turn['id'])
         self.assertEqual(done['input'], 'Summarize')
         self.assertEqual([a['id'] for a in done['attachments']], [doc['id'], link['id'], file['id']])
         self.assertIn(doc['value'], self.factory.prompts[-1])
         self.assertIn(link['value'], self.factory.prompts[-1])
         self.assertIn('no separate mode is required', self.factory.prompts[-1])
         job2 = service.submit(agid, {'attachments': [doc['id']]})
-        self.assertEqual(self.wait_job(service, job2['id'])['input'], '')
+        self.assertEqual(self.wait_turn(service, job2['id'])['input'], '')
 
     def test_attachment_validation_and_agent_boundary(self):
         service = self.service(start_worker=False)

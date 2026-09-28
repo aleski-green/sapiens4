@@ -1,8 +1,8 @@
 # Sapiens4
 
-Persistent local agents with CORPORA UI, AgentPy orchestration, Codex CLI and Blindly4 computer access. SQLite stores UI data.
+Local conversational agents with CORPORA UI, Codex CLI and Blindly4 computer access. Each Sapi manages a plain Markdown notes file. SQLite stores UI data.
 
-![CORPORA workspace with agent chats, tasks, jobs and memory](docs/images/corpora-ui.png)
+Chat, Notes, workspaces and activity logs are active. Tasks and Jobs remain visible but disabled; there is no scheduling or memory consolidation.
 
 ## Core principles
 
@@ -36,4 +36,4 @@ Open http://127.0.0.1:4174/workspace/.
 
 For a dedicated macOS window and Dock icon, see [the desktop app](macos/README.md).
 
-[Setup, features, API and tests](docs/reference.md) · [Agent strategies](docs/agent-owned-strategies.md)
+[Setup, features, API and tests](docs/reference.md)

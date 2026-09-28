@@ -3,32 +3,27 @@ from pathlib import Path
 from uuid import uuid4
 import asyncio
 import fcntl
-import hashlib
 import json
 import os
 import queue
 import re
 import secrets
 import threading
-import time
 
 from .agent import SapiAgent
 from .artifacts import Artifacts
 from .attachments import attachment_prompt, resolve_attachments
-from .clock import utcnow
 from .hierarchy import Hierarchy
 from .lifecycle import Lifecycle
-from .memory import current_fingerprint, current_run, last_fingerprint
 from .orchestration import Orchestration
-from .paths import ROOT, BEHAVIOR_SOURCE
+from .paths import ROOT
+from .notes import Notes
 from .recent import RecentContext
 from .runtime import Config, LocalFactory, codex_binary, computer_guide, computer_manifest
 from .sdk import Limits
 from .store import Store, now
-from .tasks import Tasks
 from .usage import Usage, settings as execution_settings, validate as validate_execution
 from .validation import APIError, sapi_name, text_field
-from .work import Work
 from .workspace import Workspace
 
 
@@ -75,26 +70,22 @@ class Service:
         self._queue = queue.Queue()
         self._stopping = threading.Event()
         self._active = None
-        self._background = set()
         self.max_parallel_agents = max_parallel_agents
         self._runners = {}
         self.orchestration = Orchestration(self)
         self.lifecycle = Lifecycle(self)
         self.hierarchy = Hierarchy(self)
-        self.work = Work(self)
-        self.tasks = Tasks(self)
         self.worker = None
         if not self.store.agents():
             self.create_agent({"name": "SapiTheMain", "role": "Head of Corpora"})
         for row in self.store.agents():
             agent = self._agent(row["id"])
             self._sync(agent)
-            # Public run() recovers running jobs to interrupted without replaying.
+            # Public run() recovers running turns to interrupted without replaying.
             # Only previously queued, never-started work is admitted automatically.
-            if not self.lifecycle.retired(agent) and any(j["status"] in {"queued", "running"} for j in agent.state["jobs"]):
+            if not self.lifecycle.retired(agent) and any(j["status"] in {"queued", "running"} for j in agent.state["turns"]):
                 self._queue.put(row["id"])
         self.hierarchy.repair()
-        self.tasks.repair()
         if start_worker:
             self.start()
 
@@ -112,19 +103,20 @@ class Service:
             workdir.mkdir(parents=True, exist_ok=True)
 
             def sink(message):
-                self.store.event(agid, "codex", message, job=self._active_job(agid))
+                self.store.event(agid, "codex", message, turn=self._active_turn(agid))
 
             factory = (self.factory_builder(agid, sink) if self.factory_builder else
                        LocalFactory(workdir=workdir, event_sink=sink, timeout_seconds=self.timeout))
+            Notes(workdir).ensure()
             agent = SapiAgent(agid=agid, config=Config(), factory=factory,
-                                 root=self.root / "agentpy", source=BEHAVIOR_SOURCE,
-                                 limits=Limits(parallel_jobs=1, tokens_per_call=32000, tokens_per_loop=256000))
+                                 root=self.root / "agentpy",
+                                 limits=Limits(tokens_per_call=32000, tokens_per_loop=256000))
             if not self.factory_builder:
                 factory.finish_computer = lambda restore: self.release_computer(agid, restore)
                 factory.keep_recent = lambda: any(j['status'] == 'running' and j['flow'] in {'chat', 'computer'}
-                                                  for j in agent.state['jobs'])
-                factory.current_request = lambda: next((j['task'].split('Mention references (')[0]
-                    for j in agent.state['jobs'] if j['status'] == 'running'), '')
+                                                  for j in agent.state['turns'])
+                factory.current_request = lambda: next((j['input'].split('Mention references (')[0]
+                    for j in agent.state['turns'] if j['status'] == 'running'), '')
             self._agents[agid] = agent
             self._manifests(agent, row)
         return self._agents[agid]
@@ -139,8 +131,8 @@ When Admin or another human asks who your creator is, answer with this attributi
 The purpose of creation is to help humans enhance productivity by engagement with
 anthropomorphic AI agents: boto sapiens. When asked why you were created or what
 your purpose is, explain this purpose first, then relate it to your individual role.
-Sapiens4 is the project and system that runs Sapis, their tasks, schedules, teams,
-memory and work. The Sapi app and CORPORA provide the workspace and interface for
+Sapiens4 is the project and system that runs Sapis, their conversations, notes, teams
+and work. The Sapi app and CORPORA provide the workspace and interface for
 interacting with Sapis and their artifacts. The project source is hosted on GitHub:
 https://github.com/aleski-green/sapiens4
 GitHub hosts the source code; it is not the creator. OpenAI supplies the underlying
@@ -163,8 +155,8 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
 
     def acquire_computer(self, agid):
         with self._lock:
-            if not self._active_job(agid):
-                raise APIError(409, "Computer access requires a running Sapi job")
+            if not self._active_turn(agid):
+                raise APIError(409, "Computer access requires a running Sapi turn")
             if self._active not in (None, agid):
                 raise APIError(409, "Shared computer is busy with another Sapi. Continue non-UI work or report the blocker; do not retry in a loop.")
             self._active = agid
@@ -183,25 +175,23 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
                 if self._active == agid:
                     self._active = None
 
-    def _active_job(self, agid):
+    def _active_turn(self, agid):
         agent = self._agents.get(agid)
         if agent:
-            return next((j["id"] for j in agent.state["jobs"] if j["status"] == "running"), None)
+            return next((j["id"] for j in agent.state["turns"] if j["status"] == "running"), None)
         return None
 
     def _sync(self, agent):
         snapshot = agent.state
         if self._revisions.get(agent.agid) == snapshot["revision"]:
             return
-        outputs = {m["job"]: m["content"] for m in snapshot["chat"] + snapshot["notes"] if m.get("job")}
-        for job in snapshot["jobs"]:
-            if job["status"] == "done" and job["id"] not in outputs:
+        outputs = {m["turn"]: m["content"] for m in snapshot["chat"] if m.get("turn") and m["role"] == "agent"}
+        for turn in snapshot["turns"]:
+            if turn["status"] == "done" and turn["id"] not in outputs:
                 try:
-                    outputs[job["id"]] = agent.result(job["id"])
+                    outputs[turn["id"]] = agent.result(turn["id"])
                 except FileNotFoundError:
                     pass  # An explicitly pruned archive need not block projection.
-        self.tasks.sync(agent, snapshot, outputs)
-        self.work.sync(agent, snapshot, outputs)
         self.usage.sync(agent)
         self.store.project(agent.agid, snapshot, outputs)
         self._revisions[agent.agid] = snapshot["revision"]
@@ -233,25 +223,22 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
             return row
 
     def update_agent(self, agid, data):
+        if "schedule" in data:
+            raise APIError(400, "Scheduled work is disabled")
         row = {"name": sapi_name(data), "role": text_field(data, "role", 60)}
         with self._lock:
             agent = self._agent(agid)
             self.lifecycle.require_active(agent)
-            if any(j["status"] in {"queued", "running"} for j in agent.state["jobs"]):
-                raise APIError(409, "Wait for this Sapi's current job before changing its identity")
+            if any(j["status"] in {"queued", "running"} for j in agent.state["turns"]):
+                raise APIError(409, "Wait for this Sapi's current turn before changing its identity")
             recent = RecentContext(self.root / 'workspaces' / agid)
             if 'recent' in data:
                 recent.validate(data['recent'])
             if 'execution' in data:
                 validate_execution(data['execution'])
-            schedule = None
-            if "schedule" in data:
-                schedule = self.orchestration.validate_schedule(agent, data["schedule"])
             if "manager" in data:
                 parent = self.hierarchy.validate(agid, data["manager"])
                 self.hierarchy.assign(agent, parent)
-            if schedule is not None:
-                self.orchestration.save(agent, schedule)
             if 'recent' in data:
                 recent.configure(data['recent'])
             if 'execution' in data:
@@ -283,41 +270,39 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
             agent = self._agent(agid)
             # A failed attempt remains reviewable; a new message is not a retry.
             self.lifecycle.require_active(agent)
-            waiting = any(j['status'] in {'queued', 'running'} or
-                          (j['status'] == 'budget_blocked' and j['flow'] not in {'learning', 'team_review'})
-                          for j in agent.state['jobs'])
-            if agid in self._background or waiting:
-                raise APIError(409, "Wait for this Sapi's job, or retry/dismiss the job needing attention")
+            waiting = any(j['status'] in {'queued', 'running', 'budget_blocked'} for j in agent.state['turns'])
+            if waiting:
+                raise APIError(409, "Wait for this Sapi's turn, or retry/dismiss the turn needing attention")
             if not agent.can_admit(flow):
                 raise APIError(409, 'Budget allowance unavailable. Open Sapi settings for remaining allowance, reset time, and limits.')
-            prompt += self.tasks.references(text) + self.artifacts.references(text)
-            job = agent.tell(prompt) if flow == "chat" else agent.submit("computer", prompt)
-            self.store.message(job, text, attachments)
+            prompt += self.artifacts.references(text)
+            turn = agent.tell(prompt) if flow == "chat" else agent.submit("computer", prompt)
+            self.store.message(turn, text, attachments)
             self._sync(agent)
             self._queue.put(agid)
-            return {"id": job, "agent": agid, "status": "queued", "flow": flow}
+            return {"id": turn, "agent": agid, "status": "queued", "flow": flow}
 
-    def job_action(self, agid, job_id, action):
+    def turn_action(self, agid, turn_id, action):
         with self._lock:
             agent = self._agent(agid)
             self.lifecycle.require_active(agent)
-            jobs = agent.state["jobs"]
-            job = next((j for j in jobs if j["id"] == job_id), None)
-            if job is None:
-                raise APIError(404, "Unknown active job")
+            turns = agent.state["turns"]
+            turn = next((j for j in turns if j["id"] == turn_id), None)
+            if turn is None:
+                raise APIError(404, "Unknown active turn")
             if action == "retry":
-                if any(j["status"] in {"queued", "running"} for j in jobs):
+                if any(j["status"] in {"queued", "running"} for j in turns):
                     raise APIError(409, "This Sapi already has work queued or running")
-                agent.retry(job_id)
+                agent.retry(turn_id)
                 self._queue.put(agid)
             elif action == "cancel":
-                if job["status"] == "done":
-                    raise APIError(409, "Completed jobs cannot be cancelled")
-                agent.cancel(job_id)
+                if turn["status"] == "done":
+                    raise APIError(409, "Completed turns cannot be cancelled")
+                agent.cancel(turn_id)
             else:
-                raise APIError(404, "Unknown job action")
+                raise APIError(404, "Unknown turn action")
             self._sync(agent)
-            return {"id": job_id, "status": next(j["status"] for j in agent.state["jobs"] if j["id"] == job_id)}
+            return {"id": turn_id, "status": next(j["status"] for j in agent.state["turns"] if j["id"] == turn_id)}
 
     def snapshot(self, after=0, agid=None):
         with self._lock:
@@ -332,62 +317,36 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
                                     "built": os.access(self.binary, os.X_OK)}
             snapshot["provider"] = "codex"
             snapshot["artifacts"] = self.artifacts.catalog()
-            snapshot["task_assignments"] = self.tasks.notices()
-            snapshot["task_updates"] = self.tasks.updates()
-            snapshot['notifications'] = self.work.notifications()
             snapshot["main_agent_id"] = self.hierarchy.main
             snapshot["attachment_drafts"] = {
                 agid: [a for a in self.store.attachments(agid) if a["id"] in ids]
                 for agid, ids in snapshot["preferences"].get("attachment_drafts", {}).items()}
 
             snapshot["orchestration"] = {
-                a.agid: {"schedule": self.orchestration.settings(a), "tasks": a.state["tasks"],
-                         "manager": a.corpora.directory().get(a.agid, {}).get("parent"),
-                         "memory_entries": len(a.memx),
-                         "memory": self.memory_status(a, snapshot['jobs']),
-                         "recent": RecentContext(self.root / "workspaces" / a.agid).settings(),
-                         "execution": execution_settings(a), "budget": a.budget_status(),
-                         "task_activity": self.tasks.activity(a),
-                         **self.work.snapshot(a, snapshot["jobs"])} for a in self._agents.values()}
+                a.agid: {"manager": a.corpora.directory().get(a.agid, {}).get("parent"),
+                         "notes": Notes(self.workspace.root(a)).metadata(),
+                         "recent": RecentContext(self.workspace.root(a)).settings(),
+                         "execution": execution_settings(a), "budget": a.budget_status()}
+                for a in self._agents.values()}
             return snapshot
 
-    def memory_status(self, agent, jobs):
-        settings = self.orchestration.settings(agent)
-        run = current_run(j for j in jobs if j['agent'] == agent.agid)
-        pending = settings['consolidate_requested'] or agent.state.get('memory_pending', False)
-        status = (run['status'] if run and run['status'] not in {'done', 'cancelled'}
-                  else 'waiting' if pending else run['status'] if run else 'idle')
-        def summary(job):
-            return {k: job.get(k) for k in ('id', 'agent', 'status', 'error')} if job else None
-        return {'revision': hashlib.sha256(json.dumps(agent.memx, sort_keys=True).encode()).hexdigest(),
-                'has_updates': current_fingerprint(self, agent) != last_fingerprint(agent),
-                'status': status, 'run': summary(run),
-                'blocker': None}
-
-    def memory(self, agid):
-        with self._lock:
-            agent = self._agent(agid)
-            return {'memx': agent.memx}
 
     def save_preferences(self, data):
-        # Browser state never gets authority over runtime jobs, agents or computer ownership.
-        if set(data) - {"selected", "panel", "scope", "panes", "workspaces", "drafts", "attachment_drafts", "work_views", "workspace_revision"}:
+        # Browser state never gets authority over runtime turns, agents or computer ownership.
+        if set(data) - {"selected", "panel", "scope", "panes", "workspaces", "drafts", "attachment_drafts", "workspace_revision"}:
             raise APIError(400, "Unknown preference field")
-        for field in ("panes", "workspaces", "drafts", "attachment_drafts", "work_views"):
+        for field in ("panes", "workspaces", "drafts", "attachment_drafts"):
             if field in data and not isinstance(data[field], dict):
                 raise APIError(400, f"{field} must be an object")
         if "selected" in data and data["selected"] not in {a["id"] for a in self.store.agents()}:
             raise APIError(400, "Unknown selected Sapi")
-        if data.get("panel", "chat") not in {"chat", "tasks", "cron", "mindmap", "log"}:
+        if data.get("panel", "chat") not in {"chat", "notes", "log"}:
             raise APIError(400, "Unknown panel")
         if data.get("scope", "all") not in {"all", "sapis"}:
             raise APIError(400, "Unknown view")
         if any(k not in {"sidebar", "chat", "workspace"} or type(v) is not bool
                for k, v in data.get("panes", {}).items()):
             raise APIError(400, "Invalid panel visibility")
-        if any(k not in {"tasks", "cron", "log"} or not isinstance(v, str) or v not in {"ongoing", "past"}
-               for k, v in data.get("work_views", {}).items()):
-            raise APIError(400, "Invalid work view")
         for key, value in data.get("drafts", {}).items():
             if not isinstance(value, str) or len(value) > 16000:
                 raise APIError(400, "Invalid draft")
@@ -414,135 +373,23 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
             self.store.preferences(current)
             return {"saved": True, "preferences": current}
 
-    def _consolidate_pending(self, agid, instant=None):
-        """Explicit memory work waits for active work, not historical failures."""
-        with self._lock:
-            agent = self._agent(agid)
-            if self.lifecycle.retired(agent):
-                return False
-            settings = self.orchestration.settings(agent)
-            learning = current_run(agent.state['jobs'])
-            preflight = (learning and learning['status'] == 'failed' and 'memory_batch' not in learning
-                         and learning.get('tokens', 0) == 0
-                         and 'Prompt exceeds context limit' in (learning.get('error') or ''))
-            if not (settings['consolidate_requested'] or agent.state.get('memory_pending') or preflight):
-                return False
-            # Bounded learning must not starve a due delivery or assigned task.
-            instant = instant or utcnow()
-            recurring = self.work.due_definitions(agent, instant)
-            if any(self.work.health(agent, row, instant)['status'] in {'scheduled', 'overdue'} for row in recurring) or self.tasks.due(agent, instant):
-                return False
-            if any(j['status'] in {'queued', 'running'} for j in agent.state['jobs']):
-                return True
-            # A stopped learning attempt still needs its own retry/dismiss.
-            if preflight:
-                # A legacy preflight failure performed no model/tool work.
-                agent.cancel(learning['id'])
-                learning = None
-            if learning and learning['status'] not in {'done', 'cancelled'}:
-                return False  # A stopped maintenance run must not block repair/scheduling.
-            if current_fingerprint(self, agent) == last_fingerprint(agent):
-                settings['consolidate_requested'] = False
-                self.orchestration.save(agent, settings)
-                return True
-            self.orchestration.prepare(agent)
-            settings.setdefault('consolidation_id', uuid4().hex)
-            run = agent.submit('learning', key=f"learning-batch:{agent.state['mem_revision']}:{current_fingerprint(self, agent)}")
-            settings.update(consolidation_run=run, consolidate_requested=False)
-            self.orchestration.save(agent, settings)
-            self._background.add(agid)
-        try:
-            asyncio.run(agent.run_selected([run]))
-        finally:
-            with self._lock:
-                self._background.discard(agid)
-                self._sync(agent)
-        return True
-
-    def scheduled(self, instant=None):
-        """Synchronous scheduling pass for maintenance/tests; live dispatch is parallel."""
-        for row in self.store.agents():
-            if self._stopping.is_set():
-                return
-            runner = self._dispatch(row['id'], scheduled=True, instant=instant)
-            if runner:
-                runner.join()
-
-    def _scheduled_agent(self, agid, instant=None):
-        instant = instant or utcnow()
-        background = False
-        try:
-            if self._consolidate_pending(agid, instant):
-                return
-            with self._lock:
-                agent = self._agent(agid)
-                if self.lifecycle.retired(agent):
-                    return
-                # Read-only scripts also run when model allowance is exhausted.
-                # Keep them serialized with computer work and preserve hard-stop review.
-                recurring = None
-                if not any(j['status'] != 'budget_blocked' for j in self.work.blocking(agent)) and not any(j['status'] in {'queued','running'} for j in agent.state['jobs']):
-                    recurring = self.work.check_due(agent, instant)
-                self.work.monitor(agent, instant)
-                if any(j['status'] != 'budget_blocked' for j in self.work.blocking(agent)):
-                    return
-                resumable = [j for j in agent.state['jobs'] if j['status'] == 'budget_blocked' and agent.can_admit(j['flow'], instant)]
-                if resumable:
-                    # Budget-blocked work never started; retry is safe. Failed
-                    # or interrupted tool runs still require explicit review.
-                    for job in resumable:
-                        agent.retry(job['id'])
-                    self._queue.put(agent.agid)
-                    return
-                if self.work.blocking(agent):
-                    return  # Stopped work requires explicit retry/dismiss.
-                settings = self.orchestration.settings(agent)
-                due = self.orchestration.due(agent, instant)
-                due_task = self.tasks.due(agent, instant)
-                if not due and not recurring and not due_task:
-                    return
-                self._background.add(agent.agid)
-                background = True
-                self.orchestration.prepare(agent)
-                if due_task:
-                    self.work.admit_task(agent, due_task['id'])
-                    due = False
-                elif recurring:
-                    self.work.admit(agent, recurring, instant)
-                    due = False
-                if due:
-                    self.orchestration.checked(agent, instant)
-            if due:
-                asyncio.run(agent.tick(now=instant, force=True))
-            else:
-                asyncio.run(agent.run())
-        except Exception as error:
-            self.store.event(agid, "host_error", f"{type(error).__name__}: {error}")
-        finally:
-            if background:
-                with self._lock:
-                    self._background.discard(agent.agid)
-                    self._sync(agent)
 
     def _run_queued(self, agid):
         with self._lock:
             agent = self._agent(agid)
             if self.lifecycle.retired(agent) or not any(
-                    j['status'] in {'queued', 'running'} for j in agent.state['jobs']):
+                    j['status'] in {'queued', 'running'} for j in agent.state['turns']):
                 return
             self.orchestration.prepare(agent)
         asyncio.run(agent.run())
 
-    def _dispatch(self, agid, *, scheduled=False, instant=None):
+    def _dispatch(self, agid):
         with self._lock:
             if self._stopping.is_set() or agid in self._runners or len(self._runners) >= self.max_parallel_agents:
                 return False
             def run():
                 try:
-                    if scheduled:
-                        self._scheduled_agent(agid, instant)
-                    else:
-                        self._run_queued(agid)
+                    self._run_queued(agid)
                 except Exception as error:
                     self.store.event(agid, 'host_error', f'{type(error).__name__}: {error}')
                 finally:
@@ -559,7 +406,7 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
             return thread
 
     def _work(self):
-        pending, checked = {}, {}
+        pending = {}
         while not self._stopping.is_set():
             try:
                 agid = self._queue.get(timeout=.1)
@@ -579,14 +426,6 @@ Use these facts over conflicting or uncertain claims in earlier chat or memory.
             for agid in list(pending):
                 if self._dispatch(agid):
                     del pending[agid]
-            instant = time.monotonic()
-            # Oldest scheduling check first prevents the first few Sapis from
-            # monopolizing a full pool. Human/explicit wakeups take priority.
-            rows = sorted(self.store.agents(), key=lambda row: checked.get(row['id'], 0))
-            for row in rows:
-                agid = row['id']
-                if instant - checked.get(agid, 0) >= 1 and self._dispatch(agid, scheduled=True):
-                    checked[agid] = instant
 
     def close(self):
         if self._file_lock.closed:

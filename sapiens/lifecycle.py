@@ -25,36 +25,23 @@ class Lifecycle:
             if self.retired(agent) == retire:
                 return dict(id=agid, retired=retire, changed=False)
             if retire:
-                if agid in self.service._background or any(
-                        j['status'] in {'queued', 'running'} for j in agent.state['jobs']):
+                if any(
+                        j['status'] in {'queued', 'running'} for j in agent.state['turns']):
                     raise APIError(409, 'Finish or cancel queued work before retiring this Sapi')
                 if any(entry.get('parent') == agid and not self.retired(self.service._agent(child))
                        for child, entry in agent.corpora.directory().items()):
                     raise APIError(409, 'Reassign this Sapi\'s direct reports before retiring it')
-                settings.update(retired_at=utcnow().isoformat(), retirement_reason=reason,
-                                enabled=False, next_check=None, monitor_team=False,
-                                consolidate_requested=False)
+                settings.update(retired_at=utcnow().isoformat(), retirement_reason=reason)
             else:
                 settings.update(retired_at=None, retirement_reason='')
                 parent = agent.corpora.directory()[agid].get('parent')
                 if parent and self.retired(self.service._agent(parent)):
                     self.service.hierarchy.assign(agent, self.service.hierarchy.main)
-            # The retired flag is authoritative even if the process exits before
-            # recurring definitions are paused. Restoring also keeps them paused.
-            if not retire:
-                self.pause_recurring(agent)
             self.service.orchestration.save(agent, settings)
-            if retire:
-                self.pause_recurring(agent)
             self.service.store.event(agid, 'retired' if retire else 'restored', reason or
                                      ('Sapi retired; history preserved' if retire else 'Sapi restored'))
             return dict(id=agid, retired=retire, changed=True)
 
-    def pause_recurring(self, agent):
-        definitions = self.service.work.read(agent)
-        for definition in definitions:
-            definition['enabled'] = False
-        self.service.work.save(agent, definitions)
 
     def catalog(self):
         result = []
@@ -64,6 +51,5 @@ class Lifecycle:
             if settings.get('retired_at'):
                 result.append(dict(id=row['id'], name=row['name'], role=row['role'],
                     retired_at=settings['retired_at'], reason=settings.get('retirement_reason', ''),
-                    manager=agent.corpora.directory().get(agent.agid, {}).get('parent'),
-                    open_tasks=len(agent.state['tasks']), memory_entries=len(agent.memx)))
+                    manager=agent.corpora.directory().get(agent.agid, {}).get('parent')))
         return result

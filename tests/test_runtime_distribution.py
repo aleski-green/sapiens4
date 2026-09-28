@@ -29,7 +29,7 @@ assert sys.path == before, 'Importing the runtime must not alter module search p
 assert 'config' not in sys.modules, 'Behavior config must have a qualified module name'
 for url in ('/', '/workspace/', '/workspace/app.js', '/workspace/styles.css',
             '/assets/sapi-theme.css', '/assets/sapi-theme.js',
-            '/assets/group-avatar.js', '/live.css', '/mindmap.html'):
+            '/assets/group-avatar.js', '/live.css'):
     mime, body = asset(url)
     assert body and mime, url
 for url in ('/agentpy/config.py', '/web/bootstrap.js', '/.git/config',
@@ -38,9 +38,7 @@ for url in ('/agentpy/config.py', '/web/bootstrap.js', '/.git/config',
 service = Service(Path(sys.argv[2]), start_worker=False)
 try:
     agent = service._agent(service.hierarchy.main)
-    version = agent.morphos.stage({'prompts/conversation.md': 'Reply to {task}'})
-    config = agent.morphos.load(version)
-    assert config.roles['conversation'].prompt == 'Reply to {task}'
+    assert (service.workspace.root(agent) / 'Notes.md').is_file()
     assert service.snapshot()['main_agent_id'] == agent.agid
 finally:
     service.close()

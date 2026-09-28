@@ -22,15 +22,14 @@ class LifecycleTest(IntegrationFixture):
     def test_retire_and_rehire_preserve_history_files_identity_and_preferences(self):
         service, chief, child = self.team()
         control = service.orchestration.control
-        job = service.submit(child, dict(text='Remember the research'))['id']
+        turn = service.submit(child, dict(text='Remember the research'))['id']
         agent = service._agent(child)
         asyncio.run(agent.run())
         service._sync(agent)
         history = agent.state['chat']
-        memory = agent.memx
+        notes = service.workspace.root(agent) / "Notes.md"
+        notes.write_text("Keep these findings")
         artifact = control(child, dict(op='artifact_save', name='research.md', content='# Findings'))['artifact']
-        task = control(chief, dict(op='task', target=child, title='Preserve this planned task'))['task_id']
-        recurring = control(child, dict(op='recurring_job', title='Check research', prompt='Inspect notes', minutes=30))['recurring_job']
         service.save_preferences(dict(selected=child, drafts={child:'Keep my draft'}))
         retired = control(chief, dict(op='retire_agent', target='Seneca', reason='Role not currently needed'))
         self.assertTrue(retired['retired'])
@@ -52,15 +51,11 @@ class LifecycleTest(IntegrationFixture):
         agent = service._agent(child)
         self.assertEqual(len(service.store.agents()), 2)
         self.assertEqual(agent.state['chat'], history)
-        self.assertEqual(agent.memx, memory)
-        self.assertEqual(agent.state['tasks'][0]['id'], task)
+        self.assertEqual(notes.read_text(), "Keep these findings")
         self.assertEqual(Path(artifact['path']).read_text(), '# Findings')
         self.assertEqual(service.store.read_preferences()['drafts'][child], 'Keep my draft')
-        self.assertEqual(next(j for j in service.snapshot()['jobs'] if j['id'] == job)['output'], 'Connected through AgentPy.')
+        self.assertEqual(next(j for j in service.snapshot()['turns'] if j['id'] == turn)['output'], 'Connected through AgentPy.')
         self.assertFalse(service.lifecycle.retired(agent))
-        self.assertFalse(service.orchestration.settings(agent)['enabled'])
-        self.assertEqual(service.work.read(agent)[0]['id'], recurring['id'])
-        self.assertFalse(service.work.read(agent)[0]['enabled'])
         self.assertEqual(service.orchestration.status(service._agent(chief))['retired_team'], [])
 
     def test_only_chief_can_change_lifecycle_and_cannot_retire_itself(self):
@@ -88,19 +83,16 @@ class LifecycleTest(IntegrationFixture):
         with self.assertRaisesRegex(APIError, 'direct reports'):
             control(chief, dict(op='retire_agent', target=child))
         control(chief, dict(op='retire_agent', target=report))
-        job = service.submit(child, dict(text='Queued work'))['id']
+        turn = service.submit(child, dict(text='Queued work'))['id']
         for state in ['queued', 'running']:
             with service._agent(child).store.transaction() as saved:
-                saved['jobs'][0]['status'] = state
+                saved['turns'][0]['status'] = state
             with self.assertRaisesRegex(APIError, 'Finish or cancel'):
                 control(chief, dict(op='retire_agent', target=child))
         with service._agent(child).store.transaction() as saved:
-            saved['jobs'][0]['status'] = 'queued'
-        service.job_action(child, job, 'cancel')
-        service._background.add(child)
-        with self.assertRaisesRegex(APIError, 'Finish or cancel'):
-            control(chief, dict(op='retire_agent', target=child))
-        service._background.remove(child)
+            saved['turns'][0]['status'] = 'queued'
+        service.turn_action(child, turn, 'cancel')
+        control(chief, dict(op='retire_agent', target=child))
         control(chief, dict(op='retire_agent', target=child))
         control(chief, dict(op='rehire_agent', target=report))
         self.assertEqual(service._agent(report).corpora.directory()[report]['parent'], chief)
@@ -108,47 +100,21 @@ class LifecycleTest(IntegrationFixture):
     def test_retired_sapis_cannot_receive_run_or_resume_work(self):
         service, chief, child = self.team()
         control = service.orchestration.control
-        task = control(chief, dict(op='task', target=child, title='Due work', due='2020-01-01T00:00:00+00:00'))['task_id']
         control(child, dict(op='artifact_save', name='saved.md', content='Retain this'))
-        job = service._agent(child).submit('task', 'Blocked work')
+        turn = service._agent(child).tell('Blocked work')
         with service._agent(child).store.transaction() as state:
-            state['jobs'][0]['status'] = 'budget_blocked'
+            state['turns'][0]['status'] = 'budget_blocked'
         control(chief, dict(op='retire_agent', target=child))
-        mutations = [dict(op='task', target=child, title='New work'),
-                     dict(op='run_task', target=child, id=task),
-                     dict(op='recurring_job', target=child, title='New job', prompt='Work', minutes=10),
-                     dict(op='manager', target=child, manager=None),
-                     dict(op='create_agent', name='Seneca', role='Researcher')]
-        for mutation in mutations:
-            with self.subTest(op=mutation['op']):
-                with self.assertRaisesRegex(APIError, 'retired'):
-                    control(chief, mutation)
-        for mutation in [dict(op='schedule', enabled=True), dict(op='consolidate'),
-                         dict(op='batch', operations=[dict(op='schedule', enabled=True)])]:
-            with self.assertRaisesRegex(APIError, 'retired'):
-                control(child, mutation)
         with self.assertRaisesRegex(APIError, 'retired'):
             service.submit(child, dict(text='Do work'))
         with self.assertRaisesRegex(APIError, 'retired'):
-            service.job_action(child, job, 'retry')
+            service.turn_action(child, turn, 'retry')
         with self.assertRaisesRegex(APIError, 'retired'):
             service.update_agent(child, dict(name='Seneca', role='Changed role'))
         self.assertEqual(control(child, dict(op='artifact_read', name='saved.md'))['content'], 'Retain this')
-        self.assertEqual(control(child, dict(op='workspace_open', artifact='saved.md'))['tab']['artifact'], 'saved.md')
-        service = self.restart(service, start_worker=False)
-        agent = service._agent(child)
-        # Even stale scheduling flags must not bypass the retired flag.
-        settings = service.orchestration.settings(agent)
-        settings.update(enabled=True, next_check=None, consolidate_requested=True)
-        service.orchestration.save(agent, settings)
-        with patch.object(service._agent(chief), 'tick'), patch.object(agent, 'run') as run, patch.object(agent, 'tick') as tick:
-            service.orchestration.control(chief, dict(op='schedule', enabled=False))
-            service.scheduled(datetime.now(timezone.utc) + timedelta(days=1))
-        run.assert_not_called()
-        tick.assert_not_called()
+        service = self.restart(service)
         self.assertEqual(self.factory.prompts, [])
-        self.assertEqual(agent.state['jobs'][0]['status'], 'budget_blocked')
-        self.assertIsNone(agent.state['tasks'][0].get('job'))
+        self.assertEqual(service._agent(child).state['turns'][0]['status'], 'budget_blocked')
 
     def test_host_http_receipts_and_manifests_support_chief_lifecycle(self):
         service, chief, child = self.team()

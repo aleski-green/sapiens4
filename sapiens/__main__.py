@@ -26,7 +26,7 @@ def main():
     except BaseException:
         service.close()
         raise
-    service.start()  # Recovered jobs need the host-control endpoint attached first.
+    service.start()  # Recovered chat turns need the host-control endpoint attached first.
     url = f"http://127.0.0.1:{server.server_port}/workspace/"
     print(f"Sapiens4: {url}\nUI database: {service.store.path}", flush=True)
 

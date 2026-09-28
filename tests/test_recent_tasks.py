@@ -9,52 +9,7 @@ from agentpy.interfaces import LLMSpec
 
 
 class RecentTasksTest(IntegrationFixture):
-    def test_delegation_notices_names_links_and_restart(self):
-        service=self.service(start_worker=False)
-        main=service.hierarchy.main
-        nova=service.create_agent({'name':'Nova','role':'Research'})['id']
-        result=service.orchestration.control(main,{'op':'task','target':'Nova','title':'Find a funny AI joke'})
-        name=result['task_name']
-        self.assertRegex(name,r'^[a-z][A-Za-z0-9_.:#+|()&$^\-]*$')
-        state=service.snapshot()
-        self.assertEqual(state['orchestration'][main]['tasks'],[])
-        task=state['orchestration'][nova]['tasks'][0]
-        self.assertEqual(task['id'],result['task_id'])
-        self.assertEqual(state['task_assignments'][0]['assigned_by'],main)
-        self.assertEqual(state['task_assignments'][0]['agent'],nova)
-        again=service.orchestration.control(main,{'op':'task','target':nova,'title':'Find a funny AI joke'})
-        self.assertNotEqual(name,again['task_name'])
-        refs=service.tasks.references('Show @'+name)
-        self.assertIn(result['task_id'],refs)
-        service.orchestration.control(nova,{'op':'finish_task','id':task['id']})
-        service=self.restart(service,start_worker=False)
-        self.assertEqual(len(service.snapshot()['task_assignments']),2)
-        self.assertIn(result['task_id'],service.tasks.references('Show @'+name))
-        self.assertEqual(service.snapshot()['orchestration'][nova]['past_tasks'][0]['name'],name)
 
-    def test_invalid_names_or_targets_never_create_task_or_notice(self):
-        service=self.service(start_worker=False)
-        main=service.hierarchy.main
-        for name in ['Upper','two words','bad/name','x'*65,'1task','task-12x:name']:
-            with self.assertRaises(APIError):
-                service.orchestration.control(main,{'op':'task','title':'Example','name':name})
-        with self.assertRaises(APIError):
-            service.orchestration.control(main,{'op':'task','title':'Example','target':'Unknown'})
-        self.assertEqual(service.snapshot()['task_assignments'],[])
-        valid='a-Z_1.:#+|()&$^'
-        first=service.orchestration.control(main,{'op':'task','title':'Example','name':valid})
-        with self.assertRaises(APIError):
-            service.orchestration.control(main,{'op':'task','title':'Other','name':first['task_name']})
-        self.assertEqual(len(service.snapshot()['task_assignments']),1)
-
-    def test_existing_tasks_get_stable_names_without_duplicate_notices(self):
-        service=self.service(start_worker=False)
-        main=service.hierarchy.main
-        service._agent(main).add_task('Legacy task')
-        service=self.restart(service,start_worker=False)
-        first=service.snapshot()['task_assignments']
-        service=self.restart(service,start_worker=False)
-        self.assertEqual(first,service.snapshot()['task_assignments'])
 
     def test_recent_tools_survive_fresh_sessions_and_stay_isolated_bounded(self):
         path=Path(self.directory.name)
@@ -76,9 +31,6 @@ class RecentTasksTest(IntegrationFixture):
         self.assertTrue(rows[0]['observations'][-1]['truncated'])
         self.assertLess(len(json.dumps(rows)),40000)
         self.assertEqual(RecentContext(path/'other-sapi').read(),[])
-        with patch.object(CodexLLM,'complete',return_value='memory'):
-            factory.spawn(LLMSpec(role='memory_arbiter')).complete('Consolidate')
-        self.assertEqual(rows,RecentContext(path).read())
 
     def test_failed_tool_results_are_marked_not_fabricated_as_success(self):
         path=Path(self.directory.name)

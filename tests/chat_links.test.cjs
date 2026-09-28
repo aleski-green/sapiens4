@@ -12,7 +12,7 @@ value=render('[Proposal](</Users/Admin/My files/proposal.md>)');
 assert.match(value,/data-artifact-link="art-md0016"/);assert.match(value,/@art-md0016:proposal/);assert.doesNotMatch(value,/\/Users/);
 assert.match(render('@art-md0016 and @art-md0016:old'),/data-artifact-link/);
 assert.doesNotMatch(render('@art-md0016:wrong'),/data-artifact-link/);
-assert.match(render('@task-x0012 and @create-or-find-one'),/data-task-link/);
+assert.doesNotMatch(render('@task-x0012 and @create-or-find-one'),/data-task-link/);
 assert.doesNotMatch(render('[Bad](javascript:alert(1))'),/<a /);
 assert.doesNotMatch(render('<img src=x onerror=alert(1)>'),/<img/);
 assert.equal(render('`https://example.com`'),'<code>https://example.com</code>');

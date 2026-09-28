@@ -136,6 +136,9 @@ class DesktopUpdaterTests(unittest.TestCase):
 
     def test_busy_includes_queued_and_computer_work(self):
         self.assertTrue(updater.busy({'jobs': [{'status': 'queued'}]}))
+        self.assertTrue(updater.busy({'turns': [{'status': 'queued'}]}))
+        self.assertTrue(updater.busy({'turns': [{'status': 'running'}]}))
+        self.assertFalse(updater.busy({'turns': [{'status': 'done'}]}))
         self.assertTrue(updater.busy({'computer': {'owner': 'agent'}}))
         self.assertFalse(updater.busy({'jobs': [{'status': 'done'}]}))
 

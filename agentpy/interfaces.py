@@ -1,15 +1,13 @@
-"""Worker and memory contracts used by the persistent runtime."""
+"""Local model worker contracts."""
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Generic, Iterator, Sequence, TypeVar
+from typing import Any
 
-T = TypeVar("T")
 
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
-
 
 
 @dataclass(frozen=True)
@@ -21,14 +19,12 @@ class LLMSpec:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
-
 @dataclass
 class Turn:
     role: str  # user | assistant | system | tool | lambda
     content: str
     ts: str = field(default_factory=_utcnow)
     meta: dict[str, Any] = field(default_factory=dict)
-
 
 
 @dataclass
@@ -45,34 +41,6 @@ class SessionLog:
         return "\n".join(lines)
 
 
-
-class Renderable(ABC):
-    @abstractmethod
-    def render(self) -> str:
-        """Markdown (or plain text) block for LLM context."""
-
-
-
-class Memory(Renderable, ABC, Generic[T]):
-    """Experience store. Row type is Config.memory_schema."""
-
-    @abstractmethod
-    def __iter__(self) -> Iterator[T]: ...
-
-    @abstractmethod
-    def add(self, item: T) -> None: ...
-
-    @abstractmethod
-    def extend(self, items: Sequence[T]) -> None: ...
-
-    @abstractmethod
-    def replace_all(self, items: Sequence[T]) -> None: ...
-
-    @abstractmethod
-    def clear(self) -> None: ...
-
-
-
 class LLM(ABC):
     """One worker bound to one session. The backend may keep extra state
     behind .id; AgentPy only stores the transcript in sessions[key]."""
@@ -82,7 +50,6 @@ class LLM(ABC):
 
     @abstractmethod
     def complete(self, prompt: str) -> str: ...
-
 
 
 class LLMFactory(ABC):
