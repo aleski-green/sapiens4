@@ -2,7 +2,7 @@
 
 Status: design specification. This document describes the intended work model;
 it does not claim that task graphs, triggers, or delegation are implemented.
-See the [runtime reference](../../docs/reference.md) for current behavior.
+See the [runtime reference](../reference.md) for current behavior.
 
 Haskell syntax is used only as a descriptive DSL in Markdown. The fragments are
 readable specifications, not a compilable module. They are not compiled,

@@ -77,7 +77,7 @@ class ImportArchitectureTest(unittest.TestCase):
         shared = {'__init__.py', '__main__.py', 'clock.py', 'files.py', 'paths.py', 'preflight.py',
                   'prompts.py', 'validation.py', 'assets.py', 'service.py', 'server.py'}
         splits = {
-            '': ({'sapiens', 'web', 'macos'}, {'blindly4', 'docs', 'prompts', 'tests',
+            '': ({'sapiens', 'web', 'macos'}, {'blindly4', 'documentation', 'prompts', 'tests',
                                              'CONTRIBUTING.md', 'README.md', 'start.sh'}),
             'sapiens': ({'corpora', 'runtime', 'computer'}, shared),
             'sapiens/corpora': ({'sapis', 'browser.py', 'host'}, {'__init__.py'}),
