@@ -66,8 +66,7 @@ class RecoveryTest(IntegrationFixture):
             with service._agent(agid).transaction() as state:
                 state['turns'][-1]['status'] = 'running'
         service.acquire_computer(first)
-        events = []
-        llm = CodexLLM(spec=LLMSpec(), workdir=Path(self.directory.name), event_sink=events.append)
+        llm = CodexLLM(spec=LLMSpec(), workdir=Path(self.directory.name))
         def restore():
             self.assertEqual(service._active, first)
             with self.assertRaisesRegex(APIError, 'busy'):
@@ -80,12 +79,11 @@ class RecoveryTest(IntegrationFixture):
         self.assertEqual(result, 'reply')
         self.assertIsNone(service._active)
         self.assertEqual(llm.warning, 'Focus could not be restored')
-        self.assertEqual(events, [llm.warning])
 
     def test_foreground_restoration_runs_on_success_error_and_limit(self):
         root=Path(self.directory.name)
         for outcome in ('ok',RuntimeError('provider error'),TimeoutError('timeout'),InterruptedError('stopped')):
-            llm=CodexLLM(spec=LLMSpec(role='conversation'),workdir=root,event_sink=lambda _:None)
+            llm=CodexLLM(spec=LLMSpec(role='conversation'),workdir=root)
             with patch('sapiens.corpora.host.service.ForegroundReturn') as foreground, patch('sapiens.runtime.codex.CodexLLM.complete',side_effect=outcome if isinstance(outcome,Exception) else None,return_value='ok'):
                 foreground.return_value.restore.return_value=None
                 if isinstance(outcome,Exception):

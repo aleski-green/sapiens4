@@ -79,9 +79,6 @@ class Handler(BaseHTTPRequestHandler):
         if self.command == "GET":
             if path == '/api/decision-prompts':
                 return self._send(200, {'prompts': service.delegation.templates()})
-            if len(parts) == 4 and parts[:2] == ['api', 'agents'] and parts[3] == 'decisions':
-                service._agent(parts[2])
-                return self._send(200, (yaml_text(service.delegation.records(parts[2])) + '\n').encode(), 'application/yaml; charset=utf-8')
             if len(parts) == 4 and parts[:2] == ['api', 'agents'] and parts[3] == 'tasks':
                 service._agent(parts[2])
                 if parse_qs(url.query).get('format') == ['json']:
@@ -89,14 +86,7 @@ class Handler(BaseHTTPRequestHandler):
                 value = service.delegation.tasks(parts[2], full=True)
                 return self._send(200, (yaml_text(value) + '\n').encode(), 'application/yaml; charset=utf-8')
             if path == "/api/state":
-                query = parse_qs(url.query)
-                try:
-                    after = int(query.get("after", ["0"])[0])
-                except ValueError:
-                    raise APIError(400, "after must be a nonnegative integer") from None
-                if after < 0:
-                    raise APIError(400, "after must be nonnegative")
-                return self._send(200, service.snapshot(after))
+                return self._send(200, service.snapshot())
             if len(parts) == 4 and parts[:2] == ['api','agents'] and parts[3] == 'notes':
                 with service._lock:
                     notes = Notes(service.workspace.root(service._agent(parts[2])))

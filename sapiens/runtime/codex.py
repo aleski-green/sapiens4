@@ -17,13 +17,6 @@ from sapiens.runtime.contracts import LLMSpec
 from sapiens.runtime.settings import codex_binary, model_defaults
 
 
-EventSink = Callable[[str], None]
-
-
-def _print_event(message: str) -> None:
-    print(message, flush=True)
-
-
 @dataclass
 class CodexLLM:
     """One resumable local ``codex exec`` thread."""
@@ -33,7 +26,6 @@ class CodexLLM:
     id: str = field(default_factory=lambda: f"pending_{uuid4().hex[:8]}")
     resume: bool = False
     reasoning_effort: str | None = None
-    event_sink: EventSink = _print_event
     timeout_seconds: float | None = None
     cancel_event: Event = field(default_factory=Event, repr=False)
     activity: dict = field(default_factory=dict)
@@ -119,7 +111,6 @@ class CodexLLM:
                 try:
                     event = json.loads(line)
                 except json.JSONDecodeError:
-                    self.event_sink(f"[codex] {line}")
                     continue
                 message = self._consume_event(event)
                 if event.get("type") == "turn.failed":
@@ -184,45 +175,8 @@ class CodexLLM:
 
         if event_type == "thread.started":
             self.id = event["thread_id"]
-            self.event_sink(f"🧵 Codex thread {self.id} started")
-        elif event_type == "turn.started":
-            self.event_sink("🧠 Codex is working…")
-        elif event_type == "turn.completed":
-            self.event_sink("✅ Codex turn completed")
-        elif event_type in {"turn.failed", "error"}:
-            self.event_sink(f"❌ Codex error: {event.get('message', event)}")
-        elif event_type in {"item.started", "item.completed"}:
-            return self._consume_item(event.get("item", {}), completed=event_type.endswith("completed"))
-
-        return None
-
-    def _consume_item(self, item: dict[str, Any], *, completed: bool) -> str | None:
-        item_type = item.get("type")
-        marker = "finished" if completed else "started"
-
-        if item_type == "agent_message" and completed:
-            text = item.get("text", "")
-            self.event_sink(f"🤖 Codex response\n{text}")
-            return text
-        if item_type == "reasoning" and completed:
-            text = item.get("text") or item.get("summary")
-            if text:
-                self.event_sink(f"💭 Reasoning summary\n{text}")
-        elif item_type == "command_execution":
-            command = item.get("command", "")
-            self.event_sink(f"🛠️ Command {marker}: {command}")
-        elif item_type == "file_change":
-            self.event_sink(f"📝 File change {marker}")
-        elif item_type == "mcp_tool_call":
-            tool = item.get("tool", item.get("name", "unknown"))
-            self.event_sink(f"🔌 MCP call {marker}: {tool}")
-        elif item_type == "web_search":
-            self.event_sink(f"🔎 Web search {marker}")
-        elif item_type == "plan" and completed:
-            text = item.get("text")
-            if text:
-                self.event_sink(f"📋 Plan\n{text}")
-
+        elif event_type == "item.completed" and item.get("type") == "agent_message":
+            return item.get("text", "")
         return None
 
 
@@ -231,13 +185,12 @@ class CodexFactory:
     """Create unrestricted local Codex CLI sessions."""
 
     workdir: Path = field(default_factory=Path.cwd)
-    event_sink: EventSink = _print_event
     timeout_seconds: float | None = None
 
     execution: Callable | None = None
 
     def spawn(self, spec: LLMSpec) -> CodexLLM:
         policy = self.execution() if self.execution else dict(mode='normal', timeout_seconds=300)
-        return CodexLLM(spec=spec, workdir=self.workdir, event_sink=self.event_sink,
+        return CodexLLM(spec=spec, workdir=self.workdir,
             timeout_seconds=min(self.timeout_seconds or policy['timeout_seconds'], policy['timeout_seconds']),
             reasoning_effort='xhigh' if policy['mode'] == 'deep' else model_defaults()[1])

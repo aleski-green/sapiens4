@@ -26,9 +26,8 @@ class ParallelTest(unittest.TestCase):
             service.close()
         self.temp.cleanup()
 
-    def builder(self, agid, sink):
+    def builder(self, agid):
         factory = ScriptedFactory(gate=threading.Event())
-        factory.sink = sink
         self.factories[agid] = factory
         return factory
 

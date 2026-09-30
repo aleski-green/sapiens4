@@ -43,8 +43,7 @@ def check():
     model, reasoning = model_defaults()
     with tempfile.TemporaryDirectory(prefix='sapiens-preflight-') as directory:
         probe = ModelProbe(spec=LLMSpec(model=model), workdir=Path(directory),
-                           executable=binary, reasoning=reasoning, timeout_seconds=90,
-                           event_sink=lambda _: None)
+                           executable=binary, reasoning=reasoning, timeout_seconds=90)
         try:
             answer = probe.complete(prompt('preflight'))
         except (OSError, RuntimeError, TimeoutError) as error:

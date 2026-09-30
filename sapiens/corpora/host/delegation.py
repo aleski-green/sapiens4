@@ -113,21 +113,12 @@ class Delegation:
         atomic_bytes(path, content.encode())
         return dict(saved=True, path=str(path))
 
-    def records(self, agid):
-        rows = []
-        for work in self.service.store.workloads():
-            for record in work['decisions']:
-                if record['agent'] == agid:
-                    rows.append(json.loads(self.service._agent(agid).archive_path('decisions/' + record['decisionId']).read_text()))
-        return dict(decisions=rows)
-
     def begin(self, agid, turn):
         work, call = self.find(turn['id'])
         if work is None:
             call = dict(callId=turn['id'], addressedTo=agid, causedBy=None,
                         node='Assessing', state='Running', request=turn['input'], attempt=1)
             work = dict(workloadId=turn['id'], originalIntent=turn['input'], tracked=False,
-                        allowCreate=bool(turn.get('origin', {}).get('allowCreate')) if turn.get('origin') else False,
                         task=dict(taskId='task_' + turn['id'], taskType='work', specification=None),
                         origin=dict(agent=agid, call=turn['id']), calls=[call], decisions=[], outcome=None)
         if call.get('output') is None:
@@ -148,7 +139,7 @@ class Delegation:
             prepared = runner.context(snapshot, turn['input'], runner.config)
             context = dict(originalIntent=work['originalIntent'], task=work['task'], tracked=work['tracked'],
                 currentCall=call, selfId=agid, chiefId=self.service.registry.main,
-                team=self.service.orchestration.team(), allowCreate=work['allowCreate'],
+                team=self.service.orchestration.team(),
                 routingHistory=[dict(callId=c['callId'], addressedTo=c['addressedTo'], node=c['node']) for c in work['calls']],
                 conversation=json.loads(prepared['context']),
                 observation=extra)
@@ -202,7 +193,6 @@ class Delegation:
             summary = next(d for d in work['decisions'] if d['decisionId'] == record['decisionId'])
             summary.update({k: deepcopy(record[k]) for k in ('accepted', 'response', 'error', 'transition') if k in record})
             self.save(work)
-            self.service.store.event(agid, 'decision', json.dumps(summary), turn=record['callId'])
 
     def accept(self, agid, record, before, after):
         event = record.get('hostEvent', record['response']['event'])
@@ -331,16 +321,13 @@ class Delegation:
                             self.validate_target(work, agid, target)
                             call['target'] = target
                             following = 'Delegation'
-                        elif event == 'NewSpecialistNeeded':
-                            if not work['allowCreate']:
-                                raise APIError(403, 'Admin has not enabled Sapi creation for this request')
                         elif event == 'RequestUnclear':
                             question = text_field(response, 'question', 4000)
                             call.update(state='WaitingForAdmin', output=question)
                             work['tracked'] = True
                     elif node == 'CreatingSapi':
-                        if agid != self.service.registry.main or not work['allowCreate']:
-                            raise APIError(403, 'Only an authorized Chief call can create a Sapi')
+                        if agid != self.service.registry.main:
+                            raise APIError(403, 'Only Chief can create a Sapi')
                         name, role = sapi_name(response), text_field(response, 'role', 60)
                         # Save the chosen creation intent before the idempotent host operation.
                         call['creation'] = dict(name=name, role=role)

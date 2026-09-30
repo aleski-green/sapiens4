@@ -45,9 +45,9 @@ one model invocation; Exec and delegation use additional invocations for their
 reached decisions. All invocations within one Call share its configured timeout.
 Every decision receives the shared HTML wiki guidance and example path; only
 Execution may read or update Notes.html. Invalid output fails visibly and requires explicit retry; it never silently chooses
-a different route. Tool events remain in existing transcripts and activity logs.
+a different route. Runtime transcripts and delegation records remain on disk; the activity log and its event feed have been removed.
 
-Default templates live in root `prompts/`. Log → Edit decision prompts saves
+Default templates live in root `prompts/`. Local workspace → Edit decision prompts saves
 Admin overrides under the data directory's `decision-prompts/`. An edit affects
 the next invocation, including a later node of an already-running Call. The exact
 rendered prompt, template path/hash, model/effort, response, evidence, host validation,
@@ -62,9 +62,9 @@ Prompts guide an unrestricted local Codex process; they are not an OS sandbox.
 ## Routing and recovery
 
 Supported routes are Admin → Sapi, Admin → Chief, Chief → Sapi, and Sapi → Chief.
-The receiving Sapi performs its own Triage. Chief may create a specialist only if
-Admin selected Allow creating a Sapi for the request; existing team tools remain
-available for explicitly authorized team management during Execution.
+The receiving Sapi performs its own Triage. Only Chief may create a specialist
+when no existing specialist fits. There is no per-message creation flag; the host
+enforces Chief-only creation for both routing and team-management tools.
 
 There is one accepted outgoing handoff per Call. Busy/retired destinations reject
 admission without transferring responsibility. A specialist already in the same
@@ -101,8 +101,8 @@ read-only YAML body, with Copy and a separate rendered result. Long YAML lines
 wrap to fit the panel. Expanded rows persist while live state refreshes.
 
 The selected Sapi sees tasks it owns or has participated in. Repl-only chat has
-decision records in Log but does not add a Task. Exact prompts and Call lineage
-remain available in Log and the complete YAML export; they do not fill the task
+archived decision records but does not add a Task. Exact prompts and Call lineage
+remain in the archives and the complete task YAML export; they do not fill the task
 body. YAML is a presentation/export of authoritative structured data, not another
 editable state store.
 
@@ -116,10 +116,9 @@ API additions:
 
 - `GET /api/agents/<id>/tasks`: complete application/yaml export, including prompts.
 - `GET /api/agents/<id>/tasks?format=json`: compact list metadata and YAML specification bodies.
-- `GET /api/agents/<id>/decisions`: all recorded decisions for that Sapi as YAML.
 - `GET /api/decision-prompts`: current templates and editable paths.
 - `PUT /api/decision-prompts/<node>` with `{ "content": "..." }`: override a known node.
-- Messages accept `allow_create: true` and, for explicit clarification, `workload`.
+- Messages accept `workload` for explicit clarification.
 - `delegate(decision)` admits only a recorded HandoffPrepared response belonging
   to the active caller. Caller/target lineage is host-owned, not arbitrary JSON.
 

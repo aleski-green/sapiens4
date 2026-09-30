@@ -21,7 +21,6 @@ class ScriptedLLM:
     def complete(self, prompt):
         self.factory.prompts.append(prompt)
         self.factory.started.set()
-        self.factory.sink("Test worker started")
         if self.factory.gate:
             if not self.factory.gate.wait(5):
                 raise TimeoutError("Test gate timed out")
@@ -40,10 +39,8 @@ class ScriptedFactory:
         self.gate, self.fail = gate, fail
         self.started = threading.Event()
         self.prompts = []
-        self.sink = lambda text: None
 
-    def builder(self, agid, sink):
-        self.sink = sink
+    def builder(self, agid):
         return self
 
     def spawn(self, spec):
@@ -94,12 +91,10 @@ class IntegrationTest(IntegrationFixture):
         self.assertEqual(done["output"], "Connected through AgentPy.")
         self.assertNotIn("tokens", done)
         service.save_preferences({"selected":agid,"drafts":{agid:"Keep this"}})
-        count = len(service.snapshot()["events"])
         service = self.restart(service)
         state = service.snapshot()
         self.assertEqual(state["turns"][0]["status"], "done")
         self.assertEqual(state["preferences"]["drafts"][agid], "Keep this")
-        self.assertEqual(len(state["events"]), count)
         self.assertEqual(len(self.factory.prompts), 1)
 
     def test_creation_identity_and_computer_manifest(self):
@@ -203,17 +198,24 @@ class IntegrationTest(IntegrationFixture):
         for path, value in legacy.items():
             self.assertEqual(path.read_text(), value)
 
-    def test_event_cursor_catches_up_without_gaps(self):
+    def test_removed_log_panel_migrates_without_erasing_legacy_history(self):
         service = self.service(start_worker=False)
-        agid = service.store.agents()[0]["id"]
-        for i in range(510):
-            service.store.event(agid, "test", str(i))
-        first = service.snapshot()
-        second = service.snapshot(first["cursor"])
-        self.assertEqual(len(first["events"]), 500)
-        self.assertEqual(len(second["events"]), 11)
-        self.assertEqual(second["cursor"], second["latest_cursor"])
-        self.assertEqual(service.snapshot(second["cursor"])["events"], [])
+        agid = service.registry.main
+        service.store.preferences(dict(panel='log', drafts={agid:'Keep this'}))
+        with service.store.connect() as db:
+            db.execute('CREATE TABLE events (id INTEGER PRIMARY KEY, detail TEXT)')
+            db.execute("INSERT INTO events VALUES (1, 'Old activity')")
+        service = self.restart(service, start_worker=False)
+        state = service.snapshot()
+        self.assertEqual(state['preferences']['panel'], 'chat')
+        self.assertEqual(state['preferences']['drafts'][agid], 'Keep this')
+        for field in ('events', 'cursor', 'latest_cursor'):
+            self.assertNotIn(field, state)
+        self.assertEqual(state['turns'], [])
+        with service.store.connect() as db:
+            self.assertEqual(db.execute('SELECT detail FROM events').fetchone()[0], 'Old activity')
+        with self.assertRaises(APIError):
+            service.save_preferences(dict(panel='log'))
 
     def test_single_host_and_input_validation(self):
         service = self.service()
@@ -258,7 +260,9 @@ class IntegrationTest(IntegrationFixture):
         self.assertEqual(request("POST","/api/agents",{})[0], 403)
         self.assertEqual(request("GET","/.sapiens4/corpora.sqlite3")[0], 404)
         self.assertEqual(request("GET","/.git/config")[0], 404)
-        self.assertEqual(request("GET","/api/state?after=bad")[0], 400)
+        status, raw = request("GET", "/api/state")
+        self.assertEqual(status, 200)
+        self.assertNotIn("events", json.loads(raw))
         self.assertEqual(request("GET","/workspace/app.js")[0], 200)
 
     def test_adapter_is_generated_and_cli_accepts_external_workdir(self):

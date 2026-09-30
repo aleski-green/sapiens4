@@ -60,15 +60,15 @@ without blocking chat. Legacy memory is not imported or included in prompts.
 
 **Tasks** is a compact clickable list with Upcoming and Past tabs, status and
 assignee. Opening a task shows its read-only YAML specification and result.
-Exact decision prompts/responses remain in Log. **Log → Edit decision prompts** changes the
+Exact decision prompts/responses remain archived. **Local workspace → Edit decision prompts** changes the
 six named decision templates for subsequent invocations. Historical decisions
 retain the exact prompt they used. See [delegation v1](delegation.md) and its
 [Haskell notation](specs/WorkGraph.md).
 
 Chief can delegate to a specialist; specialists can refer work to Chief. Each
 recipient assesses suitability. A handoff preserves workload/task identity and
-returns the responsible Sapi's result to the original chat. Select **Allow creating
-a Sapi** for a request to let routing create a needed specialist. Chief asks for
+returns the responsible Sapi's result to the original chat. Only Chief can create
+a needed specialist; no per-message permission is required. Chief asks for
 clarification when needed; **Answer Chief** continues that same workload.
 
 **Jobs**, cron, recurring watchers, WorkGraph execution, and graph revision remain
@@ -79,7 +79,7 @@ A running turn has Stop: the host terminates its runner and child commands, pres
 external effects before retrying. Unstarted queued chat resumes after restart;
 previously running chat becomes interrupted and is never replayed automatically.
 Former budget-blocked turns migrate to interrupted and require explicit retry.
-The **Log** tab shows conversation outcomes and retained activity events.
+The former Log tab and incremental activity feed have been removed. Existing activity history is left on disk; chat continues to show progress, outcomes and errors.
 
 Recent tool-result caching has been removed. Follow-ups may need new tool reads.
 Older chat context is omitted when needed to fit the prompt; full saved history
@@ -142,7 +142,7 @@ All persistent data lives in the configured `.sapiens4` directory:
 
 | Location | Contents |
 | --- | --- |
-| `corpora.sqlite3` | Agents, authoritative workloads/handoffs, conversation projections, events, preferences and attachments |
+| `corpora.sqlite3` | Agents, authoritative workloads/handoffs, conversation projections, preferences and attachments |
 | `decision-prompts/*.md` | Admin overrides for decision prompts |
 | `agentpy/agents/<id>/state.json` | Version 3 chat state |
 | `agentpy/agents/<id>/legacy-state-v*.json` | Original pre-removal state, saved once during migration |
@@ -169,7 +169,7 @@ A supplied Origin must match the loopback Host. Unknown routes return 404.
 | GET | `/api/decision-prompts` | Current templates and paths |
 | PUT | `/api/decision-prompts/<node>` | Save an Admin prompt override |
 | GET | `/api/health` | Local backend readiness |
-| GET | `/api/state?after=<cursor>` | Agents, turns, notes metadata, preferences and incremental events |
+| GET | `/api/state` | Agents, turns, notes metadata, preferences and live activity |
 | POST | `/api/agents` | Create a Sapi |
 | PUT | `/api/agents/<id>` | Identity and manager |
 | POST | `/api/agents/<id>/messages` | Submit an explicit conversation |

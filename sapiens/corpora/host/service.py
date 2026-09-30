@@ -4,6 +4,7 @@ from uuid import uuid4
 import asyncio
 import fcntl
 import json
+import logging
 import os
 import queue
 import re
@@ -37,8 +38,6 @@ def complete_with_computer(llm, text, finish=None):
         return llm.complete(text)
     finally:
         llm.warning = finish(foreground.restore) if finish else foreground.restore()
-        if llm.warning:
-            llm.event_sink(llm.warning)
 
 
 def random_avatar(used):
@@ -116,11 +115,8 @@ class Service:
             workdir = self.root / "workspaces" / agid
             workdir.mkdir(parents=True, exist_ok=True)
 
-            def sink(message):
-                self.store.event(agid, "codex", message, turn=self._active_turn(agid))
-
-            factory = (self.factory_builder(agid, sink) if self.factory_builder else
-                       CodexFactory(workdir=workdir, event_sink=sink))
+            factory = (self.factory_builder(agid) if self.factory_builder else
+                       CodexFactory(workdir=workdir))
             Notes(workdir).ensure(row['name'], row['role'])
             agent = Conversation(agid=agid, root=self.root / "agentpy")
             if agid not in self.registry.directory():
@@ -207,7 +203,6 @@ class Service:
             self.registry.register(row["id"], parent=parent)
             agent = self._agent(row["id"])
             self.orchestration.settings(agent)
-            self.store.event(row["id"], "created", "Sapi created")
             return row
 
     def update_agent(self, agid, data):
@@ -231,12 +226,9 @@ class Service:
                 atomic_bytes(agent.root / 'run-settings.json', json.dumps(policy).encode())
             self.store.update_agent(agid, row)
             self._manifests(agent, next(a for a in self.store.agents() if a['id'] == agid))
-            self.store.event(agid, "updated", "Sapi identity updated")
         return {"id": agid, **row}
 
     def submit(self, agid, data):
-        if type(data.get("allow_create", False)) is not bool:
-            raise APIError(400, "allow_create must be a boolean")
         raw_text = data.get("text", "")
         if not isinstance(raw_text, str) or len(raw_text) > 16000:
             raise APIError(400, "Message must be text, at most 16000 characters")
@@ -267,7 +259,7 @@ class Service:
             if data.get('workload'):
                 turn = self.delegation.clarify(agid, data['workload'], message)
             else:
-                turn = agent.runner.submit(flow, message, origin={'allowCreate': data.get('allow_create', False)})
+                turn = agent.runner.submit(flow, message)
             self.store.message(turn, text, attachments)
             self._sync(agent)
             self._queue.put(agid)
@@ -299,13 +291,13 @@ class Service:
             self.delegation.reconcile(agid)
             return {"id": turn_id, "status": next(j["status"] for j in agent.state["turns"] if j["id"] == turn_id)}
 
-    def snapshot(self, after=0, agid=None):
+    def snapshot(self, agid=None):
         with self._lock:
             if agid:
                 self._agent(agid)
             for agent in self._agents.values():
                 self._sync(agent)
-            snapshot = self.store.snapshot(after, agid)
+            snapshot = self.store.snapshot(agid)
             for row in snapshot['agents']:
                 row['retired'] = self.lifecycle.retired(self._agent(row['id']))
             snapshot["computer"] = {"owner": self._active,
@@ -348,7 +340,7 @@ class Service:
                 raise APIError(400, f"{field} must be an object")
         if "selected" in data and data["selected"] not in {a["id"] for a in self.store.agents()}:
             raise APIError(400, "Unknown selected Sapi")
-        if data.get("panel", "chat") not in {"chat", "tasks", "notes", "log"}:
+        if data.get("panel", "chat") not in {"chat", "tasks", "notes"}:
             raise APIError(400, "Unknown panel")
         if data.get("scope", "all") not in {"all", "sapis"}:
             raise APIError(400, "Unknown view")
@@ -383,8 +375,8 @@ class Service:
             def run():
                 try:
                     self._run_queued(agid)
-                except Exception as error:
-                    self.store.event(agid, 'host_error', f'{type(error).__name__}: {error}')
+                except Exception:
+                    logging.exception("Sapi runner failed: %s", agid)
                 finally:
                     try:
                         self.release_computer(agid)

@@ -12,7 +12,7 @@ from sapiens.runtime.codex import CodexLLM
 
 class ProcessTests(unittest.TestCase):
     def worker(self, code, **kwargs):
-        llm = CodexLLM(LLMSpec(), Path.cwd(), event_sink=lambda text: None, **kwargs)
+        llm = CodexLLM(LLMSpec(), Path.cwd(), **kwargs)
         llm._command = lambda prompt: [sys.executable, "-u", "-c", code]
         return llm
 
@@ -29,7 +29,7 @@ class ProcessTests(unittest.TestCase):
         llm = self.worker('import time; print(\'{"type":"turn.started"}\'); time.sleep(30)')
         def interrupt(text):
             raise KeyboardInterrupt
-        llm.event_sink = interrupt
+        llm._consume_event = interrupt
         with self.assertRaises(KeyboardInterrupt):
             llm.complete("test")
 
@@ -48,7 +48,7 @@ class ProcessTests(unittest.TestCase):
                         'print(\'{"type":"turn.started"}\',flush=True); time.sleep(30)')
                 llm = self.worker(code, timeout_seconds=.3)
                 if cancel:
-                    llm.event_sink = lambda _: llm.cancel_event.set()
+                    llm._consume_event = lambda _: llm.cancel_event.set()
                 with self.assertRaises(InterruptedError if cancel else TimeoutError):
                     llm.complete('test')
                 pid = int(path.read_text())

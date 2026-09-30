@@ -1,7 +1,5 @@
 // Connect the workspace renderer to the local Sapiens4 API.
 let live = bootstrap;
-let cursor = 0;
-let eventRows = [];
 let online = true;
 let refreshing = null;
 let saveTimer;
@@ -102,10 +100,6 @@ function requestStatus(turn) {
 function applySnapshot(snapshot) {
   receiveWorkspaces(snapshot.preferences);
   live = snapshot;
-  const known = new Set(eventRows.map(e => e.id));
-  eventRows.push(...snapshot.events.filter(e => !known.has(e.id)));
-  eventRows = eventRows.slice(-1000);
-  cursor = snapshot.cursor;
   const old = new Map(state.agents.map(a => [a.id,a]));
   state.agents = snapshot.agents.map(a => ({...old.get(a.id),...a,kind:'sapi',scope:'personal',
     autonomy:'assist',status:'online',lastActivity:Date.parse(a.created),preview:'Ready for your message.'}));
@@ -200,10 +194,6 @@ renderConversation = function() {
   } else if (state.panel === 'notes') {
     $('#composer-area').hidden = true;
     renderNotes(host);
-  } else {
-    $('#composer-area').hidden = true;
-    host.innerHTML = activityLog(turns);
-    decisionLog(host);
   }
   renderAgentHeader(); renderGlobal();
   host.scrollTop = bottom ? host.scrollHeight : scroll;
@@ -216,7 +206,7 @@ sendChat = async function(value) {
   if ((!text && !attachments.length) || submitting.has(id) || uploading) return;
   submitting.add(id); renderAgentHeader();
   try {
-    await api(`/api/agents/${id}/messages`, 'POST', {text,attachments:attachments.map(a => a.id), allow_create:$('#allow-create-sapi').checked,
+    await api(`/api/agents/${id}/messages`, 'POST', {text,attachments:attachments.map(a => a.id),
       ...(clarificationWorkload?.owner === id ? {workload:clarificationWorkload.id} : {})});
     clarificationWorkload = null;
     attachmentDrafts[id] = (attachmentDrafts[id] || []).filter(a => !attachments.some(sent => sent.id === a.id));
@@ -257,10 +247,11 @@ document.addEventListener('change', e => {
   timeout.value = timeout.max = e.target.value === 'deep' ? 1200 : 300;
 });
 computerDialog = function() {
-  modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : 'Build required: run ./start.sh'}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Sapis share one computer. macOS Accessibility access is required for desktop interaction; permission failures appear in chat and the activity log.</p>`, 'BLINDLY4');
+  modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : 'Build required: run ./start.sh'}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Sapis share one computer. macOS Accessibility access is required for desktop interaction; permission failures appear in chat.</p>`, 'BLINDLY4');
 };
 autonomyDialog = function() {
-  modal('Local workspace', '<p>Connected to your local Codex CLI. Talk to your Sapis in chat, manage their notes, and save documents in their workspaces.</p><p>Sapis can delegate explicit requests through Chief. Tasks shows YAML and the prompts behind each decision. Jobs and recurring work are inactive.</p>', 'SAPIENS4');
+  modal('Local workspace', '<p>Connected to your local Codex CLI. Talk to your Sapis in chat, manage their notes, and save documents in their workspaces.</p><p>Sapis can delegate explicit requests through Chief. Tasks shows specifications and results. Jobs and recurring work are inactive.</p><button type="button" class="button" id="edit-decision-prompts">Edit decision prompts</button>', 'SAPIENS4');
+  $('#edit-decision-prompts').addEventListener('click', editDecisionPrompts);
 };
 
 document.addEventListener('submit', async e => {
@@ -388,8 +379,8 @@ async function refresh() {
   if (refreshing) return refreshing;
   refreshing = (async () => {
     try {
-      const snapshot = await api(`/api/state?after=${cursor}`);
-      const changed = ['agents','turns','computer','orchestration','activity','workloads'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k])) || snapshot.events.length;
+      const snapshot = await api('/api/state');
+      const changed = ['agents','turns','computer','orchestration','activity','workloads'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k]));
       const reconnected = !online;
       online = true;
       const tabsChanged = (snapshot.preferences.workspace_revision || 0) > workspaceRevision;

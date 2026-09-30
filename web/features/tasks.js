@@ -172,20 +172,3 @@ async function editDecisionPrompts() {
     });
   } catch (error) { toast(error.message); }
 }
-function decisionLog(host) {
-  const id = state.selected;
-  const button = document.createElement('button'); button.type = 'button'; button.className = 'button';
-  button.textContent = 'Edit decision prompts'; button.onclick = editDecisionPrompts;
-  const details = document.createElement('details'), summary = document.createElement('summary');
-  summary.textContent = 'Decisions and exact prompts (YAML)'; details.append(summary);
-  details.addEventListener('toggle', async () => {
-    if (!details.open || details.querySelector('pre')) return;
-    try {
-      const response = await fetch(`/api/agents/${encodeURIComponent(id)}/decisions`);
-      if (!response.ok) throw new Error('Could not load decisions');
-      const pre = document.createElement('pre'); pre.className = 'tasks-yaml'; pre.textContent = await response.text();
-      details.append(pre);
-    } catch (error) { toast(error.message); }
-  });
-  host.prepend(button, details);
-}

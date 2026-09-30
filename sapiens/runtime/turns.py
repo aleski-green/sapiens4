@@ -18,10 +18,6 @@ class TurnRunner:
         self.cancel_event, self.active_llm = Event(), None
         self.execute = execute
 
-    def _event(self, state, kind, **details):
-        state['event_sequence'] += 1
-        state['events'].append(dict(sequence=state['event_sequence'], time=utcnow().isoformat(), kind=kind, **details))
-
     def submit(self, flow, text, *, turn_id=None, origin=None):
         if flow not in {'chat', 'computer'}:
             raise ValueError('Only chat turns are supported')
@@ -37,7 +33,6 @@ class TurnRunner:
                         created=utcnow().isoformat(), attempt=1, origin=origin)
             state['turns'].append(turn)
             state['chat'].append(dict(role='user', content=text, turn=turn['id'], time=turn['created'], origin=origin))
-            self._event(state, 'queued', turn=turn['id'], flow=flow)
             self.store.trim(state)
         return turn['id']
 
@@ -48,7 +43,6 @@ class TurnRunner:
         for turn in state['turns']:
             if turn['status'] == 'running':
                 turn.update(status='interrupted', error='Runner stopped before saving a reply; inspect effects before retrying')
-                self._event(state, 'interrupted', turn=turn['id'])
 
     def _work(self, turn, snapshot, config):
         result = Outcome()
@@ -126,7 +120,6 @@ class TurnRunner:
                 turn['status'] = 'done'
                 state['chat'].append(dict(role='agent', content=outcome.output, turn=turn_id, time=utcnow().isoformat()))
                 state['last_output'] = outcome.output
-            self._event(state, turn['status'], turn=turn_id)
             self.store.trim(state)
 
     async def run(self):
@@ -144,7 +137,6 @@ class TurnRunner:
                     return
                 turn['status'] = 'running'
                 turn.pop('error', None)
-                self._event(state, 'started', turn=turn['id'], flow=turn['flow'])
                 snapshot = deepcopy(state)
                 snapshot['current_turn'] = turn['id']
                 turn = deepcopy(turn)

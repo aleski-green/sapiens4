@@ -28,7 +28,7 @@ class Provider:
         self.responses = {}
         self.observe = None
 
-    def builder(self, agid, sink):
+    def builder(self, agid):
         provider = self
         class Factory:
             def spawn(self, spec):
@@ -66,6 +66,10 @@ class DelegationTest(unittest.TestCase):
         self.addCleanup(lambda: self.service.close())
         self.chief = self.service.registry.main
         self.researcher = self.service.create_agent(dict(name='Researcher', role='Research'))['id']
+
+    def decision_records(self, agid):
+        return [json.loads(self.service._agent(agid).archive_path('decisions/' + d['decisionId']).read_text())
+                for w in self.service.store.workloads() for d in w['decisions'] if d['agent'] == agid]
 
     def until(self, predicate):
         end = time.monotonic() + 6
@@ -147,17 +151,20 @@ class DelegationTest(unittest.TestCase):
         self.assertIn('accepted Task',work['calls'][-1]['error'])
         self.assertIsNone(work['outcome'])
 
-    def test_creation_requires_authority_and_uses_named_prompt(self):
+    def test_chief_creates_specialist_without_per_message_permission(self):
         self.provider.responses[self.chief, 'Assessing'] = answer('OutsideSpecialization')
         self.provider.responses['ChiefTriage'] = answer('NewSpecialistNeeded')
-        self.run_request(allow_create=False)
-        self.assertEqual(len(self.service.store.agents()),2)
-        self.assertNotIn('CreatingSapi', [n for _,n,_ in self.provider.calls])
-        self.run_request(allow_create=True)
+        self.run_request()
         work = self.service.store.workloads()[-1]
         self.assertEqual(work['calls'][-1]['state'], 'Completed')
-        self.assertEqual(len(self.service.store.agents()),3)
+        self.assertEqual(len(self.service.store.agents()), 3)
         self.assertIn('CreatingSapi', [n for _,n,_ in self.provider.calls])
+        self.assertNotIn('allowCreate', work)
+        for _, _, rendered in self.provider.calls:
+            self.assertNotIn('allowCreate', json.loads(rendered.split('\nContext:\n', 1)[1]))
+        with self.assertRaisesRegex(APIError, 'Only the main'):
+            self.service.orchestration.control(self.researcher, dict(op='create_agent', name='Forbidden', role='Research'))
+        self.assertEqual(len(self.service.store.agents()), 3)
 
     def test_admin_clarification_keeps_workload_identity(self):
         self.provider.responses[self.chief, 'Assessing'] = answer('OutsideSpecialization')
@@ -178,7 +185,7 @@ class DelegationTest(unittest.TestCase):
         call_id = self.run_request()
         turn = self.service.store.projected_turn(call_id)
         self.assertEqual(turn['status'], 'failed')
-        records = self.service.delegation.records(self.chief)['decisions']
+        records = self.decision_records(self.chief)
         self.assertFalse(records[0]['accepted'])
         self.assertIn('StartCron', records[0]['rawResponse'])
         self.assertEqual(len(self.provider.calls),1)
@@ -287,10 +294,10 @@ class DelegationTest(unittest.TestCase):
 
     def test_prompt_edit_changes_future_calls_without_rewriting_history(self):
         self.run_request()
-        previous = self.service.delegation.records(self.chief)['decisions'][0]
+        previous = self.decision_records(self.chief)[0]
         self.service.delegation.edit_template('Assessing', dict(content='New steering. Select the supported response for this request.'))
         self.run_request()
-        records = self.service.delegation.records(self.chief)['decisions']
+        records = self.decision_records(self.chief)
         next_triage = [r for r in records if r['node'] == 'Assessing'][-1]
         self.assertNotEqual(previous['promptHash'], next_triage['promptHash'])
         self.assertIn('New steering.', next_triage['renderedPrompt'])
@@ -340,6 +347,9 @@ class DelegationTest(unittest.TestCase):
         self.assertEqual(listing[0]['state'], 'Completed')
         self.assertEqual(listing[0]['owner'], self.chief)
         self.assertNotIn('decisions', listing[0])
+        conn.request('GET', f'/api/agents/{self.chief}/decisions')
+        response = conn.getresponse(); response.read()
+        self.assertEqual(response.status, 404)
         conn.request('PUT','/api/decision-prompts/Assessing',json.dumps(dict(content='Steer')),
                      {'Content-Type':'application/json','X-Sapiens-Local':'1','Origin':'https://evil.example'})
         response = conn.getresponse(); response.read(); self.assertEqual(response.status,403)

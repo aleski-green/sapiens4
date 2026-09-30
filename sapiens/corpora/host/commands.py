@@ -117,9 +117,6 @@ class Orchestration:
                 parent = self.service.registry.validate(target.agid, data["manager"])
                 self.service.registry.assign(target, parent)
                 result = {"target": target.agid, "manager": parent}
-            if op != "status":
-                audit = {k: v for k, v in data.items() if k != 'content'}
-                self.service.store.event(agid, "control", json.dumps(audit), turn=self.service._active_turn(agid))
             # Mutation receipts should not append the entire team history on
             # every tool step (or truncate the actual saved result at the end).
             receipt = {'self_id': agent.agid, 'saved': True, **result}

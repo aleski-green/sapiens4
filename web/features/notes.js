@@ -99,7 +99,3 @@ function renderNotes(host) {
     host.querySelector('#note-content').scrollTop = previousScroll;
   }).catch(error => {if (state.selected === id && state.panel === 'notes') host.textContent = error.message;});
 }
-function activityLog(turns) {
-  const body = turns.slice().reverse().map(turn => `<article class="live-turn"><span class="tag">${esc(statusNames[turn.status] || turn.status)}</span><h3>${esc(turn.input)}</h3><small>${esc(new Date(turn.created).toLocaleString())}</small>${turn.error ? `<p>${esc(turn.error)}</p>` : ''}${turn.output ? `<details><summary>Reply</summary><p>${esc(turn.output)}</p></details>` : ''}${turnActions(turn)}</article>`).join('');
-  return '<div class="list-heading"><h3>Activity log</h3></div>' + (body || '<div class="empty">No activity yet.</div>') + `<details class="event-history"><summary>Activity events</summary>${eventRows.filter(e=>e.agent===state.selected).slice(-100).reverse().map(e=>`<div class="log-row"><time>${esc(displayTime(e.time))}</time><strong>${esc(e.kind)}</strong><p>${esc(e.detail)}</p></div>`).join('')}</details>`;
-}
