@@ -2,6 +2,7 @@
 import argparse
 import fcntl
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -84,21 +85,51 @@ targets: [.executableTarget(name: "blindly4")])'''
 
 
 def clean_build_caches(root):
-    """Remove compiler caches, preserving executables and all runtime data."""
+    """Best-effort cleanup of generated builds; never traverse directory links."""
     root = Path(root)
     if root.is_symlink():
         return
     root = root.resolve()
+
+    def owned(path):
+        # Checking each ancestor also rejects links back inside this root: another
+        # release or workspace must not become a cleanup target through an alias.
+        return all(not parent.is_symlink() for parent in path.parents if parent != root and root in parent.parents)
+
+    def remove(path):
+        if not owned(path):
+            return
+        try:
+            if path.is_symlink() or path.is_file():
+                path.unlink()
+            elif path.is_dir():
+                shutil.rmtree(path)
+        except OSError as error:
+            logging.warning('Could not remove build cache %s: %s', path, error)
+
+    desktop = root / '.build/macos'
+    for name in ('module-cache', 'AppIcon.iconset', 'make-icon', 'favicon.svg'):
+        remove(desktop / name)
     swift = root / 'blindly4/.build'
-    caches = [root / '.build/macos/module-cache', swift / 'ModuleCache',
-              *swift.glob('*/release/ModuleCache'), *swift.glob('*/debug/ModuleCache')]
-    for cache in caches:
-        if not cache.parent.resolve().is_relative_to(root):
+    if not owned(swift / 'release'):
+        return
+    for name in ('ModuleCache', 'build.db', 'build.db-journal', 'debug.yaml', 'release.yaml', 'plugin-tools.yaml'):
+        remove(swift / name)
+    # SwiftPM uses target/configuration directories plus debug/release aliases;
+    # the compiler fallback uses a real release directory. Keep both layouts.
+    configurations = [swift / mode for mode in ('debug', 'release')]
+    configurations += [path for mode in ('debug', 'release') for path in swift.glob('*/' + mode)]
+    for directory in configurations:
+        if directory.is_symlink() or not owned(directory / 'blindly4'):
             continue
-        if cache.is_symlink():
-            cache.unlink()
-        elif cache.is_dir():
-            shutil.rmtree(cache)
+        try:
+            children = list(directory.iterdir()) if directory.is_dir() else []
+        except OSError as error:
+            logging.warning('Could not inspect build cache %s: %s', directory, error)
+            continue
+        for child in children:
+            if child.name != 'blindly4':
+                remove(child)
 
 
 def replace_app(staged, installed):
@@ -291,8 +322,12 @@ class Manager:
         self.recover()
         if not healthy():
             self.spawn(self.current())
-        # The previous updater may have installed us without cache cleanup.
-        for root in (self.home / 'releases').glob('*'):
+        self.clean_builds()
+
+    def clean_builds(self):
+        # The source checkout can retain large caches from a development build.
+        roots = [Path(self.config['legacy_root']), *(self.home / 'releases').glob('*')]
+        for root in roots:
             clean_build_caches(root)
 
     def update(self):
@@ -356,8 +391,7 @@ class Manager:
             # Keep installation pending until both bundle and helper are saved.
             # A later check/update can retry even when main already matches.
             atomic(self.home / 'current.json', dict(release, desktop_revision=sha))
-        for root in (self.home / 'releases').glob('*'):
-            clean_build_caches(root)
+        self.clean_builds()
         self.status('current', f'Updated to main {sha[:7]}', sha=sha, checked_at=time.time(), desktop_revision=desktop_revision)
 
 

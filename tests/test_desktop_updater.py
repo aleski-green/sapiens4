@@ -34,7 +34,10 @@ class DesktopUpdaterTests(unittest.TestCase):
         self.manager = updater.Manager(self.home)
 
     def test_first_launch_after_old_updater_install_cleans_existing_caches(self):
-        caches = [self.home / 'releases' / name / '.build/macos/module-cache' for name in ('old', 'new')]
+        checkout = self.home / 'checkout'
+        self.manager.config['legacy_root'] = str(checkout)
+        caches = [root / '.build/macos/module-cache' for root in
+                  (checkout, self.home / 'releases/old', self.home / 'releases/new')]
         for running in (True, False):
             with self.subTest(server_already_running=running):
                 for cache in caches:
@@ -52,14 +55,23 @@ class DesktopUpdaterTests(unittest.TestCase):
     def test_cache_cleanup_preserves_binaries_symlinks_and_user_files(self):
         caches = ['.build/macos/module-cache', 'blindly4/.build/ModuleCache',
                   'blindly4/.build/arm64-apple-macosx/release/ModuleCache',
-                  'blindly4/.build/arm64-apple-macosx/debug/ModuleCache']
+                  'blindly4/.build/arm64-apple-macosx/debug/ModuleCache',
+                  'blindly4/.build/arm64-apple-macosx/release/blindly4.build',
+                  'blindly4/.build/arm64-apple-macosx/release/Modules',
+                  '.build/macos/AppIcon.iconset']
         keep = ['.build/macos/Sapiens4.app/Contents/MacOS/Sapiens4',
                 'blindly4/.build/arm64-apple-macosx/release/blindly4',
-                '.sapiens4/workspaces/Notes.md', '.sapiens4/ModuleCache/keep']
+                'blindly4/.build/arm64-apple-macosx/debug/blindly4',
+                '.sapiens4/workspaces/Notes.md', '.sapiens4/ModuleCache/keep',
+                'macos/Sapiens4.swift', '.test-output/result.png', '.build/macos/custom.txt']
         for name in [*(name + '/module.pcm' for name in caches), *keep]:
             path = self.home / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(name)
+        generated = ['.build/macos/make-icon', '.build/macos/favicon.svg',
+                     'blindly4/.build/build.db', 'blindly4/.build/release.yaml']
+        for name in generated:
+            (self.home / name).write_text('generated')
         binary = self.home / keep[1]
         binary.chmod(0o755)
         link = self.home / 'blindly4/.build/release'
@@ -69,6 +81,7 @@ class DesktopUpdaterTests(unittest.TestCase):
         self.assertTrue(all(not (self.home / name).exists() for name in caches))
         for name in keep:
             self.assertEqual((self.home / name).read_text(), name)
+        self.assertTrue(all(not (self.home / name).exists() for name in generated))
         self.assertTrue(link.is_symlink())
         self.assertEqual((link / 'blindly4').stat().st_mode & 0o777, 0o755)
 
@@ -92,6 +105,45 @@ class DesktopUpdaterTests(unittest.TestCase):
         alias.symlink_to(outside)
         updater.clean_build_caches(alias)
         self.assertTrue((cache / 'keep').is_file())
+
+    def test_cleanup_supports_fallback_binary_and_rejects_nested_directory_links(self):
+        root = self.home / 'release'
+        binary = root / 'blindly4/.build/release/blindly4'
+        binary.parent.mkdir(parents=True)
+        binary.write_text('executable')
+        binary.chmod(0o755)
+        (binary.parent / 'temporary.o').write_text('object')
+        outside = self.home / 'external'
+        outside.mkdir()
+        (outside / 'keep.o').write_text('keep')
+        (root / 'blindly4/.build/debug').symlink_to(outside)
+        updater.clean_build_caches(root)
+        self.assertEqual(binary.read_text(), 'executable')
+        self.assertEqual(binary.stat().st_mode & 0o777, 0o755)
+        self.assertFalse((binary.parent / 'temporary.o').exists())
+        self.assertEqual((outside / 'keep.o').read_text(), 'keep')
+        self.assertTrue((root / 'blindly4/.build/debug').is_symlink())
+        # Even an alias into this root must not delete unrelated workspace files.
+        (root / 'blindly4/.build/debug').unlink()
+        workspace = root / '.sapiens4/workspace'
+        workspace.mkdir(parents=True)
+        (workspace / 'notes.md').write_text('saved notes')
+        (root / 'blindly4/.build/debug').symlink_to(workspace)
+        updater.clean_build_caches(root)
+        self.assertEqual((workspace / 'notes.md').read_text(), 'saved notes')
+
+    def test_cleanup_failure_does_not_block_launch(self):
+        checkout = self.home / 'checkout'
+        self.manager.config['legacy_root'] = str(checkout)
+        cache = checkout / '.build/macos/module-cache'
+        cache.mkdir(parents=True)
+        with patch.object(updater, 'healthy', return_value=True), \
+                patch.object(updater.shutil, 'rmtree', side_effect=PermissionError('busy')), \
+                self.assertLogs(level='WARNING') as logs:
+            self.manager.launch()
+        self.assertTrue(cache.exists())
+        self.assertIn('busy', logs.output[0])
+        self.assertEqual((self.data / 'agent.txt').read_text(), 'original')
 
     def test_installer_cleans_checkout_and_old_releases_only_after_success(self):
         checkout = self.home / 'checkout'
