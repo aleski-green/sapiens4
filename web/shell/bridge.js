@@ -113,7 +113,7 @@ function applySnapshot(snapshot) {
   for (const turn of snapshot.turns) {
     const messages = state.messages[turn.agent] ||= [];
     const timestamp = Date.parse(turn.created);
-    if (['chat','computer'].includes(turn.flow)) messages.push({role:'user',text:turn.input,time:displayTime(turn.created),timestamp,attachments:turn.attachments,requestTurn:turn});
+    if (['chat','computer'].includes(turn.flow)) messages.push({role:'user',author:turn.origin?.caller,text:turn.input,time:displayTime(turn.created),timestamp,attachments:turn.attachments,requestTurn:turn});
     if (['chat','computer'].includes(turn.flow) && ['done','warning'].includes(turn.status) && turn.output !== null) {
       messages.push({role:'assistant',...chatResult(turn),time:displayTime(turn.created),timestamp,turnId:turn.id});
     }
@@ -124,6 +124,7 @@ function applySnapshot(snapshot) {
     }
     if (a && turn.status === 'running') a.status = 'busy';
   }
+  delegationMessages(snapshot);
   for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp);
   if (!state.agents.some(a => a.id === state.selected) ||
       (agent(state.selected).retired && !old.get(state.selected)?.retired)) {
@@ -165,6 +166,8 @@ renderConversation = function() {
     originalConversation();
     host.querySelectorAll('.message').forEach((node,i) => {
       const message=getMessages(state.selected)[i];
+      if (message?.author) node.querySelector('.message-meta strong').textContent = agent(message.author).name;
+      if (message?.delegation && message.requestTurn && blocksChat(message.requestTurn)) node.querySelector('.message-bubble').insertAdjacentHTML('beforeend', turnActions(message.requestTurn));
       const request = message?.requestTurn, requestState = request && requestStatus(request);
       if (requestState) {
         const key = `request-${request.id}`, expanded = expandedWarnings.has(key);
@@ -180,21 +183,26 @@ renderConversation = function() {
     });
     const humanMessages = getMessages(state.selected).filter(m => m.role === 'user');
     host.querySelectorAll('.message.user').forEach((node, i) => {
-      node.querySelector('.message-meta strong').textContent = 'Admin';
+      node.querySelector('.message-meta strong').textContent = humanMessages[i]?.author ? agent(humanMessages[i].author).name : 'Admin';
       const attachments = humanMessages[i]?.attachments || [];
       if (attachments.length) node.querySelector('.message-bubble').insertAdjacentHTML('beforeend', `<div class="message-attachments">${attachments.map(attachmentLabel).join('')}</div>`);
     });
+    taskCallControls(host);
     if (!getMessages(state.selected).length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
     const turn = turns.find(j => blocksChat(j) && !(attention.has(j.status) && ['chat','computer'].includes(j.flow)));
     if (turn) {
       host.insertAdjacentHTML('beforeend', `<section class="live-status"><div data-turn-progress="${esc(turn.id)}">${turnProgress(turn)}</div>${turnActions(turn)}</section>`);
     }
+  } else if (state.panel === 'tasks') {
+    $('#composer-area').hidden = true;
+    renderTasks(host);
   } else if (state.panel === 'notes') {
     $('#composer-area').hidden = true;
     renderNotes(host);
   } else {
     $('#composer-area').hidden = true;
     host.innerHTML = activityLog(turns);
+    decisionLog(host);
   }
   renderAgentHeader(); renderGlobal();
   host.scrollTop = bottom ? host.scrollHeight : scroll;
@@ -207,7 +215,9 @@ sendChat = async function(value) {
   if ((!text && !attachments.length) || submitting.has(id) || uploading) return;
   submitting.add(id); renderAgentHeader();
   try {
-    await api(`/api/agents/${id}/messages`, 'POST', {text,attachments:attachments.map(a => a.id)});
+    await api(`/api/agents/${id}/messages`, 'POST', {text,attachments:attachments.map(a => a.id), allow_create:$('#allow-create-sapi').checked,
+      ...(clarificationWorkload?.owner === id ? {workload:clarificationWorkload.id} : {})});
+    clarificationWorkload = null;
     attachmentDrafts[id] = (attachmentDrafts[id] || []).filter(a => !attachments.some(sent => sent.id === a.id));
     renderAttachment();
     if (state.drafts[id]?.trim() === text) state.drafts[id] = '';
@@ -249,7 +259,7 @@ computerDialog = function() {
   modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : 'Build required: run ./start.sh'}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Sapis share one computer. macOS Accessibility access is required for desktop interaction; permission failures appear in chat and the activity log.</p>`, 'BLINDLY4');
 };
 autonomyDialog = function() {
-  modal('Local workspace', '<p>Connected to your local Codex CLI. Talk to your Sapis in chat, manage their notes, and save documents in their workspaces.</p><p>Tasks and Jobs are inactive. Sapis respond only to chat messages.</p>', 'SAPIENS4');
+  modal('Local workspace', '<p>Connected to your local Codex CLI. Talk to your Sapis in chat, manage their notes, and save documents in their workspaces.</p><p>Sapis can delegate explicit requests through Chief. Tasks shows YAML and the prompts behind each decision. Jobs and recurring work are inactive.</p>', 'SAPIENS4');
 };
 
 document.addEventListener('submit', async e => {
@@ -378,7 +388,7 @@ async function refresh() {
   refreshing = (async () => {
     try {
       const snapshot = await api(`/api/state?after=${cursor}`);
-      const changed = ['agents','turns','computer','orchestration','activity'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k])) || snapshot.events.length;
+      const changed = ['agents','turns','computer','orchestration','activity','workloads'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k])) || snapshot.events.length;
       const reconnected = !online;
       online = true;
       const tabsChanged = (snapshot.preferences.workspace_revision || 0) > workspaceRevision;

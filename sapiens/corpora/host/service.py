@@ -14,6 +14,7 @@ from sapiens.corpora.sapis.attachments import attachment_prompt, resolve_attachm
 from sapiens.corpora.sapis.registry import Registry
 from sapiens.corpora.sapis.retirement import Lifecycle
 from sapiens.corpora.host.commands import Orchestration
+from sapiens.corpora.host.delegation import Delegation
 from sapiens.paths import ROOT
 from sapiens.prompts import prompt
 from sapiens.corpora.sapis.notes import Notes
@@ -86,6 +87,7 @@ class Service:
         self.lifecycle = Lifecycle(self)
         self.registry = Registry(self)
         self.worker = None
+        self.delegation = Delegation(self)
         if not self.store.agents():
             self.create_agent({"name": "SapiTheMain", "role": "Head of Corpora"})
         for row in self.store.agents():
@@ -96,6 +98,8 @@ class Service:
             if not self.lifecycle.retired(agent) and any(j["status"] in {"queued", "running"} for j in agent.state["turns"]):
                 self._queue.put(row["id"])
         self.registry.repair()
+        self.delegation.reconcile()
+        self.delegation.dispatch_pending()
         if start_worker:
             self.start()
 
@@ -126,7 +130,8 @@ class Service:
                 complete = lambda llm, text: complete_with_computer(
                     llm, text, lambda restore: self.release_computer(agid, restore))
             agent.runner = TurnRunner(store=agent, context=agent.context, config=Config(),
-                                      factory=factory, complete=complete)
+                                      factory=factory, complete=complete,
+                                      execute=lambda *args: self.delegation.run(agid, *args))
             if not self.factory_builder:
                 factory.execution = lambda: execution_settings(agent.root)
             self._agents[agid] = agent
@@ -230,6 +235,8 @@ class Service:
         return {"id": agid, **row}
 
     def submit(self, agid, data):
+        if type(data.get("allow_create", False)) is not bool:
+            raise APIError(400, "allow_create must be a boolean")
         raw_text = data.get("text", "")
         if not isinstance(raw_text, str) or len(raw_text) > 16000:
             raise APIError(400, "Message must be text, at most 16000 characters")
@@ -254,7 +261,13 @@ class Service:
             waiting = any(j['status'] in {'queued', 'running'} for j in agent.state['turns'])
             if waiting:
                 raise APIError(409, "Wait for this Sapi's turn, or retry/dismiss the turn needing attention")
-            turn = agent.runner.tell(message) if flow == "chat" else agent.runner.submit("computer", message)
+            if any(c['state'] == 'Queued' and c['addressedTo'] == agid
+                   for w in self.store.workloads() for c in w['calls']):
+                raise APIError(409, 'This Sapi already has an accepted handoff')
+            if data.get('workload'):
+                turn = self.delegation.clarify(agid, data['workload'], message)
+            else:
+                turn = agent.runner.submit(flow, message, origin={'allowCreate': data.get('allow_create', False)})
             self.store.message(turn, text, attachments)
             self._sync(agent)
             self._queue.put(agid)
@@ -268,6 +281,9 @@ class Service:
             turn = next((j for j in turns if j["id"] == turn_id), None)
             if turn is None:
                 raise APIError(404, "Unknown active turn")
+            work, call = self.delegation.find(turn_id)
+            if call and any(c['causedBy'] == turn_id for c in work['calls']):
+                raise APIError(409, 'This request was delegated; use the recipient call controls')
             if action == "retry":
                 if any(j["status"] in {"queued", "running"} for j in turns):
                     raise APIError(409, "This Sapi already has work queued or running")
@@ -280,6 +296,7 @@ class Service:
             else:
                 raise APIError(404, "Unknown turn action")
             self._sync(agent)
+            self.delegation.reconcile(agid)
             return {"id": turn_id, "status": next(j["status"] for j in agent.state["turns"] if j["id"] == turn_id)}
 
     def snapshot(self, after=0, agid=None):
@@ -298,6 +315,18 @@ class Service:
                 'turn': self._active_turn(a.agid), 'stopping': a.runner.cancel_event.is_set()}
                 for a in self._agents.values() if self._active_turn(a.agid)}
             snapshot["main_agent_id"] = self.registry.main
+            workloads = self.store.workloads()
+            snapshot["workloads"] = self.delegation.summaries(workloads)
+            origins = {}
+            for work in workloads:
+                calls = {c['callId']: c for c in work['calls']}
+                for call in calls.values():
+                    if call['causedBy'] and call.get('activation') != 'RequestClarified':
+                        origins[call['callId']] = {'caller': calls[call['causedBy']]['addressedTo'],
+                                                   'parentCall': call['causedBy']}
+            for turn in snapshot['turns']:
+                if turn['id'] in origins:
+                    turn['origin'] = origins[turn['id']]
             snapshot["attachment_drafts"] = {
                 agid: [a for a in self.store.attachments(agid) if a["id"] in ids]
                 for agid, ids in snapshot["preferences"].get("attachment_drafts", {}).items()}
@@ -319,7 +348,7 @@ class Service:
                 raise APIError(400, f"{field} must be an object")
         if "selected" in data and data["selected"] not in {a["id"] for a in self.store.agents()}:
             raise APIError(400, "Unknown selected Sapi")
-        if data.get("panel", "chat") not in {"chat", "notes", "log"}:
+        if data.get("panel", "chat") not in {"chat", "tasks", "notes", "log"}:
             raise APIError(400, "Unknown panel")
         if data.get("scope", "all") not in {"all", "sapis"}:
             raise APIError(400, "Unknown view")
@@ -364,6 +393,8 @@ class Service:
                     finally:
                         with self._lock:
                             self._runners.pop(agid, None)
+                            self.delegation.reconcile(agid)
+                            self.delegation.dispatch_pending()
             thread = threading.Thread(target=run, name=f'sapiens-{agid}', daemon=True)
             self._runners[agid] = thread
             thread.start()

@@ -48,6 +48,7 @@ class Orchestration:
             agent = self.service._agent(agid)
             op = data.get("op")
             fields = {"batch": {"operations"}, "status": {'target'},
+                      "delegate": {'decision'},
                       "create_agent": {"name", "role", "manager"},
                       "retire_agent": {"target", "reason"}, "rehire_agent": {"target"},
                       "computer_acquire": set(), "manager": {"manager", "target"},
@@ -76,6 +77,8 @@ class Orchestration:
                                 'partial': bool(results)}
                 return {'self_id': agid, 'saved': True, 'results': results}
             result = {}
+            if op == 'delegate':
+                return self.service.delegation.apply(agid, data.get('decision'))
             if op == 'computer_acquire':
                 return self.service.acquire_computer(agid)
             if op == 'workspace':

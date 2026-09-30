@@ -1,4 +1,4 @@
-"""SQLite UI metadata and durable projections. Sapi conversations own durable state."""
+"""SQLite metadata, authoritative workloads, and durable conversation projections."""
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,7 +17,7 @@ class Store:
         with self.connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3):
+            if version not in (0, 1, 2, 3, 4):
                 raise RuntimeError(f"Unsupported CORPORA schema: {version}")
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS agents (
@@ -47,6 +47,9 @@ class Store:
                 CREATE TABLE IF NOT EXISTS message_inputs (
                     job TEXT PRIMARY KEY, text TEXT NOT NULL, attachments TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS workloads (
+                    id TEXT PRIMARY KEY, value TEXT NOT NULL
+                );
             """)
             if version in (1, 2):
                 db.execute("INSERT OR IGNORE INTO turns SELECT * FROM jobs WHERE flow IN ('chat','computer')")
@@ -55,11 +58,11 @@ class Store:
                 value = json.loads(preferences[0])
                 if value.get('panel') == 'mindmap':
                     value['panel'] = 'notes'
-                elif value.get('panel') in {'tasks','cron'}:
+                elif value.get('panel') == 'cron':
                     value['panel'] = 'chat'
                 value.pop('work_views', None)
                 db.execute('UPDATE preferences SET value=? WHERE id=1', (json.dumps(value),))
-            db.execute('PRAGMA user_version=3')
+            db.execute('PRAGMA user_version=4')
 
     @contextmanager
     def connect(self):
@@ -98,7 +101,21 @@ class Store:
 
     def message(self, turn, text, attachments):
         with self.connect() as db:
-            db.execute("INSERT INTO message_inputs VALUES (?,?,?)", (turn, text, json.dumps(attachments)))
+            db.execute("INSERT OR IGNORE INTO message_inputs VALUES (?,?,?)", (turn, text, json.dumps(attachments)))
+
+    def workloads(self):
+        with self.connect() as db:
+            return [json.loads(row[0]) for row in db.execute('SELECT value FROM workloads ORDER BY rowid')]
+
+    def save_workload(self, work):
+        with self.connect() as db:
+            db.execute('INSERT INTO workloads VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value',
+                       (work['workloadId'], json.dumps(work, ensure_ascii=False, allow_nan=False)))
+
+    def projected_turn(self, turn_id):
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM turns WHERE id=?', (turn_id,)).fetchone()
+            return dict(row) if row else None
 
     def event(self, agent, kind, detail, turn=None, source_key=None, time=None):
         with self.connect() as db:

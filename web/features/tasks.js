@@ -1,0 +1,191 @@
+// Task navigation is UI; each expanded task keeps its specification as YAML.
+const taskDocuments = new Map();
+const openTasks = new Set();
+const pastTaskStates = new Set(['Completed', 'Unresolved', 'Failed', 'Interrupted', 'Cancelled']);
+let taskPeriod = 'upcoming';
+let clarificationWorkload = null;
+function taskElement(tag, className, text) {
+  const node = document.createElement(tag);
+  node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function taskRow(task, sapi) {
+  const row = taskElement('details', 'task-row');
+  const key = sapi + ':' + task.id;
+  row.open = openTasks.has(key);
+  row.addEventListener('toggle', () => {
+    if (row.isConnected) row.open ? openTasks.add(key) : openTasks.delete(key);
+  });
+  const summary = taskElement('summary', 'task-summary');
+  const tone = task.state === 'Completed' ? 'complete' :
+    ['Failed', 'Interrupted', 'Unresolved', 'WaitingForAdmin'].includes(task.state) ? 'attention' :
+    ['Running', 'Queued'].includes(task.state) ? 'active' : 'neutral';
+  const mark = taskElement('span', 'task-mark ' + tone, task.state === 'Completed' ? '✓' : tone === 'attention' ? '!' : '·');
+  mark.setAttribute('aria-hidden', 'true');
+  const copy = taskElement('span', 'task-row-copy');
+  const title = taskElement('span', 'task-title', task.title); title.title = task.title;
+  const owner = agent(task.owner).name;
+  const route = task.sender === task.owner ? owner : `${agent(task.sender).name} → ${owner}`;
+  const status = task.state === 'WaitingForAdmin' ? 'Needs input' : task.state;
+  const meta = taskElement('span', 'task-meta');
+  meta.append(taskElement('span', 'task-state ' + tone, status), taskElement('span', 'task-assignee', route));
+  copy.append(title, meta);
+  const arrow = taskElement('span', 'task-chevron', '›'); arrow.setAttribute('aria-hidden', 'true');
+  summary.append(mark, copy, arrow); row.append(summary);
+  const content = taskElement('div', 'task-content');
+  const heading = taskElement('div', 'task-body-heading');
+  heading.append(taskElement('span', '', 'Task body'), taskElement('span', 'task-format', 'YAML'));
+  const button = taskElement('button', 'task-copy', 'Copy'); button.type = 'button';
+  button.setAttribute('aria-label', 'Copy task YAML');
+  button.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(task.body); toast('Task YAML copied.'); }
+    catch (_) { toast('Could not copy. You can select the task body to copy it.'); }
+  });
+  heading.append(button);
+  const body = taskElement('pre', 'task-body-yaml', task.body);
+  body.setAttribute('aria-label', 'Task body YAML');
+  content.append(heading, body);
+  if (task.result) {
+    content.append(taskElement('h3', 'task-result-heading', 'Result'));
+    const result = taskElement('div', 'task-result');
+    result.innerHTML = formatText(task.result);
+    content.append(result);
+  }
+  if (task.error) content.append(taskElement('p', 'task-error', task.error));
+  row.append(content);
+  return row;
+}
+function drawTasks(host, id, cached) {
+  const key = JSON.stringify([id, cached.revision, taskPeriod, cached.pending, cached.error]);
+  if (host.firstElementChild?.taskViewKey === key) return;
+  const view = taskElement('section', 'task-browser'); view.taskViewKey = key;
+  const tabs = taskElement('div', 'task-periods');
+  tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Task history');
+  const rows = cached.rows || [];
+  const inPeriod = (task, period) => pastTaskStates.has(task.state) === (period === 'past');
+  for (const [period, label] of [['upcoming', 'Upcoming'], ['past', 'Past']]) {
+    const button = taskElement('button', 'task-period'); button.type = 'button';
+    button.id = 'tasks-' + period; button.setAttribute('role', 'tab');
+    button.setAttribute('aria-selected', String(period === taskPeriod));
+    button.setAttribute('aria-controls', 'task-list'); button.tabIndex = period === taskPeriod ? 0 : -1;
+    button.append(taskElement('span', '', label), taskElement('span', 'task-count', String(rows.filter(t => inPeriod(t, period)).length)));
+    button.addEventListener('click', () => { taskPeriod = period; drawTasks(host, id, cached); });
+    button.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      taskPeriod = event.key === 'Home' ? 'upcoming' : event.key === 'End' ? 'past' : period === 'past' ? 'upcoming' : 'past';
+      drawTasks(host, id, cached); host.querySelector('[aria-selected="true"]').focus();
+    });
+    tabs.append(button);
+  }
+  const list = taskElement('div', 'task-list'); list.id = 'task-list';
+  list.setAttribute('role', 'tabpanel'); list.setAttribute('aria-labelledby', 'tasks-' + taskPeriod);
+  list.setAttribute('aria-busy', String(Boolean(cached.pending)));
+  const visible = rows.filter(t => inPeriod(t, taskPeriod));
+  if (cached.error) {
+    const error = taskElement('div', 'task-empty');
+    error.append(taskElement('p', '', 'Could not load tasks.'));
+    const retry = taskElement('button', 'task-copy', 'Try again'); retry.type = 'button';
+    retry.addEventListener('click', () => { taskDocuments.delete(id); renderTasks(host); });
+    error.append(retry); list.append(error);
+  } else if (!cached.rows) {
+    list.append(taskElement('p', 'task-empty', 'Loading tasks…'));
+  } else if (!visible.length) {
+    const empty = taskElement('div', 'task-empty');
+    empty.append(taskElement('p', '', taskPeriod === 'past' ? 'No past tasks' : 'No upcoming tasks'),
+      taskElement('small', '', taskPeriod === 'past' ? 'Completed and stopped tasks will appear here.' : 'Queued, running and waiting tasks will appear here.'));
+    list.append(empty);
+  } else visible.forEach(task => list.append(taskRow(task, id)));
+  view.append(tabs, list); host.replaceChildren(view);
+}
+function renderTasks(host) {
+  const id = state.selected;
+  const revision = JSON.stringify((live.workloads || []).filter(w => w.participants.includes(id)));
+  let cached = taskDocuments.get(id);
+  if (cached?.revision === revision) { drawTasks(host, id, cached); return; }
+  cached = {revision, rows:cached?.rows, pending:true};
+  taskDocuments.set(id, cached); drawTasks(host, id, cached);
+  fetch(`/api/agents/${encodeURIComponent(id)}/tasks?format=json`, {signal:AbortSignal.timeout(15000)})
+    .then(async response => {
+      if (!response.ok) throw new Error('Could not load tasks');
+      return response.json();
+    }).then(data => { cached.rows = data.tasks; })
+    .catch(error => { cached.error = error.message; })
+    .finally(() => {
+      cached.pending = false;
+      if (taskDocuments.get(id) === cached && state.selected === id && state.panel === 'tasks' && host.isConnected) drawTasks(host, id, cached);
+    });
+}
+function delegationMessages(snapshot) {
+  for (const work of snapshot.workloads || []) {
+    const call = snapshot.turns.find(t => t.id === work.callId);
+    if (work.origin.agent !== state.selected && !state.messages[work.origin.agent]) state.messages[work.origin.agent] = [];
+    // Original chat shows the responsible Sapi's actual outcome, not a second model summary.
+    if (work.callId !== work.origin.call) {
+      (state.messages[work.origin.agent] ||= []).push({role:'assistant', author:work.owner,
+        text:work.output || work.error || `Delegated to ${agent(work.owner).name} · ${work.state}`,
+        time:call ? displayTime(call.created) : '', timestamp:call ? Date.parse(call.created) : 0,
+        delegation:work, requestTurn:call && !['done','warning'].includes(call.status) ? call : null});
+    }
+  }
+}
+function taskCallControls(host) {
+  for (const work of live.workloads || []) {
+    if (work.state !== 'WaitingForAdmin' || ![work.owner,work.origin.agent].includes(state.selected)) continue;
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'button';
+    button.textContent = 'Answer Chief';
+    button.addEventListener('click', () => {
+      openChat(work.owner); clarificationWorkload = work;
+      $('#message-input').placeholder = `Clarify ${work.taskId} for Chief…`;
+      $('#message-input').focus();
+    });
+    host.append(button);
+  }
+}
+async function editDecisionPrompts() {
+  try {
+    const {prompts} = await api('/api/decision-prompts');
+    modal('Decision prompts', '<form id="decision-prompt-form" class="form-stack"><label>Node<select name="node"></select></label><small class="prompt-path"></small><label>Prompt<textarea name="content" rows="16" maxlength="20000" required></textarea></label><p>Changes apply to subsequent decisions. Saved decision records keep their original prompt.</p><button class="button" type="submit">Save prompt</button></form>', 'CORPORA');
+    const form = $('#decision-prompt-form');
+    for (const row of prompts) {
+      const option = document.createElement('option'); option.value = row.node; option.textContent = row.node;
+      form.elements.node.append(option);
+    }
+    const show = () => {
+      const row = prompts.find(p => p.node === form.elements.node.value);
+      form.elements.content.value = row.content;
+      form.querySelector('.prompt-path').textContent = row.path;
+    };
+    form.elements.node.addEventListener('change', show); show();
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const button = form.querySelector('button'); button.disabled = true;
+      try {
+        const content = form.elements.content.value, node = form.elements.node.value;
+        const saved = await api(`/api/decision-prompts/${encodeURIComponent(node)}`, 'PUT', {content});
+        const row = prompts.find(p => p.node === node); row.content = content; row.path = saved.path;
+        show(); toast('Prompt saved for subsequent decisions.');
+      } catch (error) { toast(error.message); }
+      finally { button.disabled = false; }
+    });
+  } catch (error) { toast(error.message); }
+}
+function decisionLog(host) {
+  const id = state.selected;
+  const button = document.createElement('button'); button.type = 'button'; button.className = 'button';
+  button.textContent = 'Edit decision prompts'; button.onclick = editDecisionPrompts;
+  const details = document.createElement('details'), summary = document.createElement('summary');
+  summary.textContent = 'Decisions and exact prompts (YAML)'; details.append(summary);
+  details.addEventListener('toggle', async () => {
+    if (!details.open || details.querySelector('pre')) return;
+    try {
+      const response = await fetch(`/api/agents/${encodeURIComponent(id)}/decisions`);
+      if (!response.ok) throw new Error('Could not load decisions');
+      const pre = document.createElement('pre'); pre.className = 'tasks-yaml'; pre.textContent = await response.text();
+      details.append(pre);
+    } catch (error) { toast(error.message); }
+  });
+  host.prepend(button, details);
+}

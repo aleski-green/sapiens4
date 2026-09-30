@@ -27,7 +27,7 @@ function makeInitialState(data) {
   const workspaces = prefs.workspaces || {};
   const ws = workspaces[selected] || {tabs:[]};
   return {agents, mainSapiId:agents[0].id, selected, scope:prefs.scope || 'all',
-    panel:['chat','notes','log'].includes(prefs.panel) ? prefs.panel : 'chat', mode:'assist', panes:{sidebar:true,chat:true,workspace:true,...prefs.panes},
+    panel:['chat','tasks','notes','log'].includes(prefs.panel) ? prefs.panel : 'chat', mode:'assist', panes:{sidebar:true,chat:true,workspace:true,...prefs.panes},
     tabs:ws.tabs, activeTab:ws.activeTab || ws.tabs[0]?.id || null, workspaces,
     drafts:prefs.drafts || {}, messages:{}};
 }
