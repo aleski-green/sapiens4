@@ -133,7 +133,8 @@ class Conversation:
         while len(json.dumps(blocks, ensure_ascii=False)) > allowance and chat:
             chat.pop(0)
             blocks['history_truncated'] = True
-        return dict(context=json.dumps(blocks, ensure_ascii=False), task=text, last='', proposal='', critique='')
+        return dict(context=json.dumps(blocks, ensure_ascii=False), task=text, last='',
+                    notes_example=str(ROOT / 'prompts/examples/jarvis-notes.html'))
 
     def archive_path(self, key):
         return safe_child(self.archive_root, f'{self.agid}/{key}.json')

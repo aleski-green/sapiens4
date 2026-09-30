@@ -23,6 +23,7 @@ jobs:
           node --check /tmp/sapiens4-app.js
           node tests/chat_links.test.cjs
           node tests/workspace_merge.test.cjs
+          node tests/notes.test.cjs
   blindly:
     runs-on: macos-latest
     steps:

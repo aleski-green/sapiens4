@@ -29,18 +29,31 @@ each accepts one pending conversation turn. The shared computer has one owner,
 reserved lazily on the first Blindly4 call and released when the model call ends.
 Use chat to ask for research, documents, computer work or changes to notes.
 
-The **Notes** tab displays the selected Sapi's `workspaces/<id>/Notes.md` as plain
-text. The model reads and edits this local Markdown file with normal file tools.
-The host supplies its current path and a bounded excerpt before each conversation.
-File edits appear in the panel automatically; no summarizer, schema, debate,
-learning model call, or consolidation process maintains it. Notes start empty.
-Legacy structured memory is preserved on disk but is not copied into Notes or
-used in new model prompts. Notes are context; current user instructions take precedence.
+Each Sapi maintains `workspaces/<id>/Notes.html`, an HTML wiki with exactly three
+top-level `<section>` elements in order: `about` (identity and purpose), `map`
+(internal links with short descriptions), and `content` (anchored knowledge articles).
+Only about/map enter call context; each is omitted if longer than 12,000 characters.
+The model reads relevant content from the file and decides to update or keep it
+intact before replying. It reads the full file before an atomic edit. The prompt
+is in `prompts/conversation.md`; no separate generation or consolidation call runs.
 
-The UI displays up to 64,000 characters and explicitly marks longer files. Prompt
-excerpts are bounded to 12,000 characters; the model can read the full local file.
-Notes stay separate for each Sapi. The Notes endpoint rejects symlinks and invalid
-UTF-8; an invalid notes file does not prevent ordinary chat.
+Use `<pre><code class="language-yaml|python|html|svg|haskell">` with one language
+per block. YAML carries structured knowledge, Python script examples, HTML/SVG
+visuals, and Haskell descriptive workflow notation (never executed). Scripts live
+in their own `.py` files, linked from the wiki. Prose is minimal; operating rules,
+raw logs, and secrets do not belong in Notes. Current requests take precedence.
+
+The Notes panel shows only the wiki, with about/map above independently scrolling
+content. It highlights snippets in both themes and supports tables, inline SVG,
+embedded images, and workspace-relative PNG/JPEG/GIF/WebP files up to 10 MB. The
+renderer copies an allowlist of inert elements and attributes, removing scripts,
+event handlers, forms, frames, custom styles, and remote image loads. Links open
+through the existing workspace controls; internal links navigate within content.
+
+First use imports existing YAML (or Markdown if YAML is absent) as escaped snippets;
+original files remain intact and existing HTML is never overwritten. Notes are
+separate per Sapi. Invalid UTF-8, missing files and symlinks produce a Notes error
+without blocking chat. Legacy memory is not imported or included in prompts.
 
 **Tasks** and **Jobs** tabs remain visible but inactive. Their commands, HTTP
 routes, scheduling, recurring watchers, delegation, automatic team reviews,
@@ -120,7 +133,7 @@ All persistent data lives in the configured `.sapiens4` directory:
 | `agentpy/agents/<id>/state.json` | Version 3 chat state |
 | `agentpy/agents/<id>/legacy-state-v*.json` | Original pre-removal state, saved once during migration |
 | `agentpy/corpora/archive/` | Transcripts and older retained history |
-| `workspaces/<id>/Notes.md` | Model-managed plain Markdown notes |
+| `workspaces/<id>/Notes.html` | Model-managed HTML wiki |
 | `workspaces/<id>/artifacts/` | Saved deliverables |
 
 Upgrades copy old chat/computer history into the new conversation projection.

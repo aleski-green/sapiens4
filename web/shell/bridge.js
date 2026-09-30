@@ -155,6 +155,7 @@ renderAgentHeader = function() {
 let renderedConversation = '';
 renderConversation = function() {
   const host = $('#conversation-body');
+  host.classList.toggle('notes-view', state.panel === 'notes');
   const turns = live.turns.filter(j => j.agent === state.selected);
   const key = state.selected + ':' + state.panel;
   const changedView = renderedConversation !== key;

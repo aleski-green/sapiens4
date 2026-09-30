@@ -1,6 +1,6 @@
-"""Plain notes, chat-only runtime, and non-destructive legacy migration."""
+"""HTML wiki notes, chat-only runtime, and non-destructive legacy migration."""
 import asyncio
-from copy import deepcopy
+from html import escape, unescape
 from http.client import HTTPConnection
 import json
 from pathlib import Path
@@ -16,62 +16,94 @@ from sapiens.validation import APIError
 
 
 class NotesTest(IntegrationFixture):
-    def test_model_edits_file_and_next_chat_reads_latest_notes(self):
+    @staticmethod
+    def document(about='who: Nova', content='facts: {}'):
+        return (f'<section id="about"><pre><code class="language-yaml">{escape(about)}</code></pre></section>'
+                '<section id="map"><nav><a href="#facts">Facts</a> — saved facts</nav></section>'
+                f'<section id="content"><article id="facts"><pre><code class="language-yaml">{escape(content)}</code></pre></article></section>')
+
+    def test_model_updates_or_keeps_wiki_and_context_only_contains_about_and_map(self):
         service = self.service()
         agid = service.registry.main
-        path = service.workspace.root(service._agent(agid)) / 'Notes.md'
-        self.assertEqual(path.read_text(), '')
-        self.factory.on_complete = lambda prompt: path.write_text('# Preferences\nCall me Aleksi.\n')
+        notes = Notes(service.workspace.root(service._agent(agid)))
+        self.assertEqual(list(notes.context()), ['path', 'about', 'map'])
+        content = self.document('who: Nova', 'user_name: UniqueSavedName')
+        self.factory.on_complete = lambda prompt: notes.path.write_text(content)
         first = service.submit(agid, dict(text='Save my name in notes'))
         self.wait_turn(service, first['id'])
-        self.assertIn('Notes.md', self.factory.prompts[0])
+        self.assertIn('Notes.html', self.factory.prompts[0])
         self.factory.on_complete = None
+        revision = notes.metadata()['revision']
         second = service.submit(agid, dict(text='What is my name?'))
         self.wait_turn(service, second['id'])
-        self.assertIn('Call me Aleksi.', self.factory.prompts[-1])
-        self.assertEqual(len(self.factory.prompts), 2)
+        self.assertEqual(notes.metadata()['revision'], revision)
+        self.assertIn('who: Nova', self.factory.prompts[-1])
+        self.assertIn('saved facts', self.factory.prompts[-1])
+        self.assertNotIn('UniqueSavedName', self.factory.prompts[-1], 'Detailed content is read on demand')
+        self.assertIn('decide to update or keep it intact', self.factory.prompts[-1])
         service = self.restart(service)
-        self.assertEqual(path.read_text(), '# Preferences\nCall me Aleksi.\n')
-        self.assertEqual(service.snapshot()['orchestration'][agid]['notes']['path'], str(path))
+        self.assertEqual(notes.read()['content'], content)
         self.assertEqual(len(self.factory.prompts), 2)
 
-    def test_notes_are_isolated_and_external_file_edits_change_revision(self):
+    def test_notes_are_isolated_and_external_edits_change_revision(self):
         service = self.service(start_worker=False)
         a = service._agent(service.registry.main)
         b = service._agent(service.create_agent(dict(name='Nova', role='Assistant'))['id'])
-        notes = Notes(service.workspace.root(a))
-        revision = notes.metadata()['revision']
-        notes.path.write_text('Only for the chief')
+        notes = Notes(service.workspace.root(a)); revision = notes.metadata()['revision']
+        notes.path.write_text(self.document('who: Only for the chief'))
         self.assertNotEqual(notes.metadata()['revision'], revision)
-        self.assertEqual(Notes(service.workspace.root(b)).read()['content'], '')
         service.orchestration.prepare(b)
         self.assertNotIn('Only for the chief', b.manifests['host-facts'])
-        notes.path.unlink()
-        self.assertEqual(notes.read()['content'], '')
 
-    def test_notes_reading_is_bounded_and_invalid_files_do_not_block_chat(self):
+    def test_complete_content_and_invalid_files_do_not_block_context(self):
         service = self.service(start_worker=False)
-        a = service._agent(service.registry.main)
-        notes = Notes(service.workspace.root(a))
-        notes.path.write_text('x' * 70000)
-        self.assertEqual(len(notes.read()['content']), 64000)
-        self.assertTrue(notes.read()['truncated'])
-        self.assertEqual(len(notes.context()['content']), 12000)
-        notes.path.write_bytes(b'\xff')
-        self.assertIn('UTF-8', notes.context()['error'])
-        outside = service.root / 'private.txt'
-        outside.write_text('Not notes')
-        notes.path.unlink()
+        notes = Notes(service.workspace.root(service._agent(service.registry.main)))
+        content = self.document(content='x' * 70000 + 'TAIL')
+        notes.path.write_text(content)
+        self.assertEqual(notes.read()['content'], content)
+        self.assertNotIn('TAIL', str(notes.context()))
+        notes.path.write_text(self.document(about='x' * 13000))
+        self.assertIsNone(notes.context()['about'])
+        for invalid in (b'\xff', b'<section id="content"></section>', b'<section id="about"></section>' * 3):
+            notes.path.write_bytes(invalid)
+            self.assertIn('error', notes.context())
+        notes.path.unlink(); outside = service.root / 'private.txt'; outside.write_text('Not notes')
         notes.path.symlink_to(outside)
-        with self.assertRaises(APIError):
-            notes.read()
+        with self.assertRaises(APIError): notes.read()
+        self.assertNotIn('Not notes', str(notes.context()))
         self.assertIn('error', notes.metadata())
-        service.orchestration.prepare(a)
-        self.assertNotIn('Not notes', a.manifests['host-facts'])
-        notes.path.unlink()
-        notes.path.mkdir()
-        with self.assertRaises(APIError):
-            notes.read()
+
+    def test_migration_preserves_legacy_text_and_never_overwrites_html(self):
+        notes = Notes(Path(self.directory.name) / 'workspace'); notes.workspace.mkdir()
+        original = 'facts:\n  name: Aleksi\n  image: "<script>literal 😎</script>"\nnotes: []\n'
+        legacy = notes.workspace / 'Notes.yaml'; legacy.write_bytes(original.encode())
+        (notes.workspace / 'Notes.md').write_text('Older notes')
+        notes.ensure('Nova', 'Research assistant')
+        self.assertIn('Research assistant', notes.context()['about'])
+        self.assertIn('saved facts', notes.context()['map'])
+        source = notes.read()['content']
+        self.assertNotIn('<script>', source)
+        self.assertIn('<script>literal 😎</script>', unescape(source))
+        self.assertEqual(legacy.read_bytes(), original.encode())
+        self.assertNotIn('Older notes', source)
+        revision = notes.metadata()['revision']; notes.ensure()
+        self.assertEqual(notes.metadata()['revision'], revision)
+        notes.path.write_text(self.document()); notes.ensure()
+        self.assertEqual(notes.path.read_text(), self.document())
+
+    def test_unsafe_legacy_files_and_images_never_escape_workspace(self):
+        notes = Notes(Path(self.directory.name) / 'workspace'); notes.workspace.mkdir()
+        outside = Path(self.directory.name) / 'private.md'; outside.write_text('Private data')
+        legacy = notes.workspace / 'Notes.md'; legacy.symlink_to(outside)
+        notes.ensure(); self.assertFalse(notes.path.exists()); self.assertIn('error', notes.context())
+        legacy.unlink(); legacy.write_bytes(b'\xff')
+        notes.ensure(); self.assertEqual(legacy.read_bytes(), b'\xff')
+        image = notes.workspace / 'sample.gif'; image.write_bytes(b'GIF89a')
+        self.assertEqual(notes.image('sample.gif'), (b'GIF89a', 'image/gif'))
+        for path in ('../private.md', str(outside), 'Notes.md'):
+            with self.assertRaises((ValueError, APIError)): notes.image(path)
+        image.unlink(); image.symlink_to(outside)
+        with self.assertRaises(ValueError): notes.image('sample.gif')
 
     def test_removed_commands_and_flows_are_rejected_including_batches(self):
         service = self.service(start_worker=False)
@@ -98,7 +130,7 @@ class NotesTest(IntegrationFixture):
     def test_notes_http_and_removed_routes(self):
         service = self.service(start_worker=False)
         a = service._agent(service.registry.main)
-        content = '<script>alert("notes")</script>\n# Plain markdown'
+        content = self.document(content='<script>alert("notes")</script>')
         Notes(service.workspace.root(a)).path.write_text(content)
         server = Server(0, service)
         threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -110,6 +142,11 @@ class NotesTest(IntegrationFixture):
         response = connection.getresponse()
         self.assertEqual(response.status, 200)
         self.assertEqual(json.loads(response.read())['content'], content)
+        (service.workspace.root(a) / 'a b.gif').write_bytes(b'GIF89a')
+        connection.request('GET', f'/api/agents/{a.agid}/notes?image=a%2520b.gif')
+        response = connection.getresponse()
+        self.assertEqual((response.status, response.getheader('Content-Type'), response.read()),
+                         (200, 'image/gif', b'GIF89a'))
         for suffix in ('memory','tasks/missing','usage'):
             connection.request('GET', f'/api/agents/{a.agid}/{suffix}')
             response = connection.getresponse(); response.read()
@@ -168,7 +205,7 @@ class NotesTest(IntegrationFixture):
         self.assertEqual(service.snapshot()['turns'][0]['output'], 'Connected through AgentPy.')
         self.assertEqual(service.snapshot()['preferences']['panel'], 'notes')
         self.assertNotIn('work_views', service.snapshot()['preferences'])
-        self.assertEqual(Notes(service.workspace.root(current)).read()['content'], '')
+        self.assertIn('about', Notes(service.workspace.root(current)).context())
         time.sleep(1.1)  # Former scheduler checked every second.
         self.assertEqual(len(self.factory.prompts), 1)
         request = service.submit(a.agid, dict(text='New conversation'))
@@ -185,7 +222,7 @@ class NotesTest(IntegrationFixture):
         with agent.transaction() as state:
             state['chat'] = [dict(role='agent', content='old context ' * 2000) for _ in range(10)]
         notes = Notes(service.workspace.root(agent))
-        notes.path.write_text('Keep my name Aleksi.')
+        notes.path.write_text(self.document(about='who: Keep my name Aleksi.'))
         service.start()
         request = service.submit(agent.agid, dict(text='Current request ' * 900))
         self.wait_turn(service, request['id'])
