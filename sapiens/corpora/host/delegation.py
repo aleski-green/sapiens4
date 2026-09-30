@@ -145,15 +145,24 @@ class Delegation:
         instruction = source['content']
         with self.service._lock:
             work, call = self.find(turn['id'])
+            prepared = runner.context(snapshot, turn['input'], runner.config)
             context = dict(originalIntent=work['originalIntent'], task=work['task'], tracked=work['tracked'],
                 currentCall=call, selfId=agid, chiefId=self.service.registry.main,
                 team=self.service.orchestration.team(), allowCreate=work['allowCreate'],
                 routingHistory=[dict(callId=c['callId'], addressedTo=c['addressedTo'], node=c['node']) for c in work['calls']],
-                conversation=json.loads(runner.context(snapshot, turn['input'], runner.config)['context']),
+                conversation=json.loads(prepared['context']),
                 observation=extra)
-            rendered = prompt('decision-envelope', node=node, instruction=instruction,
-                              context=json.dumps(context, ensure_ascii=False),
-                              events=', '.join(sorted(EVENTS[node])))
+            wiki = prompt('notes-wiki', notes_example=prepared['notes_example'])
+            # Budget the complete decision envelope, including routing and wiki
+            # guidance, before retaining optional conversation history.
+            while True:
+                rendered = prompt('decision-envelope', node=node, instruction=instruction,
+                                  notes_wiki=wiki, context=json.dumps(context, ensure_ascii=False),
+                                  events=', '.join(sorted(EVENTS[node])))
+                if len(rendered) <= 60000 or not context['conversation']['chat']:
+                    break
+                context['conversation']['chat'].pop(0)
+                context['conversation']['history_truncated'] = True
             model, effort = model_defaults()
             if execution_settings(runner.store.root)['mode'] == 'deep':
                 effort = 'xhigh'

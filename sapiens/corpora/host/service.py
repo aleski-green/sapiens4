@@ -121,7 +121,7 @@ class Service:
 
             factory = (self.factory_builder(agid, sink) if self.factory_builder else
                        CodexFactory(workdir=workdir, event_sink=sink))
-            Notes(workdir).ensure()
+            Notes(workdir).ensure(row['name'], row['role'])
             agent = Conversation(agid=agid, root=self.root / "agentpy")
             if agid not in self.registry.directory():
                 self.registry.register(agid)
@@ -139,7 +139,7 @@ class Service:
         return self._agents[agid]
 
     def _manifests(self, agent, row):
-        agent.set_manifest("identity", prompt('identity', name=row['name'], role=row['role']))
+        agent.set_manifest("identity", prompt('identity', name=row['name'], role=row['role'], face=row['face']))
         agent.set_manifest("computer-use", computer_manifest(self.binary))
 
     def acquire_computer(self, agid):
@@ -230,7 +230,7 @@ class Service:
             if policy is not None:
                 atomic_bytes(agent.root / 'run-settings.json', json.dumps(policy).encode())
             self.store.update_agent(agid, row)
-            self._manifests(agent, row)
+            self._manifests(agent, next(a for a in self.store.agents() if a['id'] == agid))
             self.store.event(agid, "updated", "Sapi identity updated")
         return {"id": agid, **row}
 

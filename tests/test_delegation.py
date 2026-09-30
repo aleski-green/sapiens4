@@ -131,6 +131,12 @@ class DelegationTest(unittest.TestCase):
         self.assertIsNotNone(context['currentCall']['causedBy'])
         self.assertEqual(context['currentCall']['addressedTo'],self.researcher)
         self.assertEqual(context['selfId'],self.researcher)
+        execution = next(text for agid,node,text in self.provider.calls if agid == self.researcher and node == 'Execution')
+        for decision in (rendered, execution):
+            self.assertIn('decide to update or keep it intact', decision)
+            self.assertIn(str(Path(__file__).parents[1] / 'prompts/examples/jarvis-notes.html'), decision)
+            self.assertNotIn('{notes_example}', decision)
+            self.assertNotIn('Notes.md', decision)
 
     def test_tracked_recipient_cannot_skip_task_specification_with_repl(self):
         self.chief_routes()

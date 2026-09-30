@@ -43,7 +43,8 @@ Each reached decision node invokes its named prompt and expects a validated JSON
 response with an event, brief reason, and evidence. An immediate Repl answer fits
 one model invocation; Exec and delegation use additional invocations for their
 reached decisions. All invocations within one Call share its configured timeout.
-Invalid output fails visibly and requires explicit retry; it never silently chooses
+Every decision receives the shared HTML wiki guidance and example path; only
+Execution may read or update Notes.html. Invalid output fails visibly and requires explicit retry; it never silently chooses
 a different route. Tool events remain in existing transcripts and activity logs.
 
 Default templates live in root `prompts/`. Log → Edit decision prompts saves

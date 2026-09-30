@@ -27,8 +27,8 @@ class LifecycleTest(IntegrationFixture):
         asyncio.run(agent.runner.run())
         service._sync(agent)
         history = agent.state['chat']
-        notes = service.workspace.root(agent) / "Notes.md"
-        notes.write_text("Keep these findings")
+        notes = service.workspace.root(agent) / "Notes.html"
+        notes.write_text('<section id="about"></section><section id="map"></section><section id="content">Keep these findings</section>')
         file = service.workspace.root(agent) / 'research.md'
         file.write_text('# Findings')
         tab = control(child, dict(op='workspace_open', path=str(file)))['workspace']['tabs'][0]
@@ -53,7 +53,7 @@ class LifecycleTest(IntegrationFixture):
         agent = service._agent(child)
         self.assertEqual(len(service.store.agents()), 2)
         self.assertEqual(agent.state['chat'], history)
-        self.assertEqual(notes.read_text(), "Keep these findings")
+        self.assertEqual(notes.read_text(), '<section id="about"></section><section id="map"></section><section id="content">Keep these findings</section>')
         self.assertEqual(file.read_text(), '# Findings')
         self.assertEqual(service.store.read_preferences()['drafts'][child], 'Keep my draft')
         self.assertEqual(next(j for j in service.snapshot()['turns'] if j['id'] == turn)['output'], 'Connected through AgentPy.')

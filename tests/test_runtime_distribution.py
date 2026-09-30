@@ -35,6 +35,7 @@ from sapiens.runtime.turns import TurnRunner
 assert not any(m.startswith(('sapiens.corpora', 'sapiens.computer')) for m in sys.modules)
 from sapiens.corpora.host.assets import asset
 from sapiens.corpora.host.service import Service
+from sapiens.corpora.sapis.conversations import Config, Conversation
 assert sys.path == before, 'Importing the runtime must not alter module search paths'
 assert 'config' not in sys.modules, 'Behavior config must have a qualified module name'
 # Installed updaters use these paths before the new updater can be installed.
@@ -54,8 +55,14 @@ for url in ('/agentpy/config.py', '/web/bootstrap.js', '/.git/config',
 service = Service(Path(sys.argv[2]), start_worker=False)
 try:
     agent = service._agent(service.registry.main)
-    assert (service.workspace.root(agent) / 'Notes.md').is_file()
+    assert (service.workspace.root(agent) / 'Notes.html').is_file()
     assert service.snapshot()['main_agent_id'] == agent.agid
+    conversation = Conversation(agid=agent.agid, root=service.root)
+    context = conversation.context({'chat': []}, 'hello', Config)
+    example = Path(context['notes_example'])
+    assert example == Path(sys.argv[1]).resolve() / 'prompts/examples/jarvis-notes.html'
+    assert '(◉﹏◉)' in example.read_text()
+    assert str(example) in Config.roles['conversation'].prompt.format_map(context)
 finally:
     service.close()
 ''', str(release), str(Path(directory) / 'state')],

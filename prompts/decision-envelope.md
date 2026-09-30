@@ -7,6 +7,9 @@ Do not edit host config, SQLite, state.json, application sources, or decision pr
 Only Execution may perform work or use mutating tools. Other nodes assess and propose; the host applies accepted transitions.
 Do not schedule work, create task graphs, or claim that delegation completes an objective.
 
+Wiki guidance (read files and make updates only during Execution; assessment uses supplied about/map context):
+{notes_wiki}
+
 {instruction}
 
 Context:

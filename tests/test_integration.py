@@ -110,6 +110,7 @@ class IntegrationTest(IntegrationFixture):
         self.wait_turn(service, turn["id"])
         prompt = self.factory.prompts[-1]
         self.assertIn("Research lead", prompt)
+        self.assertIn('(' + next(a['face'] for a in service.store.agents() if a['id'] == row['id']) + ')', prompt)
         self.assertIn("Blindly4", prompt)
         self.assertIn("--require-value-path", prompt)
         self.assertIn("Inspect apps", prompt)

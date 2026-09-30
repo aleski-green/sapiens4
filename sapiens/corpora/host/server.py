@@ -99,7 +99,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, service.snapshot(after))
             if len(parts) == 4 and parts[:2] == ['api','agents'] and parts[3] == 'notes':
                 with service._lock:
-                    return self._send(200, Notes(service.workspace.root(service._agent(parts[2]))).read())
+                    notes = Notes(service.workspace.root(service._agent(parts[2])))
+                    image = parse_qs(url.query).get('image', [None])[0]
+                    return self._send(200, *notes.image(unquote(image))) if image else self._send(200, notes.read())
             if path == "/api/health":
                 return self._send(200, {"status": "ok", "provider": "codex"})
             if path == "/":
