@@ -4,6 +4,7 @@ import WebKit
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
     var window: NSWindow!
     var web: WKWebView!
+    let browser = Browser()
     var attempts = 0
     var launched = false
     var child: Process?
@@ -39,9 +40,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             edit.submenu!.addItem(withTitle: title, action: Selector(action), keyEquivalent: key)
         }
         let view = NSMenuItem(); menu.addItem(view); view.submenu = NSMenu(title: "View")
-        view.submenu!.addItem(withTitle: "Reload", action: #selector(reload), keyEquivalent: "r").target = self
+        view.submenu!.addItem(withTitle: "Reload Tab", action: #selector(Browser.reloadTab), keyEquivalent: "r").target = browser
+        view.submenu!.addItem(withTitle: "Reload App", action: #selector(reload), keyEquivalent: "").target = self
+        for (title, action, key) in [("Zoom In", #selector(Browser.zoomIn), "="), ("Zoom Out", #selector(Browser.zoomOut), "-"), ("Actual Size", #selector(Browser.resetZoom), "0")] {
+            view.submenu!.addItem(withTitle: title, action: action, keyEquivalent: key).target = browser
+        }
         NSApp.mainMenu = menu
-        web = WKWebView(frame: .zero)
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController.add(browser, name: "browser")
+        web = WKWebView(frame: .zero, configuration: configuration)
+        browser.shell = web
         web.navigationDelegate = self; web.uiDelegate = self
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 820), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "Sapiens4"; window.minSize = NSSize(width: 720, height: 540)

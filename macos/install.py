@@ -7,12 +7,19 @@ import subprocess
 import sys
 import uuid
 
+if __package__:
+    from .updater import clean_build_caches
+else:
+    from updater import clean_build_caches
+
 ROOT = Path(__file__).resolve().parent.parent
 HOME = Path.home() / 'Library/Application Support/Sapiens4'
 APP = Path.home() / 'Applications/Sapiens4.app'
 
 
 def install():
+    # Do this before creating release pointers or touching an existing install.
+    subprocess.run([sys.executable, '-m', 'sapiens.preflight'], cwd=ROOT, check=True, timeout=180)
     HOME.mkdir(parents=True, exist_ok=True, mode=0o700)
     config_path = HOME / 'config.json'
     if not config_path.exists():
@@ -43,6 +50,8 @@ def install():
     subprocess.run([str(ROOT / 'macos/build.sh')], env=env, check=True)
     APP.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(['ditto', str(ROOT / '.build/macos/Sapiens4.app'), str(APP)], check=True)
+    for root in (ROOT, *(HOME / 'releases').glob('*')):
+        clean_build_caches(root)
     print(f'Installed {APP}\nManaged code: {HOME}\nExisting data: {json.loads(config_path.read_text())["data"]}')
 
 if __name__ == '__main__':

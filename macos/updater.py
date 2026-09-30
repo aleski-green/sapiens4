@@ -83,6 +83,24 @@ targets: [.executableTarget(name: "blindly4")])'''
     command([str(package / '.build/release/blindly4'), '--self-test'])
 
 
+def clean_build_caches(root):
+    """Remove compiler caches, preserving executables and all runtime data."""
+    root = Path(root)
+    if root.is_symlink():
+        return
+    root = root.resolve()
+    swift = root / 'blindly4/.build'
+    caches = [root / '.build/macos/module-cache', swift / 'ModuleCache',
+              *swift.glob('*/release/ModuleCache'), *swift.glob('*/debug/ModuleCache')]
+    for cache in caches:
+        if not cache.parent.resolve().is_relative_to(root):
+            continue
+        if cache.is_symlink():
+            cache.unlink()
+        elif cache.is_dir():
+            shutil.rmtree(cache)
+
+
 def replace_app(staged, installed):
     """Atomically exchange bundles on macOS; never leave the launch path missing."""
     if not installed.exists():
@@ -115,7 +133,7 @@ def healthy():
 
 def busy(state):
     return bool(state.get('computer', {}).get('owner')) or any(
-        j.get('status') in {'queued', 'running'} for j in state.get('jobs', []))
+        j.get('status') in {'queued', 'running'} for j in state.get('turns', state.get('jobs', [])))
 
 
 class Manager:
@@ -152,10 +170,12 @@ class Manager:
 
     def prepare(self, sha):
         destination = self.home / 'releases' / (sha + '-' + uuid.uuid4().hex[:8])
-        self.status('preparing', 'Downloading main and pinned submodules…')
+        self.status('preparing', 'Downloading main and Blindly4…')
         command(['git', 'clone', '--no-checkout', '--single-branch', '--branch', 'main', UPSTREAM, str(destination)], timeout=600)
         command(['git', 'checkout', '--detach', sha], cwd=destination)
-        command(['git', 'submodule', 'update', '--init', '--recursive'], cwd=destination, timeout=900)
+        self.status('preparing', 'Checking Codex CLI, login and model access…')
+        command([sys.executable, '-m', 'sapiens.preflight'], cwd=destination, timeout=180)
+        command(['git', 'submodule', 'update', '--init', '--recursive', '--', 'blindly4'], cwd=destination, timeout=900)
         self.status('preparing', 'Building Blindly4…')
         env = swift_environment()
         build_blindly(destination, env)
@@ -271,6 +291,9 @@ class Manager:
         self.recover()
         if not healthy():
             self.spawn(self.current())
+        # The previous updater may have installed us without cache cleanup.
+        for root in (self.home / 'releases').glob('*'):
+            clean_build_caches(root)
 
     def update(self):
         self.recover()
@@ -333,6 +356,8 @@ class Manager:
             # Keep installation pending until both bundle and helper are saved.
             # A later check/update can retry even when main already matches.
             atomic(self.home / 'current.json', dict(release, desktop_revision=sha))
+        for root in (self.home / 'releases').glob('*'):
+            clean_build_caches(root)
         self.status('current', f'Updated to main {sha[:7]}', sha=sha, checked_at=time.time(), desktop_revision=desktop_revision)
 
 

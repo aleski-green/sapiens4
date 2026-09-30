@@ -6,15 +6,14 @@ import threading
 import time
 import unittest
 
-from sapiens.assets import javascript
-from sapiens.runtime import LocalFactory
-from sapiens.server import Server
-from sapiens.service import APIError, Service
+from sapiens.corpora.host.assets import javascript
+from sapiens.runtime.codex import CodexFactory
+from sapiens.corpora.host.server import Server
+from sapiens.corpora.host.service import APIError, Service
 
 
 class ScriptedLLM:
     id = "test-session"
-    usage = {"input_tokens": 4, "output_tokens": 3}
 
     def __init__(self, factory):
         self.factory = factory
@@ -65,40 +64,35 @@ class IntegrationFixture(unittest.TestCase):
         self.services.append(service)
         return service
 
-    def ready_strategy(self, service, agent, row):
-        return service.orchestration.control(agent.agid, dict(op='strategy', id=row['id'],
-            status='ready', approach='Use the observed list for changes',
-            success='A verified relevant change is reported', scope='Visible list only',
-            expected_units=1000, generation_reason='Generate the requested periodic report'))
 
     def restart(self, service, **kwargs):
         service.close()
         self.services.remove(service)
         return self.service(**kwargs)
 
-    def wait_job(self, service, job_id, status="done"):
+    def wait_turn(self, service, job_id, status="done"):
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
-            job = next(j for j in service.snapshot()["jobs"] if j["id"] == job_id)
-            if job["status"] == status:
-                return job
+            turn = next(j for j in service.snapshot()["turns"] if j["id"] == job_id)
+            if turn["status"] == status:
+                return turn
             time.sleep(0.01)
-        self.fail(f"Job did not reach {status}: {job}")
+        self.fail(f"Job did not reach {status}: {turn}")
 
 
 class IntegrationTest(IntegrationFixture):
     def test_chat_projects_reply_and_survives_restart(self):
         service = self.service()
         agid = service.store.agents()[0]["id"]
-        job = service.submit(agid, {"text": "Hello"})
-        done = self.wait_job(service, job["id"])
+        turn = service.submit(agid, {"text": "Hello"})
+        done = self.wait_turn(service, turn["id"])
         self.assertEqual(done["output"], "Connected through AgentPy.")
-        self.assertEqual(done["tokens"], 7)
+        self.assertNotIn("tokens", done)
         service.save_preferences({"selected":agid,"drafts":{agid:"Keep this"}})
         count = len(service.snapshot()["events"])
         service = self.restart(service)
         state = service.snapshot()
-        self.assertEqual(state["jobs"][0]["status"], "done")
+        self.assertEqual(state["turns"][0]["status"], "done")
         self.assertEqual(state["preferences"]["drafts"][agid], "Keep this")
         self.assertEqual(len(state["events"]), count)
         self.assertEqual(len(self.factory.prompts), 1)
@@ -107,8 +101,8 @@ class IntegrationTest(IntegrationFixture):
         service = self.service()
         row = service.create_agent({"name":"Nova","role":"Research assistant"})
         service.update_agent(row["id"], {"name":"Nova","role":"Research lead"})
-        job = service.submit(row["id"], {"text":"Inspect apps", "flow":"computer"})
-        self.wait_job(service, job["id"])
+        turn = service.submit(row["id"], {"text":"Inspect apps", "flow":"computer"})
+        self.wait_turn(service, turn["id"])
         prompt = self.factory.prompts[-1]
         self.assertIn("Research lead", prompt)
         self.assertIn("Blindly4", prompt)
@@ -116,7 +110,7 @@ class IntegrationTest(IntegrationFixture):
         self.assertIn("Inspect apps", prompt)
         self.assertEqual(service._agent(row["id"]).state["chat"][-1]["content"], "Connected through AgentPy.")
 
-    def test_duplicate_submission_and_global_serialization(self):
+    def test_duplicate_submission_is_per_sapi(self):
         gate = self.factory.gate = threading.Event()
         self.addCleanup(gate.set)
         service = self.service()
@@ -129,50 +123,79 @@ class IntegrationTest(IntegrationFixture):
             service.submit(a, {"text":"Duplicate"})
         self.assertEqual(caught.exception.status, 409)
         state = service.snapshot()
-        self.assertEqual(state["computer"]["owner"], a)
-        self.assertEqual(next(j["status"] for j in state["jobs"] if j["id"] == second["id"]), "queued")
+        self.assertIsNone(state["computer"]["owner"])
+        self.wait_turn(service, second["id"], "running")
         gate.set()
-        self.wait_job(service, first["id"])
-        self.wait_job(service, second["id"])
+        self.wait_turn(service, first["id"])
+        self.wait_turn(service, second["id"])
 
     def test_failed_job_retry_and_dismiss(self):
         self.factory.fail = True
         service = self.service()
         agid = service.store.agents()[0]["id"]
-        job = service.submit(agid, {"text":"Hello"})
-        failed = self.wait_job(service, job["id"], "failed")
+        turn = service.submit(agid, {"text":"Hello"})
+        failed = self.wait_turn(service, turn["id"], "failed")
         self.assertIn("Scripted provider failure", failed["error"])
+        self.assertIsNone(failed["output"])
         self.factory.fail = False
-        service.job_action(agid, job["id"], "retry")
-        self.wait_job(service, job["id"])
+        service.turn_action(agid, turn["id"], "retry")
+        self.wait_turn(service, turn["id"])
         self.factory.fail = True
         job2 = service.submit(agid, {"text":"Again"})
-        self.wait_job(service, job2["id"], "failed")
-        service.job_action(agid, job2["id"], "cancel")
-        self.wait_job(service, job2["id"], "cancelled")
+        self.wait_turn(service, job2["id"], "failed")
+        service.turn_action(agid, job2["id"], "cancel")
+        self.wait_turn(service, job2["id"], "cancelled")
 
     def test_running_job_recovers_without_replaying(self):
         service = self.service(start_worker=False)
         agid = service.store.agents()[0]["id"]
-        job = service.submit(agid, {"text":"May already have acted", "flow":"computer"})
+        turn = service.submit(agid, {"text":"May already have acted", "flow":"computer"})
         agent = service._agent(agid)
-        # Emulate a crash after the SDK reserved a call but before it committed a result.
-        from datetime import datetime, timezone
-        with agent.store.transaction() as state:
-            agent._reserve(state, state["jobs"][0], agent.limits.tokens_per_loop, datetime.now(timezone.utc))
+        # Emulate a crash after a turn started but before it committed a result.
+        with agent.transaction() as state:
+            state["turns"][0]["status"] = "running"
         service = self.restart(service)
-        self.wait_job(service, job["id"], "interrupted")
+        self.wait_turn(service, turn["id"], "interrupted")
         self.assertEqual(self.factory.prompts, [])
-        service.job_action(agid, job["id"], "retry")
-        self.wait_job(service, job["id"])
+        service.turn_action(agid, turn["id"], "retry")
+        self.wait_turn(service, turn["id"])
 
     def test_queued_job_is_recovered_after_restart(self):
         service = self.service(start_worker=False)
         agid = service.store.agents()[0]["id"]
-        job = service.submit(agid, {"text":"Never started"})
+        turn = service.submit(agid, {"text":"Never started"})
         service = self.restart(service)
-        self.wait_job(service, job["id"])
+        self.wait_turn(service, turn["id"])
         self.assertEqual(len(self.factory.prompts), 1)
+
+    def test_old_budgets_and_cached_results_are_inert_after_migration(self):
+        service = self.service(start_worker=False)
+        agent = service._agent(service.registry.main)
+        turn = service.submit(agent.agid, {'text': 'Continue'})['id']
+        with agent.transaction() as state:
+            state.update(schema_version=2, budgets={'old': {'spent': 999999999}},
+                         limits={'tokens_per_call': 1}, budget_calendar={})
+            state['turns'][0].update(status='budget_blocked', tokens=999, reserved=999)
+        original = agent.path.read_bytes()
+        workspace = service.workspace.root(agent)
+        legacy = {agent.root / 'execution.json': '{"max_tools":1}',
+                  workspace / 'recent-context.json': '[{"answer":"STALE_TOOL_RESULT"}]'}
+        for path, value in legacy.items():
+            path.write_text(value)
+        service = self.restart(service)
+        agent = service._agent(agent.agid)
+        self.assertEqual(agent.state['schema_version'], 3)
+        self.assertEqual((agent.root / 'legacy-state-v2.json').read_bytes(), original)
+        self.assertEqual(agent.state['turns'][0]['status'], 'interrupted')
+        self.assertNotIn('budgets', agent.state)
+        self.assertEqual(self.factory.prompts, [])
+        service.turn_action(agent.agid, turn, 'retry')
+        self.wait_turn(service, turn)
+        self.assertNotIn('STALE_TOOL_RESULT', self.factory.prompts[-1])
+        self.assertFalse((agent.root / 'usage').exists())
+        self.assertFalse((workspace / 'execution-clock.json').exists())
+        for path, value in legacy.items():
+            self.assertEqual(path.read_text(), value)
 
     def test_event_cursor_catches_up_without_gaps(self):
         service = self.service(start_worker=False)
@@ -222,7 +245,7 @@ class IntegrationTest(IntegrationFixture):
         agid = json.loads(raw)["id"]
         status, raw = request("POST",f"/api/agents/{agid}/messages",{"text":"Hello"},headers)
         self.assertEqual(status, 202)
-        self.wait_job(service, json.loads(raw)["id"])
+        self.wait_turn(service, json.loads(raw)["id"])
         self.assertEqual(request("POST","/api/agents",{}, {**headers,"Origin":"https://evil.example"})[0], 403)
         self.assertEqual(request("POST","/api/agents",{}, {**headers,"Origin":"null"})[0], 403)
         self.assertEqual(request("GET","/api/state",headers={"Host":"evil.example"})[0], 403)
@@ -237,12 +260,12 @@ class IntegrationTest(IntegrationFixture):
         self.assertIn("state = makeInitialState(bootstrap)", source)
         self.assertNotIn("state = JSON.parse(localStorage.getItem(STORAGE))", source)
         self.assertNotIn('globalThis.CorporaFixture', source)
-        from sapiens.assets import index
+        from sapiens.corpora.host.assets import index
         self.assertNotIn('fixtures/sapiens-cases.js', index())
-        from agentpy.interfaces import LLMSpec
+        from sapiens.runtime.contracts import LLMSpec
         from unittest.mock import patch
-        with patch("sapiens.runtime.codex_binary", return_value="/usr/local/bin/codex"):
-            command = LocalFactory(workdir=Path(self.directory.name)).spawn(LLMSpec())._command("hello")
+        with patch("sapiens.runtime.codex.codex_binary", return_value="/usr/local/bin/codex"):
+            command = CodexFactory(workdir=Path(self.directory.name)).spawn(LLMSpec())._command("hello")
         self.assertIn("--skip-git-repo-check", command)
         self.assertIn(self.directory.name, command)
 

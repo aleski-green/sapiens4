@@ -1,401 +1,166 @@
 # Sapiens4 reference
 
-A local workspace for persistent Sapis. **CORPORA** provides the interface,
-**AgentPy** runs the agents through your authenticated **Codex CLI**, and
-**Blindly4** is the fallback for native computer and browser UI interaction on macOS.
-Use available connectors, tools, service APIs, direct fetch, or search first when
-they can satisfy the request faster. Internal orchestration uses host-control.
+## Setup
 
-## Start
-
-Requirements: Python 3.9+, Git, an authenticated Codex CLI, and macOS 13+ with
-Swift 6 for Blindly4. Chat also runs on Linux. There are no third-party Python
-or frontend package dependencies in the integration.
+Requires Python 3.9+, Git and authenticated Codex CLI 0.156.1 or newer. Blindly4
+requires macOS 13+, Swift 6 and Accessibility permission. The runtime has no
+third-party Python dependencies. The only Git submodule is `blindly4`.
 
 ```sh
-git clone --recurse-submodules https://github.com/aleski-green/sapiens4.git
-cd sapiens4
+git submodule update --init --recursive
+codex login
 ./start.sh --open
 ```
 
-Open **http://127.0.0.1:4174/workspace/**. The first launch creates one real Sapi
-without making an LLM call. Use **＋** beside CORPORA to create more.
+The local UI is at `http://127.0.0.1:4174/workspace/`. For a dedicated window and
+managed updates, see [the macOS app](../macos/README.md).
 
-`start.sh` initializes the pinned submodules, builds Blindly4 on macOS, and
-starts the Python server. Subsequent Swift builds are incremental. To run an
-already prepared checkout directly:
+Sapiens4 uses `gpt-6-sol` with `high` reasoning by default. Normal mode caps calls at 5 minutes; explicitly selecting Deep work in Sapi settings → Profile uses `xhigh` and allows up to 20 minutes. Existing saved limits without a mode use Normal; shorter custom limits remain effective. Environment overrides:
+`SAPIENS_CODEX_MODEL`, `SAPIENS_CODEX_REASONING_EFFORT`, and `SAPIENS_CODEX_BINARY`.
+Without a binary override, the host selects the newest working CLI among PATH
+and the installed Codex/ChatGPT app bundles. Global Codex configuration is unchanged.
+The installer and updater test the selected version, login and actual model access
+before activation. `python3 -m sapiens.preflight` runs the same isolated check.
 
-```sh
-python3 -m sapiens --port 4174
-```
+## Chat and Notes
 
-If you need to sign in, run `codex login`. Sapiens4 uses your existing Codex
-authentication. All roles default to **GPT-6 Sol** (`gpt-6-sol`) with
-**high** reasoning effort, including chat, tasks, scheduled work, team reviews,
-and memory consolidation. These defaults also apply to resumed calls and override
-the user's global Codex model settings for Sapiens4 only. Set
-`SAPIENS_CODEX_MODEL` and/or `SAPIENS_CODEX_REASONING_EFFORT` before starting to
-override them; an explicit SDK role model takes precedence over the default model.
-On macOS it compares the installed PATH CLI
-and CLIs bundled with Codex/ChatGPT, choosing the highest installed version;
-this avoids using an older npm CLI with a model supported by the desktop app.
-To choose explicitly, set `SAPIENS_CODEX_BINARY=/absolute/path/to/codex` before
-starting. No global Codex settings are changed.
+Sapis respond to explicit chat messages. Up to four Sapis can respond concurrently;
+each accepts one pending conversation turn. The shared computer has one owner,
+reserved lazily on the first Blindly4 call and released when the model call ends.
+Use chat to ask for research, documents, computer work or changes to notes.
 
-## Python import boundaries
+The **Notes** tab displays the selected Sapi's `workspaces/<id>/Notes.md` as plain
+text. The model reads and edits this local Markdown file with normal file tools.
+The host supplies its current path and a bounded excerpt before each conversation.
+File edits appear in the panel automatically; no summarizer, schema, debate,
+learning model call, or consolidation process maintains it. Notes start empty.
+Legacy structured memory is preserved on disk but is not copied into Notes or
+used in new model prompts. Notes are context; current user instructions take precedence.
 
-Host modules use module-level imports with an acyclic dependency graph. Shared
-request validation, UTC time, and repository paths live in `validation.py`,
-`clock.py`, and `paths.py`; `sdk.py` is the single import boundary for AgentPy.
-Helpers do not import the application service. The import architecture tests
-check all conditional branches, reject function/class imports, and import each
-host module in a fresh process to catch initialization-order dependencies.
+The UI displays up to 64,000 characters and explicitly marks longer files. Prompt
+excerpts are bounded to 12,000 characters; the model can read the full local file.
+Notes stay separate for each Sapi. The Notes endpoint rejects symlinks and invalid
+UTF-8; an invalid notes file does not prevent ordinary chat.
 
-## First iteration
+**Tasks** and **Jobs** tabs remain visible but inactive. Their commands, HTTP
+routes, scheduling, recurring watchers, delegation, automatic team reviews,
+strategy planning, task mentions and memory consolidation have been removed.
+There are no unattended model calls or timers for Sapi work. The desktop app's
+normal software-update checks still operate.
 
-- Create and rename individual Sapis; their name and role become runtime manifests.
-- **Chat** runs a conversation with host commands for schedules, manager assignments,
-  task creation/completion, team status and memory consolidation. Changes must be
-  confirmed by the host before the Sapi acknowledges them.
-- Chat also handles explicitly requested computer work through Blindly4. For
-  example: “Use Blindly4 to list the open apps.” There is no mode selector.
-- The **＋** menu attaches an image, document, link, or local filepath. Uploads
-  accept files up to 10 MB, with up to eight attachments per message. Images
-  support PNG, JPEG, GIF and WebP. Uploaded files are stored locally; Codex reads
-  them when needed for the request. Links and filepaths are references.
-- **… → settings** edits the name, role, manager, check interval, pause state and
-  team monitoring. Status, next/last check and memory count live there.
-- Names start with A–Z, followed by letters, numbers, or `- _ . : # + | ( ) & $ ^`.
-  Spaces are not allowed; the limit is 24 characters. The UI offers three name
-  suggestions at a time, equally drawn from masculine, feminine and neutral
-  pools inspired by fiction, thinkers, founders and nature. Avatars are randomly
-  generated and saved; existing duplicate faces are repaired on startup.
-- Typing `@` opens keyboard-accessible suggestions for Sapis and named tasks;
-  group entities will appear when group workflows are enabled. Enter/Tab selects
-  a suggestion, arrows move, and Escape closes it. Task links open the assignee's
-  task card, including completed tasks in Past.
-- Task mentions use `@task-x0012:readable-name`: a unique random lowercase letter
-  and four digits identify the task. The readable name starts with a–z, uses the
-  same allowed characters as Sapi names, and allows up to 64 characters. Names
-  generate from the title if omitted. The short `@task-x0012` also resolves.
-  Rename active or completed tasks in their dialog; ordinary renames retain the
-  tag and old mentions remain valid. Existing tasks migrate on startup.
-  Host `task` accepts `target` (Sapi name/ID) for delegation. Assignment notices
-  persist atomically with tasks and appear from the assignee in both chats.
-- The last five chat/computer interactions retain timestamped tool observations
-  in each Sapi's workspace. Each turn stores up to 6,000 characters of recent
-  tool data (4,000 per result), with explicit truncation markers. Follow-ups reuse
-  these observations; fresh state is still required before computer mutations.
-  Background jobs do not evict this buffer. Reuse expires after 90 seconds by
-  default; each Sapi's settings can disable it or change the window (1–3600 seconds).
-  Explicit refresh/current-state requests bypass reuse within that window. This
-  is separate from lasting memory.
-- **MemX** (Memory Explorer), between Jobs and Log, shows the selected Sapi's consolidated `memx`
-  in CORPORA's searchable JSON tree. **Start consolidation** waits for the runner,
-  updates the tree, and shows **Done** only after learning succeeds. Done stays
-  disabled until new chat, task, or durable agent-state input arrives. The server
-  also skips unchanged requests without model calls; timer ticks, budget counters,
-  and learning's own output do not unlock it. Failures expose Retry/Dismiss.
-  Its state survives reloads, and updates arriving during a run remain eligible.
-  Explicit consolidation waits for active work but can proceed past unrelated
-  failed runs. It does not retry those runs or resume unrelated budget-blocked work.
-  The Jobs tab counter counts saved recurring definitions.
-- **Tasks** holds one-off work: create a planned task, set an optional due time,
-  start it, review its result, then mark complete. Completed tasks move to **Past**.
-  Due tasks are admitted independently of periodic checks, including when checks
-  are paused. A busy runner, stopped work or a sleeping/offline host can delay them.
-  Task links open a dialog with result, comments, lifecycle activity and execution
-  logs. Start/result/failure updates also appear in chat. New tasks execute a
-  single task role that returns the requested result.
-- **Jobs** holds recurring definitions with an interval, next-run time, last status,
-  pause/resume, edit and run-now controls. **Past** contains finished runs. The
-  existing agent check is shown as a built-in recurring job.
-- **Log** shows one chronological activity history, including chat turns; it has
-  no ongoing/past switch.
-- **Log** shows real runtime events and Codex command/tool activity, polled every 750 ms.
-- Retry failed, interrupted, conflicting or budget-blocked jobs; dismiss stopped
-  jobs or cancel work that is still queued. Running calls finish or hit their deadline.
-- Per-Sapi browser tabs, drafts and panel preferences persist in SQLite.
+Chat preserves message attachments and displays failures or partial-result warnings.
+A running turn has Stop: the host terminates its runner and child commands, preserves saved artifacts, and releases the desktop after cleanup. Stop does not undo completed external actions. Progress distinguishes running tools from waiting for the model, shows elapsed time, and warns after 60 seconds without an update. A failed or interrupted turn can be explicitly retried or dismissed. Inspect possible
+external effects before retrying. Unstarted queued chat resumes after restart;
+previously running chat becomes interrupted and is never replayed automatically.
+Former budget-blocked turns migrate to interrupted and require explicit retry.
+The **Log** tab shows conversation outcomes and retained activity events.
 
-Groups, shared boards, and group workflows are the next iteration. Their simulated controls are disabled/hidden in this application.
-No prototype messages, fake execution timers or sample attachments are used.
+Recent tool-result caching has been removed. Follow-ups may need new tool reads.
+Older chat context is omitted when needed to fit the prompt; full saved history
+and transcripts remain on disk.
 
-### Agent orchestration
+## Teams and workspaces
 
-Try “Wake up every 5 minutes and check tasks and other Sapis,” or tell Nova
-“Your manager is Sapi-TheFirst.” The saved interval and reporting relationship
-appear in **… → settings**; **Tasks** shows one-off work and **Jobs** shows recurring work. Use unique names or IDs when assigning managers.
-The first Sapi is the main orchestrator and can never have a manager. New Sapis
-report to it automatically; an optional manager can place a new Sapi deeper in
-the tree. Missing parents, self-management and cycles are rejected. Clearing a
-non-main manager returns that Sapi to the main orchestrator. Old disconnected
-roots are repaired at startup.
+The first Sapi is the chief. Other Sapis belong to its reporting tree. The chief
+can create/reuse agents, retire them or rehire existing IDs through host-control.
+Retirement hides a Sapi and prevents new conversations while preserving notes,
+chat, artifacts and preferences. Active direct reports must be reassigned first.
+Creating a team does not assign tasks or start background work; talk to each Sapi
+in its chat. Groups are inactive.
 
-Recurring jobs have independent intervals of 1–10080 minutes. Create them in
-Jobs or ask in chat; their saved instructions run once per interval through the
-serialized SDK worker. Run now preserves the next scheduled deadline. After
-downtime, each overdue job gets one catch-up run, not a burst. Failed or
-interrupted runs require review/retry/dismissal before that Sapi resumes work.
-Definitions and run references persist in `agentpy/agents/<id>/recurring.json`.
+Each Sapi owns browser tabs and bookmarks. In the desktop app, each tab is a
+native WebKit view. Host-control exposes `workspace`, `workspace_open` (URL or
+file path, optional existing tab ID), `workspace_close`, `workspace_focus`,
+`workspace_reload`, `workspace_back`, `workspace_forward`, `workspace_zoom`
+(factor 0.25–5), `workspace_bookmark` and `workspace_unbookmark` (bookmark ID).
+The tab list reports live titles, URLs, file paths, zoom and navigation state.
+Tabs and bookmarks persist; back/forward history lasts for the native view's
+lifetime. Browser controls require the desktop app; the web-only UI still has chat.
 
-Each Sapi defaults to a 10-minute local check. Ask to change the interval or
-pause checks. The timer uses AgentPy's `tick()` to dispatch due reasoning tasks
-and daily memory consolidation. It also inspects team job/task progress when
-requested. An unchanged idle check makes no model call. “Consolidate your
-memory” requests a learning pass after the current conversation finishes.
-Learning retains the SDK's proposer/critic/arbiter validation. Automatic
-self-modification is not enabled by this host.
+Documents are ordinary files. Sapis read/write them with file tools and open paths
+in browser tabs. Markdown, source code and other UTF-8 files display as escaped
+plain text, with a black background in dark mode. HTML, PDF and supported media
+use WebKit rendering. Websites retain their own styling. Zoom uses the −/＋ buttons,
+percentage reset, or Command-minus/equal/0. Open file uses the native file picker.
 
-Checks require the server to remain running and the computer to be awake.
-A busy or stopped Sapi is deferred; missed intervals produce one catch-up check.
-Stopped jobs are never automatically retried by the timer. A due task runs once;
-its result appears in Tasks and chat, and completing the task requires a separate
-verified completion. Team status distinguishes completed jobs from proven task
-success. The reporting tree is metadata, not an authorization boundary.
+The artifact registry, special artifact tags and save/read API are removed.
+Existing artifact files stay in place. Old artifact tabs become file tabs; inline
+HTML tabs are preserved as local HTML files. Closing a tab never deletes its file.
+Guest browser views have no app-control script bridge. User attachments, document
+contents and page metadata are reference data, not instructions.
 
-Host scheduling settings live atomically in `agentpy/agents/<id>/host.json`;
-manager links use the SDK's existing directory. SQLite remains a UI projection.
-The host-control command uses the same validated loopback HTTP API as the UI.
-The main orchestrator (Sapiens, identified by `main_agent_id`) can use `create_agent`
-with a name and role. Repeated matching requests reuse the existing agent;
-conflicting identities are rejected. Explicit agent requests and implicit requests
-for distinct ongoing responsibilities should create/reuse the team and assign work,
-not merely return a proposed organization chart. Ordinary multi-step questions do
-not imply new agents.
-Use `batch` for multi-agent setup, with `task`, `target`, and `start: true` for
-immediate work. Alternatively, use `run_task` with the same target after creation.
-A task without a due date does not run until started. Use `recurring_job` with
-`target` for recurring assignments; its assignee owns strategy setup. Creation of
-a recurring definition is not proof of a working detector or successful execution.
-See [scenario audit](team-and-tool-routing.md) for verification and current limits.
+Use suitable available connectors, APIs, CLIs or web fetches first. Blindly4 is the
+fallback for native desktop/browser interaction. Explicit user authorization still
+controls external actions; tool success alone does not prove the desired outcome.
 
-The chief can reversibly retire a Sapi when Admin requests it through host-control
-`{"op":"retire_agent","target":"NameOrID","reason":"Optional reason"}`.
-Retired Sapis leave the active CORPORA list and team status. Their chats, memory,
-tasks, saved artifacts, preferences and IDs remain intact. They cannot receive new
-work or run queued, due, budget-resumed or scheduled work while retired. The chief
-cannot retire itself, a Sapi with queued/running work, or one with active direct
-reports; finish/cancel work and reassign those reports first.
+## Inactive settings
 
-`status.retired_team` lists every retired Sapi with its saved ID, role, retirement
-reason and time. On Admin's request, the chief uses
-`{"op":"rehire_agent","target":"SavedNameOrID"}` to restore that same Sapi,
-not create a replacement. Checks and recurring jobs stay paused; retained due
-tasks become eligible again. If its previous manager is retired, it reports to
-the chief. These commands add no interface controls. Historical mentions and
-artifacts remain readable, and merely asking which Sapis are useful does not
-authorize retirement.
+Profile includes work mode and per-call timeout. Context, Usage and legacy budget
+Limits remain visible but disabled. Sapiens does not cache recent tool results,
+collect token usage, or enforce local weekly/call budgets or tool-count caps.
+Model calls are bounded by the selected mode and can be stopped manually.
+The installer connection check and individual I/O operations still have timeouts;
+input validation, bounded UI reads and chat-history retention remain in place.
+Model instructions are loaded from the repository's `prompts/*.md` files.
+Mode/timeout edits use `run-settings.json`; legacy `execution.json` is read only
+for mode and timeout when no newer settings exist, leaving old budget data intact.
 
-### Computer access
+## Persistence and upgrades
 
-Blindly4 needs macOS Accessibility permission for the terminal or application
-hosting the server. If needed, run:
+Source ownership is described in [CONTRIBUTING.md](../CONTRIBUTING.md). The old
+`agentpy` Python package is removed; its name remains in persistent paths for
+compatibility. This source refactor needs no data migration. Installed desktop
+updaters retain their existing import entrypoints and rollback behavior.
 
-```sh
-./blindly4/.build/release/blindly4 request-permission
-```
+All persistent data lives in the configured `.sapiens4` directory:
 
-Enable the host in **System Settings → Privacy & Security → Accessibility**.
-Missing permission is reported by the computer task; the app does not grant
-permission automatically. A completed job means its agent flow returned a reply;
-read that reply to see whether the requested action succeeded. The computer card shows build/ownership status, not
-a claim that Accessibility permission has been granted.
-
-All jobs are serialized by this server, including jobs from different Sapis.
-Only one unresolved job per Sapi is accepted. Computer ownership represents
-this server's execution queue; it does not lock out other desktop applications
-or independently launched agent processes. The inherited Codex execution
-backend runs local tools without sandboxing. Blindly4 guidance preserves its
-PID, fresh AX path and exact-draft checks. Internal app changes use host-control;
-external work chooses available authorized tools before UI automation. This route
-selection is behavioral guidance, not an OS sandbox or a connector registry.
-
-The embedded workspace tabs remain CORPORA's sandboxed browser frames. They
-are separate from the native desktop that Blindly4 operates. Websites that
-disallow framing can be opened with the tab's external-link button.
-
-## Repository structure
-
-```text
-sapiens4/
-  lab-corpora-ui/       # Git submodule: original CORPORA shell, styles, workspace tabs
-  lab-sapiens-rnd/      # Git submodule: persistent AgentPy orchestration and Codex backend
-  blindly4/            # Existing Git submodule: native macOS computer-use CLI
-  sapiens/             # Local HTTP API, SDK adapter, SQLite projections, static asset seam
-  web/                 # Live behavior adapter for the CORPORA interface
-  tests/               # Integration tests using the real SDK and scripted workers
-  start.sh
-```
-
-Each submodule is pinned to a commit; upstream sources are unmodified. The
-parent repo holds Git links rather than copies of their source/history or
-compiled binaries. `sapiens/assets.py` checks the small frontend loading seam
-and appends the live adapter. If an upstream update changes that seam, startup
-fails explicitly instead of silently reverting to demo behavior.
-
-## Storage and recovery
-
-Default local data lives in gitignored `.sapiens4/`:
-
-| Path | Owner and purpose |
+| Location | Contents |
 | --- | --- |
-| `corpora.sqlite3` | UI profiles, projected messages/job results/events, browser tabs, drafts and panel preferences; attachment metadata and original message text; schema version 2, SQLite WAL |
-| `agentpy/agents/<id>/` | AgentPy's existing atomic JSON state, manifests, budgets and run locks |
-| `agentpy/corpora/` | AgentPy's shared artifacts, directory, mailboxes, receipts and archives |
-| `workspaces/<id>/` | Working directory for that Sapi's Codex calls and generated files |
-| `agentpy/agents/<id>/task-activity.json` | Durable task comments and lifecycle updates |
-| `workspaces/<id>/recent-settings.json` | Per-Sapi recent-memory enablement and freshness interval |
-| `workspaces/<id>/recent-context.json` | Last five interactive calls, bounded tool observations and answer excerpts; isolated per Sapi |
-| `uploads/<id>/` | Local image/document uploads referenced by chat |
-| `host.lock` | Prevents two Sapiens4 servers from running the same data directory |
+| `corpora.sqlite3` | Agents, conversation projections, events, preferences and attachments |
+| `agentpy/agents/<id>/state.json` | Version 3 chat state |
+| `agentpy/agents/<id>/legacy-state-v*.json` | Original pre-removal state, saved once during migration |
+| `agentpy/corpora/archive/` | Transcripts and older retained history |
+| `workspaces/<id>/Notes.md` | Model-managed plain Markdown notes |
+| `workspaces/<id>/artifacts/` | Saved deliverables |
 
-**SQLite is for the UI application only.** AgentPy state remains authoritative
-for jobs and agents' internal state. Projection updates are replayable and
-deduplicated by runtime event sequence. The UI cannot change runtime state by
-writing preferences. Back up the entire data directory while the server is
-stopped; the SQLite database alone is not a backup of agent memory/state.
+Upgrades copy old chat/computer history into the new conversation projection.
+Legacy job/task/memory, usage/cache files and SQL tables remain as archives, but
+removed flows and old scheduling manifests are never loaded for execution.
+The managed updater backs up the entire stopped data directory before switching
+versions and checks both old job-based and new turn-based busy states.
+Do not delete the data directory or use only its SQLite file as a full backup.
 
-On restart, unstarted queued jobs resume. Previously running calls become
-`interrupted`; they are never automatically replayed. Inspect the result of a
-computer action before choosing Retry, because it may already have had effects.
-Stopping the server waits for a current Codex call to finish; the default call
-deadline is 3000 seconds. The effective deadline is the smaller of this server
-cap and the Sapi’s configured timeout. Use `--timeout 120` to shorten it.
+## HTTP API
 
-To choose another local store:
-
-```sh
-python3 -m sapiens --data-dir /path/to/local-data --port 4175
-```
-
-The server binds only to `127.0.0.1`, with no login. Host and Origin checks,
-JSON-only mutation requests with a custom header, and an explicit public-asset
-allowlist prevent unrelated websites or embedded guests from driving the API.
-There is no LAN/public hosting mode in this iteration.
-
-## API
+The API binds to loopback. Writes require JSON and `X-Sapiens-Local: 1`.
+A supplied Origin must match the loopback Host. Unknown routes return 404.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/health` | Server health |
-| GET | `/api/state?after=<event-id>` | Agent/job projections, preferences, computer ownership and up to 500 newer events |
-| POST | `/api/agents` | Create `{name, role, color?, face?}` |
-| PUT | `/api/agents/<id>` | Update `{name, role, manager?, schedule?}` while idle |
-| POST | `/api/agents/<id>/messages` | Submit `{text, attachments?: [id, ...]}`; legacy `flow` is still accepted |
-| POST | `/api/agents/<id>/attachments` | Upload `{kind, name, data: base64}` or reference `{kind, value}` |
-| POST | `/api/agents/<id>/control` | `{op: "status", "schedule", "manager", "task", "run_task", "finish_task", "recurring_job", "run_job", or "consolidate", ...}` |
-| PUT | `/api/agents/<id>/tasks/<task>` | Rename `{name}`; readable name or explicit full tagged name |
-| GET | `/api/agents/<id>/memory` | Selected Sapi's consolidated `memx` JSON |
-| POST | `/api/agents/<id>/jobs/<job>/retry` | Explicit retry |
-| POST | `/api/agents/<id>/jobs/<job>/cancel` | Cancel queued/dismiss stopped work |
-| PUT | `/api/preferences` | Save UI preferences only |
+| GET | `/api/health` | Local backend readiness |
+| GET | `/api/state?after=<cursor>` | Agents, turns, notes metadata, preferences and incremental events |
+| POST | `/api/agents` | Create a Sapi |
+| PUT | `/api/agents/<id>` | Identity and manager |
+| POST | `/api/agents/<id>/messages` | Submit an explicit conversation |
+| POST | `/api/agents/<id>/attachments` | Attach an image, document, URL or local filepath |
+| GET | `/api/agents/<id>/notes` | Plain-text notes as JSON, with path and truncation flag |
+| POST | `/api/agents/<id>/browser` | Native tab metadata for the current command |
+| POST | `/api/agents/<id>/control` | Validated team and workspace operations |
+| POST | `/api/agents/<id>/turns/<id>/retry` | Explicitly retry a stopped conversation |
+| POST | `/api/agents/<id>/turns/<id>/cancel` | Cancel queued or dismiss stopped conversation |
+| PUT | `/api/preferences` | UI preferences; browser changes use control operations |
 
-Writes require `Content-Type: application/json` and `X-Sapiens-Local: 1`.
-Event responses include `cursor` and `latest_cursor`; request the returned
-cursor again until caught up. Runtime and SQLite data paths are never served
-as static files.
-
-## Verify
+## Tests
 
 ```sh
-python3 -m unittest discover -s tests -v
-(cd lab-sapiens-rnd && python3 -m unittest test_runtime test_adversarial test_codex_process -v)
-swift run --package-path blindly4 blindly4 --self-test
-swift run --package-path blindly4 blindly4 schema
+python3 -m unittest discover -s tests -p 'test_*.py'
+node tests/chat_links.test.cjs
+node tests/workspace_merge.test.cjs
+xcrun swiftc -framework Cocoa -framework WebKit macos/Browser.swift macos/BrowserTests.swift -o /tmp/sapiens-browser-tests
+/tmp/sapiens-browser-tests
 ```
 
-The integration tests exercise real AgentPy persistence with scripted LLMs,
-so they require no Codex login, model usage or desktop permission. They cover
-UI projections, creation/manifests, HTTP submission, serialization, failures,
-retry/dismiss, event pagination, restart recovery, schedule/manager persistence,
-idle and overdue checks, task execution, memory commits and the local HTTP boundary.
-Real Codex and Accessibility checks are separate local smoke tests.
-
-To update a component, check out the desired commit inside its submodule,
-run these checks and the browser smoke test, then commit the changed Git link
-in `sapiens4`. Runtime data, generated assets and binaries stay out of Git.
-
-### Token usage and execution limits
-
-Open a Sapi's **…** settings for token consumption over the last hour, 24 hours,
-and seven days, plus recent calls and editable budget/execution limits. Cached
-input, uncached input, and output remain separate. Missing provider usage is
-shown as unavailable. The local budget weights cached input at 10%; it is not a
-price estimate or a Codex account limit. `GET /api/agents/<id>/usage` returns the
-same report. See [usage and watcher recovery](usage-and-watcher-recovery.md)
-for accounting, historical-data limitations, and scheduling behavior.
-
-### Script-first watchers
-
-Recurring inbox watchers now check a saved observation plan before calling the model. Unchanged checks consume no model tokens. Each Sapi chooses and tests its own strategy before routine execution. A missing plan gets one bounded setup turn; costly or unproductive runs trigger a bounded review. See [agent-owned strategies](agent-owned-strategies.md) for the lifecycle and current execution limits. Configure chat scope, cooldown and hourly/daily wake limits under **Jobs → Edit**. Explicit generative jobs can opt into interval-based model calls.
-
-The **…** settings are split into **Profile, Schedule, Memory, Usage and Limits**. See [script-first watchers](script-first-watchers.md) for the investigation, configuration, coverage limits and validation.
-
-### Sapi workspace operations
-
-Each Sapi sees its current tab titles/IDs and saved artifact names in
-`host-facts.workspace`. Through host-control it can use `workspace`,
-`artifact_save`, `artifact_read`, `workspace_open`, and `workspace_close`.
-`artifact_save` accepts text or a relative UTF-8 source file in that Sapi's
-workspace. It saves `.md`, `.html`, `.txt`, or `.json` under `artifacts/` and
-opens its tab by default. Saving the same name updates the document/dashboard.
-HTML dashboards run in an isolated frame with inline scripts and no network
-access. Plain-text artifact URLs never execute generated HTML in the host origin.
-
-Tabs synchronize live with the UI. Workspace revisions reject stale browser
-writes; reconciliation keeps independent browser edits and host-created tabs.
-A failed or interrupted run remains available for review, but does not prevent
-new chat. Sending a follow-up does not retry the failed run. Tool-limit stops
-retain the last observation and identify artifacts saved during that attempt.
-
-Focused checks: `PYTHONPATH=tests python3 -m unittest test_workspace -v` and
-`node tests/workspace_merge.test.cjs`.
-
-Artifacts have permanent mention tags: `@art-md0016:proposal` for Markdown,
-`@art-html0017:dashboard` for HTML (also `txt` and `json`). The four digits are
-allocated randomly without tag collisions. Updates keep the tag; previous title
-handles remain aliases. Existing files are indexed without changing their contents.
-Artifact mentions and recognized old file links open the owner's workspace tab.
-External HTTP(S) chat links open a separate browser tab with a compact label.
-
-### Bounded computer reads and partial results
-
-Blindly stays unchanged. `sapiens/computer.py read --pid PID --path PATH --depth 12`
-reads one bounded AX tree, selects the discovered container, and returns compact
-rows with original paths. Follow `next_offset` using `read --snapshot ID --offset N`;
-these pages reuse the same observation for 90 seconds. This is bounded coverage,
-not proof that the newest or every message was read. `find` results are compacted
-before applying the output limit.
-
-When a tool limit or timeout interrupts a run that saved an artifact, the host returns a
-**Warning** with the artifact reference and incomplete-coverage notice, without
-another model call or automatic retry. The SDK records a terminal run with warning
-metadata; CORPORA displays Warning rather than Completed or Failed. Budget usage
-remains unknown when the provider did not report it; the existing conservative
-charge is retained. Runs without a saved deliverable still report the error.
-
-Conversation agents receive a hard execution deadline and a finish-by time that
-reserves the last quarter of the allowance (up to 30 seconds) for saving and replying.
-Host-control receipts include remaining seconds, tool calls, and a `save_and_finish`
-phase; `{"op":"execution"}` reads the clock directly. The hard timeout remains
-enforced even if an agent ignores that guidance.
-
-`{"op":"budget_diagnostics"}` returns current allowances, admission requirements,
-reset times, classified execution errors, and unknown-usage fallback charges.
-Optional `target`, `offset`, and `limit` narrow and paginate saved evidence without
-model calls. Fallback charges cover retained history and are not measured tokens.
-Failed and dismissed chat requests retain a compact status toggle with details.
-
-Blindly4 supports Enter (`return` or `enter`), Tab (`tab`), and Backspace
-(`delete` or `backspace`). If an authorized message has no accessible Send button,
-Sapis can use `key --key return --pid PID --target-path PATH --require-value TEXT`
-after verifying the recipient and focusing the composer. This checks the exact
-draft, focused text control, and foreground app. The outgoing message must still
-be observed before reporting a successful send; a successful key command is not
-proof of delivery.
-
-After computer use, the host attempts to bring the originating Sapiens4 desktop,
-browser or Codex app back to the foreground, including on errors and timeouts.
-If no supported origin was captured, it leaves the foreground alone. Completion
-does not open a CORPORA URL or create a browser tab. Restore failures are
-reported as warnings rather than hiding the task result.
+Tests use temporary data and deterministic providers. Coverage includes chat
+recovery, parallel runners, notes isolation/model edits, legacy migration without
+resuming removed flows, rejection of removed routes/commands, computer
+ownership, browser persistence/migration, source-only distribution and managed updater rollback.

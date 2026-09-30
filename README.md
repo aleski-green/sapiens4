@@ -1,8 +1,8 @@
 # Sapiens4
 
-Persistent local agents with CORPORA UI, AgentPy orchestration, Codex CLI and Blindly4 computer access. SQLite stores UI data.
+Local conversational agents with CORPORA UI, Codex CLI and Blindly4 computer access. Each Sapi manages a plain Markdown notes file. SQLite stores UI data.
 
-![CORPORA workspace with agent chats, tasks, jobs and memory](docs/images/corpora-ui.png)
+Chat, Notes, workspaces and activity logs are active. Tasks and Jobs remain visible but disabled; there is no scheduling or memory consolidation.
 
 ## Core principles
 
@@ -22,7 +22,9 @@ III. Decisiveness: to maintain its own integrity, hold qualified opinions and do
 
 ## Start
 
-Requires Python 3.9+, Git and authenticated Codex CLI; Blindly4 requires macOS 13+, Swift 6 and Accessibility permission.
+The runtime and UI live in this repo; Blindly4 is the only submodule.
+
+Requires Python 3.9+, Git and authenticated Codex CLI 0.156.1+; Blindly4 requires macOS 13+, Swift 6 and Accessibility permission.
 
 ```sh
 git clone --recurse-submodules https://github.com/aleski-green/sapiens4.git
@@ -34,6 +36,8 @@ Open http://127.0.0.1:4174/workspace/.
 
 For a dedicated macOS window and Dock icon, see [the desktop app](macos/README.md).
 
-[Setup, features, API and tests](docs/reference.md) · [Agent strategies](docs/agent-owned-strategies.md)
+[Setup, features, API and tests](docs/reference.md)
+
+[Contributing and code guidelines](CONTRIBUTING.md)
 
 [Architecture proposal: Haskell core, TypeScript server, and Sapi-owned Python automation](docs/language-boundaries-proposal.md) — discussion draft.

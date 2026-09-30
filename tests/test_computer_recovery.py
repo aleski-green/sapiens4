@@ -7,11 +7,13 @@ import unittest
 from unittest.mock import patch
 
 from test_integration import IntegrationFixture
-from sapiens.runtime import LocalLLM, ToolLimitReached
-from agentpy.interfaces import LLMSpec
-from sapiens.computer import bounded_output
-from sapiens.computer_read import read
-from sapiens.foreground import ForegroundReturn
+from sapiens.runtime.codex import CodexLLM
+from sapiens.corpora.host.service import complete_with_computer
+from sapiens.runtime.contracts import LLMSpec
+from sapiens.computer.commands import bounded_output
+from sapiens.computer.reader import read
+from sapiens.computer.focus import ForegroundReturn
+from sapiens.validation import APIError
 
 
 class ReadWrapperTest(unittest.TestCase):
@@ -55,56 +57,40 @@ class ReadWrapperTest(unittest.TestCase):
 
 
 class RecoveryTest(IntegrationFixture):
-    def test_limit_returns_warning_link_and_projected_result_survives_restart(self):
-        service=self.service(start_worker=False)
-        agent=service._agent(service.hierarchy.main)
-        root=service.workspace.root(agent)
-        class Factory:
-            def spawn(self,spec):
-                llm=LocalLLM(spec=spec,workdir=root,event_sink=lambda _:None)
-                llm.max_tools=2
-                return llm
-        agent.factory=Factory()
-        def run(instance,prompt):
-            service.workspace.save(agent,dict(name='partial.md',content='# Partial\nCoverage incomplete.'))
-            for i in range(3):
-                instance._consume_event(dict(type='item.completed',item=dict(id=str(i),type='command_execution',command='read',aggregated_output='observed')))
-            self.fail('Tool execution must stop at the bound')
-        job=service.submit(agent.agid,dict(text='Read the channel'))['id']
-        with patch('sapiens.runtime.CodexLLM.complete',run):asyncio.run(agent.run())
-        state=next(j for j in agent.state['jobs'] if j['id']==job)
-        self.assertEqual(state['status'],'done') # SDK terminal state; warning is a result classification.
-        self.assertTrue(state['warning'])
-        service._sync(agent)
-        projected=next(j for j in service.snapshot()['jobs'] if j['id']==job)
-        self.assertEqual(projected['status'],'warning')
-        self.assertIn('@art-md',projected['output'])
-        self.assertIn('unverified',projected['output'])
-        self.assertEqual(service.work.blocking(agent),[])
-        self.assertEqual(state['budget_units'],agent.limits.tokens_per_call)
-        service=self.restart(service,start_worker=False)
-        projected=next(j for j in service.snapshot()['jobs'] if j['id']==job)
-        self.assertEqual(projected['status'],'warning')
-
-    def test_no_artifact_does_not_claim_warning_deliverable(self):
-        root=Path(self.directory.name)
-        llm=LocalLLM(spec=LLMSpec(role='conversation'),workdir=root,event_sink=lambda _:None)
-        llm.max_tools=1
-        def run(instance,prompt):
-            instance._consume_event(dict(type='item.completed',item=dict(id='1',type='command_execution',command='read',aggregated_output='no result')))
-        with patch('sapiens.runtime.CodexLLM.complete',run):
-            with self.assertRaises(ToolLimitReached):llm.complete('Read')
-        self.assertIsNone(llm.warning)
+    def test_host_restores_focus_before_releasing_computer_and_reports_warning(self):
+        service = self.service(start_worker=False)
+        first = service.registry.main
+        second = service.create_agent(dict(name='Second', role='Assistant'))['id']
+        for agid in (first, second):
+            service.submit(agid, dict(text='Work'))
+            with service._agent(agid).transaction() as state:
+                state['turns'][-1]['status'] = 'running'
+        service.acquire_computer(first)
+        events = []
+        llm = CodexLLM(spec=LLMSpec(), workdir=Path(self.directory.name), event_sink=events.append)
+        def restore():
+            self.assertEqual(service._active, first)
+            with self.assertRaisesRegex(APIError, 'busy'):
+                service.acquire_computer(second)
+            return 'Focus could not be restored'
+        with patch('sapiens.corpora.host.service.ForegroundReturn') as foreground, \
+             patch.object(llm, 'complete', return_value='reply'):
+            foreground.return_value.restore.side_effect = restore
+            result = complete_with_computer(llm, 'Work', lambda restore: service.release_computer(first, restore))
+        self.assertEqual(result, 'reply')
+        self.assertIsNone(service._active)
+        self.assertEqual(llm.warning, 'Focus could not be restored')
+        self.assertEqual(events, [llm.warning])
 
     def test_foreground_restoration_runs_on_success_error_and_limit(self):
         root=Path(self.directory.name)
-        for outcome in ('ok',RuntimeError('provider error'),ToolLimitReached('limit')):
-            llm=LocalLLM(spec=LLMSpec(role='conversation'),workdir=root,event_sink=lambda _:None)
-            with patch('sapiens.runtime.ForegroundReturn') as foreground, patch('sapiens.runtime.CodexLLM.complete',side_effect=outcome if isinstance(outcome,Exception) else None,return_value='ok'):
+        for outcome in ('ok',RuntimeError('provider error'),TimeoutError('timeout'),InterruptedError('stopped')):
+            llm=CodexLLM(spec=LLMSpec(role='conversation'),workdir=root,event_sink=lambda _:None)
+            with patch('sapiens.corpora.host.service.ForegroundReturn') as foreground, patch('sapiens.runtime.codex.CodexLLM.complete',side_effect=outcome if isinstance(outcome,Exception) else None,return_value='ok'):
                 foreground.return_value.restore.return_value=None
                 if isinstance(outcome,Exception):
-                    with self.assertRaises(RuntimeError):llm.complete('Read')
-                else:llm.complete('Read')
+                    with self.assertRaises(type(outcome)):complete_with_computer(llm, 'Read')
+                else:complete_with_computer(llm, 'Read')
                 foreground.return_value.restore.assert_called_once()
 
 
@@ -114,7 +100,7 @@ class ForegroundTest(unittest.TestCase):
             with self.subTest(bundle=bundle), tempfile.TemporaryDirectory() as root:
                 root=Path(root)
                 (root/'host-control.json').write_text('{}')
-                with patch('sapiens.foreground.sys.platform','darwin'), patch('sapiens.foreground.front_bundle',return_value=bundle), patch('sapiens.foreground.subprocess.run') as run:
+                with patch('sapiens.computer.focus.sys.platform','darwin'), patch('sapiens.computer.focus.front_bundle',return_value=bundle), patch('sapiens.computer.focus.subprocess.run') as run:
                     run.return_value.returncode=0
                     guard=ForegroundReturn(root)
                     (root/'.computer-used').touch()
@@ -128,7 +114,7 @@ class ForegroundTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             root=Path(root)
             (root/'host-control.json').write_text(json.dumps({'url':'http://127.0.0.1:4175/api/agents/a/control'}))
-            with patch('sapiens.foreground.sys.platform','darwin'), patch('sapiens.foreground.front_bundle',return_value='com.openai.codex'), patch('sapiens.foreground.subprocess.run') as run:
+            with patch('sapiens.computer.focus.sys.platform','darwin'), patch('sapiens.computer.focus.front_bundle',return_value='com.openai.codex'), patch('sapiens.computer.focus.subprocess.run') as run:
                 run.return_value.returncode=0
                 guard=ForegroundReturn(root)
                 guard.restore()
