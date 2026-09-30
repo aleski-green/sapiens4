@@ -36,6 +36,10 @@ Open http://127.0.0.1:4174/workspace/.
 
 For a dedicated macOS window and Dock icon, see [the desktop app](macos/README.md).
 
+For a keyboard-only terminal connected to the same running app, run `./sapiens4`.
+Use `./sapiens4 status`, `./sapiens4 sapi list`, or `./sapiens4 help` for individual commands.
+See [terminal commands and output formats](documentation/specs/CLI.md).
+
 [Architecture notation and analysis](documentation/specs/SapiensSpecNotation.md) · [Haskell specification](documentation/specs/SapiensSpecNotation.hs) · [WorkGraph design](documentation/specs/WorkGraph.md)
 
 [Setup, features, API and tests](documentation/reference.md)
