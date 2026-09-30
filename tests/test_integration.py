@@ -29,6 +29,9 @@ class ScriptedLLM:
             raise RuntimeError("Scripted provider failure")
         if getattr(self.factory, "on_complete", None):
             self.factory.on_complete(prompt)
+        if getattr(self, 'role', None) == 'Assessing':
+            return json.dumps(dict(event='FitsSpecialization', mode='Repl', reply='Connected through AgentPy.',
+                                   reason='Immediate conversational response', evidence=[]))
         return "Connected through AgentPy."
 
 
@@ -44,7 +47,9 @@ class ScriptedFactory:
         return self
 
     def spawn(self, spec):
-        return ScriptedLLM(self)
+        llm = ScriptedLLM(self)
+        llm.role = spec.role
+        return llm
 
 
 class IntegrationFixture(unittest.TestCase):

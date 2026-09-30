@@ -11,25 +11,32 @@ from sapiens.runtime.contracts import LLMSpec, Outcome
 
 
 class TurnRunner:
-    def __init__(self, *, store, context, config, factory, complete=None):
+    def __init__(self, *, store, context, config, factory, complete=None, execute=None):
         self.store, self.context = store, context
         self.config, self.factory = config, factory
         self.complete = complete or (lambda llm, text: llm.complete(text))
         self.cancel_event, self.active_llm = Event(), None
+        self.execute = execute
 
     def _event(self, state, kind, **details):
         state['event_sequence'] += 1
         state['events'].append(dict(sequence=state['event_sequence'], time=utcnow().isoformat(), kind=kind, **details))
 
-    def submit(self, flow, text):
+    def submit(self, flow, text, *, turn_id=None, origin=None):
         if flow not in {'chat', 'computer'}:
             raise ValueError('Only chat turns are supported')
         with self.store.transaction() as state:
+            existing = next((t for t in state['turns'] if t['id'] == turn_id), None)
+            if existing:
+                if existing['input'] != text or existing.get('origin') != origin:
+                    raise ValueError('Turn ID already belongs to another request')
+                return turn_id
             if any(t['status'] in {'queued','running'} for t in state['turns']):
                 raise ValueError('A conversation turn is already pending')
-            turn = dict(id=uuid4().hex, flow=flow, input=text, status='queued', created=utcnow().isoformat())
+            turn = dict(id=turn_id or uuid4().hex, flow=flow, input=text, status='queued',
+                        created=utcnow().isoformat(), attempt=1, origin=origin)
             state['turns'].append(turn)
-            state['chat'].append(dict(role='user', content=text, turn=turn['id'], time=turn['created']))
+            state['chat'].append(dict(role='user', content=text, turn=turn['id'], time=turn['created'], origin=origin))
             self._event(state, 'queued', turn=turn['id'], flow=flow)
             self.store.trim(state)
         return turn['id']
@@ -46,6 +53,9 @@ class TurnRunner:
     def _work(self, turn, snapshot, config):
         result = Outcome()
         try:
+            if self.execute:
+                result.output = self.execute(self, turn, snapshot, result)
+                return result
             context = self.context(snapshot, turn['input'], config)
             for step in config.flows[turn['flow']].steps:
                 role = config.roles[step]
@@ -71,6 +81,33 @@ class TurnRunner:
         finally:
             self.active_llm = None
         return result
+
+    def invoke(self, text, role, result, timeout_seconds=None):
+        """One supplied decision/execution prompt; policy belongs to the host."""
+        if self.cancel_event.is_set():
+            raise RuntimeError('Stopped by Admin')
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise TimeoutError('Call time limit exhausted between decision nodes')
+        llm = self.factory.spawn(LLMSpec(role=role))
+        if timeout_seconds is not None:
+            llm.timeout_seconds = min(getattr(llm, 'timeout_seconds', None) or timeout_seconds, timeout_seconds)
+        llm.cancel_event = self.cancel_event
+        self.active_llm = llm
+        log = dict(role=role, prompt=text, session=llm.id)
+        result.logs.append(log)
+        try:
+            answer = self.complete(llm, text)
+            if not isinstance(answer, str):
+                raise ValueError('LLM output must be text')
+            log['answer'] = answer
+            if getattr(llm, 'warning', None):
+                log['warning'] = llm.warning
+            if self.cancel_event.is_set():
+                raise RuntimeError('Stopped by Admin')
+            return answer
+        finally:
+            log['session'] = llm.id
+            self.active_llm = None
 
     def _finish(self, turn_id, outcome):
         with self.store.transaction() as state:
@@ -124,6 +161,7 @@ class TurnRunner:
             if any(t['status'] in {'queued','running'} for t in state['turns']):
                 raise ValueError('A conversation turn is already pending')
             turn['status'] = 'queued'
+            turn['attempt'] = turn.get('attempt', 1) + 1
             turn.pop('error', None)
 
     def cancel(self, turn_id):

@@ -4,7 +4,8 @@
 
 Requires Python 3.9+, Git and authenticated Codex CLI 0.156.1 or newer. Blindly4
 requires macOS 13+, Swift 6 and Accessibility permission. The runtime has no
-third-party Python dependencies. The only Git submodule is `blindly4`.
+third-party Python dependencies. The optional independent YAML parser test uses
+`python3 -m pip install -r tests/requirements.txt`. The only Git submodule is `blindly4`.
 
 ```sh
 git submodule update --init --recursive
@@ -24,7 +25,7 @@ before activation. `python3 -m sapiens.preflight` runs the same isolated check.
 
 ## Chat and Notes
 
-Sapis respond to explicit chat messages. Up to four Sapis can respond concurrently;
+Sapis respond to explicit chat messages and accepted delegation calls. Up to four Sapis can respond concurrently;
 each accepts one pending conversation turn. The shared computer has one owner,
 reserved lazily on the first Blindly4 call and released when the model call ends.
 Use chat to ask for research, documents, computer work or changes to notes.
@@ -42,11 +43,21 @@ excerpts are bounded to 12,000 characters; the model can read the full local fil
 Notes stay separate for each Sapi. The Notes endpoint rejects symlinks and invalid
 UTF-8; an invalid notes file does not prevent ordinary chat.
 
-**Tasks** and **Jobs** tabs remain visible but inactive. Their commands, HTTP
-routes, scheduling, recurring watchers, delegation, automatic team reviews,
-strategy planning, task mentions and memory consolidation have been removed.
-There are no unattended model calls or timers for Sapi work. The desktop app's
-normal software-update checks still operate.
+**Tasks** is a compact clickable list with Upcoming and Past tabs, status and
+assignee. Opening a task shows its read-only YAML specification and result.
+Exact decision prompts/responses remain in Log. **Log → Edit decision prompts** changes the
+six named decision templates for subsequent invocations. Historical decisions
+retain the exact prompt they used. See [delegation v1](delegation.md) and its
+[Haskell notation](specs/WorkGraph.md).
+
+Chief can delegate to a specialist; specialists can refer work to Chief. Each
+recipient assesses suitability. A handoff preserves workload/task identity and
+returns the responsible Sapi's result to the original chat. Select **Allow creating
+a Sapi** for a request to let routing create a needed specialist. Chief asks for
+clarification when needed; **Answer Chief** continues that same workload.
+
+**Jobs**, cron, recurring watchers, WorkGraph execution, and graph revision remain
+inactive. There are no clock-triggered Sapi calls; desktop update checks still operate.
 
 Chat preserves message attachments and displays failures or partial-result warnings.
 A running turn has Stop: the host terminates its runner and child commands, preserves saved artifacts, and releases the desktop after cleanup. Stop does not undo completed external actions. Progress distinguishes running tools from waiting for the model, shows elapsed time, and warns after 60 seconds without an update. A failed or interrupted turn can be explicitly retried or dismissed. Inspect possible
@@ -65,8 +76,8 @@ The first Sapi is the chief. Other Sapis belong to its reporting tree. The chief
 can create/reuse agents, retire them or rehire existing IDs through host-control.
 Retirement hides a Sapi and prevents new conversations while preserving notes,
 chat, artifacts and preferences. Active direct reports must be reassigned first.
-Creating a team does not assign tasks or start background work; talk to each Sapi
-in its chat. Groups are inactive.
+Creating a team alone does not start work; send an explicit request or let Chief
+delegate the current request. Groups are inactive.
 
 Each Sapi owns browser tabs and bookmarks. In the desktop app, each tab is a
 native WebKit view. Host-control exposes `workspace`, `workspace_open` (URL or
@@ -116,7 +127,8 @@ All persistent data lives in the configured `.sapiens4` directory:
 
 | Location | Contents |
 | --- | --- |
-| `corpora.sqlite3` | Agents, conversation projections, events, preferences and attachments |
+| `corpora.sqlite3` | Agents, authoritative workloads/handoffs, conversation projections, events, preferences and attachments |
+| `decision-prompts/*.md` | Admin overrides for decision prompts |
 | `agentpy/agents/<id>/state.json` | Version 3 chat state |
 | `agentpy/agents/<id>/legacy-state-v*.json` | Original pre-removal state, saved once during migration |
 | `agentpy/corpora/archive/` | Transcripts and older retained history |
@@ -137,6 +149,10 @@ A supplied Origin must match the loopback Host. Unknown routes return 404.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| GET | `/api/agents/<id>/tasks` | Complete YAML export with decision records; `?format=json` returns list metadata and YAML task bodies |
+| GET | `/api/agents/<id>/decisions` | Decision records as YAML, including Repl calls |
+| GET | `/api/decision-prompts` | Current templates and paths |
+| PUT | `/api/decision-prompts/<node>` | Save an Admin prompt override |
 | GET | `/api/health` | Local backend readiness |
 | GET | `/api/state?after=<cursor>` | Agents, turns, notes metadata, preferences and incremental events |
 | POST | `/api/agents` | Create a Sapi |

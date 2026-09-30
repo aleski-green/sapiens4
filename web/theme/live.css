@@ -254,3 +254,45 @@
 .tab-star { flex-shrink:0;font-size:15px; }.tab-star[aria-pressed=true] { color:var(--sapi-accent); }.tab-star:disabled { opacity:.35; }
 #workspace-content { color:var(--sapi-muted); }
 [data-theme="dark"] #workspace-content { background:#000; }
+
+.tasks-yaml{margin:0;padding:18px;white-space:pre;overflow:auto;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;user-select:text}.creation-choice{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
+
+.task-browser { min-width:0;color:var(--ink); }
+.task-periods { display:flex;gap:22px;border-bottom:1px solid var(--line);margin-bottom:6px; }
+.task-period { display:flex;align-items:center;gap:7px;padding:0 0 12px;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font:inherit;font-size:12px;cursor:pointer; }
+.task-period[aria-selected=true] { color:var(--ink);border-bottom-color:var(--ink);font-weight:600; }
+.task-count { color:var(--muted);font-size:11px;font-weight:400; }
+.task-row { border-bottom:1px solid var(--line); }
+.task-summary { display:flex;align-items:flex-start;gap:11px;padding:17px 2px;list-style:none;cursor:pointer;border-radius:4px; }
+.task-summary::-webkit-details-marker { display:none; }
+.task-summary:hover { background:var(--panel); }
+.task-mark { display:grid;place-items:center;width:17px;height:17px;flex-shrink:0;margin-top:2px;border:1px solid var(--line);border-radius:50%;font-size:11px;color:var(--muted); }
+.task-mark.complete { color:var(--sapi-cyan);background:var(--sapi-cyan-tint);border-color:transparent; }
+.task-mark.active { color:var(--sapi-accent);font-size:19px; }
+.task-mark.attention { color:var(--sapi-accent); }
+.task-row-copy { display:block;min-width:0;flex:1; }
+.task-title { display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-size:13px;font-weight:500;line-height:1.55; }
+.task-meta { display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 9px;margin-top:5px;font-size:11px;color:var(--muted); }
+.task-assignee { overflow-wrap:anywhere; }
+.task-assignee::before { content:'·';margin-right:9px; }
+.task-state.complete { color:var(--sapi-cyan); }
+.task-state.attention { color:var(--sapi-accent); }
+.task-chevron { color:var(--muted);font-size:19px;line-height:20px;transition:transform .15s; }
+.task-row[open] > .task-summary .task-chevron { transform:rotate(90deg); }
+.task-row[open] .task-title { display:block; }
+.task-content { padding:0 0 18px;min-width:0; }
+.task-body-heading { display:flex;align-items:center;gap:8px;padding:10px 12px 0;background:var(--panel);border:1px solid var(--line);border-bottom:0;border-radius:6px 6px 0 0;color:var(--muted);font-size:11px; }
+.task-format { font:10px ui-monospace,SFMono-Regular,Menlo,monospace;opacity:.7; }
+.task-copy { margin-left:auto;padding:2px 0;border:0;background:none;color:var(--muted);font:inherit;font-size:11px;cursor:pointer; }
+.task-copy:hover { color:var(--ink); }
+.task-body-yaml { margin:0;padding:12px;background:var(--panel);border:1px solid var(--line);border-top:0;border-radius:0 0 6px 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;user-select:text; }
+.task-result-heading { margin:16px 0 7px;font-size:11px;font-weight:500;color:var(--muted); }
+.task-result { font-size:12px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere; }
+.task-result a { color:var(--sapi-cyan);text-decoration:underline;text-underline-offset:3px; }
+.task-error { color:var(--sapi-accent);font-size:12px;overflow-wrap:anywhere; }
+.task-empty { padding:32px 8px;text-align:center;color:var(--muted);font-size:12px; }
+.task-empty p { margin:0 0 5px;color:var(--ink); }
+.task-empty small { font-size:11px; }
+.task-summary:focus-visible,.task-period:focus-visible,.task-copy:focus-visible { outline:2px solid var(--sapi-accent);outline-offset:3px; }
+:root[data-theme] body.sapi-workspace button.task-period:hover { background:transparent;color:var(--ink); }
+:root[data-theme] body.sapi-workspace summary.task-summary:hover { background:var(--panel);color:var(--ink); }

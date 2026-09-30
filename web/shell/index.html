@@ -34,11 +34,11 @@
       </aside>
       <section class="conversation" id="chat-panel" aria-label="Agent conversation">
         <div class="agent-heading" id="agent-heading"></div>
-        <nav class="conversation-tabs" aria-label="Agent activity"><button data-panel="chat" class="active">Chat</button><button data-panel="tasks" disabled aria-disabled="true" title="Inactive">Tasks</button><button data-panel="cron" disabled aria-disabled="true" title="Inactive">Jobs</button><button data-panel="notes">Notes</button><button data-panel="log">Log <span class="log-dot"></span></button></nav>
+        <nav class="conversation-tabs" aria-label="Agent activity"><button data-panel="chat" class="active">Chat</button><button data-panel="tasks">Tasks</button><button data-panel="cron" disabled aria-disabled="true" title="Inactive">Jobs</button><button data-panel="notes">Notes</button><button data-panel="log">Log <span class="log-dot"></span></button></nav>
         <div class="conversation-body" id="conversation-body"></div>
         <div class="composer-area" id="composer-area">
           <div id="attachment-chip"></div>
-          <form class="composer" id="chat-form"><textarea rows="2" id="message-input" maxlength="16000" placeholder="Message your Sapi…" aria-label="Message agent"></textarea><div class="composer-bottom"><button type="button" id="attach-button" class="icon-button" aria-label="Add attachment">＋</button><button type="submit" class="send-button" aria-label="Send message">↑</button></div></form>
+          <form class="composer" id="chat-form"><textarea rows="2" id="message-input" maxlength="16000" placeholder="Message your Sapi…" aria-label="Message agent"></textarea><div class="composer-bottom"><button type="button" id="attach-button" class="icon-button" aria-label="Add attachment">＋</button><label class="creation-choice"><input id="allow-create-sapi" type="checkbox"> Allow creating a Sapi</label><button type="submit" class="send-button" aria-label="Send message">↑</button></div></form>
         </div>
       </section>
       <main class="workspace" id="workspace-panel" aria-label="Agent workspace">

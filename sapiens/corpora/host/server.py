@@ -8,6 +8,7 @@ from sapiens.corpora.host.assets import asset
 from sapiens.corpora.sapis.attachments import create_attachment
 from sapiens.validation import APIError
 from sapiens.corpora.sapis.notes import Notes
+from sapiens.corpora.host.delegation import yaml_text
 
 
 class Server(ThreadingHTTPServer):
@@ -76,6 +77,17 @@ class Handler(BaseHTTPRequestHandler):
         parts = path.strip("/").split("/")
         service = self.server.service
         if self.command == "GET":
+            if path == '/api/decision-prompts':
+                return self._send(200, {'prompts': service.delegation.templates()})
+            if len(parts) == 4 and parts[:2] == ['api', 'agents'] and parts[3] == 'decisions':
+                service._agent(parts[2])
+                return self._send(200, (yaml_text(service.delegation.records(parts[2])) + '\n').encode(), 'application/yaml; charset=utf-8')
+            if len(parts) == 4 and parts[:2] == ['api', 'agents'] and parts[3] == 'tasks':
+                service._agent(parts[2])
+                if parse_qs(url.query).get('format') == ['json']:
+                    return self._send(200, service.delegation.task_list(parts[2]))
+                value = service.delegation.tasks(parts[2], full=True)
+                return self._send(200, (yaml_text(value) + '\n').encode(), 'application/yaml; charset=utf-8')
             if path == "/api/state":
                 query = parse_qs(url.query)
                 try:
@@ -100,6 +112,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, found[1], found[0])
         elif write:
             data = self._body()
+            if len(parts) == 3 and parts[:2] == ['api', 'decision-prompts'] and self.command == 'PUT':
+                return self._send(200, service.delegation.edit_template(parts[2], data))
             if path == "/api/agents" and self.command == "POST":
                 return self._send(201, service.create_agent(data))
             if path == "/api/preferences" and self.command == "PUT":

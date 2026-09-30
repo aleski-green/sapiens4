@@ -1,7 +1,8 @@
 # Sapi work execution: terminology and notation
 
-Status: design specification. This document describes the intended work model;
-it does not claim that task graphs, triggers, or delegation are implemented.
+Status: design specification. This document describes the full intended work model;
+it does not claim that every described feature is implemented.
+The delegation subset is implemented as described in [delegation v1](../delegation.md).
 See the [runtime reference](../reference.md) for current behavior.
 
 Haskell syntax is used only as a descriptive DSL in Markdown. The fragments are

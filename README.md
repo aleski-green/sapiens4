@@ -2,7 +2,7 @@
 
 Local conversational agents with CORPORA UI, Codex CLI and Blindly4 computer access. Each Sapi manages a plain Markdown notes file. SQLite stores UI data.
 
-Chat, Notes, workspaces and activity logs are active. Tasks and Jobs remain visible but disabled; there is no scheduling or memory consolidation.
+Chat, Notes, workspaces, activity logs, and [delegation](documentation/delegation.md) are active. Tasks has Upcoming and Past lists; opening a task shows its YAML body and result. Jobs, cron, task graphs, and memory consolidation remain inactive.
 
 ## Core principles
 
