@@ -36,6 +36,8 @@ Open http://127.0.0.1:4174/workspace/.
 
 For a dedicated macOS window and Dock icon, see [the desktop app](macos/README.md).
 
+[Architecture notation and analysis](documentation/specs/SapiensSpecNotation.md) · [Haskell specification](documentation/specs/SapiensSpecNotation.hs) · [WorkGraph design](documentation/specs/WorkGraph.md)
+
 [Setup, features, API and tests](documentation/reference.md)
 
 [Contributing and code guidelines](CONTRIBUTING.md)

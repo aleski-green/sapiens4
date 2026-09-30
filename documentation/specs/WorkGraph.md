@@ -5,6 +5,13 @@ it does not claim that every described feature is implemented.
 The delegation subset is implemented as described in [delegation v1](../delegation.md).
 See the [runtime reference](../reference.md) for current behavior.
 
+The newer [Sapiens notation](SapiensSpecNotation.hs) uses Agency/AgencyRun and
+Memo terminology. It scopes a mixed Task/Job WorkGraph to one Sapi and a WorkFlow
+to one Group, each with an explicit run type. This document retains the earlier
+task-only graph and delegation design followed by the current runtime. Its
+`Trigger`, `Task`, and graph ownership definitions are not interchangeable with
+the revised notation; see the [comparison and open decisions](SapiensSpecNotation.md).
+
 Haskell syntax is used only as a descriptive DSL in Markdown. The fragments are
 readable specifications, not a compilable module. They are not compiled,
 interpreted, executed, used as model prompts, or used for code generation.
