@@ -140,13 +140,18 @@ class CLITest(unittest.TestCase):
         self.assertFalse(result['ok'])
         self.assertEqual(result['data']['id'], 'turn1')
 
-    def test_jsonl_timeout_and_no_ansi_when_redirected(self):
-        code, text, err = self.run_cli('status', '--watch', '--timeout', '.02', '--format', 'jsonl')
+    def test_watch_follows_server_past_old_timeouts_without_its_own_deadline(self):
+        turn = self.server.state['turns'][0]
+        turn['status'] = 'running'
+        with patch('sapiens.corpora.host.cli.time.monotonic', side_effect=[0, 1900, 1901, 1902, 1903]), \
+             patch('sapiens.corpora.host.cli.time.sleep', side_effect=lambda _: turn.update(status='done')):
+            code, text, err = self.run_cli('conversation', 'watch', 'turn1', '--format', 'jsonl')
         events = [json.loads(line) for line in text.splitlines()]
-        self.assertEqual(code, 4)
-        self.assertEqual([e['event'] for e in events], ['snapshot', 'timeout'])
-        self.assertEqual([e['seq'] for e in events], [1, 2])
+        self.assertEqual(code, 0)
+        self.assertEqual([e['event'] for e in events], ['snapshot', 'state_changed'])
+        self.assertEqual([e['data']['state'] for e in events], ['running', 'done'])
         self.assertNotIn('\x1b', text + err)
+        self.assertEqual(self.server.writes, [])
 
     def test_interrupt_does_not_cancel(self):
         with patch('sapiens.corpora.host.cli.time.sleep', side_effect=KeyboardInterrupt):

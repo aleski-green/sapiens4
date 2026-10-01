@@ -1,7 +1,7 @@
 """Keyboard-first CORPORA commands, prompt and bounded observation."""
 from functools import lru_cache
 from importlib.util import find_spec
-import argparse, math, re, shlex, sys, time
+import argparse, re, shlex, sys, time
 from urllib.parse import quote
 from pathlib import PurePath
 from sapiens.corpora.host.cli_render import Renderer, note_text
@@ -22,7 +22,7 @@ COMMANDS = {
     'conversation retry': ('id', '', 'Explicitly retry an eligible turn'),
     'conversation cancel': ('id', '', 'Cancel an eligible turn'),
     'shell': ('', '', 'Open the interactive prompt'), 'help': ('', '', 'Show commands and options')}
-GLOBALS = dict(url=None, format='human', plain=False, no_animation=False, timeout=120, sapi='chief')
+GLOBALS = dict(url=None, format='human', plain=False, no_animation=False, sapi='chief')
 DEFAULTS = dict(GLOBALS, watch=False, all=False, tab='all', limit=5, wait=False, workload=None)
 PAST = {'Completed', 'Unresolved', 'Failed', 'Interrupted', 'Cancelled'}
 EXIT = dict(done=0, completed=0, waitingforadmin=5, failed=1, interrupted=1, cancelled=1, unresolved=1)
@@ -33,7 +33,7 @@ def parser():
     result = Parser(prog='sapiens4', add_help=False, allow_abbrev=False, argument_default=argparse.SUPPRESS)
     for name, settings in {
         'url': {}, 'sapi': {}, 'format': dict(choices=['human', 'json', 'jsonl', 'yaml']),
-        'timeout': dict(type=float), 'limit': dict(type=int), 'tab': dict(choices=['upcoming', 'past', 'all']),
+        'limit': dict(type=int), 'tab': dict(choices=['upcoming', 'past', 'all']),
         'workload': {}, **{key: dict(action='store_true') for key in ['watch', 'all', 'wait', 'plain', 'no-animation']}
     }.items():
         result.add_argument('--' + name, **settings)
@@ -52,7 +52,7 @@ def parse(argv, selected='chief', defaults=None):
             'Unknown command, argument or option.', hint='Run sapiens4 help.')
     options = argparse.Namespace(**{**DEFAULTS, **(defaults or {}), 'sapi': selected, **vars(given), 'command': key})
     if position: setattr(options, position, values[0])
-    require(math.isfinite(options.timeout) and options.timeout > 0 and options.limit > 0, '--timeout must be finite and positive; --limit must be positive.')
+    require(options.limit > 0, '--limit must be positive.')
     watching = key == 'conversation watch' or key == 'status' and options.watch
     require((options.format != 'jsonl' or watching) and (options.format != 'yaml' or key == 'task show'), 'JSONL requires a watch; YAML requires task show.')
     return options
@@ -73,10 +73,9 @@ def conversation_data(state, agent, turn_id):
     return dict(id=turn_id, agent=agent['id'], state=source.get('state', source.get('status')),
                 workload=work['id'] if work else None, output=source.get('output'), error=source.get('error'))
 def observe(client, renderer, options, agent=None, turn_id=None, initial_state=None):
-    started, previous, data, frame = time.monotonic(), None, None, 0; deadline = started + options.timeout
+    started, previous, data, frame = time.monotonic(), None, None, 0
     try:
-        while time.monotonic() < deadline:
-            client.timeout = min(5, max(.01, deadline - time.monotonic()))
+        while True:
             state = initial_state if initial_state is not None else client.state()
             initial_state = None; data = conversation_data(state, agent, turn_id) if turn_id else status_data(state)
             status = data['state'] if turn_id else ('running' if data['running'] else 'ready')
@@ -93,14 +92,12 @@ def observe(client, renderer, options, agent=None, turn_id=None, initial_state=N
             for _ in range(4):
                 renderer.tick(status, time.monotonic() - started, frame, owner)
                 frame += 1
-                time.sleep(max(0, min(.25, deadline - time.monotonic())))
-        raise ClientError('TIMEOUT', 'Observation deadline reached; server work continues.', 4,
-                          'Use conversation watch with the same ID to reconnect.' if turn_id else 'Run status again.')
+                time.sleep(.25)
     except (KeyboardInterrupt, ClientError) as error:
         error = ClientError('DETACHED', 'Observer detached; server work continues.', 130) if isinstance(error, KeyboardInterrupt) else error
-        if data is not None and error.code not in {'TIMEOUT', 'DETACHED'}:
+        if data is not None and error.code != 'DETACHED':
             error.hint = 'Last observation is stale. Reconnect to check current state.'
-        renderer.emit(data, error=error, event={'TIMEOUT': 'timeout', 'DETACHED': 'detached'}.get(error.code, 'error'))
+        renderer.emit(data, error=error, event='detached' if error.code == 'DETACHED' else 'error')
         return error.exit_code
     finally: renderer.clear()
 def dispatch(options, client, renderer):

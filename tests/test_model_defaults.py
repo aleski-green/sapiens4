@@ -9,24 +9,27 @@ from sapiens.runtime.codex import CodexLLM, CodexFactory
 from sapiens.runtime.settings import execution_settings
 from sapiens.corpora.host.service import Service
 from sapiens.validation import APIError
-from sapiens.runtime.contracts import LLMSpec
+from sapiens.runtime.contracts import LLMSpec, RUN_TIMEOUT_SECONDS
 
 
 class ModelDefaultsTest(unittest.TestCase):
-    def test_modes_bound_saved_legacy_limits_and_choose_reasoning(self):
+    def test_modes_share_one_limit_and_ignore_old_saved_timeouts(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
             root = Path(directory)
-            factory = CodexFactory(workdir=root, timeout_seconds=3000)
+            factory = CodexFactory(workdir=root)
             factory.execution = lambda: execution_settings(root)
-            for mode, ceiling, effort in [('normal', 300, 'high'), ('deep', 1200, 'xhigh')]:
-                policy = dict(mode=mode, timeout_seconds=6000)
+            for mode, limit, effort in [('normal', 15, 'high'), ('deep', 1200, 'xhigh'), ('normal', 6000, 'high')]:
+                policy = dict(mode=mode, timeout_seconds=limit)
                 (root / 'execution.json').write_text(json.dumps(policy))
                 llm = factory.spawn(LLMSpec())
-                self.assertEqual(llm.timeout_seconds, ceiling)
+                self.assertEqual(llm.timeout_seconds, RUN_TIMEOUT_SECONDS)
                 self.assertEqual(llm.reasoning_effort, effort)
             policy.pop('mode')
             (root / 'execution.json').write_text(json.dumps(policy))
-            self.assertEqual(execution_settings(root)['timeout_seconds'], 300)
+            self.assertEqual(execution_settings(root)['timeout_seconds'], 1800)
+            (root / 'run-settings.json').write_text('{"mode":"deep","timeout_seconds":30}')
+            self.assertEqual(factory.spawn(LLMSpec()).timeout_seconds, 1800)
+            self.assertEqual(CodexFactory(workdir=root).spawn(LLMSpec()).timeout_seconds, 1800)
 
     def test_mode_api_persists_without_overwriting_legacy_budgets(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -35,10 +38,13 @@ class ModelDefaultsTest(unittest.TestCase):
                 agent = service._agent(service.registry.main)
                 legacy = agent.root / 'execution.json'
                 legacy.write_text('{"max_tools":1}')
-                data = dict(name='SapiTheMain', role='Assistant', execution=dict(mode='deep', timeout_seconds=1200))
+                data = dict(name='SapiTheMain', role='Assistant', execution=dict(mode='deep'))
                 service.update_agent(agent.agid, data)
-                self.assertEqual(service.snapshot()['orchestration'][agent.agid]['execution'], data['execution'])
-                self.assertEqual(agent.runner.factory.spawn(LLMSpec()).timeout_seconds, 1200)
+                self.assertEqual(service.snapshot()['orchestration'][agent.agid]['execution'], dict(mode='deep', timeout_seconds=1800))
+                self.assertEqual(json.loads((agent.root / 'run-settings.json').read_text()), {'mode': 'deep'})
+                self.assertEqual(agent.runner.factory.spawn(LLMSpec()).timeout_seconds, 1800)
+                helper = service.create_agent(dict(name='Helper', role='Assistant'))
+                self.assertEqual(service._agent(helper['id']).runner.factory.spawn(LLMSpec()).timeout_seconds, 1800)
                 self.assertEqual(legacy.read_text(), '{"max_tools":1}')
                 for invalid in (None, {}, dict(mode='automatic', timeout_seconds=300), dict(mode='normal', timeout_seconds=1200)):
                     with self.assertRaises(APIError):

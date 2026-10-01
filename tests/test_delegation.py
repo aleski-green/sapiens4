@@ -12,6 +12,7 @@ from sapiens.corpora.host.delegation import PROMPTS, TRANSITIONS, yaml_text
 from sapiens.corpora.host.server import Server
 from sapiens.corpora.host.service import Service
 from sapiens.validation import APIError
+from sapiens.runtime.contracts import RUN_TIMEOUT_SECONDS
 
 
 CRITERION = 'Return a sourced comparison.'
@@ -257,12 +258,20 @@ class DelegationTest(unittest.TestCase):
         self.assertEqual(len(self.service.store.workloads()[0]['calls']),2)
 
     def test_call_timeout_is_shared_across_decision_nodes(self):
-        with patch('sapiens.corpora.host.delegation.monotonic', side_effect=[0,1000]):
+        with patch('sapiens.corpora.host.delegation.monotonic', side_effect=[0,RUN_TIMEOUT_SECONDS+1]):
             call_id = self.run_request()
         self.assertEqual(self.provider.calls,[])
         turn = self.service.store.projected_turn(call_id)
         self.assertEqual(turn['status'],'failed')
         self.assertIn('Call time limit exhausted',turn['error'])
+
+    def test_decision_steps_use_the_remainder_of_the_same_thirty_minutes(self):
+        runner = self.service._agent(self.chief).runner
+        with patch('sapiens.corpora.host.delegation.monotonic', side_effect=[0, 400, 1000, 1500]), \
+             patch.object(runner, 'invoke', wraps=runner.invoke) as invoke:
+            call_id = self.run_request()
+        self.assertEqual(self.service.store.projected_turn(call_id)['status'], 'done')
+        self.assertEqual([call.kwargs['timeout_seconds'] for call in invoke.call_args_list], [1400, 800, 300])
 
     def test_started_recipient_is_interrupted_and_only_explicit_retry_runs_it(self):
         self.chief_routes()

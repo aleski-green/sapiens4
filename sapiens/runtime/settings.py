@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import sys
 
+from sapiens.runtime.contracts import RUN_TIMEOUT_SECONDS
+
 
 MIN_CODEX_VERSION = (0, 156, 1)
 DEFAULT_MODEL = 'gpt-6-sol'
@@ -49,9 +51,7 @@ def codex_binary():
 def execution_settings(root):
     path = root / 'run-settings.json'
     if not path.exists():
-        path = root / 'execution.json'  # Read legacy mode/timeout without restoring budgets.
+        path = root / 'execution.json'  # Preserve legacy reasoning mode; saved timeouts no longer apply.
     saved = json.loads(path.read_text()) if path.exists() else {}
     mode = 'deep' if saved.get('mode') == 'deep' else 'normal'
-    ceiling = 1200 if mode == 'deep' else 300
-    timeout = saved.get('timeout_seconds', ceiling)
-    return dict(mode=mode, timeout_seconds=min(ceiling, max(15, timeout)) if type(timeout) is int else ceiling)
+    return dict(mode=mode, timeout_seconds=RUN_TIMEOUT_SECONDS)

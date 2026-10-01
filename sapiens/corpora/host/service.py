@@ -209,10 +209,9 @@ class Service:
         if set(data) - {"name", "role", "manager", "execution"}:
             raise APIError(400, "Unknown or inactive setting")
         policy = data.get('execution')
-        if 'execution' in data and (not isinstance(policy, dict) or set(policy) != {'mode','timeout_seconds'}
-                or policy['mode'] not in ('normal','deep') or type(policy['timeout_seconds']) is not int
-                or not 15 <= policy['timeout_seconds'] <= (1200 if policy['mode'] == 'deep' else 300)):
-            raise APIError(400, 'Choose Normal (15–300 seconds) or Deep work (15–1200 seconds)')
+        if 'execution' in data and (not isinstance(policy, dict) or set(policy) != {'mode'}
+                or policy['mode'] not in ('normal','deep')):
+            raise APIError(400, 'Choose Normal or Deep work; call timeouts are managed globally')
         row = {"name": sapi_name(data), "role": text_field(data, "role", 60)}
         with self._lock:
             agent = self._agent(agid)

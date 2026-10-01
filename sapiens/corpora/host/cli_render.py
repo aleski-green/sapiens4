@@ -1,6 +1,14 @@
 """CORPORA avatars, terminal-safe text, machine envelopes and waiting indicators."""
 from html.parser import HTMLParser
 import json, os, re, shutil, sys, textwrap, time
+try:
+    from prompt_toolkit import PromptSession; from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.key_binding.bindings.completion import display_completions_like_readline
+    from prompt_toolkit.completion import Completer, Completion
+    from prompt_toolkit.formatted_text import ANSI
+    from prompt_toolkit.history import InMemoryHistory
+    from prompt_toolkit.output import ColorDepth
+except ImportError: PromptSession = None
 def clean(value):
     text = re.sub(r'\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)', '', str(value if value is not None else ''))
     text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
@@ -54,12 +62,6 @@ class Renderer:
     def read(self, agent, history, complete):
         prompt = self.prompt(agent)
         if not sys.stdin.isatty(): return input(prompt)
-        from prompt_toolkit import PromptSession; from prompt_toolkit.key_binding import KeyBindings
-        from prompt_toolkit.key_binding.bindings.completion import display_completions_like_readline
-        from prompt_toolkit.completion import Completer, Completion
-        from prompt_toolkit.formatted_text import ANSI
-        from prompt_toolkit.history import InMemoryHistory
-        from prompt_toolkit.output import ColorDepth
         class Names(Completer):
             def get_completions(self, document, event):
                 prefix = document.text_before_cursor
