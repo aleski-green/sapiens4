@@ -61,7 +61,7 @@ try:
     context = conversation.context({'chat': []}, 'hello', Config)
     example = Path(context['notes_example'])
     assert example == Path(sys.argv[1]).resolve() / 'prompts/examples/jarvis-notes.html'
-    assert '(◉﹏◉)' in example.read_text()
+    assert '<h2>Music for work</h2>' in example.read_text()
     assert str(example) in Config.roles['conversation'].prompt.format_map(context)
 finally:
     service.close()

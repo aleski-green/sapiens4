@@ -23,3 +23,6 @@ DerivedData/
 __pycache__/
 .venv/
 .test-output/
+
+# JavaScript DOM test dependencies
+node_modules/

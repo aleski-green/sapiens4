@@ -1,4 +1,6 @@
 """Model-managed HTML wiki; only identity and navigation enter call context."""
+from datetime import datetime, timezone
+import hashlib
 from html import escape
 from html.parser import HTMLParser
 import json
@@ -64,7 +66,23 @@ class Notes(HTMLParser):
         try:
             self.validate(self.path)
             stat = self.path.stat() if self.path.exists() else None
-            return dict(path=str(self.path), revision=f'{stat.st_mtime_ns}:{stat.st_size}' if stat else 'missing')
+            result = dict(path=str(self.path), workspace=str(self.workspace),
+                        revision=f'{stat.st_mtime_ns}:{stat.st_size}' if stat else 'missing',
+                        modified_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat() if stat else None,
+                        created_at=None, created_by=None, modified_by=None)
+            history = self.workspace / 'Notes.history.json'
+            if stat and history.is_file() and not history.is_symlink():
+                try:
+                    record = json.loads(history.read_text())
+                    for field in ('created_at', 'created_by'):
+                        if isinstance(record.get(field), str):
+                            result[field] = record[field]
+                    if record.get('sha256') == hashlib.sha256(self.path.read_bytes()).hexdigest():
+                        if isinstance(record.get('modified_by'), str):
+                            result['modified_by'] = record['modified_by']
+                except (OSError, UnicodeError, ValueError, AttributeError):
+                    pass  # Missing or malformed provenance must not hide a Memo.
+            return result
         except APIError as error:
             return dict(path=str(self.path), error=str(error), revision='invalid')
 
@@ -78,7 +96,7 @@ class Notes(HTMLParser):
             raise APIError(409, 'Notes.html is missing; check the original Notes file before recreating it.') from None
         except UnicodeError:
             raise APIError(409, f'{path.name} must contain UTF-8 text') from None
-        return dict(path=str(path), content=text)
+        return dict(path=str(path), content=text, metadata=self.metadata())
 
     def context(self):
         try:

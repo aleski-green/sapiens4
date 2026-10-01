@@ -105,6 +105,24 @@ class NotesTest(IntegrationFixture):
         image.unlink(); image.symlink_to(outside)
         with self.assertRaises(ValueError): notes.image('sample.gif')
 
+    def test_memo_provenance_only_attributes_the_recorded_revision(self):
+        import hashlib
+        notes = Notes(Path(self.directory.name) / 'memo')
+        notes.workspace.mkdir()
+        source = self.document()
+        notes.path.write_text(source)
+        history = notes.workspace / 'Notes.history.json'
+        history.write_text(json.dumps(dict(created_at='2026-10-02T00:41:00+04:00',
+            created_by='Codex · actor', modified_by='Codex · actor',
+            sha256=hashlib.sha256(source.encode()).hexdigest())))
+        self.assertEqual(notes.metadata()['modified_by'], 'Codex · actor')
+        notes.path.write_text(self.document(content='facts: Changed externally'))
+        self.assertIsNone(notes.metadata()['modified_by'])
+        self.assertEqual(notes.metadata()['created_by'], 'Codex · actor')
+        history.write_text('[]')
+        self.assertIsNone(notes.metadata()['created_at'])
+        self.assertIsNotNone(notes.metadata()['modified_at'])
+
     def test_removed_commands_and_flows_are_rejected_including_batches(self):
         service = self.service(start_worker=False)
         a = service._agent(service.registry.main)
@@ -141,7 +159,12 @@ class NotesTest(IntegrationFixture):
         connection.request('GET', f'/api/agents/{a.agid}/notes')
         response = connection.getresponse()
         self.assertEqual(response.status, 200)
-        self.assertEqual(json.loads(response.read())['content'], content)
+        row = json.loads(response.read())
+        self.assertEqual(row['content'], content)
+        self.assertEqual(row['metadata']['workspace'], str(service.workspace.root(a)))
+        self.assertIsNotNone(row['metadata']['modified_at'])
+        self.assertIsNone(row['metadata']['created_at'])
+        self.assertIsNone(row['metadata']['modified_by'])
         (service.workspace.root(a) / 'a b.gif').write_bytes(b'GIF89a')
         connection.request('GET', f'/api/agents/{a.agid}/notes?image=a%2520b.gif')
         response = connection.getresponse()
