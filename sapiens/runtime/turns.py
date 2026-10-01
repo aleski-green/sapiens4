@@ -84,7 +84,7 @@ class TurnRunner:
             raise TimeoutError('Call time limit exhausted between decision nodes')
         llm = self.factory.spawn(LLMSpec(role=role))
         if timeout_seconds is not None:
-            llm.timeout_seconds = min(getattr(llm, 'timeout_seconds', None) or timeout_seconds, timeout_seconds)
+            llm.timeout_seconds = timeout_seconds
         llm.cancel_event = self.cancel_event
         self.active_llm = llm
         log = dict(role=role, prompt=text, session=llm.id)

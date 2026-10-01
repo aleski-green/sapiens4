@@ -234,18 +234,13 @@ agentSettings = function() {
     ${nameSuggestions()}
     <label>Role<input name="role" value="${esc(a.role)}" required maxlength="60"></label>
     ${managerOptions(a)}
-    <label>Work mode<select name="mode"><option value="normal" ${execution.mode === 'normal' ? 'selected' : ''}>Normal · high · up to 5 minutes</option><option value="deep" ${execution.mode === 'deep' ? 'selected' : ''}>Deep work · xhigh · up to 20 minutes</option></select></label>
-    <label>Call timeout (seconds)<input name="timeout_seconds" type="number" min="15" max="${execution.mode === 'deep' ? 1200 : 300}" required value="${execution.timeout_seconds}"></label>
+    <label>Work mode<select name="mode"><option value="normal" ${execution.mode === 'normal' ? 'selected' : ''}>Normal · high</option><option value="deep" ${execution.mode === 'deep' ? 'selected' : ''}>Deep work · xhigh</option></select></label>
+    <p class="form-hint">Each call has a ${execution.timeout_seconds / 60}-minute limit in either mode.</p>
     </section>
     ${['context','usage','limits'].map(key => `<section class="settings-panel" role="tabpanel" id="settings-panel-${key}" aria-labelledby="settings-tab-${key}" hidden>Inactive</section>`).join('')}
     <button type="submit" class="button primary">Save</button></form>`, 'SAPIENS4');
 };
 actions['agent-settings'] = agentSettings;
-document.addEventListener('change', e => {
-  if (e.target.name !== 'mode') return;
-  const timeout = e.target.form.elements.timeout_seconds;
-  timeout.value = timeout.max = e.target.value === 'deep' ? 1200 : 300;
-});
 computerDialog = function() {
   modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : 'Build required: run ./start.sh'}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Sapis share one computer. macOS Accessibility access is required for desktop interaction; permission failures appear in chat.</p>`, 'BLINDLY4');
 };
@@ -267,7 +262,7 @@ document.addEventListener('submit', async e => {
     const created = form.id === 'live-agent-form';
     if (!created) {
       data.manager = data.manager || null;
-      data.execution = {mode:data.mode, timeout_seconds:Number(data.timeout_seconds)};
+      data.execution = {mode:data.mode};
       for (const key of Object.keys(data.execution)) delete data[key];
     }
     const row = await api(created ? '/api/agents' : `/api/agents/${form.dataset.id}`, created ? 'POST' : 'PUT', data);

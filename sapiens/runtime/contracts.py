@@ -2,6 +2,8 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 
+RUN_TIMEOUT_SECONDS = 30 * 60
+
 
 @dataclass(frozen=True)
 class LLMSpec:

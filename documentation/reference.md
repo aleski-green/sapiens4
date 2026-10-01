@@ -16,7 +16,7 @@ codex login
 The local UI is at `http://127.0.0.1:4174/workspace/`. For a dedicated window and
 managed updates, see [the macOS app](../macos/README.md).
 
-Sapiens4 uses `gpt-6-sol` with `high` reasoning by default. Normal mode caps calls at 5 minutes; explicitly selecting Deep work in Sapi settings → Profile uses `xhigh` and allows up to 20 minutes. Existing saved limits without a mode use Normal; shorter custom limits remain effective. Environment overrides:
+Sapiens4 uses `gpt-6-sol` with `high` reasoning by default. Every Sapi call has one 30-minute execution limit, shared across its decision steps. Normal mode uses `high`; Deep work in Sapi settings → Profile uses `xhigh` with the same time limit. Legacy saved timeout values are ignored, and the CLI has no separate observation cutoff. Environment overrides:
 `SAPIENS_CODEX_MODEL`, `SAPIENS_CODEX_REASONING_EFFORT`, and `SAPIENS_CODEX_BINARY`.
 Without a binary override, the host selects the newest working CLI among PATH
 and the installed Codex/ChatGPT app bundles. Global Codex configuration is unchanged.

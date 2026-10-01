@@ -13,7 +13,7 @@ from time import monotonic, time
 from typing import Any, Callable
 from uuid import uuid4
 
-from sapiens.runtime.contracts import LLMSpec
+from sapiens.runtime.contracts import LLMSpec, RUN_TIMEOUT_SECONDS
 from sapiens.runtime.settings import codex_binary, model_defaults
 
 
@@ -26,7 +26,7 @@ class CodexLLM:
     id: str = field(default_factory=lambda: f"pending_{uuid4().hex[:8]}")
     resume: bool = False
     reasoning_effort: str | None = None
-    timeout_seconds: float | None = None
+    timeout_seconds: float | None = RUN_TIMEOUT_SECONDS
     cancel_event: Event = field(default_factory=Event, repr=False)
     activity: dict = field(default_factory=dict)
     _tools: dict = field(default_factory=dict, repr=False)
@@ -185,12 +185,9 @@ class CodexFactory:
     """Create unrestricted local Codex CLI sessions."""
 
     workdir: Path = field(default_factory=Path.cwd)
-    timeout_seconds: float | None = None
-
     execution: Callable | None = None
 
     def spawn(self, spec: LLMSpec) -> CodexLLM:
-        policy = self.execution() if self.execution else dict(mode='normal', timeout_seconds=300)
+        policy = self.execution() if self.execution else dict(mode='normal')
         return CodexLLM(spec=spec, workdir=self.workdir,
-            timeout_seconds=min(self.timeout_seconds or policy['timeout_seconds'], policy['timeout_seconds']),
             reasoning_effort='xhigh' if policy['mode'] == 'deep' else model_defaults()[1])
