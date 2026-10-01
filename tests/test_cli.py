@@ -200,10 +200,11 @@ class CLITest(unittest.TestCase):
 
     def test_actual_entrypoint_and_shell_selection(self):
         result = subprocess.run([sys.executable, str(ROOT / 'sapiens4'), 'shell', '--url', self.url],
-            input='use Researcher\nhistory --limit 1\nexit\n', capture_output=True, text=True, timeout=5)
+            input='call @Researcher\nchat -1\ncorpora\nexit\n', capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('Selected Researcher', result.stdout)
-        self.assertIn('(^‿^) Researcher >', result.stdout)
+        self.assertIn('(^‿^) Researcher · Research', result.stdout)
+        self.assertIn('sapiens4::@Researcher >', result.stdout)
+        self.assertEqual(result.stdout.count('>> sapiens4::corpora >'), 2)
         self.assertIn('No conversations yet.', result.stdout)
         self.assertEqual(self.server.writes, [])
 
@@ -234,7 +235,7 @@ class CLITest(unittest.TestCase):
         result = subprocess.run([sys.executable, str(ROOT / 'sapiens4'), 'shell', '--url', self.url, '--plain'],
             input='sapis\nexit\n', capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
-        intro = result.stdout.split('Chief >')[0]
+        intro = result.stdout.split('>> sapiens4::corpora >')[0]
         self.assertIn('ABOUT', intro)
         self.assertIn('STATS', intro)
         self.assertNotIn('Question', intro)
@@ -242,6 +243,66 @@ class CLITest(unittest.TestCase):
         self.assertNotIn('/tasks?format=json', ' '.join(self.server.reads))
         self.assertNotIn('(◕ᵕ◕)', result.stdout)
         result.stdout.encode('ascii')
+
+    def test_show_tree_and_inspect_preserve_context(self):
+        self.server.state['agents'][1]['retired'] = False
+        self.server.state['agents'].reverse()  # Chief is first even when snapshot order differs.
+        self.server.state['orchestration'] = {'chief-id': {'notes': {'path': '/fixture/workspaces/chief-id/Notes.html'}}}
+        result = subprocess.run([sys.executable, str(ROOT / 'sapiens4'), 'shell', '--url', self.url],
+            input='show\nshow @Chief\nexit\n', capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn('corpora\n├── *(◕ᵕ◕) Chief · Head\n└── (^‿^) Researcher · Research', result.stdout)
+        self.assertIn('id: chief-id\nworkspace: /fixture/workspaces/chief-id', result.stdout)
+        self.assertEqual(result.stdout.count('>> sapiens4::corpora >'), 3)
+        self.assertNotIn('sapiens4::@', result.stdout)
+        self.assertEqual(self.server.writes, [])
+
+    def test_sapi_text_preserves_quotes_and_option_like_content(self):
+        message = "Don't change  'quotes' or --format=json or @Researcher."
+        result = subprocess.run([sys.executable, str(ROOT / 'sapiens4'), 'shell', '--url', self.url],
+            input='call @Chief\n' + message + '\ncorpora\nexit\n', capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.server.writes, [('/api/agents/chief-id/messages', {'text': message, 'flow': 'chat'}, '1')])
+        self.assertIn('Answer', result.stdout)
+        self.assertEqual(result.stdout.count('>> sapiens4::corpora >'), 2)
+        self.assertIn('sapiens4::@Chief >', result.stdout)
+        self.assertNotIn('Type a message', result.stdout)
+
+    def test_chat_reads_individual_messages_in_order_and_never_sends(self):
+        self.server.state['turns'] = [dict(id=f'turn{i}', agent='chief-id', status='done',
+            input=f'Question{i}', output=f'Answer{i}', created=str(i), error=None) for i in (3, 1, 2)]
+        result = subprocess.run([sys.executable, str(ROOT / 'sapiens4'), 'shell', '--url', self.url],
+            input='chat @Chief -5\ncall @Researcher\nchat\ncorpora\nexit\n', capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn('Question1', result.stdout)
+        messages = ['Answer1', 'Question2', 'Answer2', 'Question3', 'Answer3']
+        offsets = [result.stdout.index(text) for text in messages]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertIn('No conversations yet.', result.stdout)
+        self.assertEqual(self.server.writes, [])
+
+    def test_bad_navigation_and_history_stay_local(self):
+        result = subprocess.run([sys.executable, str(ROOT / 'sapiens4'), 'shell', '--url', self.url],
+            input='call @Unknown\ncall Chief\nchat\ncall @Chief\nchat -0\nchat -bad\nhelp\ncorpora\nsapiens4\nexit\n',
+            capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Expected one Sapi matching', result.stdout)
+        self.assertIn('Use call @name', result.stdout)
+        self.assertIn('chat [-5]', result.stdout)
+        self.assertEqual(self.server.writes, [])
+
+    def test_prompt_colors_only_brand_and_highlights_identity(self):
+        stream = io.StringIO()
+        stream.isatty = lambda: True
+        with patch.dict(os.environ, {'TERM': 'xterm-256color'}, clear=True):
+            renderer = Renderer(stdout=stream)
+            prompt = renderer.prompt({'name': 'ready\x1b[2J\n'})
+            self.assertEqual(renderer.prompt(marked=False), '>> \x1b[38;2;255;90;165msapiens4\x1b[0m::corpora > ')
+            self.assertEqual(prompt, '\001\x1b[38;2;255;90;165m\002sapiens4\001\x1b[0m\002::@ready > ')
+            renderer.text(renderer.sapis([dict(self.server.state['agents'][0], chief=True, state='ready',
+                details={}, workspace='/fixture/workspaces/chief-id')]))
+        self.assertIn('\x1b[38;2;167;189;182mchief-id\x1b[0m', stream.getvalue())
+        self.assertEqual(Renderer(stdout=io.StringIO()).prompt(), '>> sapiens4::corpora > ')
 
     def test_animation_keeps_identity_and_obeys_no_animation(self):
         stream = io.StringIO()
@@ -274,6 +335,33 @@ class CLITest(unittest.TestCase):
             client.request('/redirect')
         self.assertEqual(caught.exception.code, 'HTTP_302')
         self.assertEqual(self.server.reads, ['/redirect'])
+
+
+    def test_terminal_colors_use_saved_palette_after_sanitizing(self):
+        stream = io.StringIO()
+        stream.isatty = lambda: True
+        agent = dict(self.server.state['agents'][0], color='#f7d6d1')
+        with patch.dict(os.environ, {'TERM': 'xterm-256color'}, clear=True):
+            renderer = Renderer(stdout=stream)
+            renderer.text(renderer.avatar(agent) + 'Chief | ready\x1b[2J')
+        output = stream.getvalue()
+        self.assertIn('\x1b[48;2;247;214;209;38;2;39;33;55m(◕ᵕ◕)\x1b[0m', output)
+        self.assertIn('\x1b[32mready\x1b[0m', output)
+        self.assertNotIn('\x1b[2J', output)
+        self.assertEqual(clean(output), '(◕ᵕ◕) Chief | ready\n')
+
+    def test_colors_are_disabled_for_plain_pipes_machine_and_no_color(self):
+        agent = dict(self.server.state['agents'][0], color='#f7d6d1')
+        for environment, plain, format, tty in [({'NO_COLOR': ''}, False, 'human', True),
+                ({'TERM': 'dumb'}, False, 'human', True), ({}, True, 'human', True),
+                ({}, False, 'human', False), ({}, False, 'json', True), ({}, False, 'jsonl', True)]:
+            with self.subTest(environment=environment, plain=plain, format=format, tty=tty):
+                stream = io.StringIO()
+                stream.isatty = lambda: tty
+                with patch.dict(os.environ, environment, clear=True):
+                    renderer = Renderer(format=format, plain=plain, stdout=stream)
+                    renderer.emit({'state': 'ready'}, renderer.avatar(agent) + 'ready')
+                self.assertNotIn('\x1b', stream.getvalue())
 
 
 if __name__ == '__main__':

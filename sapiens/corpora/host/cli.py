@@ -1,17 +1,14 @@
 """Keyboard-first CORPORA commands, prompt and bounded observation."""
 import argparse
 from functools import lru_cache
-import math
-import shlex
-import sys
-import time
+import math, shlex, sys, time
 from urllib.parse import quote
-from sapiens.corpora.host.cli_render import Renderer, clean, note_text
+from pathlib import PurePath
+from sapiens.corpora.host.cli_render import Renderer, note_text
 from sapiens.corpora.host.cli_transport import Client, ClientError, require
 try:
     import readline
-except ImportError:
-    readline = None
+except ImportError: readline = None
 
 # Command: positional argument, command-specific options, help description.
 COMMANDS = {
@@ -21,6 +18,7 @@ COMMANDS = {
     'sapi show': ('id', '', 'Show identity and workspace'),
     'task list': ('', 'tab', 'List upcoming, past or all tasks'),
     'task show': ('id', '', 'Show YAML body and result'),
+    'messages': ('', 'limit', 'Read the last messages (default 5)'),
     'history': ('', 'limit', 'Read recent inputs and replies'),
     'memo show': ('', '', 'Read Notes as Memo'),
     'chat': ('message', 'wait workload', 'Submit once; --wait observes; --workload binds a clarification'),
@@ -32,11 +30,8 @@ GLOBALS = dict(url=None, format='human', plain=False, no_animation=False, timeou
 DEFAULTS = dict(GLOBALS, watch=False, all=False, tab='all', limit=5, wait=False, workload=None)
 PAST = {'Completed', 'Unresolved', 'Failed', 'Interrupted', 'Cancelled'}
 EXIT = dict(done=0, completed=0, waitingforadmin=5, failed=1, interrupted=1, cancelled=1, unresolved=1)
-
 class Parser(argparse.ArgumentParser):
-    def error(self, message):
-        raise ClientError('USAGE', message, 2, 'Run sapiens4 help.')
-
+    def error(self, message): raise ClientError('USAGE', message, 2, 'Run sapiens4 help.')
 @lru_cache(maxsize=1)
 def parser():
     result = Parser(prog='sapiens4', add_help=False, allow_abbrev=False, argument_default=argparse.SUPPRESS)
@@ -53,6 +48,7 @@ def parse(argv, selected='chief', defaults=None):
     protected = '--' in words
     if protected: words.remove('--')
     words = words or ['status']
+    if words[0] == 'show': words = ['sapi', 'show', words[1].removeprefix('@')] + words[2:] if len(words) > 1 and words[1].startswith('@') else ['sapi', 'list'] + words[1:]
     words = {'sapis': ['sapi', 'list'], 'tasks': ['task', 'list'], '--help': ['help'], '-h': ['help']}.get(words[0], [words[0]]) + words[1:]
     key = ' '.join(words[:2]) if ' '.join(words[:2]) in COMMANDS else words[0]
     position, allowed, _ = COMMANDS.get(key, ('', '', ''))
@@ -74,7 +70,7 @@ def status_data(state):
         waiting=[w for w in state.get('workloads', []) if w['state'] == 'WaitingForAdmin'])
 
 def status_text(data, url):
-    return (f"CORPORA | online\n{url}\n{data['active_sapis']} active Sapis | {data['retired_sapis']} retired | "
+    return (f"corpora | online\n{url}\n{data['active_sapis']} active Sapis | {data['retired_sapis']} retired | "
             f"{data['running']} running | {data['queued']} queued\nProvider: {data['provider']}" + ''.join(
                 f"\nNeeds your answer: {w['id']}\n{w.get('output') or ''}\nchat \"answer\" --sapi chief --workload {w['id']}" for w in data['waiting']))
 
@@ -102,8 +98,7 @@ def observe(client, renderer, options, agent=None, turn_id=None, initial_state=N
             error = ClientError('OPERATION_FAILED', data.get('error') or status) if code == 1 else None
             if data != previous and (renderer.format != 'json' or code is not None):
                 human = renderer.avatar(owner) + status + ' | ' + turn_id + '\n' + (data.get('output') or '') if turn_id else status_text(data, client.url)
-                if code == 5:
-                    human += '\nReply: chat "answer" --sapi chief --workload ' + data['workload']
+                if code == 5: human += '\nReply: chat "answer" --sapi chief --workload ' + data['workload']
                 renderer.emit(data, human, error, 'snapshot' if previous is None else 'state_changed')
             previous = data
             if code is not None: return code
@@ -119,14 +114,13 @@ def observe(client, renderer, options, agent=None, turn_id=None, initial_state=N
             error.hint = 'Last observation is stale. Reconnect to check current state.'
         renderer.emit(data, error=error, event={'TIMEOUT': 'timeout', 'DETACHED': 'detached'}.get(error.code, 'error'))
         return error.exit_code
-    finally:
-        renderer.clear()
+    finally: renderer.clear()
 
 def dispatch(options, client, renderer):
     key = options.command
     if key == 'help':
-        help_text = 'Sapiens4 / CORPORA\n\n' + '\n'.join(f'  {name} {"<" + arg + ">" if arg else ""}  {description}' for name, (arg, _, description) in COMMANDS.items())
-        help_text += '\n\n' + parser().format_help() + '\nPrompt: use <Sapi>, sapis, tasks, exit. Arrow keys recall non-chat commands.\nCtrl-C detaches; server work continues. Only Chief creates Sapis.'
+        help_text = 'Sapiens4 / corpora\n\n' + '\n'.join(f'  {name} {"<" + arg + ">" if arg else ""}  {description}' for name, (arg, _, description) in COMMANDS.items())
+        help_text += '\n\n' + parser().format_help() + '\nPrompt: show [@name], call @name, chat @name [-5], corpora, exit. Inside a Sapi, text sends a message; chat [-5] reads history.\nCtrl-C detaches; server work continues. Only Chief creates Sapis.'
         renderer.emit({'help': help_text}, help_text)
         return 0
     if key == 'shell': return shell(options, client, renderer)
@@ -146,7 +140,10 @@ def dispatch(options, client, renderer):
         for agent in agents:
             active = next((t['status'] for t in reversed(state['turns']) if t['agent'] == agent['id'] and t['status'] in {'queued', 'running'}), 'ready')
             row = dict(agent, state='retired' if agent.get('retired') else active, chief=agent['id'] == state.get('main_agent_id'))
-            if key == 'sapi show': row['details'] = state.get('orchestration', {}).get(agent['id'], {})
+            if key == 'sapi show':
+                row['details'] = state.get('orchestration', {}).get(agent['id'], {})
+                path = row['details'].get('notes', {}).get('path')
+                row['workspace'] = str(PurePath(path).parent) if path else '(unavailable)'
             rows.append(row)
         data, human = {'sapis': rows}, renderer.sapis(rows)
     elif key.startswith('task '):
@@ -163,6 +160,10 @@ def dispatch(options, client, renderer):
         if key == 'memo show':
             data = client.request(client.agent_path(agent, 'notes'))
             human = renderer.avatar(agent) + agent['name'] + ' / Memo\n\n' + note_text(data['content'])
+        elif key == 'messages':
+            messages = [dict(turn=t['id'], role=role, text=text) for t in sorted(state['turns'], key=lambda t: t['created']) if t['agent'] == agent['id']
+                        for role, text in [('You', t['input']), (agent['name'], t.get('output') or t.get('error'))] if text][-options.limit:]
+            data, human = {'messages': messages}, '\n\n'.join((renderer.avatar(agent) if m['role'] != 'You' else '') + m['role'] + ': ' + m['text'] for m in messages) or 'No conversations yet.'
         elif key == 'history':
             turns = [t for t in state['turns'] if t['agent'] == agent['id']][-options.limit:]
             data = {'turns': turns}
@@ -176,48 +177,54 @@ def dispatch(options, client, renderer):
             if key == 'chat' and options.wait:
                 if renderer.format == 'human': renderer.text(human)
                 return observe(client, renderer, options, agent, data['id'])
-            if key == 'chat':
-                human += '\nWatch: conversation watch ' + data['id'] + ' --sapi ' + agent['id']
+            if key == 'chat': human += '\nWatch: conversation watch ' + data['id'] + ' --sapi ' + agent['id']
     renderer.emit(data, human)
     return 0
 
 def shell(options, client, renderer):
     require(options.format == 'human', 'The interactive shell uses human output. Use individual commands for JSON.')
-    selected = dict(id=options.sapi, name=options.sapi)
+    selected = None
     defaults = {key: getattr(options, key) for key in GLOBALS}
-    renderer.text('ABOUT\nSapiens4 / CORPORA\nLocal Sapis coordinated by Chief.\n')
+    renderer.text('ABOUT\nSapiens4 / corpora\nLocal Sapis coordinated by Chief.\n')
     try:
         state = client.state()
         stats, tasks = status_data(state), state.get('workloads', [])
         renderer.text(f"STATS\nHost: online | Provider: {stats['provider']}\nSapis: {stats['active_sapis']} active | {stats['retired_sapis']} retired\n"
                       f"Work: {stats['running']} running | {stats['queued']} queued | {len(stats['waiting'])} waiting for you\n"
                       f"Tasks: {sum(t['state'] not in PAST for t in tasks)} upcoming | {sum(t['state'] in PAST for t in tasks)} past")
-        selected = client.agent(state, options.sapi)
-    except ClientError as error:
-        renderer.emit(error=error)
-    renderer.text('\nhelp for commands | exit to leave\n')
+    except ClientError as error: renderer.emit(error=error)
     if readline: readline.set_auto_history(False)
     while True:
         try:
-            words = shlex.split(input(clean(renderer.avatar(selected) + selected['name'] + ' > ')))
-            words = words[1:] if words[:1] == ['sapiens4'] else words
-            if not words: continue
-            if words[0] in {'exit', 'quit'}: raise EOFError
-            if readline and words[0] != 'chat': readline.add_history(shlex.join(words))
-            if words[0] == 'use':
-                require(len(words) == 2, 'Use an exact Sapi ID or quoted name.')
-                selected = client.agent(client.state(), words[1])
-                renderer.text(renderer.avatar(selected) + 'Selected ' + selected['name'])
+            line = input(renderer.prompt(selected, marked=bool(readline and 'libedit' not in readline.__doc__))).strip()
+            if not line: continue
+            command = line.split()[0]
+            if line in {'exit', 'quit'}: raise EOFError
+            if line == 'corpora': selected = None
+            elif line == 'help':
+                renderer.text('Text sends a message | chat [-5] shows history | corpora returns | exit closes' if selected else 'show           Sapi tree\nshow @name     Sapi details\ncall @name     Enter conversation\nchat @name -5  Last messages\nstatus         Current activity\nhelp           Commands\nexit           Close CLI\nOther commands: sapiens4 help')
+            elif selected and command != 'chat':
+                main(['chat', '--wait', '--', line], selected['id'], defaults)
             else:
-                main(words, selected['id'], defaults)
+                words = shlex.split(line)
+                words = words[1:] if words[:1] == ['sapiens4'] else words
+                if not words: continue
+                if words[0] in {'call', 'use'}:
+                    require(len(words) == 2 and (words[0] == 'use' or words[1].startswith('@')), 'Use call @name (quote names containing spaces).')
+                    agent = client.agent(client.state(), words[1].removeprefix('@'))
+                    if main(['sapi', 'show', agent['id']], agent['id'], defaults) == 0: selected = agent
+                elif words[0] == 'chat' and (selected or len(words) == 1 or words[1].startswith(('@', '-'))):
+                    selector = words.pop(1)[1:] if len(words) > 1 and words[1].startswith('@') else (selected or {}).get('id')
+                    require(selector and (len(words) == 1 or len(words) == 2 and words[1].startswith('-') and words[1][1:].isdigit()), 'Use chat @name [-5] in corpora, or chat [-5] inside a Sapi.')
+                    main(['messages', '--limit', words[1][1:] if len(words) == 2 else '5'], selector, defaults)
+                else: main(words, 'chief', defaults)
+                if readline and words[0] != 'chat': readline.add_history(line)
             renderer.text()
         except EOFError:
-            renderer.text('Detached. CORPORA stays running.')
+            renderer.text('Detached. corpora stays running.')
             return 0
-        except KeyboardInterrupt:
-            renderer.text('\nInput cleared. Type exit to leave.')
-        except (ClientError, ValueError) as error:
-            renderer.text('Error: ' + str(error))
+        except KeyboardInterrupt: renderer.text('\nInput cleared. Type exit to leave.')
+        except (ClientError, ValueError) as error: renderer.text('Error: ' + str(error) + ('\n' + error.hint if isinstance(error, ClientError) and error.hint else ''))
 
 def main(argv=None, selected='chief', defaults=None):
     argv = list(sys.argv[1:] if argv is None else argv) or (['shell'] if sys.stdin.isatty() else ['status'])
@@ -231,7 +238,6 @@ def main(argv=None, selected='chief', defaults=None):
         error = ClientError('DETACHED', 'Interrupted; accepted server work is not cancelled.', 130) if isinstance(error, KeyboardInterrupt) else error
         renderer.emit(error=error, event='detached' if error.code == 'DETACHED' else 'error')
         return error.exit_code
-    except BrokenPipeError:
-        return 0
+    except BrokenPipeError: return 0
 
 if __name__ == '__main__': raise SystemExit(main())

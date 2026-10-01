@@ -1,58 +1,63 @@
 """CORPORA avatars, terminal-safe text, machine envelopes and waiting indicators."""
 from html.parser import HTMLParser
-import json
-import os
-import re
-import shutil
-import sys
-import textwrap
-import time
-
+import json, os, re, shutil, sys, textwrap, time
 def clean(value):
     text = re.sub(r'\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)', '', str(value if value is not None else ''))
     text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
     return ''.join(c for c in text if c in '\n\t' or (ord(c) >= 32 and not 127 <= ord(c) <= 159))
-
 class NoteText(HTMLParser):
     def __init__(self):
         super().__init__()
         self.parts, self.hidden = [], 0
     def tag(self, tag, opening):
-        if tag in {'script', 'style'}:
-            self.hidden = max(0, self.hidden + (1 if opening else -1))
-        if tag in {'p', 'article', 'section', 'pre', 'li', 'h1', 'h2', 'h3'} or tag == 'br' and opening:
-            self.parts.append('\n')
-    def handle_starttag(self, tag, attrs):
-        self.tag(tag, True)
-    def handle_endtag(self, tag):
-        self.tag(tag, False)
+        if tag in {'script', 'style'}: self.hidden = max(0, self.hidden + (1 if opening else -1))
+        if tag in {'p', 'article', 'section', 'pre', 'li', 'h1', 'h2', 'h3'} or tag == 'br' and opening: self.parts.append('\n')
+    def handle_starttag(self, tag, attrs): self.tag(tag, True)
+    def handle_endtag(self, tag): self.tag(tag, False)
     def handle_data(self, data):
         if not self.hidden: self.parts.append(data)
-
 def note_text(source):
     parser = NoteText()
     parser.feed(source)
     return re.sub(r'\n{3,}', '\n\n', ''.join(parser.parts)).strip()
-
 class Renderer:
     def __init__(self, format='human', plain=False, animation=True, stdout=None, stderr=None):
         self.out, self.err = stdout or sys.stdout, stderr or sys.stderr
         self.plain = plain or (getattr(self.out, 'encoding', None) or 'utf-8').lower() in {'ascii', 'ansi_x3.4-1968'}
         self.format, self.sequence = format, 0
-        self.animate = animation and not self.plain and self.err.isatty() and format == 'human' and not os.environ.get('NO_COLOR')
+        self.styles = {word: code for code, words in [('1;36', 'ABOUT STATS'), ('32', 'online ready done Completed'),
+            ('33', 'queued Queued running Running WaitingForAdmin'), ('31', 'failed Failed Interrupted Unresolved Error:')] for word in words.split()}
+        self.styles['sapiens4'] = '38;2;255;90;165'  # Dark-theme wordmark pink, #ff5aa5.
+        self.animate = animation and not self.plain and self.err.isatty() and format == 'human' and 'NO_COLOR' not in os.environ and os.environ.get('TERM') != 'dumb'
     def avatar(self, agent=None):
         face = clean((agent or {}).get('face', '')).replace('\n', '').replace('\t', '')
+        color = str((agent or {}).get('color') or '')
+        if face and re.fullmatch(r'#[0-9a-fA-F]{6}', color):
+            self.styles[f'({face})'] = '48;2;' + ';'.join(str(int(color[i:i+2], 16)) for i in (1, 3, 5)) + ';38;2;39;33;55'
         return f'({face}) ' if face and not self.plain else ''
+    def paint(self, value, stream=None):
+        if self.plain or self.format != 'human' or 'NO_COLOR' in os.environ or os.environ.get('TERM') == 'dumb' or not (stream or self.out).isatty(): return value
+        pattern = '|'.join(re.escape(key) for key in sorted(self.styles, key=len, reverse=True))
+        return re.sub(r'(?<!\w)(' + pattern + r')(?!\w)', lambda m: f'\x1b[{self.styles[m[0]]}m{m[0]}\x1b[0m', value)
     def text(self, value=''):
         value = clean(value)
         value = value.encode('ascii', 'backslashreplace').decode() if self.plain else value
         for line in value.split('\n'):
-            print(textwrap.fill(line, width=max(20, shutil.get_terminal_size((90, 24)).columns - 2),
-                                replace_whitespace=False, drop_whitespace=False), file=self.out)
+            print(self.paint(textwrap.fill(line, width=max(20, shutil.get_terminal_size((90, 24)).columns - 2),
+                                replace_whitespace=False, drop_whitespace=False)), file=self.out)
         self.out.flush()
+    def prompt(self, agent=None, marked=True):
+        label = clean(agent['name']).replace('\n', '').replace('\t', '') if agent else 'corpora'
+        label = label.encode('ascii', 'backslashreplace').decode() if self.plain else label
+        brand = re.sub(r'\x1b\[[0-9;]*m', lambda m: '\001' + m[0] + '\002' if marked else m[0], self.paint('sapiens4'))
+        return ('' if agent else '>> ') + brand + '::' + ('@' if agent else '') + label + ' > '
     def sapis(self, rows):
-        return '\n\n'.join(self.avatar(a) + a['name'] + (' [Chief]' if a['chief'] else '') + ' | ' + a['state'] +
-            '\n  ' + a['id'] + ' | ' + a['role'] + ('\n' + json.dumps(a['details'], ensure_ascii=False, indent=2) if 'details' in a else '') for a in rows) or 'No Sapis.'
+        for a in rows: self.styles[clean(a['id'])] = '38;2;167;189;182'
+        title = lambda a: ('*' if a['chief'] else '') + self.avatar(a) + a['name'] + (' | ' if self.plain else ' · ') + a['role']
+        if rows and 'details' in rows[0]:
+            return '\n\n'.join(title(a) + '\nid: ' + a['id'] + '\nworkspace: ' + a['workspace'] + '\nStatus: ' + a['state'] for a in rows)
+        rows = sorted(rows, key=lambda a: not a['chief'])
+        return 'corpora' + ''.join('\n' + (('`-- ' if i == len(rows) - 1 else '|-- ') if self.plain else ('└── ' if i == len(rows) - 1 else '├── ')) + title(a) + (' [retired]' if a.get('retired') else '') for i, a in enumerate(rows))
     def tasks(self, rows, identities):
         return '\n\n'.join(self.avatar(identities.get(t['owner'])) + t['state'] + ' | ' + identities.get(t['owner'], {}).get('name', t['owner']) +
                            '\n  ' + t['title'] + '\n  ' + t['id'] for t in rows) or 'No tasks in this view.'
@@ -73,5 +78,5 @@ class Renderer:
         self.clear(f'{self.avatar(agent)}{state} {(".", "..", "...")[frame % 3]}  waiting {elapsed:.0f}s | Ctrl-C detaches')
     def clear(self, message=''):
         if self.animate:
-            self.err.write('\r\x1b[2K' + message[:max(10, shutil.get_terminal_size((90, 24)).columns - 2)])
+            self.err.write('\r\x1b[2K' + self.paint(clean(message)[:max(10, shutil.get_terminal_size((90, 24)).columns - 2)], self.err))
             self.err.flush()

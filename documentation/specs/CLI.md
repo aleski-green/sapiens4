@@ -14,19 +14,33 @@ A terminal opens an interactive prompt with a short About section and aggregate 
 
 The client discovers the port from the managed app's configuration, falling back to 4174. Override with `SAPIENS4_URL` or `--url http://127.0.0.1:PORT`. Requests remain loopback-only, bypass proxies, reject redirects and preserve the API's local JSON headers.
 
-Inside the prompt, omit the executable prefix:
+The shell starts in `corpora`, with no Sapi selected:
 
 ```text
-use Refactor
-history --limit 1
-tasks
-memo show
-use chief
-chat "Prepare a release checklist" --wait
-exit
+>> sapiens4::corpora > show
+corpora
+├── *(◕ᵕ◕) PINK-SapiTheChief · Head of Corpora
+└── (^‿^) Refactor · Code quality and architecture reviewer
+
+>> sapiens4::corpora > show @Refactor
+>> sapiens4::corpora > call @Refactor
+(^‿^) Refactor · Code quality and architecture reviewer
+id: sapi_26220193ca50
+workspace: /path/to/sapiens4/.sapiens4/workspaces/sapi_26220193ca50
+Status: ready
+
+sapiens4::@Refactor > Review the CLI architecture.
+sapiens4::@Refactor > chat -5
+sapiens4::@Refactor > corpora
+>> sapiens4::corpora > chat @Refactor -5
+>> sapiens4::corpora > exit
 ```
 
-`use` accepts an exact ID or unique exact name. Chief is resolved from the host's authoritative `main_agent_id`. Arrow keys recall non-chat commands within the session; history is not saved to disk. The prompt refreshes data when a command executes; `status --watch` polls continuously until interrupted or its deadline.
+This abbreviated example illustrates navigation; `show` uses all active Sapis from the live host. Chief appears first with `*` before its saved face; each dot introduces the saved title. The organization is flat, with all current Sapis under `corpora`. `show --all` also includes retired Sapis. `show @name` inspects without changing context; `call @name` enters a conversation and displays title, ID, actual workspace path and status. Missing workspace information is reported as unavailable. Quote names containing spaces, for example `call @"Code Reviewer"`. IDs and exact unique names are accepted; `@chief` resolves the host's authoritative `main_agent_id`.
+
+Inside a Sapi, plain text sends one message and observes its response. Quotes and option-like text are preserved. The reserved commands are `chat`, `help`, `corpora`, `exit` and `quit`; other text is a message. `chat` defaults to the last five individual messages; `chat -N` selects a positive count, ordered by turn creation with each input followed by its available reply/error. Pending replies are omitted. In corpora, use `chat @name [-N]` to read history without entering that Sapi. Reads never submit a message. `corpora` returns without cancelling work; during an active observation, use Ctrl-C first to detach.
+
+Existing one-shot commands remain available from the OS terminal and from the corpora context. `./sapiens4 chat "message" --sapi name --wait` still submits; in a selected Sapi's prompt, use plain text instead. Workload-bound clarification commands shown by the observer should be run from the corpora context (return with `corpora` first). Arrow keys recall non-chat commands within the session; message text is not added to readline history or saved to disk. The prompt refreshes data when a command executes; `status --watch` polls continuously until interrupted or its deadline.
 
 ## Commands
 
@@ -34,8 +48,12 @@ exit
 | --- | --- |
 | `status [--watch]` | Host status, active/retired Sapi counts, queued/running conversations, and pending clarification. |
 | `doctor` | Host health, readable state, provider identity and reported computer build. Provider authentication is explicitly **not checked**: the current API has no probe. |
-| `sapi list [--all]` | Active identities and observed status; `--all` includes retired Sapis. |
-| `sapi show <id-or-name>` | Identity, role, workspace and orchestration details. |
+| `show [--all]` | Sapi tree with saved titles and Chief marker; `--all` includes retired Sapis. |
+| `show @name` | Identity, title, ID, workspace and status, without changing context. JSON retains orchestration details. |
+| `call @name` (shell) | Enter the named Sapi; subsequent text sends messages. |
+| `corpora` (shell) | Return to the organization prompt. |
+| `chat @name [-5]` / `chat [-5]` (shell) | Read individual messages; omit the name inside a Sapi. |
+| `messages --sapi name [--limit 5]` | One-shot equivalent of shell chat history, including JSON output. |
 | `task list [--tab upcoming\|past\|all]` | Existing task metadata. Defaults to all; groups states exactly like CORPORA. |
 | `task show <id>` | Existing YAML body, result and error. |
 | `history [--limit 5]` | Recent inputs, replies, states and IDs for the selected Sapi. |
@@ -46,13 +64,13 @@ exit
 | `conversation retry <id>` | Explicit retry through existing eligibility checks. |
 | `conversation cancel <id>` | Existing API cancellation behavior only, subject to backend eligibility. |
 
-Shared options: `--sapi chief|<id-or-name>`, `--format human|json|jsonl|yaml`, `--plain`, `--no-animation`, `--url`, `--timeout 120`. `task list/show --sapi all` deduplicates tasks across active Sapis. Select a retired Sapi explicitly to inspect its history. `sapis` and `tasks` are aliases; `use`, `exit` and `quit` are prompt-only commands.
+Shared options: `--sapi chief|<id-or-name>`, `--format human|json|jsonl|yaml`, `--plain`, `--no-animation`, `--url`, `--timeout 120`. `task list/show --sapi all` deduplicates tasks across active Sapis. Select a retired Sapi explicitly to inspect its history. `sapi list`, `sapi show <name>`, `sapis`, `tasks` and shell `use <name>` remain compatibility aliases. `exit` and `quit` are prompt-only commands.
 
 Only Chief creates Sapis. There is no `sapi create` command; ask Chief in chat. Jobs, Groups, WorkGraphs, WorkFlows, SapiHarness and AgencyRun remain future runtime capabilities, not aliases for today's conversations. Lifecycle start/update commands from the original proposal are deferred; open the existing app or use `./start.sh` for now.
 
 ## Output and observation
 
-Human output uses each Sapi's saved CORPORA face, wrapped in parentheses exactly as in the app. Identity stays the same across ready, queued, running, waiting, completed and failed states; status is a separate text label. Lists, task owners, conversations, Memo and the selected prompt use that Sapi's avatar. Delegated observations use the current owner's avatar. Host status and errors have no invented faces; missing avatars are omitted. Terminal control sequences in backend text are removed. `--plain` uses ASCII text only. Output wraps to terminal width.
+Human output uses each Sapi's saved CORPORA face, wrapped in parentheses exactly as in the app. Identity stays the same across ready, queued, running, waiting, completed and failed states; status is a separate text label. Lists, task owners, conversations and Memo use that Sapi's avatar. Prompts use the namespace `>> sapiens4::corpora >` or `sapiens4::@name >`, with only `sapiens4` in the dark-theme logo pink (`#ff5aa5`). Displayed IDs use muted green (`#a7bdb6`). GNU readline receives invisible-width markers around prompt colors; macOS libedit receives raw ANSI to preserve the color position. Delegated observations use the current owner's avatar. Host status and errors have no invented faces; missing avatars are omitted. In interactive terminals, avatars use the saved CORPORA pastel background with dark lettering. Headings use cyan, ready/completed states green, queued/running/waiting states amber and errors red. These are CLI presentation colors only; CORPORA data and UI are unchanged. Terminal control sequences in backend text are removed before the CLI applies its own colors. `--plain` uses ASCII text only. Output wraps to terminal width. Colors are disabled for redirected output, machine formats, `--plain`, `TERM=dumb` and any defined `NO_COLOR` environment variable.
 
 Waiting indicators appear only on an interactive human stderr stream and use punctuation animation. They display observation elapsed time, not a fabricated progress percentage. `--plain`, `--no-animation`, `NO_COLOR` and non-TTY stderr suppress animation. Noninteractive human watches print changes, without cursor controls.
 
@@ -70,4 +88,4 @@ Watches poll every second, with bounded requests and a finite observation deadli
 
 `./sapiens4` is a small entrypoint. The launcher and three CLI modules total 400 physical lines, including blank lines. A cached command/option registry drives parsing, validation and help; shell and one-shot commands share dispatch and error handling. Three host-side leaves own the CLI: `cli.py` for parsing/prompt/command orchestration, `cli_transport.py` for loopback transport, and `cli_render.py` for text, envelopes and waiting indicators. They do not import execution or database implementations. The existing agent-facing `host/client.py` protocol is unchanged.
 
-Tests use a separate loopback fixture to verify output/error contracts, task selection, clarification payloads, one-shot writes, ambiguous response handling, bounded watches, interruption and the interactive entrypoint. Read-only smoke checks exercise current CORPORA content. No live chat is submitted as part of verification.
+Tests use a separate loopback fixture to verify output/error contracts, task selection, clarification payloads, one-shot writes, ambiguous response handling, bounded watches, interruption the interactive entrypoint, corpora/Sapi navigation, exact message submission, individual-message history, and prompt colors. Read-only smoke checks exercise current CORPORA content. No live chat is submitted as part of verification.
