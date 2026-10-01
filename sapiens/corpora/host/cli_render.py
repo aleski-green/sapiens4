@@ -35,10 +35,11 @@ class Renderer:
         if face and re.fullmatch(r'#[0-9a-fA-F]{6}', color):
             self.styles[f'({face})'] = '48;2;' + ';'.join(str(int(color[i:i+2], 16)) for i in (1, 3, 5)) + ';38;2;39;33;55'
         return f'({face}) ' if face and not self.plain else ''
-    def paint(self, value, stream=None):
+    def paint(self, value, stream=None, styles=None):
         if self.plain or self.format != 'human' or 'NO_COLOR' in os.environ or os.environ.get('TERM') == 'dumb' or not (stream or self.out).isatty(): return value
-        pattern = '|'.join(re.escape(key) for key in sorted(self.styles, key=len, reverse=True))
-        return re.sub(r'(?<!\w)(' + pattern + r')(?!\w)', lambda m: f'\x1b[{self.styles[m[0]]}m{m[0]}\x1b[0m', value)
+        styles = self.styles if styles is None else styles
+        pattern = '|'.join(re.escape(key) for key in sorted(styles, key=len, reverse=True))
+        return re.sub(r'(?<!\w)(' + pattern + r')(?!\w)', lambda m: f'\x1b[{styles[m[0]]}m{m[0]}\x1b[0m', value)
     def text(self, value=''):
         value = clean(value)
         value = value.encode('ascii', 'backslashreplace').decode() if self.plain else value
@@ -46,11 +47,26 @@ class Renderer:
             print(self.paint(textwrap.fill(line, width=max(20, shutil.get_terminal_size((90, 24)).columns - 2),
                                 replace_whitespace=False, drop_whitespace=False)), file=self.out)
         self.out.flush()
-    def prompt(self, agent=None, marked=True):
-        label = clean(agent['name']).replace('\n', '').replace('\t', '') if agent else 'corpora'
-        label = label.encode('ascii', 'backslashreplace').decode() if self.plain else label
-        brand = re.sub(r'\x1b\[[0-9;]*m', lambda m: '\001' + m[0] + '\002' if marked else m[0], self.paint('sapiens4'))
-        return ('' if agent else '>> ') + brand + '::' + ('@' if agent else '') + label + ' > '
+    def prompt(self, agent=None):
+        label = clean(agent['name']).replace('\n', '').replace('\t', '') if agent else 'corpora'; label = label.encode('ascii', 'backslashreplace').decode() if self.plain else label
+        color = lambda text, rgb: self.paint(text, styles={text: '38;2;' + rgb})
+        return ('' if agent else color('>> ', '185;176;189')) + color('sapiens4', '255;90;165') + color('::' if self.plain else ' ⌘ ', '185;176;189') + ('@' + label if agent else color(label, '217;233;184')) + color(' > ', '185;176;189')
+    def read(self, agent, history, complete):
+        prompt = self.prompt(agent)
+        if not sys.stdin.isatty(): return input(prompt)
+        from prompt_toolkit import PromptSession; from prompt_toolkit.key_binding import KeyBindings
+        from prompt_toolkit.key_binding.bindings.completion import display_completions_like_readline
+        from prompt_toolkit.completion import Completer, Completion
+        from prompt_toolkit.formatted_text import ANSI
+        from prompt_toolkit.history import InMemoryHistory
+        from prompt_toolkit.output import ColorDepth
+        class Names(Completer):
+            def get_completions(self, document, event):
+                prefix = document.text_before_cursor
+                for value in complete(prefix): yield Completion(value, -len(prefix), display=value.split('@', 1)[-1])
+        keys = KeyBindings(); keys.add('tab')(display_completions_like_readline)
+        return PromptSession(history=InMemoryHistory(history), completer=Names(), key_bindings=keys, complete_while_typing=False,
+                             color_depth=ColorDepth.TRUE_COLOR if '\x1b[' in prompt else ColorDepth.MONOCHROME).prompt(ANSI(prompt))
     def sapis(self, rows):
         for a in rows: self.styles[clean(a['id'])] = '38;2;167;189;182'
         title = lambda a: ('*' if a['chief'] else '') + self.avatar(a) + a['name'] + (' | ' if self.plain else ' · ') + a['role']

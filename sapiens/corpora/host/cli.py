@@ -1,15 +1,11 @@
 """Keyboard-first CORPORA commands, prompt and bounded observation."""
-import argparse
 from functools import lru_cache
-import math, shlex, sys, time
+from importlib.util import find_spec
+import argparse, math, re, shlex, sys, time
 from urllib.parse import quote
 from pathlib import PurePath
 from sapiens.corpora.host.cli_render import Renderer, note_text
 from sapiens.corpora.host.cli_transport import Client, ClientError, require
-try:
-    import readline
-except ImportError: readline = None
-
 # Command: positional argument, command-specific options, help description.
 COMMANDS = {
     'status': ('', 'watch', 'Live status; --watch observes changes'),
@@ -42,10 +38,8 @@ def parser():
     }.items():
         result.add_argument('--' + name, **settings)
     return result
-
 def parse(argv, selected='chief', defaults=None):
-    given, words = parser().parse_known_args(argv)
-    protected = '--' in words
+    given, words = parser().parse_known_args(argv); protected = '--' in words
     if protected: words.remove('--')
     words = words or ['status']
     if words[0] == 'show': words = ['sapi', 'show', words[1].removeprefix('@')] + words[2:] if len(words) > 1 and words[1].startswith('@') else ['sapi', 'list'] + words[1:]
@@ -62,18 +56,15 @@ def parse(argv, selected='chief', defaults=None):
     watching = key == 'conversation watch' or key == 'status' and options.watch
     require((options.format != 'jsonl' or watching) and (options.format != 'yaml' or key == 'task show'), 'JSONL requires a watch; YAML requires task show.')
     return options
-
 def status_data(state):
     return dict(provider=state.get('provider'), chief=state.get('main_agent_id'),
         active_sapis=sum(not a.get('retired') for a in state['agents']), retired_sapis=sum(bool(a.get('retired')) for a in state['agents']),
         running=sum(t['status'] == 'running' for t in state['turns']), queued=sum(t['status'] == 'queued' for t in state['turns']),
         waiting=[w for w in state.get('workloads', []) if w['state'] == 'WaitingForAdmin'])
-
 def status_text(data, url):
     return (f"corpora | online\n{url}\n{data['active_sapis']} active Sapis | {data['retired_sapis']} retired | "
             f"{data['running']} running | {data['queued']} queued\nProvider: {data['provider']}" + ''.join(
                 f"\nNeeds your answer: {w['id']}\n{w.get('output') or ''}\nchat \"answer\" --sapi chief --workload {w['id']}" for w in data['waiting']))
-
 def conversation_data(state, agent, turn_id):
     turn = next((t for t in state['turns'] if t['id'] == turn_id and t['agent'] == agent['id']), None)
     require(turn is not None, 'Conversation not found for this Sapi.', 'NOT_FOUND')
@@ -81,16 +72,13 @@ def conversation_data(state, agent, turn_id):
     source = work or turn
     return dict(id=turn_id, agent=agent['id'], state=source.get('state', source.get('status')),
                 workload=work['id'] if work else None, output=source.get('output'), error=source.get('error'))
-
 def observe(client, renderer, options, agent=None, turn_id=None, initial_state=None):
-    started, previous, data, frame = time.monotonic(), None, None, 0
-    deadline = started + options.timeout
+    started, previous, data, frame = time.monotonic(), None, None, 0; deadline = started + options.timeout
     try:
         while time.monotonic() < deadline:
             client.timeout = min(5, max(.01, deadline - time.monotonic()))
             state = initial_state if initial_state is not None else client.state()
-            initial_state = None
-            data = conversation_data(state, agent, turn_id) if turn_id else status_data(state)
+            initial_state = None; data = conversation_data(state, agent, turn_id) if turn_id else status_data(state)
             status = data['state'] if turn_id else ('running' if data['running'] else 'ready')
             work = next((w for w in state.get('workloads', []) if w['id'] == data.get('workload')), {})
             owner = next((a for a in state['agents'] if a['id'] == work.get('owner', (agent or {}).get('id'))), None)
@@ -115,21 +103,18 @@ def observe(client, renderer, options, agent=None, turn_id=None, initial_state=N
         renderer.emit(data, error=error, event={'TIMEOUT': 'timeout', 'DETACHED': 'detached'}.get(error.code, 'error'))
         return error.exit_code
     finally: renderer.clear()
-
 def dispatch(options, client, renderer):
     key = options.command
     if key == 'help':
         help_text = 'Sapiens4 / corpora\n\n' + '\n'.join(f'  {name} {"<" + arg + ">" if arg else ""}  {description}' for name, (arg, _, description) in COMMANDS.items())
-        help_text += '\n\n' + parser().format_help() + '\nPrompt: show [@name], call @name, chat @name [-5], corpora, exit. Inside a Sapi, text sends a message; chat [-5] reads history.\nCtrl-C detaches; server work continues. Only Chief creates Sapis.'
+        help_text += '\n\n' + parser().format_help() + '\nPrompt: show [@name], call @name, chat @name [-5], corpora, exit. Inside a Sapi, text sends a message; chat [-5] reads history.\nTab completes active Sapi names after @.\nCtrl-C detaches; server work continues. Only Chief creates Sapis.'
         renderer.emit({'help': help_text}, help_text)
         return 0
     if key == 'shell': return shell(options, client, renderer)
     if key == 'status' and options.watch: return observe(client, renderer, options)
-    state = client.state()
-    identities = {a['id']: a for a in state['agents']}
+    state = client.state(); identities = {a['id']: a for a in state['agents']}
     if key == 'status':
-        data = status_data(state)
-        human = status_text(data, client.url)
+        data = status_data(state); human = status_text(data, client.url)
     elif key == 'doctor':
         data = dict(host=client.request('/api/health'), state='readable', provider=state.get('provider'),
                     computer_built=state.get('computer', {}).get('built'), provider_auth='not checked: host does not expose an authentication probe')
@@ -165,8 +150,7 @@ def dispatch(options, client, renderer):
                         for role, text in [('You', t['input']), (agent['name'], t.get('output') or t.get('error'))] if text][-options.limit:]
             data, human = {'messages': messages}, '\n\n'.join((renderer.avatar(agent) if m['role'] != 'You' else '') + m['role'] + ': ' + m['text'] for m in messages) or 'No conversations yet.'
         elif key == 'history':
-            turns = [t for t in state['turns'] if t['agent'] == agent['id']][-options.limit:]
-            data = {'turns': turns}
+            turns = [t for t in state['turns'] if t['agent'] == agent['id']][-options.limit:]; data = {'turns': turns}
             human = '\n\n'.join(f"{t['created']} | {t['status']} | {t['id']}\nYou: {t['input']}\n{renderer.avatar(agent)}{agent['name']}: {t.get('output') or t.get('error') or '(awaiting response)'}" for t in turns) or 'No conversations yet.'
         elif key == 'conversation watch': return observe(client, renderer, options, agent, options.id, state)
         else:
@@ -178,26 +162,32 @@ def dispatch(options, client, renderer):
                 if renderer.format == 'human': renderer.text(human)
                 return observe(client, renderer, options, agent, data['id'])
             if key == 'chat': human += '\nWatch: conversation watch ' + data['id'] + ' --sapi ' + agent['id']
-    renderer.emit(data, human)
-    return 0
-
+    renderer.emit(data, human); return 0
 def shell(options, client, renderer):
     require(options.format == 'human', 'The interactive shell uses human output. Use individual commands for JSON.')
-    selected = None
-    defaults = {key: getattr(options, key) for key in GLOBALS}
+    selected, histories = None, {}; defaults = {key: getattr(options, key) for key in GLOBALS}
     renderer.text('ABOUT\nSapiens4 / corpora\nLocal Sapis coordinated by Chief.\n')
     try:
-        state = client.state()
-        stats, tasks = status_data(state), state.get('workloads', [])
+        state = client.state(); stats, tasks = status_data(state), state.get('workloads', [])
         renderer.text(f"STATS\nHost: online | Provider: {stats['provider']}\nSapis: {stats['active_sapis']} active | {stats['retired_sapis']} retired\n"
                       f"Work: {stats['running']} running | {stats['queued']} queued | {len(stats['waiting'])} waiting for you\n"
                       f"Tasks: {sum(t['state'] not in PAST for t in tasks)} upcoming | {sum(t['state'] in PAST for t in tasks)} past")
     except ClientError as error: renderer.emit(error=error)
-    if readline: readline.set_auto_history(False)
+    require(not sys.stdin.isatty() or find_spec('prompt_toolkit') is not None, 'Install terminal support: python3 -m pip install --user -r requirements-cli.txt')
+    def complete(text):
+        match = re.fullmatch(r'(?:sapiens4\s+)?(call|show|chat)\s+@([^\n]*)', text)
+        if match and (not selected or match[1] == 'chat'):
+            try:
+                names = sorted({a['name'] for a in client.state()['agents'] if not a.get('retired') and a['name'].isprintable()})
+                return [text[:match.start(2)] + shlex.quote(name) for name in names if name.casefold().startswith(match[2].casefold())]
+            except ClientError: pass
+        return []
     while True:
         try:
-            line = input(renderer.prompt(selected, marked=bool(readline and 'libedit' not in readline.__doc__))).strip()
+            line = renderer.read(selected, histories.get((selected or {}).get('id'), []), complete).strip()
             if not line: continue
+            history = histories.setdefault((selected or {}).get('id'), [])
+            if not history or history[-1] != line: history.append(line); history[:] = history[-100:]
             command = line.split()[0]
             if line in {'exit', 'quit'}: raise EOFError
             if line == 'corpora': selected = None
@@ -206,8 +196,7 @@ def shell(options, client, renderer):
             elif selected and command != 'chat':
                 main(['chat', '--wait', '--', line], selected['id'], defaults)
             else:
-                words = shlex.split(line)
-                words = words[1:] if words[:1] == ['sapiens4'] else words
+                words = shlex.split(line); words = words[1:] if words[:1] == ['sapiens4'] else words
                 if not words: continue
                 if words[0] in {'call', 'use'}:
                     require(len(words) == 2 and (words[0] == 'use' or words[1].startswith('@')), 'Use call @name (quote names containing spaces).')
@@ -218,26 +207,21 @@ def shell(options, client, renderer):
                     require(selector and (len(words) == 1 or len(words) == 2 and words[1].startswith('-') and words[1][1:].isdigit()), 'Use chat @name [-5] in corpora, or chat [-5] inside a Sapi.')
                     main(['messages', '--limit', words[1][1:] if len(words) == 2 else '5'], selector, defaults)
                 else: main(words, 'chief', defaults)
-                if readline and words[0] != 'chat': readline.add_history(line)
             renderer.text()
         except EOFError:
             renderer.text('Detached. corpora stays running.')
             return 0
         except KeyboardInterrupt: renderer.text('\nInput cleared. Type exit to leave.')
         except (ClientError, ValueError) as error: renderer.text('Error: ' + str(error) + ('\n' + error.hint if isinstance(error, ClientError) and error.hint else ''))
-
 def main(argv=None, selected='chief', defaults=None):
     argv = list(sys.argv[1:] if argv is None else argv) or (['shell'] if sys.stdin.isatty() else ['status'])
-    requested = next((argv[i + 1] for i, arg in enumerate(argv[:-1]) if arg == '--format'), 'human')
-    requested = next((arg.split('=', 1)[1] for arg in argv if arg.startswith('--format=')), requested)
+    requested = next((argv[i + 1] for i, arg in enumerate(argv[:-1]) if arg == '--format'), 'human'); requested = next((arg.split('=', 1)[1] for arg in argv if arg.startswith('--format=')), requested)
     renderer = Renderer(requested if requested in {'human', 'json', 'jsonl', 'yaml'} else 'human')
     try:
-        options = parse(argv, selected, defaults)
-        return dispatch(options, Client(options.url), Renderer(options.format, options.plain, not options.no_animation))
+        options = parse(argv, selected, defaults); return dispatch(options, Client(options.url), Renderer(options.format, options.plain, not options.no_animation))
     except (ClientError, KeyboardInterrupt) as error:
         error = ClientError('DETACHED', 'Interrupted; accepted server work is not cancelled.', 130) if isinstance(error, KeyboardInterrupt) else error
         renderer.emit(error=error, event='detached' if error.code == 'DETACHED' else 'error')
         return error.exit_code
     except BrokenPipeError: return 0
-
 if __name__ == '__main__': raise SystemExit(main())

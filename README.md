@@ -36,7 +36,8 @@ Open http://127.0.0.1:4174/workspace/.
 
 For a dedicated macOS window and Dock icon, see [the desktop app](macos/README.md).
 
-For a keyboard-only terminal connected to the same running app, run `./sapiens4`.
+For a keyboard-only terminal connected to the same running app, install terminal support with
+`python3 -m pip install --user -r requirements-cli.txt`, then run `./sapiens4`.
 Use `./sapiens4 status`, `./sapiens4 show`, or `./sapiens4 help` for individual commands.
 See [terminal commands and output formats](documentation/specs/CLI.md).
 

@@ -203,8 +203,8 @@ class CLITest(unittest.TestCase):
             input='call @Researcher\nchat -1\ncorpora\nexit\n', capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('(^‿^) Researcher · Research', result.stdout)
-        self.assertIn('sapiens4::@Researcher >', result.stdout)
-        self.assertEqual(result.stdout.count('>> sapiens4::corpora >'), 2)
+        self.assertIn('sapiens4 ⌘ @Researcher >', result.stdout)
+        self.assertEqual(result.stdout.count('>> sapiens4 ⌘ corpora >'), 2)
         self.assertIn('No conversations yet.', result.stdout)
         self.assertEqual(self.server.writes, [])
 
@@ -253,8 +253,8 @@ class CLITest(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn('corpora\n├── *(◕ᵕ◕) Chief · Head\n└── (^‿^) Researcher · Research', result.stdout)
         self.assertIn('id: chief-id\nworkspace: /fixture/workspaces/chief-id', result.stdout)
-        self.assertEqual(result.stdout.count('>> sapiens4::corpora >'), 3)
-        self.assertNotIn('sapiens4::@', result.stdout)
+        self.assertEqual(result.stdout.count('>> sapiens4 ⌘ corpora >'), 3)
+        self.assertNotIn('sapiens4 ⌘ @', result.stdout)
         self.assertEqual(self.server.writes, [])
 
     def test_sapi_text_preserves_quotes_and_option_like_content(self):
@@ -264,8 +264,8 @@ class CLITest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.server.writes, [('/api/agents/chief-id/messages', {'text': message, 'flow': 'chat'}, '1')])
         self.assertIn('Answer', result.stdout)
-        self.assertEqual(result.stdout.count('>> sapiens4::corpora >'), 2)
-        self.assertIn('sapiens4::@Chief >', result.stdout)
+        self.assertEqual(result.stdout.count('>> sapiens4 ⌘ corpora >'), 2)
+        self.assertIn('sapiens4 ⌘ @Chief >', result.stdout)
         self.assertNotIn('Type a message', result.stdout)
 
     def test_chat_reads_individual_messages_in_order_and_never_sends(self):
@@ -291,18 +291,156 @@ class CLITest(unittest.TestCase):
         self.assertIn('chat [-5]', result.stdout)
         self.assertEqual(self.server.writes, [])
 
-    def test_prompt_colors_only_brand_and_highlights_identity(self):
+    def test_prompt_palette_and_highlights_identity(self):
         stream = io.StringIO()
         stream.isatty = lambda: True
         with patch.dict(os.environ, {'TERM': 'xterm-256color'}, clear=True):
             renderer = Renderer(stdout=stream)
             prompt = renderer.prompt({'name': 'ready\x1b[2J\n'})
-            self.assertEqual(renderer.prompt(marked=False), '>> \x1b[38;2;255;90;165msapiens4\x1b[0m::corpora > ')
-            self.assertEqual(prompt, '\001\x1b[38;2;255;90;165m\002sapiens4\001\x1b[0m\002::@ready > ')
+            gray, pink, green, reset = '\x1b[38;2;185;176;189m', '\x1b[38;2;255;90;165m', '\x1b[38;2;217;233;184m', '\x1b[0m'
+            self.assertEqual(renderer.prompt(), gray + '>> ' + reset + pink + 'sapiens4' + reset + gray + ' ⌘ ' + reset + green + 'corpora' + reset + gray + ' > ' + reset)
+            self.assertEqual(clean(prompt), 'sapiens4 ⌘ @ready > ')
+            self.assertIn(gray + ' ⌘ ' + reset + '@ready', prompt)
+            self.assertNotIn('\x1b[32mready', prompt)
+            for variable, value in [('NO_COLOR', ''), ('TERM', 'dumb')]:
+                with patch.dict(os.environ, {variable: value}):
+                    self.assertEqual(renderer.prompt(), '>> sapiens4 ⌘ corpora > ')
             renderer.text(renderer.sapis([dict(self.server.state['agents'][0], chief=True, state='ready',
                 details={}, workspace='/fixture/workspaces/chief-id')]))
         self.assertIn('\x1b[38;2;167;189;182mchief-id\x1b[0m', stream.getvalue())
-        self.assertEqual(Renderer(stdout=io.StringIO()).prompt(), '>> sapiens4::corpora > ')
+        self.assertEqual(Renderer(stdout=io.StringIO()).prompt(), '>> sapiens4 ⌘ corpora > ')
+        self.assertEqual(Renderer(stdout=io.StringIO(), plain=True).prompt(), '>> sapiens4::corpora > ')
+
+    def test_tab_completes_live_active_names_without_sending(self):
+        self.server.state['agents'] += [dict(id='pink-id', name='PINK-SapiTheChief', retired=False),
+            dict(id='proof-id', name='Proof Reader', retired=False)]
+        def enter(renderer, agent, history, complete):
+            if agent:
+                self.assertEqual(history, [])
+                self.assertEqual(complete('call @P'), [])
+                self.assertEqual(complete('Message to @P'), [])
+                self.assertEqual(complete('chat @P'), ['chat @PINK-SapiTheChief', 'chat @Publisher'])
+                return 'exit'
+            self.assertEqual(complete('call @pi'), ['call @PINK-SapiTheChief'])
+            self.assertEqual(complete('show @P'), ['show @PINK-SapiTheChief', "show @'Proof Reader'"])
+            self.assertEqual(complete('call @R'), [])
+            self.assertEqual(complete('chat @'), ['chat @Chief', 'chat @PINK-SapiTheChief', "chat @'Proof Reader'"])
+            self.assertEqual(complete('sapiens4 call @Pi'), ['sapiens4 call @PINK-SapiTheChief'])
+            self.assertEqual(complete('status @P'), [])
+            self.server.state['agents'][-1]['name'] = 'Publisher'
+            self.assertEqual(complete('call @Pu'), ['call @Publisher'])
+            with patch.object(Client, 'state', side_effect=ClientError('HOST_UNAVAILABLE', 'offline')):
+                self.assertEqual(complete('call @P'), [])
+            return 'call @Chief'
+        with patch.object(Renderer, 'read', autospec=True, side_effect=enter):
+            self.assertEqual(self.run_cli('shell')[0], 0)
+        self.assertEqual(self.server.writes, [])
+
+    @unittest.skipUnless(os.name == 'posix', 'Requires a POSIX terminal')
+    def test_terminal_arrows_restore_drafts_and_keep_context_history(self):
+        import fcntl, pty, select, struct, termios, time
+        master, slave = pty.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 100, 0, 0))
+        process = subprocess.Popen([sys.executable, str(ROOT / 'sapiens4'), 'shell', '--url', self.url],
+            stdin=slave, stdout=slave, stderr=slave, start_new_session=True,
+            env=dict(os.environ, TERM='xterm-256color', PYTHONIOENCODING='utf-8', PROMPT_TOOLKIT_NO_CPR='1'))
+        os.close(slave)
+        pending = b''
+        def expect(*texts):
+            nonlocal pending
+            deadline = time.monotonic() + 5
+            while not all(text.rstrip() in clean(pending.decode(errors='replace')) for text in texts):
+                self.assertLess(time.monotonic(), deadline, pending.decode(errors='replace'))
+                if select.select([master], [], [], .1)[0]:
+                    pending += os.read(master, 65536)
+            pending = b''
+        try:
+            expect('>> sapiens4 ⌘ corpora > ')
+            os.write(master, b'show\n'); expect('Chief · Head', '>> sapiens4 ⌘ corpora > ')
+            os.write(master, b'status\n'); expect('corpora | online', '>> sapiens4 ⌘ corpora > ')
+            os.write(master, b'\x1b[A\x1b[A\n')
+            expect('Chief · Head', '>> sapiens4 ⌘ corpora > ')
+            os.write(master, b'stat\x1bOA\x1bOBus\n')
+            expect('corpora | online', '>> sapiens4 ⌘ corpora > ')  # Down restores the original "stat" draft.
+            os.write(master, b'call @Ch\t\n')
+            expect('sapiens4 ⌘ @Chief > ')
+            os.write(master, b'Review this once.\n')
+            expect('Answer', 'sapiens4 ⌘ @Chief > ')
+            os.write(master, b'\x1b[A\x1b[B\nchat -1\n')
+            expect('Chief: Answer', 'sapiens4 ⌘ @Chief > ')
+            os.write(master, b'corpora\n')
+            expect('>> sapiens4 ⌘ corpora > ')
+            os.write(master, b'\x1b[A\n')  # Corpora history returns "call @Chief".
+            expect('sapiens4 ⌘ @Chief > ')
+            os.write(master, b'\x1b[A\x1b[A\n')  # Sapi history returns "chat -1".
+            expect('Chief: Answer', 'sapiens4 ⌘ @Chief > ')
+            os.write(master, b'exit\n')
+            expect('Detached.')
+            self.assertEqual(process.wait(timeout=5), 0)
+            self.assertEqual(self.server.writes, [('/api/agents/chief-id/messages',
+                {'text': 'Review this once.', 'flow': 'chat'}, '1')])
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+            os.close(master)
+
+    @unittest.skipUnless(os.name == 'posix', 'Requires a POSIX terminal')
+    def test_repeated_arrows_preserve_colored_prompt_on_narrow_screen(self):
+        import codecs, fcntl, pty, pyte, select, struct, termios, time
+        width = 50
+        master, slave = pty.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, width, 0, 0))
+        environment = dict(os.environ, TERM='xterm-256color', PYTHONIOENCODING='utf-8', PROMPT_TOOLKIT_NO_CPR='1')
+        environment.pop('NO_COLOR', None)
+        self.server.state['agents'][0]['name'] = 'PINK-SapiTheChief'
+        process = subprocess.Popen([sys.executable, str(ROOT / 'sapiens4'), 'shell', '--url', self.url],
+            stdin=slave, stdout=slave, stderr=slave, start_new_session=True, env=environment)
+        os.close(slave)
+        screen = pyte.Screen(width, 24)
+        stream, decoder = pyte.Stream(screen), codecs.getincrementaldecoder('utf-8')()
+        prompt = '>> sapiens4 ⌘ corpora > '
+        def expect_input(value):
+            target = prompt + value
+            deadline = time.monotonic() + 5
+            while True:
+                self.assertLess(time.monotonic(), deadline, '\n'.join(screen.display))
+                if select.select([master], [], [], .1)[0]:
+                    stream.feed(decoder.decode(os.read(master, 65536)))
+                count = len(target) // width + 1
+                end = screen.cursor.y
+                rows = screen.display[max(0, end - count + 1):end + 1]
+                if ''.join(rows).rstrip() == target.rstrip():
+                    start = end - count + 1
+                    self.assertEqual(screen.buffer[start][3].fg, 'ff5aa5')
+                    self.assertEqual(screen.buffer[start][14].fg, 'd9e9b8')
+                    self.assertEqual(screen.buffer[start][12].fg, 'b9b0bd')
+                    return
+        try:
+            expect_input('')
+            commands = ['show', 'chat @PINK-SapiTheChief -5', 'show @PINK-SapiTheChief', 'help']
+            for command in commands:
+                os.write(master, command.encode()); expect_input(command)
+                os.write(master, b'\n'); expect_input('')
+            for command in reversed(commands):
+                os.write(master, b'\x1b[A'); expect_input(command)
+            for command in commands[1:] + ['']:
+                os.write(master, b'\x1b[B'); expect_input(command)
+            # Repeat the user's exact sequence, then edit the recalled line.
+            os.write(master, b'\x1b[A\x1b[A\x1b[A'); expect_input(commands[1])
+            os.write(master, b'\x01\x0bexit'); expect_input('exit')
+            os.write(master, b'\n')
+            deadline = time.monotonic() + 5
+            while process.poll() is None and time.monotonic() < deadline:
+                if select.select([master], [], [], .1)[0]:
+                    try: os.read(master, 65536)
+                    except OSError: break
+            self.assertEqual(process.wait(timeout=5), 0)
+            self.assertEqual(self.server.writes, [])
+        finally:
+            if process.poll() is None:
+                process.kill(); process.wait(timeout=5)
+            os.close(master)
 
     def test_animation_keeps_identity_and_obeys_no_animation(self):
         stream = io.StringIO()

@@ -1,1 +1,3 @@
 PyYAML>=6.0,<7
+-r ../requirements-cli.txt
+pyte==0.8.2
