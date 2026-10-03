@@ -102,3 +102,18 @@ The notation contains data declarations and one pure classifier wrapper. Text
 leaves intentionally defer detailed schemas; comments specify constraints that
 the types alone do not enforce. Compilation status is reported with the edit;
 a type check would not establish scheduler correctness.
+
+## Worked cases
+
+Each case pairs a Mermaid diagram with Haskell-style descriptive notation:
+
+1. [Domain brainstorming](cases/01-domain-brainstorming.md).
+2. [Build and schedule a daily digest](cases/02-daily-digest.md).
+3. [Instagram maintenance Project](cases/03-instagram-project.md).
+
+The case fragments are an illustrative DSL, not compilable Haskell modules or
+an implemented orchestration API. Constructors and record fields are shorthand;
+they do not claim to type-check against SapiensSpecNotation.hs. Chief/Lead/Group
+roles provide scenario context. Project, deadline policies, and orchestration
+operations are proposed extensions; these examples do not silently add them to
+the base module. No example is an instruction to execute external actions.

@@ -41,7 +41,7 @@ For a keyboard-only terminal connected to the same running app, install terminal
 Use `./sapiens4 status`, `./sapiens4 show`, or `./sapiens4 help` for individual commands.
 See [terminal commands and output formats](documentation/specs/CLI.md).
 
-[Architecture notation and analysis](documentation/specs/SapiensSpecNotation.md) · [Haskell specification](documentation/specs/SapiensSpecNotation.hs) · [WorkGraph design](documentation/specs/WorkGraph.md)
+[Architecture notation and analysis](documentation/haskell-notation-specs/SapiensSpecNotation.md) · [Haskell specification](documentation/haskell-notation-specs/SapiensSpecNotation.hs) · [WorkGraph design](documentation/specs/WorkGraph.md)
 
 [Setup, features, API and tests](documentation/reference.md)
 
