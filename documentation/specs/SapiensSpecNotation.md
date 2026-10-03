@@ -1,151 +1,104 @@
-# Sapiens architecture notation: Agency and execution runs
+# Sapiens: navigation and workload
 
-The [Haskell notation](SapiensSpecNotation.hs) is a working architecture
-specification. **Agency** is a harnessed LLM definition/constructor.
-**SapiHarness** combines Agency, Context, and Contract; executing it produces
-an **AgencyRun**, the execution record with its result or failure. Sapi and agent are synonyms. **Memo** replaces
-Wiki as the name of persistent Sapi memory and also names the Agency that
-maintains it.
+The [Haskell notation](SapiensSpecNotation.hs) replaces the previous ontology
+with the slide and Admin's clarifications of 2026-10-03. It describes the target
+UI and workload behavior; it does not change the running application.
 
-The file originated from the workspace artifact
-`.sapiens4/workspaces/sapi_26220193ca50/artifacts/SapiensSpecNotation.hs`, imported
-on 2026-09-30. It was subsequently revised at the user's request to introduce
-Agency, Memo, and the four execution scopes below. On 2026-10-01 the organization
-was restricted to a single level of Groups, and SapiHarness was introduced to
-distinguish the input structure from its resulting AgencyRun. The workspace original remains
-unchanged; the documentation copy is no longer byte-identical to it. The original
-SHA-256 was `9f9006f2c884406730d52cb12696ad12875432d33841106a47cb432b443bc6cb`.
+## Navigation
 
-These are design changes, not enabled runtime features. The implementation
-comparison below refers to revision `a32c2e7` and [delegation v1](../delegation.md).
+```text
+Chat
+Work
+  Profile: Memo / Kit / Workspace
+  Tasks: Adhoc / Workflow / Agile
+  Automation
+    Scheduler: Routine / Cron / Pulse
+    Callback: Hook / Condition / Reaction
+      Reaction: Trigger / Adhoc / Retry
+    Workflow: Pipeline / Gantt / WBS
+Updates: Runtime / Events / Archived
+```
 
-## Flat organization
+These are navigation branches. Profile is the work-related profile menu, not a
+new identity ontology. Workflow work under Tasks and definitions under Automation
+are proposed linked views of the same work rather than independent copies.
 
-Root contains exactly one required Chief, zero or more direct Sapis, and zero or
-more Groups. A Root containing only Chief is valid. Each Group contains exactly
-one Leader and at least one other Sapi; Groups cannot contain subgroups.
+rTernarity applies recursively to meaningful responsibilities. Three parts,
+three alternatives and three views are different relationships. Domain leaves
+and cardinalities stay honest: two workflow initiators and two Pulse states do
+not acquire artificial third siblings.
 
-Every Sapi has exactly one position: Chief, Root member, Group Leader, or Group
-member. Chief cannot also lead a Group or appear in Root's member list. A Group's
-Leader is separate from its member list, and memberships do not overlap.
+## Tasks and scheduling
 
-## Agency and Memo
+- **Adhoc:** Issue, Mention, Inquiry. Must receive attention at the next Pulse;
+  execute, requalify into other work, or dismiss. This does not guarantee that a
+  long task finishes within one heartbeat.
+- **Workflow:** multistep work, in the sense of n8n.
+- **Agile:** planned, nonurgent work tracked through backlog, in progress, etc.
+  The full board and any distinct Scrum semantics are still open.
 
-Agency contains its `AgencyKind` (`Chat`, `Memo`, `Jobs`, `Tasks`, `Healer`,
-`Claw`, or `Skills`) and a harnessed LLM definition. It is more than a purpose
-label. A Sapi enables or disables its Agencies through `AgencySetting`.
+**Routine** injects a prompt-template message into chat to call the target
+Sapi's Agency. It keeps its automated provenance.
 
-The structural composition is `SapiHarness = Agency + Context + Contract`.
-`runSapiHarness` executes this structure for an actor and returns an AgencyRun,
-which records its identity, actor, exact SapiHarness, and result or failure.
-AgencyRun is the product of execution, not the name of the three-part structure.
-Multiple AgencyRuns can belong to one TaskRun.
+**Cron** starts a workflow by time. Its reaction policy also supports creating
+Adhoc work, bounded retries, and dismissal. The precise conditions for these
+alternatives still need agreement.
 
-`Jobs` Agency can write or repair a script. Executing that script is a JobRun and
-must not invoke an LLM. If execution requires reasoning, that reasoning belongs
-to a separate AgencyRun, usually within a TaskRun or graph/flow coordination.
-A script that calls an LLM does not qualify as a script-only JobRun.
+**Pulse** periodically runs a deterministic workload classifier, for example
+every 3 or 10 seconds. It considers replies to Admin, immediate work and planned
+work. Pulse itself is neither an LLM call nor a workflow. Classification emits
+decisions; dispatch performs their effects and must avoid duplicate starts.
 
-The `Memo` type stores canonical persistent memory; `MemoNode` identifies its
-addressable units and `SubMemo` selects them. The `Memo` constructor of `AgencyKind`
-names memory work, while `MkMemo` constructs the memory value. These meanings
-are explicit in the notation. Runtime `Notes.html` is not renamed by this change.
+The supplied [GTD reference](https://cruciallearningindia.in/getting-things-done-gtd-what-it-is-and-how-it-works/)
+describes capture, clarification, organization, reflection and engagement.
+Sapiens adapts that idea to explicit software rules; the reference does not
+specify a heartbeat algorithm. Concrete rules remain to be written.
 
-## Four execution scopes
+Pulse may be **Vacant** or **Busy**. The notation provisionally means that the
+tick selects no new execution or selects execution, respectively. Whether these
+instead describe available Sapi capacity must be settled before implementation.
+The pure `pulse` function takes rules as input; it is not a completed scheduler.
 
-| Definition / execution | Behavior | Scope |
-| --- | --- | --- |
-| Job / JobRun | Executes a versioned script without Agency | Assigned actor; normally a Sapi's Kit |
-| Task / TaskRun | Performs work with Agency | Assigned Sapi or System |
-| WorkGraph / WorkGraphRun | Mixes TaskRuns and JobRuns with Agency | Exactly one Sapi |
-| WorkFlow / WorkFlowRun | Mixes TaskRuns and JobRuns with Agency, peer verification, and healing | One Group of Sapis |
+## Callbacks and workflows
 
-Definitions and execution attempts are separate. Status belongs to the run;
-retrying creates another run identity. A graph/flow run retains its definition
-revision and step-attempt references. TaskRun records its AgencyRun references;
-graph/flow runs additionally record coordination, verification, or healing runs.
-Referenced results are not copied or implicitly executed again.
+Callback composes **Hook**, **Condition**, and **Reaction**. A reaction triggers a
+workflow, creates Adhoc work, or retries a failed attempt within a limit.
+Dismissal records a reason without launching work.
 
-Pending and cancelled runs can have no AgencyRuns. Successful TaskRuns and
-successful graph/flow runs must have Agency evidence in their own or nested run
-records. JobRuns never contain Agency, even when embedded in a larger process.
-Human work may still be described by Task, but a human-only execution is outside
-the newly defined Agency-assisted TaskRun model.
+A workflow starts only through **Cron** or **Callback → Trigger**. Pulse can
+admit that pending start without becoming another initiator. Retries preserve
+the original origin. Manual requests and WBS output need routing through one of
+these two paths; that routing is not yet selected.
 
-## Collaboration, verification, and healing
+- **Pipeline:** a workflow of scripts, with no LLM calls, including indirect ones.
+- **Gantt:** a workflow using LLM and script steps; not merely a timeline view.
+- **WBS:** creates or redesigns workload. Its outputs are tasks, workflow
+  definitions, or further planned WBS work. It does not automatically start them.
 
-A WorkFlow is a crystallized collaborative graph owned by one Group. Every step
-has one accountable Sapi. The Leader coordinates the shared outcome; participating
-Sapis can execute, verify, and repair work. Participants are the Group's Leader
-and direct members; every step's assignment is explicit. There are no subgroups
-or inherited memberships.
+Repairing a workflow creates a new fork and archives the original reversibly.
+Prior definitions and execution history remain intact. Restoration must not
+implicitly replay work. Archive timing, active runs and retargeting existing
+Crons/callbacks remain decisions to make.
 
-Both WorkGraph and WorkFlow use WorkSteps containing either a Task or a Job.
-Dependencies refer to StepIds so they can connect either kind. A definition
-revision remains acyclic. Recovery adds attempts or explicitly revises the plan;
-it does not insert an unbounded cycle into the dependency graph.
+## Deliberately reduced scope
 
-Verification is work with acceptance criteria. It can be a reasoning Task or a
-deterministic Job. Where peer review is required, the verifier differs from the
-producer. Healing uses recorded diagnosis and repair attempts; RecoveryPolicy
-must define limits and escalation. An uncertain external effect must be
-reconciled before retrying. Completion requires evidence satisfying the overall
-Contract, not merely that every step has stopped.
+The old organization tree, specialized Agency taxonomy, Job/Cue/WorkGraph model,
+mandatory task dates, and extensive run hierarchy are removed from this working
+specification. This does not remove runtime code or stored data. The original
+workspace artifact remains untouched.
 
-## Relation to the earlier design and current implementation
+Remaining design work is grouped into three responsibilities:
 
-| Area | Revised notation | Current behavior / remaining difference |
-| --- | --- | --- |
-| Organization | Root owns Chief, optional direct Sapis, and one level of Groups | [Registry](../../sapiens/corpora/sapis/registry.py) stores parent relationships; SQLite also stores agents. Groups are inactive. |
-| Agency / SapiHarness | Harnessed LLM definitions, combined with Context and Contract for execution | [Delegation](../../sapiens/corpora/host/delegation.py) has decision-node prompts and recorded responses. These nodes are not the Agency taxonomy. |
-| Concurrency | Multiple SapiHarness executions can produce AgencyRuns for one Sapi | [Service](../../sapiens/corpora/host/service.py) serializes work within a Sapi and runs different Sapis in parallel. Shared computer access has one owner. |
-| Memo | Canonical linked memory with typed node selections | [Notes](../../sapiens/corpora/sapis/notes.py) uses Notes.html and about/map context. There is no typed SubMemo resolver. |
-| WorkGraph | Mixed Task/Job graph for one Sapi | The [earlier WorkGraph specification](WorkGraph.md) describes task-only graphs with potentially different Sapi owners; its graph interpreter is not implemented. |
-| WorkFlow | Mixed graph for a Group, with verification and recovery | New design entity; not implemented. |
-| Tasks and Jobs | Explicit definition/run distinction and Agency boundary | Delegation has task specifications, call attempts, and recovery records. Separate TaskRun/JobRun domain types and Job execution are not implemented. |
-| Logs | Context can contain recorded evidence | Decision archives and transcripts remain; this does not restore the removed Log tab or activity feed. |
+1. **Pulse:** ownership/scope, Vacant/Busy semantics, deterministic rules,
+   priority, capacity, fairness and input that cannot be classified by rules.
+2. **Reactions:** Cron alternatives, rule ordering, event deduplication,
+   bounded retry/backoff and dismissal.
+3. **Work redesign:** fork/archive lifecycle, active work, schedule retargeting,
+   restoration, recursive WBS limits and Agile/Scrum terminology.
 
-The revised notation establishes the intended distinction between WorkGraph and
-WorkFlow. The earlier design remains useful for delegation, graph revision,
-lineage, and recovery, but its ownership assumptions need translation before use
-with the revised model.
+## Verification
 
-## Decisions still needed before implementation
-
-1. **Activation terminology:** the revised notation retains Trigger as a
-   conditional Task factory. The earlier specification uses Trigger to activate
-   a Call for an existing Task. Name that second operation TaskActivation and
-   define occurrence deduplication; it must not accidentally create duplicate Tasks.
-2. **Organizational authority:** reconcile derived SapiPosition with the still
-   abstract `Profile.organization :: OrgPosition`. Specify group changes,
-   retirement, and Chief-only Sapi creation authority explicitly.
-3. **Dates and retries:** define startAt versus actual start, unscheduled work,
-   overdue work, and how Routine/Trigger supply mandatory dates. Preserve
-   interrupted and unresolved outcomes, attempt lineage, and uncertain effects
-   for Tasks as well as Jobs.
-4. **Concurrent Agency:** define admission, cancellation, Memo write conflicts,
-   scope deactivation, and step transition ownership before removing per-Sapi
-   serialization. Preserve the shared computer lease.
-5. **Contracts and recovery:** define executable checks, evidence requirements,
-   retry bounds, and who may revise a graph or escalate to Admin. The generic
-   OutputSchema and RecoveryPolicy types remain placeholders.
-6. **Reusable definitions:** define input binding and how task dates are
-   instantiated for a new graph/flow run. Run status is separated, but definition
-   parameters and immutable Task/Job revisions still need concrete representations.
-
-No runtime rewrite is implied. First settle these contracts, then map existing
-calls and decision records onto AgencyRun/TaskRun while retaining recovery
-behavior. Groups, graph execution, scheduling, and concurrent Agency remain
-separate implementation changes.
-
-## Verification and limits
-
-This file is documentation, not executable runtime code or a model prompt. Five
-operation bodies remain `undefined`; domain leaf types and RecoveryPolicy are
-abstract. IDs, ownership, Agency participation, and DAG invariants are specified
-in comments and require validation in a future implementation.
-
-GHC was unavailable during this revision, so compilation was not verified.
-Documentation links, naming consistency, and preservation of the original
-workspace artifact were checked. A type check alone would not prove behavioral
-invariants.
+The notation contains data declarations and one pure classifier wrapper. Text
+leaves intentionally defer detailed schemas; comments specify constraints that
+the types alone do not enforce. Compilation status is reported with the edit;
+a type check would not establish scheduler correctness.
