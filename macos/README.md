@@ -1,6 +1,6 @@
 # Sapiens4 for macOS
 
-An AppKit/WebKit window with its own Dock icon and managed updates. Requires macOS 13+, installed Command Line Tools, Python 3.9+, Git and authenticated Codex CLI 0.156.1 or newer. No full Xcode installation or extra Python packages are needed. Set up the repository and build Blindly4 first using the normal project setup.
+An AppKit/WebKit window with its own Dock icon and managed updates. Requires macOS 13+, installed Command Line Tools, Python 3.9+, Git and configured Kimi Code CLI (K3). No full Xcode installation or extra Python packages are needed. Set up the repository and build Blindly4 first using the normal project setup.
 
 ## Install
 
@@ -11,10 +11,10 @@ python3 macos/install.py
 open "$HOME/Applications/Sapiens4.app"
 ```
 
-Before making installation changes, the installer checks Codex's version,
-login and a real **GPT-6 Sol / high** request (or the configured Sapiens4
+Before making installation changes, the installer checks the selected harness version,
+model access and a real **Kimi K3 / high** request (or the configured Sapiens4
 overrides). This small model check runs in an isolated temporary directory with
-a read-only sandbox. Failure leaves an existing installation and data intact.
+the selected harness (Codex probes additionally use a read-only sandbox). Failure leaves an existing installation and data intact.
 You can run it independently with `python3 -m sapiens.preflight`.
 
 Run the installer with the Python runtime you want the app to use. It records that executable and PATH. Closing or quitting the desktop window leaves the server running so active conversations can finish. Right-click the Dock icon → Options → Keep in Dock. The server starts when the app opens; this does not install a login item.
@@ -33,7 +33,7 @@ Blindly4 target directly and runs its self-test. The desktop build uses the same
 compatible SDK. This does not change system developer-tool settings; other build
 failures still leave the running version intact.
 
-1. Download the advertised main revision into a new release directory, verify Codex version/login/model access, fetch the pinned Blindly4 submodule, and build Blindly4. If main includes the compatible desktop build, build and validate that bundle too. Build failures leave the running version alone.
+1. Download the advertised main revision into a new release directory, verify harness/model access, fetch the pinned Blindly4 submodule, and build Blindly4. If main includes the compatible desktop build, build and validate that bundle too. Build failures leave the running version alone.
 2. Wait until active and queued work finishes. The update helper can continue waiting if the desktop window closes. Reopening the app shows its persisted progress; an installation lock prevents overlapping updates.
 3. Gracefully stop the owned local backend, retaining its existing data directory. A managed backend keeps host-control available while any run that raced with the idle check finishes. No force kill is used.
 4. Back up the complete stopped state directory, including SQLite/WAL files, AgentPy state, preferences, artifacts and logs.

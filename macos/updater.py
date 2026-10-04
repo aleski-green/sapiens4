@@ -204,7 +204,7 @@ class Manager:
         self.status('preparing', 'Downloading main and Blindly4…')
         command(['git', 'clone', '--no-checkout', '--single-branch', '--branch', 'main', UPSTREAM, str(destination)], timeout=600)
         command(['git', 'checkout', '--detach', sha], cwd=destination)
-        self.status('preparing', 'Checking Codex CLI, login and model access…')
+        self.status('preparing', 'Checking harness CLI and model access…')
         command([sys.executable, '-m', 'sapiens.preflight'], cwd=destination, timeout=180)
         command(['git', 'submodule', 'update', '--init', '--recursive', '--', 'blindly4'], cwd=destination, timeout=900)
         self.status('preparing', 'Building Blindly4…')
@@ -408,7 +408,7 @@ def serve(manager, root, activation):
         def _route(self):
             if self.path == '/api/health' and self.command == 'GET':
                 self._origin()
-                return self._send(200, dict(status='ok', provider='codex', desktop_pid=os.getpid(), desktop_active=active.is_set()))
+                return self._send(200, dict(status='ok', provider=service.snapshot()['provider'], desktop_pid=os.getpid(), desktop_active=active.is_set()))
             if not active.is_set():
                 self._origin()
                 return self._send(503, {'error': 'Desktop update is being verified; retry shortly'})

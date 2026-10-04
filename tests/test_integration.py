@@ -1,3 +1,4 @@
+import os
 from http.client import HTTPConnection
 import json
 from pathlib import Path
@@ -7,7 +8,7 @@ import time
 import unittest
 
 from sapiens.corpora.host.assets import javascript
-from sapiens.runtime.codex import CodexFactory
+from sapiens.runtime.harness import HarnessFactory
 from sapiens.corpora.host.server import Server
 from sapiens.corpora.host.service import APIError, Service
 
@@ -274,8 +275,8 @@ class IntegrationTest(IntegrationFixture):
         self.assertNotIn('fixtures/sapiens-cases.js', index())
         from sapiens.runtime.contracts import LLMSpec
         from unittest.mock import patch
-        with patch("sapiens.runtime.codex.codex_binary", return_value="/usr/local/bin/codex"):
-            command = CodexFactory(workdir=Path(self.directory.name)).spawn(LLMSpec())._command("hello")
+        with patch.dict(os.environ, {"SAPIENS_HARNESS": "codex"}), patch("sapiens.runtime.harness.harness_binary", return_value="/usr/local/bin/codex"):
+            command = HarnessFactory(workdir=Path(self.directory.name)).spawn(LLMSpec())._command("hello")
         self.assertIn("--skip-git-repo-check", command)
         self.assertIn(self.directory.name, command)
 

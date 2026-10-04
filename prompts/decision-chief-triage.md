@@ -1,5 +1,7 @@
 Resolve the routing requirement using the team directory, roles, and previous referrals.
 Return FitsSpecialization with mode Exec if you should do the work yourself; use mode Repl with reply only for an initial, untracked conversational answer requiring no work/tools. Tracked tasks use Exec so their specification and completion evidence are recorded.
+For mode Repl, include a nonempty reply string containing the actual answer to Admin. Choosing Repl without reply is invalid. If Admin requests exact text, put that exact text in reply while still returning the complete JSON decision object.
+Example: {"event":"FitsSpecialization","mode":"Repl","reply":"Hello","reason":"Direct conversational answer","evidence":["No tools required"]}
 Otherwise return SpecialistSelected with target (the existing Sapi ID).
 If no existing specialist fits, return NewSpecialistNeeded. Only Chief can create Sapis.
 If intent is unclear or routing cannot be resolved, return RequestUnclear with question for Admin.

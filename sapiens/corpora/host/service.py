@@ -20,8 +20,8 @@ from sapiens.paths import ROOT
 from sapiens.prompts import prompt
 from sapiens.corpora.sapis.notes import Notes
 from sapiens.corpora.sapis.conversations import Config, Conversation, computer_manifest
-from sapiens.runtime.codex import CodexFactory
-from sapiens.runtime.settings import codex_binary, execution_settings
+from sapiens.runtime.harness import HarnessFactory
+from sapiens.runtime.settings import harness_binary, harness_name, execution_settings
 from sapiens.runtime.turns import TurnRunner
 from sapiens.computer.focus import ForegroundReturn
 from sapiens.files import atomic_bytes
@@ -116,7 +116,7 @@ class Service:
             workdir.mkdir(parents=True, exist_ok=True)
 
             factory = (self.factory_builder(agid) if self.factory_builder else
-                       CodexFactory(workdir=workdir))
+                       HarnessFactory(workdir=workdir))
             Notes(workdir).ensure(row['name'], row['role'])
             agent = Conversation(agid=agid, root=self.root / "agentpy")
             if agid not in self.registry.directory():
@@ -239,8 +239,8 @@ class Service:
         flow = data.get("flow", "chat")
         if flow not in ("chat", "computer"):
             raise APIError(400, "Choose chat or computer")
-        if not self.factory_builder and not codex_binary():
-            raise APIError(503, "Codex CLI is missing. Install it and run codex login.")
+        if not self.factory_builder and not harness_binary():
+            raise APIError(503, f"{harness_name()} CLI is missing. Install and configure it.")
         if flow == "computer" and not self.factory_builder and not os.access(self.binary, os.X_OK):
             raise APIError(503, "Blindly4 is not built. Run ./start.sh to build it.")
         with self._lock:
@@ -301,7 +301,7 @@ class Service:
                 row['retired'] = self.lifecycle.retired(self._agent(row['id']))
             snapshot["computer"] = {"owner": self._active,
                                     "built": os.access(self.binary, os.X_OK)}
-            snapshot["provider"] = "codex"
+            snapshot["provider"] = harness_name()
             snapshot['activity'] = {a.agid: {**getattr(a.runner.active_llm, 'activity', {}),
                 'turn': self._active_turn(a.agid), 'stopping': a.runner.cancel_event.is_set()}
                 for a in self._agents.values() if self._active_turn(a.agid)}

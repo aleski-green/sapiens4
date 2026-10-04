@@ -1,6 +1,6 @@
 # Sapiens4
 
-Local conversational agents with CORPORA UI, Codex CLI and Blindly4 computer access. Each Sapi manages a linked HTML notes wiki. SQLite stores UI data.
+Local conversational agents with CORPORA UI, switchable Kimi/Codex harnesses and Blindly4 computer access. Each Sapi manages a linked HTML notes wiki. SQLite stores UI data.
 
 Chat, Notes, workspaces, and [delegation](documentation/delegation.md) are active. Tasks has Upcoming and Past lists; opening a task shows its YAML body and result. Jobs, cron, task graphs, and memory consolidation remain inactive.
 
@@ -24,7 +24,7 @@ III. Decisiveness: to maintain its own integrity, hold qualified opinions and do
 
 The runtime and UI live in this repo; Blindly4 is the only submodule.
 
-Requires Python 3.9+, Git and authenticated Codex CLI 0.156.1+; Blindly4 requires macOS 13+, Swift 6 and Accessibility permission.
+Requires Python 3.9+, Git and configured Kimi Code CLI (K3); Blindly4 requires macOS 13+, Swift 6 and Accessibility permission.
 
 ```sh
 git clone --recurse-submodules https://github.com/aleski-green/sapiens4.git
@@ -46,3 +46,28 @@ See [terminal commands and output formats](documentation/specs/CLI.md).
 [Setup, features, API and tests](documentation/reference.md)
 
 [Contributing and code guidelines](CONTRIBUTING.md)
+
+## Harness adapters
+
+Kimi is the default harness on this branch. Configure a Kimi Code model alias named
+`kimi-for-coding`, or set `SAPIENS_KIMI_MODEL` to your configured K3 alias. Calls use
+`kimi -p "{prompt}" --model kimi-for-coding --output-format stream-json`, with
+`KIMI_MODEL_THINKING_EFFORT=high` (deep mode requests `max`). The CLI/provider must
+support that effort; unsupported values may use the model's default.
+
+Switch harnesses before starting the host:
+
+```sh
+SAPIENS_HARNESS=kimi ./start.sh
+SAPIENS_HARNESS=codex ./start.sh
+```
+
+`SAPIENS_HARNESS_MODEL`, `SAPIENS_HARNESS_REASONING_EFFORT`, and
+`SAPIENS_HARNESS_BINARY` override the selected adapter. Provider-specific
+`SAPIENS_KIMI_*` and existing `SAPIENS_CODEX_*` settings are also supported.
+Codex retains its version/login checks and resume protocol. Kimi uses fresh calls
+with the host's prepared conversation context; explicit session resume is rejected.
+Both adapters share cancellation, tool activity and the 30-minute process budget.
+
+Kimi CLI reference: https://moonshotai.github.io/kimi-code/en/reference/kimi-command
+Effort configuration: https://moonshotai.github.io/kimi-code/en/configuration/env-vars

@@ -5,7 +5,7 @@ import tempfile
 import json
 from unittest.mock import patch
 
-from sapiens.runtime.codex import CodexLLM, CodexFactory
+from sapiens.runtime.harness import HarnessLLM, HarnessFactory
 from sapiens.runtime.settings import execution_settings
 from sapiens.corpora.host.service import Service
 from sapiens.validation import APIError
@@ -14,9 +14,9 @@ from sapiens.runtime.contracts import LLMSpec, RUN_TIMEOUT_SECONDS
 
 class ModelDefaultsTest(unittest.TestCase):
     def test_modes_share_one_limit_and_ignore_old_saved_timeouts(self):
-        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'SAPIENS_HARNESS': 'codex'}, clear=True):
             root = Path(directory)
-            factory = CodexFactory(workdir=root)
+            factory = HarnessFactory(workdir=root)
             factory.execution = lambda: execution_settings(root)
             for mode, limit, effort in [('normal', 15, 'high'), ('deep', 1200, 'xhigh'), ('normal', 6000, 'high')]:
                 policy = dict(mode=mode, timeout_seconds=limit)
@@ -29,7 +29,7 @@ class ModelDefaultsTest(unittest.TestCase):
             self.assertEqual(execution_settings(root)['timeout_seconds'], 1800)
             (root / 'run-settings.json').write_text('{"mode":"deep","timeout_seconds":30}')
             self.assertEqual(factory.spawn(LLMSpec()).timeout_seconds, 1800)
-            self.assertEqual(CodexFactory(workdir=root).spawn(LLMSpec()).timeout_seconds, 1800)
+            self.assertEqual(HarnessFactory(workdir=root).spawn(LLMSpec()).timeout_seconds, 1800)
 
     def test_mode_api_persists_without_overwriting_legacy_budgets(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -53,12 +53,12 @@ class ModelDefaultsTest(unittest.TestCase):
                 service.close()
 
     def command(self, model='default', resume=False):
-        with patch('sapiens.runtime.codex.codex_binary', return_value='/bin/codex'):
-            return CodexLLM(spec=LLMSpec(model=model), workdir=Path('/tmp'),
+        with patch('sapiens.runtime.harness.harness_binary', return_value='/bin/codex'):
+            return HarnessLLM(spec=LLMSpec(model=model), workdir=Path('/tmp'),
                             resume=resume, id='test-session')._command('hello')
 
     def test_defaults_apply_to_new_and_resumed_calls(self):
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {'SAPIENS_HARNESS': 'codex'}, clear=True):
             for resume in (False, True):
                 with self.subTest(resume=resume):
                     command = self.command(resume=resume)
@@ -68,7 +68,7 @@ class ModelDefaultsTest(unittest.TestCase):
                         self.assertIn('resume', command)
 
     def test_host_overrides_and_explicit_sdk_model_precedence(self):
-        with patch.dict(os.environ, {'SAPIENS_CODEX_MODEL': 'gpt-6-astra',
+        with patch.dict(os.environ, {'SAPIENS_HARNESS': 'codex', 'SAPIENS_CODEX_MODEL': 'gpt-6-astra',
                                      'SAPIENS_CODEX_REASONING_EFFORT': 'high'}):
             command = self.command()
             self.assertIn('model="gpt-6-astra"', command)

@@ -7,12 +7,12 @@ import unittest
 from pathlib import Path
 
 from sapiens.runtime.contracts import LLMSpec
-from sapiens.runtime.codex import CodexLLM
+from sapiens.runtime.harness import HarnessLLM
 
 
 class ProcessTests(unittest.TestCase):
     def worker(self, code, **kwargs):
-        llm = CodexLLM(LLMSpec(), Path.cwd(), **kwargs)
+        llm = HarnessLLM(LLMSpec(), Path.cwd(), provider='codex', **kwargs)
         llm._command = lambda prompt: [sys.executable, "-u", "-c", code]
         return llm
 

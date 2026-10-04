@@ -14,6 +14,9 @@ from sapiens import preflight
 
 class PreflightTest(unittest.TestCase):
     def setUp(self):
+        environment = patch.dict(os.environ, {'SAPIENS_HARNESS': 'codex'})
+        environment.start()
+        self.addCleanup(environment.stop)
         for target, value in (
             ('sapiens.preflight.codex_binary', '/test/codex'),
             ('sapiens.preflight.cli_version', (0, 158, 0)),
@@ -45,7 +48,7 @@ class PreflightTest(unittest.TestCase):
         complete.assert_not_called()
 
     def test_real_probe_uses_default_model_and_isolated_read_only_workdir(self):
-        with patch.dict(os.environ, {}, clear=True), \
+        with patch.dict(os.environ, {'SAPIENS_HARNESS': 'codex'}, clear=True), \
                 patch.object(preflight.ModelProbe, 'complete', autospec=True,
                              return_value='SAPIENS_PREFLIGHT_OK') as complete:
             result = preflight.check()
@@ -63,7 +66,7 @@ class PreflightTest(unittest.TestCase):
         self.assertFalse(probe.workdir.exists())
 
     def test_override_model_and_effort_are_actually_probed(self):
-        with patch.dict(os.environ, {'SAPIENS_CODEX_MODEL': 'gpt-6-astra',
+        with patch.dict(os.environ, {'SAPIENS_HARNESS': 'codex', 'SAPIENS_CODEX_MODEL': 'gpt-6-astra',
                                      'SAPIENS_CODEX_REASONING_EFFORT': 'high'}), \
                 patch.object(preflight.ModelProbe, 'complete', autospec=True,
                              return_value='SAPIENS_PREFLIGHT_OK') as complete:
@@ -95,7 +98,7 @@ class VersionTest(unittest.TestCase):
         versions = {'/path/codex': (0, 145, 0),
                     '/Applications/Codex.app/Contents/Resources/codex': (0, 158, 0),
                     '/Applications/ChatGPT.app/Contents/Resources/codex': (0, 156, 1)}
-        with patch.dict(os.environ, {}, clear=True), \
+        with patch.dict(os.environ, {'SAPIENS_HARNESS': 'codex'}, clear=True), \
                 patch.object(codex_config.sys, 'platform', 'darwin'), \
                 patch.object(codex_config.shutil, 'which', return_value='/path/codex'), \
                 patch.object(codex_config.os, 'access', return_value=True), \

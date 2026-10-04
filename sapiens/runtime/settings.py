@@ -1,4 +1,4 @@
-"""Codex selection shared by the runtime and installation checks."""
+"""Harness selection shared by runtime and installation checks."""
 from functools import lru_cache
 import os
 import json
@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 from sapiens.runtime.contracts import RUN_TIMEOUT_SECONDS
 
@@ -15,9 +16,33 @@ DEFAULT_MODEL = 'gpt-6-sol'
 DEFAULT_REASONING = 'high'
 
 
-def model_defaults():
-    return (os.environ.get('SAPIENS_CODEX_MODEL') or DEFAULT_MODEL,
-            os.environ.get('SAPIENS_CODEX_REASONING_EFFORT') or DEFAULT_REASONING)
+def harness_name():
+    name = os.environ.get('SAPIENS_HARNESS', 'kimi').lower()
+    if name not in {'kimi', 'codex'}:
+        raise ValueError('SAPIENS_HARNESS must be kimi or codex')
+    return name
+
+
+def model_defaults(provider=None):
+    provider = provider or harness_name()
+    prefix = 'SAPIENS_' + provider.upper() + '_'
+    return (os.environ.get('SAPIENS_HARNESS_MODEL') or os.environ.get(prefix + 'MODEL')
+            or ('kimi-for-coding' if provider == 'kimi' else DEFAULT_MODEL),
+            os.environ.get('SAPIENS_HARNESS_REASONING_EFFORT')
+            or os.environ.get(prefix + 'REASONING_EFFORT') or DEFAULT_REASONING)
+
+
+def harness_binary(provider=None):
+    provider = provider or harness_name()
+    override = os.environ.get('SAPIENS_HARNESS_BINARY')
+    if override:
+        return shutil.which(override)
+    if provider == 'codex':
+        return codex_binary()
+    override = os.environ.get('SAPIENS_KIMI_BINARY')
+    if override:
+        return shutil.which(override)
+    return shutil.which('kimi') or shutil.which(str(Path.home() / '.kimi-code/bin/kimi'))
 
 
 def cli_version(binary):

@@ -2,26 +2,36 @@
 
 ## Setup
 
-Requires Python 3.9+, Git and authenticated Codex CLI 0.156.1 or newer. Blindly4
+Requires Python 3.9+, Git and configured Kimi Code CLI (K3). Blindly4
 requires macOS 13+, Swift 6 and Accessibility permission. The runtime has no
 third-party Python dependencies. The optional independent YAML parser test uses
 `python3 -m pip install -r tests/requirements.txt`. The only Git submodule is `blindly4`.
 
 ```sh
 git submodule update --init --recursive
-codex login
+kimi login
 ./start.sh --open
 ```
 
 The local UI is at `http://127.0.0.1:4174/workspace/`. For a dedicated window and
 managed updates, see [the macOS app](../macos/README.md).
 
-Sapiens4 uses `gpt-6-sol` with `high` reasoning by default. Every Sapi call has one 30-minute execution limit, shared across its decision steps. Normal mode uses `high`; Deep work in Sapi settings → Profile uses `xhigh` with the same time limit. Legacy saved timeout values are ignored, and the CLI has no separate observation cutoff. Environment overrides:
-`SAPIENS_CODEX_MODEL`, `SAPIENS_CODEX_REASONING_EFFORT`, and `SAPIENS_CODEX_BINARY`.
-Without a binary override, the host selects the newest working CLI among PATH
-and the installed Codex/ChatGPT app bundles. Global Codex configuration is unchanged.
-The installer and updater test the selected version, login and actual model access
-before activation. `python3 -m sapiens.preflight` runs the same isolated check.
+Sapiens4 defaults to the Kimi harness, model alias `kimi-for-coding`, and `high` effort.
+Configure that alias in Kimi Code CLI or set `SAPIENS_KIMI_MODEL` to your K3 alias.
+Set `SAPIENS_HARNESS=codex` before starting the host to select Codex instead
+(default model `gpt-6-sol`). Normal mode uses `high`; Deep work requests `max`
+for Kimi or `xhigh` for Codex. The installed Kimi CLI/provider must support the
+requested effort; unsupported values may fall back to its model default.
+Every Sapi call has one 30-minute execution limit shared across decision steps;
+legacy saved timeout values are ignored.
+
+`SAPIENS_HARNESS_MODEL`, `SAPIENS_HARNESS_REASONING_EFFORT` and
+`SAPIENS_HARNESS_BINARY` override the selected adapter. Provider-specific
+`SAPIENS_KIMI_*` and `SAPIENS_CODEX_*` settings also work. Codex selects the newest
+working CLI among PATH and installed Codex/ChatGPT bundles when no override is set.
+The installer and updater probe the selected harness and actual model access before
+activation. Codex additionally checks its minimum version and login status.
+`python3 -m sapiens.preflight` runs the same isolated check.
 
 ## Chat and Notes
 

@@ -1,4 +1,4 @@
-"""Bounded local Codex processes and their public JSONL lifecycle events."""
+"""Bounded, switchable local harness processes and lifecycle events."""
 
 from __future__ import annotations
 
@@ -14,12 +14,12 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from sapiens.runtime.contracts import LLMSpec, RUN_TIMEOUT_SECONDS
-from sapiens.runtime.settings import codex_binary, model_defaults
+from sapiens.runtime.settings import harness_binary, harness_name, model_defaults
 
 
 @dataclass
-class CodexLLM:
-    """One resumable local ``codex exec`` thread."""
+class HarnessLLM:
+    """One local Kimi or Codex call; the host supplies conversation context."""
 
     spec: LLMSpec
     workdir: Path
@@ -29,6 +29,7 @@ class CodexLLM:
     timeout_seconds: float | None = RUN_TIMEOUT_SECONDS
     cancel_event: Event = field(default_factory=Event, repr=False)
     activity: dict = field(default_factory=dict)
+    provider: str = field(default_factory=harness_name)
     _tools: dict = field(default_factory=dict, repr=False)
 
     def complete(self, prompt: str) -> str:
@@ -43,9 +44,13 @@ class CodexLLM:
         recent_output: list[str] = []
         stderr_output: list[str] = []
 
+        environment = os.environ.copy()
+        if self.provider == 'kimi':
+            environment['KIMI_MODEL_THINKING_EFFORT'] = self.reasoning_effort or model_defaults('kimi')[1]
         process = subprocess.Popen(
             command,
             cwd=self.workdir,
+            env=environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -114,7 +119,7 @@ class CodexLLM:
                     continue
                 message = self._consume_event(event)
                 if event.get("type") == "turn.failed":
-                    raise RuntimeError(f"Codex turn failed: {event}")
+                    raise RuntimeError(f"{self.provider} turn failed: {event}")
                 if message is not None:
                     final_message = message
             returncode = process.wait()
@@ -133,21 +138,26 @@ class CodexLLM:
         if timed_out.is_set():
             detail = "\n".join(stderr_output[-5:])
             raise TimeoutError(
-                f"Codex exceeded {self.timeout_seconds}s; its process tree was stopped. "
+                f"{self.provider} exceeded {self.timeout_seconds}s; its process tree was stopped. "
                 f"Session: {self.id}.\n{detail}"
             )
         if returncode != 0:
             detail = "\n".join([*stderr_output, *recent_output])
-            raise RuntimeError(f"codex exec failed (exit {returncode}):\n{detail}")
+            raise RuntimeError(f"{self.provider} harness failed (exit {returncode}):\n{detail}")
         if final_message is None:
-            raise RuntimeError("Codex completed without an agent message.")
+            raise RuntimeError(f"{self.provider} completed without an agent message.")
         return final_message
 
     def _command(self, prompt: str) -> list[str]:
-        executable = codex_binary()
+        executable = harness_binary(self.provider)
         if not executable:
-            raise RuntimeError("Codex CLI was not found. Install Codex and run codex login.")
-        model, reasoning = model_defaults()
+            raise RuntimeError(f"{self.provider} CLI was not found. Install and configure it before starting a call.")
+        model, reasoning = model_defaults(self.provider)
+        if self.provider == 'kimi':
+            if self.resume:
+                raise ValueError('Kimi calls use host-prepared context; resuming a harness session is unsupported.')
+            return [executable, '-p', prompt, '--model', model if self.spec.model == 'default' else self.spec.model,
+                    '--output-format', 'stream-json']
         defaults = ['-c', 'model_reasoning_effort=' + json.dumps(self.reasoning_effort or reasoning)]
         if self.spec.model == 'default':
             defaults += ['-c', 'model=' + json.dumps(model)]
@@ -160,6 +170,29 @@ class CodexLLM:
         return [*command, *common, "--cd", str(self.workdir), "--color", "never", prompt]
 
     def _consume_event(self, event: dict[str, Any]) -> str | None:
+        if self.provider == 'kimi':
+            role = event.get('role')
+            if role == 'meta':
+                if event.get('type') == 'session.start' and event.get('session_id'):
+                    self.id = event['session_id']
+                return None
+            if role not in {'assistant', 'tool'}:
+                raise RuntimeError(f'Unexpected Kimi stream message: {event}')
+            if role == 'tool':
+                label = self._tools.pop(event.get('tool_call_id'), '')
+                self.activity = {**self.activity, 'last_action': label}
+            else:
+                for call in event.get('tool_calls') or []:
+                    self._tools[call['id']] = str(call.get('function', {}).get('name', 'tool'))
+            self.activity = {**self.activity, 'updated': time()*1000,
+                             'phase': 'Running tool' if self._tools else 'Waiting for model',
+                             'tool': next(iter(self._tools.values()), '')}
+            if role == 'assistant' and not event.get('tool_calls'):
+                content = event.get('content')
+                if isinstance(content, list):
+                    content = ''.join(block.get('text', '') for block in content if block.get('type') == 'text')
+                return content if isinstance(content, str) else None
+            return None
         event_type = event.get("type")
         item = event.get('item', {})
         if item.get('type') in {'command_execution', 'mcp_tool_call', 'web_search', 'file_change'}:
@@ -181,13 +214,13 @@ class CodexLLM:
 
 
 @dataclass
-class CodexFactory:
-    """Create unrestricted local Codex CLI sessions."""
+class HarnessFactory:
+    """Create local calls for the selected harness."""
 
     workdir: Path = field(default_factory=Path.cwd)
     execution: Callable | None = None
 
-    def spawn(self, spec: LLMSpec) -> CodexLLM:
+    def spawn(self, spec: LLMSpec) -> HarnessLLM:
         policy = self.execution() if self.execution else dict(mode='normal')
-        return CodexLLM(spec=spec, workdir=self.workdir,
-            reasoning_effort='xhigh' if policy['mode'] == 'deep' else model_defaults()[1])
+        return HarnessLLM(spec=spec, workdir=self.workdir,
+            reasoning_effort=('max' if harness_name() == 'kimi' else 'xhigh') if policy['mode'] == 'deep' else model_defaults()[1])

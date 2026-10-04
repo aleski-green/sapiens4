@@ -93,7 +93,7 @@ class Handler(BaseHTTPRequestHandler):
                     image = parse_qs(url.query).get('image', [None])[0]
                     return self._send(200, *notes.image(unquote(image))) if image else self._send(200, notes.read())
             if path == "/api/health":
-                return self._send(200, {"status": "ok", "provider": "codex"})
+                return self._send(200, {"status": "ok", "provider": service.snapshot()["provider"]})
             if path == "/":
                 self.send_response(302)
                 self.send_header("Location", "/workspace/")

@@ -28,7 +28,7 @@ def main():
     print(f"Sapiens4: {url}\nUI database: {service.store.path}", flush=True)
 
     def shutdown(signum, frame):
-        print("Stopping; waiting for the current Codex call to finish…", flush=True)
+        print("Stopping; waiting for the current harness call to finish…", flush=True)
         threading.Thread(target=server.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGTERM, shutdown)
