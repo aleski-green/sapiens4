@@ -63,8 +63,10 @@ function syncNativeBrowser() {
   const bridge=window.webkit?.messageHandlers?.browser;
   if (!bridge) return;
   const rect=$('#workspace-content').getBoundingClientRect();
+  const palette=getComputedStyle($('.workspace'));
   bridge.postMessage({workspaces:state.workspaces,owner:state.selected,active:state.activeTab,
     visible:!!state.panes.workspace && !$('#modal').open && $('#browser-menu').hidden, dark:document.documentElement.dataset.theme==='dark',
+    background:palette.getPropertyValue('--sapi-white').trim(),foreground:palette.getPropertyValue('--sapi-ink').trim(),
     rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height}});
 }
 // Only the trusted app webview owns this callback; guest browser views have no bridge.

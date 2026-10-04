@@ -6,6 +6,8 @@ Chat uses your authenticated Codex CLI 0.156.1 or newer. The desktop app's insta
 
 User data is stored at `%LOCALAPPDATA%\Sapiens4`, separately from the application files. The native window supports Chat, Notes, attachments, tasks and per-Sapi browser tabs, bookmarks and zoom. Browser websites have separate profiles and no access to the desktop app bridge. Closing the app stops its local server and cancels active model processes; saved conversations remain recoverable.
 
+The Windows executable, taskbar and window use the workspace favicon. Browser blank pages and plain-text documents follow the app theme; websites receive the same light/dark preference and retain their own styles.
+
 The first build is unsigned. No automatic updater or installer is included: replace the extracted application directory to update it, keeping the data directory intact.
 
 ## Source development
@@ -29,6 +31,8 @@ Build the portable desktop package:
 ```
 
 The build downloads CPython 3.13.9 from python.org and verifies a pinned SHA-256. NuGet restores the pinned WebView2 SDK; WebView2 uses the locally installed Evergreen Runtime. To run a desktop development build, set `SAPIENS_PYTHON` to Python's full path and `SAPIENS_RUNTIME_DIR` to the repository root.
+
+`AppIcon.ico` contains nine resolutions from 16 to 256 pixels, rendered from the exact SVG in `web/shell/bootstrap.js`. After changing that favicon, regenerate with `node windows/icon.cjs` (requires the `sharp` Node package). Normal Windows builds use the checked-in icon and do not need Node.
 
 ## Tests
 
