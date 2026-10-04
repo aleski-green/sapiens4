@@ -2,13 +2,13 @@
 from pathlib import Path
 from uuid import uuid4
 import asyncio
-import fcntl
 import json
 import logging
 import os
 import queue
 import re
 import secrets
+import sys
 import threading
 
 from sapiens.corpora.sapis.attachments import attachment_prompt, resolve_attachments
@@ -16,7 +16,7 @@ from sapiens.corpora.sapis.registry import Registry
 from sapiens.corpora.sapis.retirement import Lifecycle
 from sapiens.corpora.host.commands import Orchestration
 from sapiens.corpora.host.delegation import Delegation
-from sapiens.paths import ROOT
+from sapiens.paths import ROOT, blindly_binary
 from sapiens.prompts import prompt
 from sapiens.corpora.sapis.notes import Notes
 from sapiens.corpora.sapis.conversations import Config, Conversation, computer_manifest
@@ -24,7 +24,7 @@ from sapiens.runtime.codex import CodexFactory
 from sapiens.runtime.settings import codex_binary, execution_settings
 from sapiens.runtime.turns import TurnRunner
 from sapiens.computer.focus import ForegroundReturn
-from sapiens.files import atomic_bytes
+from sapiens.files import atomic_bytes, lock_file, unlock_file
 from sapiens.corpora.host.database import Store, now
 from sapiens.validation import APIError, sapi_name, text_field
 from sapiens.corpora.browser import Workspace
@@ -59,7 +59,7 @@ class Service:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._file_lock = (self.root / "host.lock").open("a")
         try:
-            fcntl.flock(self._file_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_file(self._file_lock, blocking=False)
         except BlockingIOError:
             self._file_lock.close()
             raise RuntimeError("Another Sapiens4 server is using this data directory") from None
@@ -72,7 +72,7 @@ class Service:
                 row.update(random_avatar(used))
                 self.store.update_avatar(row["id"], row)
             used.add(row["face"])
-        self.binary = ROOT / "blindly4/.build/release/blindly4"
+        self.binary = blindly_binary()
         self.factory_builder = factory_builder
         self._agents = {}
         self._revisions = {}
@@ -300,7 +300,7 @@ class Service:
             for row in snapshot['agents']:
                 row['retired'] = self.lifecycle.retired(self._agent(row['id']))
             snapshot["computer"] = {"owner": self._active,
-                                    "built": os.access(self.binary, os.X_OK)}
+                                    "built": os.access(self.binary, os.X_OK), "platform": sys.platform}
             snapshot["provider"] = "codex"
             snapshot['activity'] = {a.agid: {**getattr(a.runner.active_llm, 'activity', {}),
                 'turn': self._active_turn(a.agid), 'stopping': a.runner.cancel_event.is_set()}
@@ -424,5 +424,5 @@ class Service:
             runners = list(self._runners.values())
         for runner in runners:
             runner.join()  # Retain host.lock until every call has finished.
-        fcntl.flock(self._file_lock, fcntl.LOCK_UN)
+        unlock_file(self._file_lock)
         self._file_lock.close()

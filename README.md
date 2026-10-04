@@ -22,9 +22,15 @@ III. Decisiveness: to maintain its own integrity, hold qualified opinions and do
 
 ## Start
 
+**Windows 10/11:** native ARM64 and x64 desktop packages, PowerShell startup and
+Windows UI Automation support are described in [Windows setup](windows/README.md).
+Extract a package and run `Sapiens4.exe`, or run `.\start.ps1 -Open` from source.
+
 The runtime and UI live in this repo; Blindly4 is the only submodule.
 
-Requires Python 3.9+, Git and authenticated Codex CLI 0.156.1+; Blindly4 requires macOS 13+, Swift 6 and Accessibility permission.
+Source startup requires Python 3.9+, Git and authenticated Codex CLI 0.156.1+.
+On macOS, Blindly4 requires macOS 13+, Swift 6 and Accessibility permission. Windows
+builds use .NET SDK 10; portable packages bundle Python, .NET and Blindly4.
 
 ```sh
 git clone --recurse-submodules https://github.com/aleski-green/sapiens4.git

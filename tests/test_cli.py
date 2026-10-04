@@ -257,7 +257,7 @@ class CLITest(unittest.TestCase):
             input='show\nshow @Chief\nexit\n', capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0)
         self.assertIn('corpora\n├── *(◕ᵕ◕) Chief · Head\n└── (^‿^) Researcher · Research', result.stdout)
-        self.assertIn('id: chief-id\nworkspace: /fixture/workspaces/chief-id', result.stdout)
+        self.assertIn('id: chief-id\nworkspace: ' + str(Path('/fixture/workspaces/chief-id')), result.stdout)
         self.assertEqual(result.stdout.count('>> sapiens4 ⌘ corpora >'), 3)
         self.assertNotIn('sapiens4 ⌘ @', result.stdout)
         self.assertEqual(self.server.writes, [])

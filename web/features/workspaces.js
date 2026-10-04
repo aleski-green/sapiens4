@@ -91,7 +91,7 @@ $('#browser-address-form').addEventListener('submit',async e=>{
 });
 $('#add-tab').addEventListener('click',openNewTab);
 $('#open-file').addEventListener('click',()=>{
-  const bridge=window.webkit?.messageHandlers?.browser, directory=live.orchestration[state.selected].notes.path.replace(/\/[^/]+$/, '');
+  const bridge=window.webkit?.messageHandlers?.browser, directory=live.orchestration[state.selected].notes.path.replace(/[\\/][^\\/]+$/, '');
   setBrowserMenu();
   if(bridge)bridge.postMessage({pickFile:true,owner:state.selected,directory});else {editingAddress=state.activeTab;renderWorkspace();$('#browser-address').value=directory+'/';$('#browser-address').focus();}
 });

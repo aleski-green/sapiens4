@@ -60,7 +60,7 @@ def read(argv, invoke, directory, limit):
         path = cache / (args.snapshot + '.json')
         if not path.exists():
             raise ValueError('Snapshot expired; read the current state again')
-        snapshot = json.loads(path.read_text())
+        snapshot = json.loads(path.read_text(encoding='utf-8'))
     else:
         if args.pid is None or args.pid <= 0 or not re.fullmatch(r'(?:\d+(?:\.\d+)*)?', args.path):
             raise ValueError('Read needs a positive --pid and an observed numeric --path')

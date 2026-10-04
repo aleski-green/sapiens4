@@ -2,12 +2,11 @@
 from contextlib import contextmanager
 import json
 from pathlib import Path
-import shlex
 import sys
 from uuid import uuid4
 
-from sapiens.files import atomic_bytes, atomic_json, encode, file_lock, safe_child
-from sapiens.paths import ROOT
+from sapiens.files import atomic_bytes, atomic_json, encode, file_lock, safe_child, read_bytes
+from sapiens.paths import ROOT, shell_command
 from sapiens.prompts import prompt
 from sapiens.runtime.contracts import Flow, Role
 
@@ -18,8 +17,8 @@ class Config:
 
 
 def computer_manifest(binary):
-    launcher = ' '.join(shlex.quote(str(p)) for p in (sys.executable, ROOT / 'sapiens/computer/commands.py'))
-    return prompt('computer-use', launcher=launcher, binary=shlex.quote(str(binary)))
+    launcher = shell_command((sys.executable, ROOT / 'sapiens/computer/commands.py'))
+    return prompt('computer-use', launcher=launcher, binary=shell_command((binary,)))
 
 
 class Conversation:
@@ -60,7 +59,7 @@ class Conversation:
                 self.write(saved)
 
     def read(self):
-        state = json.loads(self.path.read_bytes())
+        state = json.loads(read_bytes(self.path))
         if state.get("schema_version") not in (1, 2, 3):
             raise ValueError("Unsupported agent state schema")
         return state
@@ -84,7 +83,7 @@ class Conversation:
     @property
     def manifests(self):
         # Explicit allowlist keeps legacy scheduling/learning instructions inert.
-        return {name: (self.root / 'manifests' / (name + '.md')).read_text()
+        return {name: (self.root / 'manifests' / (name + '.md')).read_text(encoding='utf-8')
                 for name in ('identity','computer-use','host-control','host-facts')
                 if (self.root / 'manifests' / (name + '.md')).is_file()}
 

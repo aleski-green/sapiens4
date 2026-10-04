@@ -26,3 +26,7 @@ __pycache__/
 
 # JavaScript DOM test dependencies
 node_modules/
+
+# Windows build output
+windows/bin/
+windows/obj/

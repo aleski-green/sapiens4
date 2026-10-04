@@ -73,7 +73,7 @@ class Notes(HTMLParser):
             history = self.workspace / 'Notes.history.json'
             if stat and history.is_file() and not history.is_symlink():
                 try:
-                    record = json.loads(history.read_text())
+                    record = json.loads(history.read_text(encoding='utf-8'))
                     for field in ('created_at', 'created_by'):
                         if isinstance(record.get(field), str):
                             result[field] = record[field]

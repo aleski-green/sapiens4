@@ -242,7 +242,8 @@ agentSettings = function() {
 };
 actions['agent-settings'] = agentSettings;
 computerDialog = function() {
-  modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : 'Build required: run ./start.sh'}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Sapis share one computer. macOS Accessibility access is required for desktop interaction; permission failures appear in chat.</p>`, 'BLINDLY4');
+  const windows = live.computer.platform === 'win32';
+  modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : `Build required: run ${windows ? '.\\start.ps1' : './start.sh'}`}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Sapis share one computer. ${windows ? 'Windows UI Automation works with accessible apps on your desktop. Elevated apps and secure system dialogs cannot be controlled.' : 'macOS Accessibility access is required for desktop interaction; permission failures appear in chat.'}</p>`, 'BLINDLY4');
 };
 autonomyDialog = function() {
   modal('Local workspace', '<p>Connected to your local Codex CLI. Talk to your Sapis in chat, manage their notes, and save documents in their workspaces.</p><p>Sapis can delegate explicit requests through Chief. Tasks shows specifications and results. Jobs and recurring work are inactive.</p><button type="button" class="button" id="edit-decision-prompts">Edit decision prompts</button>', 'SAPIENS4');

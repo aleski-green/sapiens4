@@ -24,11 +24,15 @@ class TeamCreationTest(IntegrationFixture):
         thread.start()
         try:
             command = shlex.split(agent.manifests['host-control'].splitlines()[0][4:].split(" 'JSON'", 1)[0])
+            if sys.platform == 'win32':
+                command = command[1:]  # PowerShell call operator; arguments remain single-quoted.
             result = subprocess.run([*command, '{"op":"status"}'], cwd=service.workspace.root(agent),
                                     text=True, capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)['self_id'], agent.agid)
             computer = shlex.split(agent.manifests['computer-use'].splitlines()[0].partition(': ')[2])
+            if sys.platform == 'win32':
+                computer = computer[1:]
             result = subprocess.run(computer, cwd=service.workspace.root(agent),
                                     text=True, capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 1, result.stderr)

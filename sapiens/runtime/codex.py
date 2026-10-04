@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from sapiens.runtime.contracts import LLMSpec, RUN_TIMEOUT_SECONDS
 from sapiens.runtime.settings import codex_binary, model_defaults
+from sapiens.runtime.windows import ProcessJob
 
 
 @dataclass
@@ -38,23 +39,56 @@ class CodexLLM:
             raise InterruptedError('Stopped before starting the model')
         self.activity = dict(started=time()*1000, updated=time()*1000, phase='Waiting for model', last_action='')
         self._tools.clear()
-        command = self._command(prompt)
+        # Stdin avoids Windows' 32767-character command-line limit and preserves Unicode.
+        command = self._command('-')
         final_message: str | None = None
         recent_output: list[str] = []
         stderr_output: list[str] = []
 
-        process = subprocess.Popen(
-            command,
-            cwd=self.workdir,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            start_new_session=True,
-        )
+        job = ProcessJob() if os.name == 'nt' else None
+        try:
+            process = subprocess.Popen(
+                command,
+                cwd=self.workdir,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding='utf-8',
+                bufsize=1,
+                start_new_session=os.name != 'nt',
+                creationflags=(subprocess.CREATE_NO_WINDOW | 0x4) if os.name == 'nt' else 0,
+            )
+        except BaseException:
+            if job:
+                job.close()
+            raise
+        if job:
+            try:
+                job.attach(process)
+            except BaseException:
+                job.close()
+                process.kill()
+                process.wait()
+                for pipe in (process.stdin, process.stdout, process.stderr):
+                    pipe.close()
+                raise
         assert process.stdout is not None
         assert process.stderr is not None
+
+        def write_prompt():
+            try:
+                process.stdin.write(prompt)
+            except (BrokenPipeError, OSError):
+                pass
+            finally:
+                try:
+                    process.stdin.close()
+                except (BrokenPipeError, OSError):
+                    pass
+
+        input_thread = Thread(target=write_prompt, daemon=True)
+        input_thread.start()
 
         def drain_stderr() -> None:
             for stderr_line in process.stderr:
@@ -67,6 +101,9 @@ class CodexLLM:
         finished, timed_out = Event(), Event()
 
         def stop_process() -> None:
+            if job:
+                job.stop()
+                return
             if process.returncode is not None:
                 return
             # Freeze and collect descendants before killing: command tools may
@@ -126,8 +163,11 @@ class CodexLLM:
             finally:
                 returncode = process.wait()
                 stderr_thread.join(timeout=2)
+                input_thread.join(timeout=2)
                 process.stdout.close()
                 process.stderr.close()
+                if job:
+                    job.close()
         if self.cancel_event.is_set():
             raise InterruptedError('Stopped by Admin; review external effects before retrying')
         if timed_out.is_set():
