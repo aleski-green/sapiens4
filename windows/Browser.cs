@@ -38,18 +38,26 @@ internal sealed class Browser(Form form, WebView2 shell, Host host) : IDisposabl
     string DocumentTheme => $$"""
         (() => {
           // Authored HTML keeps its own styles; only browser-owned blank/text pages get a canvas.
-          if (location.href !== 'about:blank' && !['text/plain','application/json','application/xml','text/xml'].includes(document.contentType)) return;
+          if (location.href !== 'about:blank' && !['text/plain','application/json','application/xml','text/xml'].includes(document.contentType)) return false;
           let style = document.getElementById('sapiens-document-theme');
           if (!style) { style = document.createElement('style'); style.id = 'sapiens-document-theme'; document.documentElement.append(style); }
           style.textContent = {{JsonSerializer.Serialize($"html,body{{background:{ColorTranslator.ToHtml(background)};color:{ColorTranslator.ToHtml(foreground)};color-scheme:{(dark ? "dark" : "light")}}}pre{{white-space:pre-wrap;overflow-wrap:anywhere}}")}};
+          return true;
         })();
         """;
 
     async Task ApplyTheme(Tab tab)
     {
-        tab.View.DefaultBackgroundColor = background;
         tab.View.CoreWebView2.Profile.PreferredColorScheme = dark ? CoreWebView2PreferredColorScheme.Dark : CoreWebView2PreferredColorScheme.Light;
-        await tab.View.CoreWebView2.ExecuteScriptAsync(DocumentTheme);
+        await ApplyDocumentTheme(tab);
+    }
+    async Task ApplyDocumentTheme(Tab tab)
+    {
+        bool managed = await tab.View.CoreWebView2.ExecuteScriptAsync(DocumentTheme) == "true";
+        if (disposed || tab.View.IsDisposed) return;
+        // Unstyled HTML assumes black text on a white canvas. Its own CSS/color-scheme
+        // paints over this fallback when the page supports a dark appearance.
+        tab.View.DefaultBackgroundColor = managed ? background : Color.White;
     }
 
     internal Task Open(string url) => Report(new { owner, open = url });
@@ -79,7 +87,7 @@ internal sealed class Browser(Form form, WebView2 shell, Host host) : IDisposabl
         core.Settings.AreHostObjectsAllowed = false;
         var tab = new Tab(owner, id, view);
         await ApplyTheme(tab);
-        core.DOMContentLoaded += async (_, _) => { if (!disposed && !view.IsDisposed) await view.CoreWebView2.ExecuteScriptAsync(DocumentTheme); };
+        core.DOMContentLoaded += async (_, _) => { if (!disposed && !view.IsDisposed) await ApplyDocumentTheme(tab); };
         core.NavigationStarting += async (_, e) => {
             if (!Navigation.Guest(e.Uri, host.Origin)) { e.Cancel = true; tab.Error = "Navigation blocked: use an HTTP(S) URL or a local file."; tab.Loading = false; }
             else { tab.Loading = true; tab.Error = ""; }

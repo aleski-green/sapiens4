@@ -21,7 +21,7 @@ internal static class DesktopTests
             for (int attempt = 0; attempt < 100; attempt++) { if (await predicate()) return; await Task.Delay(100); }
             throw new Exception(error);
         }
-        foreach (string url in new[] { "about:blank", new Uri(textFile).AbsoluteUri, new Uri(htmlFile).AbsoluteUri })
+        foreach (string url in new[] { "about:blank", new Uri(textFile).AbsoluteUri, new Uri(htmlFile).AbsoluteUri, original })
         {
             view.CoreWebView2.Navigate(url);
             await WaitFor(async () => await view.CoreWebView2.ExecuteScriptAsync($"location.href==={JsonSerializer.Serialize(url)} && document.readyState==='complete'") == "true", "Theme test navigation did not complete");
@@ -29,10 +29,11 @@ internal static class DesktopTests
             {
                 string mode = dark ? "dark" : "light";
                 await shell.CoreWebView2.ExecuteScriptAsync($"if(document.documentElement.dataset.theme!=={JsonSerializer.Serialize(mode)})document.querySelector('[data-theme-toggle]').click()");
-                string color = url.EndsWith(".html") ? "rgb(18, 52, 86)" : dark ? "rgb(33, 33, 33)" : "rgb(255, 255, 255)";
-                string ink = url.EndsWith(".html") ? "rgb(171, 205, 239)" : dark ? "rgb(236, 236, 236)" : "rgb(32, 32, 32)";
+                bool html = url.EndsWith(".html");
+                string color = url == original ? "rgba(0, 0, 0, 0)" : html ? "rgb(18, 52, 86)" : dark ? "rgb(33, 33, 33)" : "rgb(255, 255, 255)";
+                string ink = url == original ? "rgb(0, 0, 0)" : html ? "rgb(171, 205, 239)" : dark ? "rgb(236, 236, 236)" : "rgb(32, 32, 32)";
                 await WaitFor(async () =>
-                    browser.Views.All(v => v.DefaultBackgroundColor.ToArgb() == (dark ? Color.FromArgb(33, 33, 33) : Color.White).ToArgb()) &&
+                    view.DefaultBackgroundColor.ToArgb() == (dark && !html ? Color.FromArgb(33, 33, 33) : Color.White).ToArgb() &&
                     await view.CoreWebView2.ExecuteScriptAsync($"matchMedia('(prefers-color-scheme: dark)').matches==={dark.ToString().ToLowerInvariant()} && getComputedStyle(document.body).backgroundColor==={JsonSerializer.Serialize(color)} && getComputedStyle(document.body).color==={JsonSerializer.Serialize(ink)}") == "true",
                     $"Browser theme mismatch: {url}, {mode}");
                 if (view.CoreWebView2.Settings.IsWebMessageEnabled || view.CoreWebView2.Settings.AreHostObjectsAllowed) throw new Exception("Guest bridge isolation changed");
