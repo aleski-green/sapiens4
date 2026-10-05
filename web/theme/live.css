@@ -324,6 +324,7 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 :root body.sapi-workspace .agent-row-name{display:flex;align-items:center;gap:4px;overflow:hidden;white-space:nowrap}
 :root body.sapi-workspace .agent-row-name:has(.compact) .agent-name{flex-shrink:0;max-width:calc(100% - var(--name-reserve,56px))}
 .agent-name{font:inherit;color:inherit;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:24px;flex:0 1 auto}
+:root body.sapi-workspace #agent-list .group-row .agent-name{color:var(--sapi-accent)}
 :root body.sapi-workspace .agent-row-name small{margin-left:auto;flex:none;font-size:10px}
 :root[data-theme] body.sapi-workspace .scope-switch button.group-open{background:var(--sapi-hover);color:var(--sapi-accent)}
 .group-avatar{position:relative;color:#20252a;overflow:hidden}.group-avatar>span{padding:2px 3px;border-radius:6px;background:#ffffffb0;font-size:inherit}
