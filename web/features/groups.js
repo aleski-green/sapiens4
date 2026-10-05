@@ -73,6 +73,7 @@ function renderGroupPanel(host) {
 let groupTaskFilter='active', workView='tasks', chatView='conversation', updatesView='runtime';
 const openGroupTasks=new Set();
 const activityLabels={tasks:'Tasks',automation:'Automation',workflows:'Workflows',memo:'Memo',conversation:'Conversation',pins:'Pins',threads:'Threads',comments:'Comments',runtime:'Runtime',events:'Events',archived:'Archived'};
+const activityChevron = sideways => `<svg class="activity-chevron${sideways?' sideways':''}" viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true" focusable="false"><path d="m4.5 6.25 3.5 3.5 3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 function closeActivityMenus() {
   document.querySelectorAll('.activity-menu').forEach(menu=>menu.hidden=true);
   document.querySelectorAll('[data-activity-menu]').forEach(button=>button.setAttribute('aria-expanded','false'));
@@ -82,16 +83,16 @@ function renderActivityNavigation() {
   const view=state.panel==='work'?workView:state.panel==='updates'?updatesView:chatView;
   const item=(name,panel)=>`<button data-activity-view="${name}" data-activity-panel="${panel}" class="${view===name?'selected':''}" aria-pressed="${view===name}">${activityLabels[name]}</button>`;
   const menus={chat:['pins','threads','comments'].map(v=>item(v,'chat')).join('')+'<hr><button data-activity-feedback>＋ Add feedback</button>',
-    work:item('tasks','work')+`<div class="activity-submenu-row">${item('automation','work')}<button data-activity-menu="activity-automation-menu" aria-label="Automation menu" aria-expanded="false" aria-controls="activity-automation-menu">›</button><div class="activity-menu activity-submenu" id="activity-automation-menu" hidden>${item('workflows','work')}</div></div>`+item('memo','work'),
+    work:item('tasks','work')+`<div class="activity-submenu-row">${item('automation','work')}<button data-activity-menu="activity-automation-menu" aria-label="Automation menu" aria-expanded="false" aria-controls="activity-automation-menu">${activityChevron(true)}</button><div class="activity-menu activity-submenu" id="activity-automation-menu" hidden>${item('workflows','work')}</div></div>`+item('memo','work'),
     updates:['runtime','events','archived'].map(v=>item(v,'updates')).join('')};
-  const html=['chat','work','updates'].map(panel=>`<div class="activity-tab ${state.panel===panel?'active':''}"><button data-panel="${panel}" aria-pressed="${state.panel===panel}">${panel[0].toUpperCase()+panel.slice(1)}</button><button class="activity-toggle" data-activity-menu="activity-${panel}-menu" aria-label="${panel[0].toUpperCase()+panel.slice(1)} menu" aria-expanded="false" aria-controls="activity-${panel}-menu">⌄</button><div class="activity-menu" id="activity-${panel}-menu" hidden>${menus[panel]}</div></div>`).join('');
+  const html=['chat','work','updates'].map(panel=>`<div class="activity-tab ${state.panel===panel?'active':''}"><button data-panel="${panel}" aria-pressed="${state.panel===panel}">${panel[0].toUpperCase()+panel.slice(1)}</button><button class="activity-toggle" data-activity-menu="activity-${panel}-menu" aria-label="${panel[0].toUpperCase()+panel.slice(1)} menu" aria-expanded="false" aria-controls="activity-${panel}-menu">${activityChevron(false)}</button><div class="activity-menu" id="activity-${panel}-menu" hidden>${menus[panel]}</div></div>`).join('');
   // Keep open menus and keyboard focus intact across polling snapshots.
   if(nav.dataset.view!==html){nav.innerHTML=html;nav.dataset.view=html;}
   let bar=$('#activity-viewbar');
   if(!bar){bar=document.createElement('div');bar.id='activity-viewbar';nav.after(bar);}
   bar.hidden=state.panel==='chat'&&chatView==='conversation';
   let detail=`<span class="activity-view-title">${activityLabels[view]||''}</span>`;
-  if(state.panel==='work'&&['automation','workflows'].includes(view))detail=`<div class="activity-view-menu"><button data-activity-menu="activity-workflows-menu" aria-expanded="false" aria-controls="activity-workflows-menu" aria-label="Automation views">Automation ⌄</button><div class="activity-menu" id="activity-workflows-menu" hidden>${item('workflows','work')}</div></div>${view==='workflows'?'<span class="activity-view-title"> / Workflows</span>':''}`;
+  if(state.panel==='work'&&['automation','workflows'].includes(view))detail=`<div class="activity-view-menu"><button data-activity-menu="activity-workflows-menu" aria-expanded="false" aria-controls="activity-workflows-menu" aria-label="Automation views">Automation ${activityChevron(false)}</button><div class="activity-menu" id="activity-workflows-menu" hidden>${item('workflows','work')}</div></div>${view==='workflows'?'<span class="activity-view-title"> / Workflows</span>':''}`;
   if(state.panel==='work'&&workView==='tasks') {
     const options=group?[['active','Active'],['done','Done'],['deleted','Deleted']]:[['upcoming','Upcoming'],['past','Past']];
     detail+=`<div class="work-nav-tools"><select data-work-filter aria-label="${group?'Task status':'Task history'}">${options.map(([value,label])=>`<option value="${value}" ${(group?groupTaskFilter:taskPeriod)===value?'selected':''}>${label}</option>`).join('')}</select>${group&&!selected().archived?`<button data-new-group-task="${esc(state.selected)}">+ Task</button>`:''}</div>`;

@@ -341,7 +341,7 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 .activity-tab.active{border-color:var(--ink)}
 :root body.sapi-workspace .activity-tab>button{font-size:12px;border:0;padding:9px 0;background:transparent;color:var(--muted)}
 :root body.sapi-workspace .activity-tab.active>button[data-panel]{color:var(--ink);font-weight:600}
-:root body.sapi-workspace .activity-tab>.activity-toggle{width:24px;height:25px;padding:0 0 4px;font-size:17px;border-radius:5px}
+:root body.sapi-workspace .activity-tab>.activity-toggle{display:grid;place-items:center;width:24px;height:24px;padding:0;border-radius:5px}
 :root[data-theme] body.sapi-workspace .activity-toggle:hover,:root[data-theme] body.sapi-workspace .activity-toggle[aria-expanded=true]{background:var(--sapi-hover);color:var(--sapi-accent)}
 .activity-menu{position:absolute;top:calc(100% + 7px);left:-7px;min-width:180px;padding:5px;border:1px solid var(--line);border-radius:8px;background:var(--sapi-bg);box-shadow:0 8px 28px #0002;z-index:10;white-space:nowrap}
 :root body.sapi-workspace .activity-menu button{display:flex;align-items:center;text-align:left;width:100%;padding:10px 12px;border:0;border-radius:5px;font-size:12px;background:transparent;color:var(--ink);font-weight:400}
@@ -352,7 +352,7 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 .activity-submenu{top:-5px;left:calc(100% + 6px);min-width:145px}
 #activity-viewbar{display:flex;align-items:center;gap:8px;padding:12px 20px 0;min-height:42px;flex-shrink:0;position:relative;z-index:5}
 .activity-view-title,.activity-view-menu>button{font-size:11px;color:var(--muted)}
-.activity-view-menu{position:relative}.activity-view-menu>button{padding:4px 0}
+.activity-view-menu{position:relative}.activity-view-menu>button{display:flex;align-items:center;gap:7px;padding:4px 0}
 .work-nav-tools{display:flex;align-items:center;gap:12px;margin-left:auto;flex:none}
 :root body.sapi-workspace .work-nav-tools select{font:11px var(--sapi-font);color:var(--muted);border:0;background:transparent;width:auto;padding:5px 0;cursor:pointer}
 :root body.sapi-workspace .work-nav-tools button{padding:6px 0;font-size:11px;color:var(--muted);border:0}
@@ -361,3 +361,7 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 .activity-submenu{left:14px;top:calc(100% + 4px)}
 @media(min-width:1000px){.main-grid[data-visible-panes="2"] .activity-submenu,.main-grid[data-visible-panes="1"] .activity-submenu{left:calc(100% + 6px);top:-5px}}
 .activity-tab:last-child>.activity-menu{left:auto;right:0}
+
+.activity-chevron{display:block;width:12px;height:12px;flex:none}
+.activity-chevron.sideways{transform:rotate(-90deg)}
+[aria-expanded="true"]>.activity-chevron:not(.sideways){transform:rotate(180deg)}
