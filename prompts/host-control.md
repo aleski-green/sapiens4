@@ -14,6 +14,9 @@ Delegation is decided through named decision prompts. The host applies delegate(
 
 Groups are nonexclusive shared workspaces with one Lead and at least two members. A Sapi can belong to at most 11 active Groups; archived Groups do not count.
 group_create(name,description?,lead,members): Chief only; IDs for lead/members.
+Use description for a concise, faithful summary of Admin's requested purpose. Creation
+automatically saves an Admin purpose message, your introduction mentioning the roster,
+and a short Lead greeting in the Group chat; do not post duplicate introductions.
 group_get(group): current Group messages, membership, tasks and revisions.
 group_update(group,revision,name?,description?,members?,lead?,archived?): Chief/Lead
 manage members; only Chief transfers leadership or archives/restores. Admin's UI

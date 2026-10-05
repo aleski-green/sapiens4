@@ -18,6 +18,27 @@ class GroupChat:
     def message(author, text):
         return dict(id=uuid4().hex, author=author, text=text, created=now())
 
+    def introduction(self, group):
+        """Seed the shared history without dispatching calls for roster mentions."""
+        agents = {a['id']: a for a in self.service.store.agents()}
+        lead = agents[group['lead']]['name']
+        members = ', '.join('@' + agents[mid]['name'] for mid in
+                            [group['lead'], *[m for m in group['members'] if m != group['lead']]])
+        purpose = group['description'].strip()
+        admin = (f'I need this group to work on:\n\n{purpose}' if purpose else
+                 f'I need {group["name"]} to work together. Let’s define the first task here.')
+        messages = [
+            self.message('admin', admin),
+            self.message(self.service.registry.main,
+                         f'I’ve created {group["name"]} with {members}. @{lead} will lead this group.'),
+            self.message(group['lead'],
+                         f'Hi! I’m {lead}, Lead of this group. Together we can manage a shared memo/wiki, '
+                         'workflows, a Scrum backlog or ad hoc tasks, and automated operations.'),
+        ]
+        for message in messages:
+            message['source'] = 'group-introduction'
+        return messages
+
     def mentions(self, group, text):
         recipients = []
         rows = self.service.store.agents()

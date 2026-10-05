@@ -81,6 +81,7 @@ class Groups:
                          color=secrets.choice(['#48c99c', '#ba85df', '#74b9ed', '#edbd65', '#e891ae']),
                          archived=False, created=now(), updated=now(),
                          revision=0, messages=[], requests=[], tasks=[], events=[])
+            group['messages'] = self.chat.introduction(group)
             self.save(group, actor, 'created', name)
             self.folder(group['id'])
             return group

@@ -29,6 +29,38 @@ class GroupsTest(IntegrationFixture):
             time.sleep(.01)
         self.fail('Group condition did not become true')
 
+    def test_creation_introduces_purpose_roster_and_lead_without_dispatch(self):
+        s, chief, lead, member, outsider, _ = self.setup_group()
+        purpose = 'Review papers on {learning}, then maintain our research backlog.'
+        group = s.orchestration.control(chief, dict(op='group_create', name='Paper team',
+            description=purpose, lead=lead, members=[member, lead]))
+        messages = group['messages']
+        self.assertEqual([m['author'] for m in messages], ['admin', chief, lead])
+        self.assertIn(purpose, messages[0]['text'])
+        self.assertIn('@Lead', messages[1]['text'])
+        self.assertIn('@Researcher', messages[1]['text'])
+        self.assertNotIn('@Outside', messages[1]['text'])
+        self.assertIn('I’m Lead, Lead of this group.', messages[2]['text'])
+        self.assertEqual(len({m['id'] for m in messages}), 3)
+        self.assertTrue(all(m['created'] and m['source'] == 'group-introduction' for m in messages))
+        self.assertEqual(group['requests'], [])
+        self.assertEqual(s.groups.get(group['id'])['messages'], messages)
+        s.groups.chat.dispatch()
+        self.assertEqual(s.snapshot()['turns'], [])
+        s = self.restart(s, start_worker=False)
+        self.assertEqual(s.groups.get(group['id'])['messages'], messages)
+        changed = s.groups.update(group['id'], dict(revision=group['revision'], lead=member), chief)
+        archived = s.groups.update(group['id'], dict(revision=changed['revision'], archived=True), chief)
+        restored = s.groups.update(group['id'], dict(revision=archived['revision'], archived=False), chief)
+        self.assertEqual(restored['messages'], messages)
+        self.assertEqual(self.factory.prompts, [])
+
+    def test_creation_without_purpose_has_a_short_fallback(self):
+        s, chief, lead, member, outsider, group = self.setup_group()
+        self.assertIn('Research Group', group['messages'][0]['text'])
+        self.assertIn('define the first task', group['messages'][0]['text'])
+        self.assertEqual(len(group['messages']), 3)
+
     def test_nonexclusive_membership_stable_identity_and_transfer(self):
         s, chief, lead, member, outsider, g = self.setup_group()
         other = s.groups.create(dict(name='Second', lead=member, members=[lead, member]))
@@ -93,13 +125,13 @@ class GroupsTest(IntegrationFixture):
         self.wait_turn(s, private['id'])
         self.until(lambda: not s._runners)
         s.groups.chat.submit(g['id'], dict(text='Hello Group'))
-        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 2)
+        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 5)
         group = s.groups.get(g['id'])
         self.assertEqual(group['requests'][0]['target'], lead)
-        self.assertEqual(group['messages'][1]['author'], lead)
+        self.assertEqual(group['messages'][4]['author'], lead)
         self.assertNotIn('PRIVATE PERSONAL CONTEXT', self.factory.prompts[-1])
         s.groups.chat.submit(g['id'], dict(text='@Researcher Please reply'))
-        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 4)
+        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 7)
         self.assertEqual(s.groups.get(g['id'])['requests'][-1]['target'], member)
         self.assertEqual(s.groups.get(g['id'])['messages'][-1]['author'], member)
         self.assertTrue(all(t.get('group') == g['id'] for t in s.snapshot()['turns'] if t['id'] != private['id']))
@@ -118,13 +150,13 @@ class GroupsTest(IntegrationFixture):
         self.factory.spawn = spawn
         s.groups.chat.submit(g['id'], dict(text='Coordinate'))
         s.start()
-        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 3)
+        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 6)
         self.until(lambda: not s._runners)
         for _ in range(3):
             s.groups.chat.reconcile(); s.groups.chat.dispatch()
         group = s.groups.get(g['id'])
         self.assertEqual([r['target'] for r in group['requests']], [lead, member])
-        self.assertEqual([m['author'] for m in group['messages']], ['admin', lead, member])
+        self.assertEqual([m['author'] for m in group['messages'][3:]], ['admin', lead, member])
 
     def test_queued_group_requests_survive_restart_without_duplicate_execution(self):
         s, chief, lead, member, outsider, g = self.setup_group()
@@ -132,12 +164,12 @@ class GroupsTest(IntegrationFixture):
         s.groups.chat.submit(g['id'], dict(text='Second'))
         self.assertEqual(len(s._agent(lead).state['turns']), 1)
         s = self.restart(s)
-        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 4)
+        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 7)
         self.until(lambda: not s._runners)
         self.assertEqual(len(self.factory.prompts), 2)
         s = self.restart(s)
         self.assertEqual(len(self.factory.prompts), 2)
-        self.assertEqual(len(s.groups.get(g['id'])['messages']), 4)
+        self.assertEqual(len(s.groups.get(g['id'])['messages']), 7)
 
     def test_autonomous_tasks_use_one_record_and_reject_stale_edits(self):
         s, chief, lead, member, outsider, g = self.setup_group()
@@ -194,7 +226,7 @@ class GroupsTest(IntegrationFixture):
         self.assertFalse(self.factory.started.is_set())
         group = s.groups.get(g['id'])
         s.groups.update(g['id'], dict(revision=group['revision'], archived=False), chief)
-        self.assertEqual(len(s.groups.get(g['id'])['messages']), 2)
+        self.assertEqual(len(s.groups.get(g['id'])['messages']), 5)
 
     def test_host_control_and_http_preferences_browser_and_validation(self):
         s, chief, lead, member, outsider, g = self.setup_group()
@@ -239,7 +271,7 @@ class GroupsTest(IntegrationFixture):
         with self.assertRaises(APIError):
             s.groups.chat.submit(other['id'], dict(text='Bad cross-group reference', attachments=[attachment['id']]))
         s.groups.chat.submit(g['id'], dict(text='', attachments=[attachment['id']]))
-        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 2)
+        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 5)
         self.assertIn('https://example.com/reference', self.factory.prompts[-1])
         s.orchestration.control(member, dict(op='workspace_open', group=g['id'], url='https://example.com/shared'))
         self.assertEqual(s.workspace.summary(s._agent(member))['tabs'], [])
@@ -253,11 +285,11 @@ class GroupsTest(IntegrationFixture):
         s.groups.chat.submit(g['id'], dict(text='Try once'))
         self.until(lambda: s.groups.get(g['id'])['requests'][0]['status'] == 'failed')
         self.until(lambda: not s._runners)
-        self.assertEqual(len(s.groups.get(g['id'])['messages']), 1)
+        self.assertEqual(len(s.groups.get(g['id'])['messages']), 4)
         self.factory.fail = False
         rid = s.groups.get(g['id'])['requests'][0]['id']
         s.groups.chat.action(g['id'], rid, 'retry')
-        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 2)
+        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 5)
         self.assertEqual(len(s.groups.get(g['id'])['requests']), 1)
         self.assertEqual(len(self.factory.prompts), 2)
 
@@ -270,10 +302,10 @@ class GroupsTest(IntegrationFixture):
         group = s.groups.get(g['id'])
         s.groups.update(g['id'], dict(revision=group['revision'], lead=member), chief)
         gate.set()
-        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 2)
+        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 5)
         self.assertEqual(s.groups.get(g['id'])['messages'][-1]['author'], lead)
         s.groups.chat.submit(g['id'], dict(text='For new Lead'))
-        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 4)
+        self.until(lambda: len(s.groups.get(g['id'])['messages']) == 7)
         self.assertEqual(s.groups.get(g['id'])['messages'][-1]['author'], member)
 
     def test_mentions_require_at_and_accept_sentence_punctuation(self):
