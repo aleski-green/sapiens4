@@ -60,27 +60,10 @@ function drawTasks(host, id, cached) {
   const key = JSON.stringify([id, cached.revision, taskPeriod, cached.pending, cached.error]);
   if (host.firstElementChild?.taskViewKey === key) return;
   const view = taskElement('section', 'task-browser'); view.taskViewKey = key;
-  const tabs = taskElement('div', 'task-periods');
-  tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Task history');
   const rows = cached.rows || [];
   const inPeriod = (task, period) => pastTaskStates.has(task.state) === (period === 'past');
-  for (const [period, label] of [['upcoming', 'Upcoming'], ['past', 'Past']]) {
-    const button = taskElement('button', 'task-period'); button.type = 'button';
-    button.id = 'tasks-' + period; button.setAttribute('role', 'tab');
-    button.setAttribute('aria-selected', String(period === taskPeriod));
-    button.setAttribute('aria-controls', 'task-list'); button.tabIndex = period === taskPeriod ? 0 : -1;
-    button.append(taskElement('span', '', label), taskElement('span', 'task-count', String(rows.filter(t => inPeriod(t, period)).length)));
-    button.addEventListener('click', () => { taskPeriod = period; drawTasks(host, id, cached); });
-    button.addEventListener('keydown', event => {
-      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-      event.preventDefault();
-      taskPeriod = event.key === 'Home' ? 'upcoming' : event.key === 'End' ? 'past' : period === 'past' ? 'upcoming' : 'past';
-      drawTasks(host, id, cached); host.querySelector('[aria-selected="true"]').focus();
-    });
-    tabs.append(button);
-  }
   const list = taskElement('div', 'task-list'); list.id = 'task-list';
-  list.setAttribute('role', 'tabpanel'); list.setAttribute('aria-labelledby', 'tasks-' + taskPeriod);
+  list.setAttribute('aria-label', taskPeriod==='past'?'Past tasks':'Upcoming tasks');
   list.setAttribute('aria-busy', String(Boolean(cached.pending)));
   const visible = rows.filter(t => inPeriod(t, taskPeriod));
   if (cached.error) {
@@ -97,7 +80,7 @@ function drawTasks(host, id, cached) {
       taskElement('small', '', taskPeriod === 'past' ? 'Completed and stopped tasks will appear here.' : 'Queued, running and waiting tasks will appear here.'));
     list.append(empty);
   } else visible.forEach(task => list.append(taskRow(task, id)));
-  view.append(tabs, list); host.replaceChildren(view);
+  view.append(list); host.replaceChildren(view);
 }
 function renderTasks(host) {
   const id = state.selected;
@@ -114,7 +97,7 @@ function renderTasks(host) {
     .catch(error => { cached.error = error.message; })
     .finally(() => {
       cached.pending = false;
-      if (taskDocuments.get(id) === cached && state.selected === id && state.panel === 'tasks' && host.isConnected) drawTasks(host, id, cached);
+      if (taskDocuments.get(id) === cached && state.selected === id && ['tasks','work'].includes(state.panel) && host.isConnected) drawTasks(host, id, cached);
     });
 }
 function delegationMessages(snapshot) {

@@ -19,7 +19,7 @@ const agent = id => state.agents.find(a=>a.id===id) || state.agents[0];
 const selected = () => agent(state.selected);
 const isMainSapi = a => a.id===state.mainSapiId;
 
-const avatar = (a, size='', presence=false) => `<span class="avatar ${size}" style="--avatar-color:${/^#[a-f0-9]{6}$/i.test(a.color)?a.color:'#fdd997'}" aria-hidden="true">(${esc(a.face)})${presence?`<i class="presence ${a.status==='busy'?'busy':a.status==='idle'?'idle':''}"></i>`:''}</span>`;
+const avatar = (a, size='', presence=false) => a.kind==='group' ? groupAvatar(a,size) : `<span class="avatar ${size}" style="--avatar-color:${/^#[a-f0-9]{6}$/i.test(a.color)?a.color:'#fdd997'}" aria-hidden="true">(${esc(a.face)})${presence?`<i class="presence ${a.status==='busy'?'busy':a.status==='idle'?'idle':''}"></i>`:''}</span>`;
 function mention(id){
   const a=state.agents.find(a=>a.id===id);
   return a?`<button type="button" class="entity-mention" data-mention="${esc(a.id)}" aria-label="Open chat with ${esc(a.name)}">@${esc(a.name)}</button>`:esc(id==='you'?'You':id);
@@ -28,8 +28,10 @@ function mention(id){
 function openChat(id){
   const a=state.agents.find(a=>a.id===id);if(!a)return;
   state.drafts ??= {};state.drafts[state.selected]=$('#message-input').value;
-  state.selected=id;state.panel='chat';state.panes.chat=true;a.unread=false;
-  if(state.scope!=='all')state.scope='sapis';
+  state.selected=id;state.panel='chat';chatView='conversation';closeActivityMenus();state.panes.chat=true;a.unread=false;
+  const context=state.agents.find(g=>g.id===state.groupView&&!g.archived);
+  if(a.kind==='group') {state.groupView=a.id;state.scope='groups';}
+  else if(!context?.members.includes(id)) {state.groupView=null;if(state.scope!=='all')state.scope='sapis';}
   search='';$('#agent-search').value='';$('#message-input').value=state.drafts[id]||'';
   closeModal();setBrowserMenu();render();$('#conversation-body').scrollTop=$('#conversation-body').scrollHeight;
 }
@@ -57,12 +59,29 @@ function renderPanes(){
   $('.main-grid').style.gridTemplateColumns=[p.sidebar?(count===1?'minmax(0,1fr)':'clamp(205px,18vw,250px)'):'0px',p.chat?'minmax(300px,1fr)':'0px',p.workspace?'minmax(350px,1.2fr)':'0px'].join(' ');
 }
 
+function leaveGroup(scope) {
+  state.groupView=null;
+  openChat(state.mainSapiId);
+  state.scope=scope;
+  renderSidebar();save();
+}
 function renderSidebar(){
-  $('#agent-count').textContent=String(state.agents.filter(a=>!a.retired).length).padStart(2,'0');
-  $$('[data-scope]').forEach(b=>{b.classList.toggle('active',b.dataset.scope===state.scope);b.setAttribute('aria-pressed',b.dataset.scope===state.scope);});
-  const list=state.agents.filter(a=>!a.retired&&(isMainSapi(a)||(state.scope!=='groups'&&`${a.name} ${a.role}`.toLowerCase().includes(search.toLowerCase()))))
-    .sort((a,b)=>Number(isMainSapi(b))-Number(isMainSapi(a))||(b.lastActivity||0)-(a.lastActivity||0));
-  $('#agent-list').innerHTML=list.map(a=>`<button class="agent-row ${a.id===state.selected?'active':''} ${isMainSapi(a)?'main-sapi-row':''}" data-agent="${esc(a.id)}" aria-pressed="${a.id===state.selected}">${avatar(a,isMainSapi(a)?'main-sapi-avatar':'',true)}<span class="agent-row-copy"><span class="agent-row-name">${esc(a.name)}<small>${esc(new Date(a.lastActivity).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false}))}</small></span><p>${esc(a.preview)}</p></span>${a.unread&&!isMainSapi(a)?'<span class="unread-dot"></span>':''}</button>`).join('');
+  const group=state.agents.find(g=>g.id===state.groupView&&!g.archived);
+  if(!group)state.groupView=null;
+  const hasGroups=state.agents.some(a=>a.kind==='group'&&!a.archived);
+  if(!hasGroups&&state.scope==='groups')state.scope='all';
+  $('#agent-count').textContent=String(group?group.members.length:state.agents.filter(a=>!a.retired&&!a.archived).length).padStart(2,'0');
+  $$('[data-scope]').forEach(b=>{
+    const active=b.dataset.scope===state.scope;
+    b.classList.toggle('active',active);b.classList.toggle('group-open',active&&!!group);
+    b.setAttribute('aria-pressed',String(active));
+    b.disabled=b.dataset.scope==='groups'&&!hasGroups;
+  });
+  const pinned=id=>id===(group?group.lead:state.mainSapiId);
+  const list=state.agents.filter(a=>!a.retired&&!a.archived&&(group?group.members.includes(a.id):(state.scope==='all'||(state.scope==='groups')===(a.kind==='group')))&&`${a.name} ${a.role}`.toLowerCase().includes(search.toLowerCase()))
+    .sort((a,b)=>Number(pinned(b.id))-Number(pinned(a.id))||(b.lastActivity||0)-(a.lastActivity||0));
+  $('#agent-list').innerHTML=list.map(a=>`<div class="agent-entry"><div class="agent-row ${a.id===state.selected?'active':''} ${pinned(a.id)?'main-sapi-row':''} ${a.kind==='group'?'group-row':''}" data-agent="${esc(a.id)}">${avatar(a,pinned(a.id)?'main-sapi-avatar':'',true)}<div class="agent-row-copy"><div class="agent-row-name"><button class="agent-name" data-agent="${esc(a.id)}" aria-label="Open ${esc(a.name)}${group&&pinned(a.id)?' · Lead':''}" ${a.id===state.selected?'aria-current="true"':''}>${esc(a.name)}</button>${a.kind==='group'?`<span class="group-labels compact" style="--label-count:1"><span class="group-chip" style="--group-color:${groupColor(a.color)}" title="${a.members.length} members" aria-label="${a.members.length} members"><span>${a.members.length}</span></span></span>`:groupLabels(a,true)+`<small>${esc(new Date(a.lastActivity).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false}))}</small>`}</div><p>${group&&pinned(a.id)?'Lead · ':''}${esc(group?a.role:(a.preview||a.description||'Shared workspace'))}</p></div></div></div>`).join('');
+  observeGroupLabels();
 }
 
 // Live modules assign these before the first render.
@@ -79,14 +98,24 @@ function renderConversation() {
 const actions = {'new-tab':openNewTab};
 
 document.addEventListener('click',e=>{
-  const b=e.target.closest('button');if(!b)return;const d=b.dataset;
+  const b=e.target.closest('button,[data-agent]');if(!b)return;const d=b.dataset;
 
   if(d.togglePane){state.panes[d.togglePane]=!state.panes[d.togglePane];renderPanes();save();return;}
   if(d.action){actions[d.action]?.();return;}
   if(d.mention){openChat(d.mention);return;}
-  if(d.agent){openChat(d.agent);return;}
-  if(d.scope){state.scope=d.scope;renderSidebar();save();return;}
-  if(d.panel && !b.disabled && ['chat','tasks','notes'].includes(d.panel)){state.panel=d.panel;renderConversation();save();return;}
+  if(d.agent){
+    const group=state.agents.find(g=>g.id===state.groupView&&!g.archived);
+    if(b.closest('#agent-list')&&group?.members.includes(d.agent)) {
+      openChat(group.id);
+      const input=$('#message-input');
+      const previous=group.members.map(id=>'@'+agent(id).name+' ').find(prefix=>input.value.startsWith(prefix));
+      input.value='@'+agent(d.agent).name+' '+(previous?input.value.slice(previous.length):input.value);
+      state.drafts[group.id]=input.value;input.focus();save();
+    } else openChat(d.agent);
+    return;
+  }
+  if(d.scope&&!b.disabled){leaveGroup(d.scope);return;}
+  if(d.panel && !b.disabled && ['chat','tasks','notes','work','updates'].includes(d.panel)){state.panel=d.panel;if(d.panel==='work')workView='tasks';if(d.panel==='chat')chatView='conversation';if(d.panel==='updates')updatesView='runtime';closeActivityMenus();renderConversation();save();return;}
   if(d.tab){browserAction('focus',{id:d.tab});return;}
   if(d.closeTab){browserAction('close',{id:d.closeTab});return;}
 

@@ -41,6 +41,10 @@ assert.equal(root.querySelector('pre code').textContent,'&anchor [one, two]');
 // Authoring example is accepted by the actual renderer and keeps all references.
 root = render(fs.readFileSync('prompts/examples/jarvis-notes.html','utf8'));
 for(const a of root.querySelectorAll('[data-note-anchor]')) assert.ok(root.querySelector('#'+a.dataset.noteAnchor));
+const groupProfile={...profile,id:'group_test',kind:'group'};
+const groupMemo=sandbox.notesWiki(wrap('<p>Shared finding</p><img src="chart.png">'),'/workspace/group_test/Notes.html',groupProfile.id,groupProfile,metadata);
+assert.equal(groupMemo.querySelector('img').getAttribute('src'),'/api/groups/group_test/notes?image=chart.png');
+assert.match(groupMemo.textContent,/Group ID/);
 console.log('Memo DOM: article layout, legacy facts, stub, links, metadata and inert content passed');
 
 root = render(wrap('<article id="topic"><h2>Working with Admin<a class="permalink" href="#topic">¶</a></h2><p>Address the user as <strong>Admin</strong>.</p><a class="citation" href="#reference">[1]</a></article><article id="reference"><h2>References</h2><ol class="references"><li>Saved source.</li></ol></article>').replace('id="about"','id="about" data-memo-name="Chief" data-memo-assists="Admin" data-memo-role="1st director"'));
@@ -48,3 +52,15 @@ assert.match(root.querySelector('.memo-infobox').textContent,/ChiefFull nameTest
 assert.equal(root.querySelector('.memo-toc a').textContent,'Working with Admin');
 assert.ok(root.querySelector('.citation'));
 assert.ok(root.querySelector('.references'));
+
+// Memo remains reachable after moving it beneath Work; async responses still render.
+sandbox.state={selected:profile.id,panel:'work'};
+sandbox.live={orchestration:{[profile.id]:{notes:{revision:'v1'}}},turns:[]};
+sandbox.agent=()=>profile;
+sandbox.api=async()=>({content:wrap('<p>Shared navigation preserves personal Memo.</p>'),path:'/workspace/sapi_test/Notes.html'});
+const workMemo=window.document.createElement('div');window.document.body.append(workMemo);
+sandbox.renderNotes(workMemo);
+setImmediate(()=>{
+  try {assert.match(workMemo.textContent,/Shared navigation preserves personal Memo/);console.log('Memo async rendering under Work passed');}
+  catch(error){console.error(error);process.exitCode=1;}
+});

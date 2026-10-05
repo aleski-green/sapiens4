@@ -118,7 +118,7 @@ class TurnRunner:
                 turn.update(status='interrupted' if self.cancel_event.is_set() else 'failed', error=outcome.error)
             else:
                 turn['status'] = 'done'
-                state['chat'].append(dict(role='agent', content=outcome.output, turn=turn_id, time=utcnow().isoformat()))
+                state['chat'].append(dict(role='agent', content=outcome.output, turn=turn_id, time=utcnow().isoformat(), origin=turn.get('origin')))
                 state['last_output'] = outcome.output
             self.store.trim(state)
 

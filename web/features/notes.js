@@ -73,7 +73,7 @@ function notesWiki(source, path, owner, profile = {}, metadata = {}, turnCount =
       element.alt = node.getAttribute('alt') || '';
       if (/^data:image\/(?:png|jpeg|gif|webp|svg\+xml)[;,]/i.test(src)) element.src = src;
       else if (src && !/^(?:[a-z]+:|\/\/|\/)/i.test(src))
-        element.src = '/api/agents/' + encodeURIComponent(owner) + '/notes?image=' + encodeURIComponent(src);
+        element.src = '/api/' + (profile.kind==='group'?'groups':'agents') + '/' + encodeURIComponent(owner) + '/notes?image=' + encodeURIComponent(src);
     }
     for (const attr of ['colspan','rowspan']) if (/^[1-9]\d?$/.test(node.getAttribute(attr) || '')) element.setAttribute(attr,node.getAttribute(attr));
     element.append(...[...node.childNodes].map(copy)); return element;
@@ -199,10 +199,10 @@ function presentMemo(root, profile, metadata, turnCount) {
   face.style.backgroundColor = /^#[a-f0-9]{6}$/i.test(profile.color) ? profile.color : '#d8e5f4';
   const name = document.createElement('strong'); name.textContent = displayName; identity.append(face,name); box.append(identity);
   const table = document.createElement('table');
-  for (const [key,value] of [['Full name',displayName !== profile.name ? profile.name : null],['Role',about.dataset.memoRole || profile.role],['Assists',about.dataset.memoAssists],['History',turnCount+' recorded turns'],['Sapi ID',profile.id]]) {
+  for (const [key,value] of [['Full name',displayName !== profile.name ? profile.name : null],['Role',about.dataset.memoRole || profile.role],['Assists',about.dataset.memoAssists],['History',turnCount+' recorded turns'],[profile.kind==='group'?'Group ID':'Sapi ID',profile.id]]) {
     if (!value) continue;
     const tr = document.createElement('tr'), th = document.createElement('th'), td = document.createElement('td');
-    th.textContent = key; td.textContent = value; if (key === 'Sapi ID') td.className = 'memo-id'; tr.append(th,td); table.append(tr);
+    th.textContent = key; td.textContent = value; if (key.endsWith(' ID')) td.className = 'memo-id'; tr.append(th,td); table.append(tr);
   }
   box.append(table);
   const workspace = document.createElement('div'); workspace.className = 'memo-workspace';
@@ -213,19 +213,20 @@ function presentMemo(root, profile, metadata, turnCount) {
     const p = document.createElement('p'); p.className = 'memo-stub'; p.textContent = 'This Memo is a stub. No populated memory entries have been saved yet.'; content.prepend(p);
   }
 }
+function notesInfo(id) {return agent(id).kind==='group'?agent(id).notes:live.orchestration[id].notes;}
 function renderNotes(host) {
-  const id = state.selected, info = live.orchestration[id].notes, profile = agent(id);
-  const turns = live.turns.filter(turn => turn.agent === id).length;
+  const id = state.selected, info = notesInfo(id), profile = agent(id);
+  const turns = live.turns.filter(turn => profile.kind==='group'?turn.group===id:turn.agent===id).length;
   const key = JSON.stringify([id,info.revision,profile.name,profile.role,profile.face,profile.color,turns]);
   if (host.dataset.notes === key && host.querySelector('.notes-wiki')) return;
   if (host.dataset.notesPending === key) return;
   const previousScroll = host.dataset.notesOwner === id ? host.querySelector('.notes-wiki')?.scrollTop || 0 : 0;
   if (!host.querySelector('.notes-wiki') || host.dataset.notesOwner !== id) host.replaceChildren();
   host.dataset.notesPending = key; host.dataset.notesOwner = id;
-  api('/api/agents/' + id + '/notes').then(row => {
-    if (state.selected !== id || state.panel !== 'notes' || live.orchestration[id].notes.revision !== info.revision || host.dataset.notesPending !== key) return;
+  api('/api/' + (profile.kind==='group'?'groups':'agents') + '/' + id + '/notes').then(row => {
+    if (state.selected !== id || !['notes','work'].includes(state.panel) || !host.isConnected || notesInfo(id).revision !== info.revision || host.dataset.notesPending !== key) return;
     host.replaceChildren(notesWiki(row.content, row.path, id, profile, row.metadata || info, turns)); host.dataset.notes = key;
     host.querySelector('.notes-wiki').scrollTop = previousScroll;
-  }).catch(error => {if (state.selected === id && state.panel === 'notes' && host.dataset.notesPending === key) host.textContent = error.message;})
+  }).catch(error => {if (state.selected === id && ['notes','work'].includes(state.panel) && host.dataset.notesPending === key) host.textContent = error.message;})
     .finally(() => {if (host.dataset.notesPending === key) delete host.dataset.notesPending;});
 }

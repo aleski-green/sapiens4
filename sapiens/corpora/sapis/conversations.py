@@ -126,7 +126,7 @@ class Conversation:
                 self.archive(f'{field}/{uuid4().hex}', removed)
 
     def context(self, snapshot, text, config):
-        chat = [m for m in snapshot['chat'][-10:] if m.get('turn') != snapshot.get('current_turn')]
+        chat = [m for m in snapshot['chat'] if not (m.get('origin') or {}).get('group') and m.get('turn') != snapshot.get('current_turn')][-10:]
         blocks = dict(manifests=self.manifests, chat=chat)
         # Keep the current request and fresh notes ahead of older conversation.
         allowance = 60_000 - len(text) - len(config.roles['conversation'].prompt) - 100

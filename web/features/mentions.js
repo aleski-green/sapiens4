@@ -64,7 +64,7 @@ function updateMentions() {
   const match=before.match(/(?:^|\s)@([A-Za-z0-9_.:#+|()&$^\-]*)$/);
   if (!match || input.selectionStart !== input.selectionEnd) { closeMentions(); return; }
   mentionRange={start:input.selectionStart-match[1].length-1,end:input.selectionStart};
-  mentionChoices=state.agents.filter(a => !a.retired && a.name.toLowerCase().startsWith(match[1].toLowerCase())).slice(0,12);
+  mentionChoices=state.agents.filter(a => a.kind!=='group' && !a.retired && (selected().kind!=='group'||selected().members.includes(a.id)) && a.name.toLowerCase().startsWith(match[1].toLowerCase())).slice(0,12);
   mentionIndex=0;
   drawMentions();
 }

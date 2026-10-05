@@ -25,6 +25,8 @@ class Lifecycle:
             if self.retired(agent) == retire:
                 return dict(id=agid, retired=retire, changed=False)
             if retire:
+                if any(agid in g['members'] and not g['archived'] for g in self.service.store.groups()):
+                    raise APIError(409, 'Remove this Sapi from active Groups before retiring it')
                 if any(c['addressedTo'] == agid and c['state'] == 'Queued'
                        for work in self.service.store.workloads() for c in work['calls']):
                     raise APIError(409, 'Cancel the accepted handoff before retiring this Sapi')

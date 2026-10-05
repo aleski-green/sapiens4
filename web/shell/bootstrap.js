@@ -23,11 +23,13 @@ function makeInitialState(data) {
   const prefs = data.preferences;
   const agents = data.agents.map(a => ({...a, kind:'sapi', scope:'personal', status:'online',
     autonomy:'assist', preview:'Ready for your message.', lastActivity:Date.parse(a.created), unread:false}));
+  agents.push(...(data.groups || []));
   const selected = agents.some(a => a.id === prefs.selected && !a.retired) ? prefs.selected : agents[0].id;
   const workspaces = prefs.workspaces || {};
   const ws = workspaces[selected] || {tabs:[]};
-  return {agents, mainSapiId:agents[0].id, selected, scope:prefs.scope || 'all',
-    panel:['chat','tasks','notes'].includes(prefs.panel) ? prefs.panel : 'chat', mode:'assist', panes:{sidebar:true,chat:true,workspace:true,...prefs.panes},
+  return {agents, mainSapiId:agents[0].id, selected, scope:agents.find(a=>a.id===selected)?.kind==='group'?'groups':prefs.scope || 'all',
+    groupView:prefs.groupView || (agents.find(a=>a.id===selected)?.kind==='group'?selected:null),
+    panel:['chat','tasks','notes','work','updates'].includes(prefs.panel) ? prefs.panel : 'chat', mode:'assist', panes:{sidebar:true,chat:true,workspace:true,...prefs.panes},
     tabs:ws.tabs, activeTab:ws.activeTab || ws.tabs[0]?.id || null, workspaces,
     drafts:prefs.drafts || {}, messages:{}};
 }

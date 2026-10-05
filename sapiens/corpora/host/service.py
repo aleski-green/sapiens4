@@ -16,6 +16,7 @@ from sapiens.corpora.sapis.registry import Registry
 from sapiens.corpora.sapis.retirement import Lifecycle
 from sapiens.corpora.host.commands import Orchestration
 from sapiens.corpora.host.delegation import Delegation
+from sapiens.corpora.host.groups import Groups
 from sapiens.paths import ROOT
 from sapiens.prompts import prompt
 from sapiens.corpora.sapis.notes import Notes
@@ -87,6 +88,7 @@ class Service:
         self.registry = Registry(self)
         self.worker = None
         self.delegation = Delegation(self)
+        self.groups = Groups(self)
         if not self.store.agents():
             self.create_agent({"name": "SapiTheMain", "role": "Head of Corpora"})
         for row in self.store.agents():
@@ -99,6 +101,8 @@ class Service:
         self.registry.repair()
         self.delegation.reconcile()
         self.delegation.dispatch_pending()
+        self.groups.chat.reconcile()
+        self.groups.chat.dispatch()
         if start_worker:
             self.start()
 
@@ -127,7 +131,7 @@ class Service:
                     llm, text, lambda restore: self.release_computer(agid, restore))
             agent.runner = TurnRunner(store=agent, context=agent.context, config=Config(),
                                       factory=factory, complete=complete,
-                                      execute=lambda *args: self.delegation.run(agid, *args))
+                                      execute=lambda runner, turn, snapshot, result: (self.groups.chat if (turn.get("origin") or {}).get("group") else self.delegation).run(agid, runner, turn, snapshot, result))
             if not self.factory_builder:
                 factory.execution = lambda: execution_settings(agent.root)
             self._agents[agid] = agent
@@ -189,7 +193,7 @@ class Service:
         if not isinstance(face, str) or not 1 <= len(face) <= 24:
             raise APIError(400, "face must contain 1–24 characters")
         if data.get("kind", "sapi") != "sapi":
-            raise APIError(400, "Groups are planned for the next iteration")
+            raise APIError(400, "Use /api/groups to create a Group")
         with self._lock:
             appearance = random_avatar({a["face"] for a in self.store.agents()})
             if "face" in data and face not in {a["face"] for a in self.store.agents()}:
@@ -296,7 +300,14 @@ class Service:
                 self._agent(agid)
             for agent in self._agents.values():
                 self._sync(agent)
+            self.groups.chat.reconcile()
             snapshot = self.store.snapshot(agid)
+            snapshot["groups"] = self.groups.snapshot()
+            snapshot["creation_template"] = prompt("creation-request").strip()
+            group_turns = {r["id"]: g["id"] for g in snapshot["groups"] for r in g["requests"]}
+            for turn in snapshot["turns"]:
+                if turn["id"] in group_turns:
+                    turn["group"] = group_turns[turn["id"]]
             for row in snapshot['agents']:
                 row['retired'] = self.lifecycle.retired(self._agent(row['id']))
             snapshot["computer"] = {"owner": self._active,
@@ -332,16 +343,18 @@ class Service:
 
     def save_preferences(self, data):
         # Browser state never gets authority over runtime turns, agents or computer ownership.
-        if set(data) - {"selected", "panel", "scope", "panes", "drafts", "attachment_drafts"}:
+        if set(data) - {"selected", "panel", "scope", "groupView", "panes", "drafts", "attachment_drafts"}:
             raise APIError(400, "Unknown preference field")
         for field in ("panes", "drafts", "attachment_drafts"):
             if field in data and not isinstance(data[field], dict):
                 raise APIError(400, f"{field} must be an object")
-        if "selected" in data and data["selected"] not in {a["id"] for a in self.store.agents()}:
+        if "selected" in data and data["selected"] not in {a["id"] for a in self.store.agents()} | {g["id"] for g in self.store.groups()}:
             raise APIError(400, "Unknown selected Sapi")
-        if data.get("panel", "chat") not in {"chat", "tasks", "notes"}:
+        if data.get("groupView") is not None and data["groupView"] not in {g["id"] for g in self.store.groups()}:
+            raise APIError(400, "Unknown Group view")
+        if data.get("panel", "chat") not in {"chat", "tasks", "notes", "work", "updates"}:
             raise APIError(400, "Unknown panel")
-        if data.get("scope", "all") not in {"all", "sapis"}:
+        if data.get("scope", "all") not in {"all", "sapis", "groups"}:
             raise APIError(400, "Unknown view")
         if any(k not in {"sidebar", "chat", "workspace"} or type(v) is not bool
                for k, v in data.get("panes", {}).items()):
@@ -386,6 +399,8 @@ class Service:
                             self._runners.pop(agid, None)
                             self.delegation.reconcile(agid)
                             self.delegation.dispatch_pending()
+                            self.groups.chat.reconcile()
+                            self.groups.chat.dispatch()
             thread = threading.Thread(target=run, name=f'sapiens-{agid}', daemon=True)
             self._runners[agid] = thread
             thread.start()

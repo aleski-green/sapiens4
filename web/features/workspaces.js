@@ -12,7 +12,7 @@ function browserDestination(value) {
 }
 async function browserAction(action, fields={}, owner=state.selected) {
   try {
-    await api(`/api/agents/${owner}/control`, 'POST', {op:`workspace_${action}`,...fields});
+    await api(`/api/${owner.startsWith('group_')?'groups':'agents'}/${owner}/control`, 'POST', {op:`workspace_${action}`,...fields});
     const snapshot=await api('/api/state');
     receiveWorkspaces(snapshot.preferences);
     if (['open','focus','close','back','forward','reload'].includes(action)) {setBrowserMenu();state.panes.workspace=true;}
@@ -74,7 +74,7 @@ window.sapiensBrowserEvent = data => {
     if (data.open) return browserAction('open',{url:data.open},data.owner);
     if (data.file) return browserAction('open',{path:data.file},data.owner);
     if (data.action) return browserAction(data.action,data.fields || {},data.owner);
-    await api(`/api/agents/${data.owner}/browser`,'POST',data);
+    await api(`/api/${data.owner.startsWith('group_')?'groups':'agents'}/${data.owner}/browser`,'POST',data);
     const snapshot=await api('/api/state');receiveWorkspaces(snapshot.preferences);
     renderTabs();renderWorkspace();
   }).catch(error=>toast(error.message));
@@ -91,7 +91,7 @@ $('#browser-address-form').addEventListener('submit',async e=>{
 });
 $('#add-tab').addEventListener('click',openNewTab);
 $('#open-file').addEventListener('click',()=>{
-  const bridge=window.webkit?.messageHandlers?.browser, directory=live.orchestration[state.selected].notes.path.replace(/\/[^/]+$/, '');
+  const bridge=window.webkit?.messageHandlers?.browser, directory=selected().kind==='group'?selected().workspace:live.orchestration[state.selected].notes.path.replace(/\/[^/]+$/, '');
   setBrowserMenu();
   if(bridge)bridge.postMessage({pickFile:true,owner:state.selected,directory});else {editingAddress=state.activeTab;renderWorkspace();$('#browser-address').value=directory+'/';$('#browser-address').focus();}
 });

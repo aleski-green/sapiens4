@@ -17,7 +17,7 @@ class Store:
         with self.connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4):
+            if version not in (0, 1, 2, 3, 4, 5):
                 raise RuntimeError(f"Unsupported CORPORA schema: {version}")
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS agents (
@@ -43,6 +43,12 @@ class Store:
                 CREATE TABLE IF NOT EXISTS workloads (
                     id TEXT PRIMARY KEY, value TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS group_attachments (
+                    id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES groups(id), value TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS groups (
+                    id TEXT PRIMARY KEY, value TEXT NOT NULL
+                );
             """)
             if version in (1, 2):
                 db.execute("INSERT OR IGNORE INTO turns SELECT * FROM jobs WHERE flow IN ('chat','computer')")
@@ -55,7 +61,7 @@ class Store:
                     value['panel'] = 'chat'
                 value.pop('work_views', None)
                 db.execute('UPDATE preferences SET value=? WHERE id=1', (json.dumps(value),))
-            db.execute('PRAGMA user_version=4')
+            db.execute('PRAGMA user_version=5')
 
     @contextmanager
     def connect(self):
@@ -86,11 +92,13 @@ class Store:
 
     def attachment(self, row):
         with self.connect() as db:
-            db.execute("INSERT INTO attachments VALUES (?,?,?)", (row["id"], row["agent"], json.dumps(row)))
+            table = 'group_attachments' if row['agent'].startswith('group_') else 'attachments'
+            db.execute(f"INSERT INTO {table} VALUES (?,?,?)", (row["id"], row["agent"], json.dumps(row)))
 
     def attachments(self, agid):
         with self.connect() as db:
-            return [json.loads(row[0]) for row in db.execute("SELECT value FROM attachments WHERE agent=?", (agid,))]
+            table = 'group_attachments' if agid.startswith('group_') else 'attachments'
+            return [json.loads(row[0]) for row in db.execute(f"SELECT value FROM {table} WHERE agent=?", (agid,))]
 
     def message(self, turn, text, attachments):
         with self.connect() as db:
@@ -99,6 +107,15 @@ class Store:
     def workloads(self):
         with self.connect() as db:
             return [json.loads(row[0]) for row in db.execute('SELECT value FROM workloads ORDER BY rowid')]
+
+    def groups(self):
+        with self.connect() as db:
+            return [json.loads(row[0]) for row in db.execute('SELECT value FROM groups ORDER BY rowid')]
+
+    def save_group(self, group):
+        with self.connect() as db:
+            db.execute('INSERT INTO groups VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value',
+                       (group['id'], json.dumps(group, ensure_ascii=False, allow_nan=False)))
 
     def save_workload(self, work):
         with self.connect() as db:

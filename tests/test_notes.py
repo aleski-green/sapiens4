@@ -184,8 +184,8 @@ class NotesTest(IntegrationFixture):
         self.assertEqual(response.status, 403)
         self.assertIsNone(asset('/mindmap.html'))
         self.assertNotIn('renderMindMap', javascript())
-        self.assertIn(b'data-panel="tasks">Tasks', asset('/workspace/')[1])
-        self.assertIn(b'disabled aria-disabled="true" title="Inactive">Jobs', asset('/workspace/')[1])
+        self.assertIn(b'data-panel="work">Work', asset('/workspace/')[1])
+        self.assertIn(b'data-panel="updates">Updates', asset('/workspace/')[1])
 
     def test_legacy_data_is_archived_but_never_scheduled_or_used_as_memory(self):
         service = self.service(start_worker=False)

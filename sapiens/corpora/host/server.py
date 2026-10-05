@@ -85,11 +85,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, service.delegation.task_list(parts[2]))
                 value = service.delegation.tasks(parts[2], full=True)
                 return self._send(200, (yaml_text(value) + '\n').encode(), 'application/yaml; charset=utf-8')
+            if path == '/api/groups':
+                with service._lock:
+                    return self._send(200, {'groups': service.groups.snapshot()})
+            if len(parts) == 3 and parts[:2] == ['api', 'groups']:
+                with service._lock:
+                    return self._send(200, service.groups.get(parts[2]))
             if path == "/api/state":
                 return self._send(200, service.snapshot())
-            if len(parts) == 4 and parts[:2] == ['api','agents'] and parts[3] == 'notes':
+            if len(parts) == 4 and parts[0] == 'api' and parts[1] in {'agents', 'groups'} and parts[3] == 'notes':
                 with service._lock:
-                    notes = Notes(service.workspace.root(service._agent(parts[2])))
+                    notes = Notes(service.groups.folder(parts[2]) if parts[1] == 'groups'
+                                  else service.workspace.root(service._agent(parts[2])))
                     image = parse_qs(url.query).get('image', [None])[0]
                     return self._send(200, *notes.image(unquote(image))) if image else self._send(200, notes.read())
             if path == "/api/health":
@@ -106,6 +113,34 @@ class Handler(BaseHTTPRequestHandler):
             data = self._body()
             if len(parts) == 3 and parts[:2] == ['api', 'decision-prompts'] and self.command == 'PUT':
                 return self._send(200, service.delegation.edit_template(parts[2], data))
+            if path == '/api/groups' and self.command == 'POST':
+                return self._send(201, service.groups.create(data))
+            if len(parts) >= 3 and parts[:2] == ['api', 'groups']:
+                gid = parts[2]
+                with service._lock:
+                    if len(parts) == 3 and self.command == 'PUT':
+                        return self._send(200, service.groups.update(gid, data))
+                    service.groups.get(gid)
+                    if len(parts) == 4 and parts[3] == 'attachments' and self.command == 'POST':
+                        return self._send(201, create_attachment(service, gid, data))
+                    if len(parts) == 4 and parts[3] == 'messages' and self.command == 'POST':
+                        return self._send(202, service.groups.chat.submit(gid, data))
+                    if len(parts) == 4 and parts[3] == 'tasks' and self.command == 'POST':
+                        return self._send(201, service.groups.work.create(gid, data))
+                    if len(parts) == 5 and parts[3] == 'tasks' and self.command == 'PUT':
+                        return self._send(200, service.groups.work.update(gid, parts[4], data))
+                    if len(parts) == 6 and parts[3] == 'tasks' and parts[5] == 'run' and self.command == 'POST':
+                        return self._send(202, service.groups.work.run(gid, parts[4], data.get('revision')))
+                    if len(parts) == 6 and parts[3] == 'calls' and self.command == 'POST':
+                        return self._send(200, service.groups.chat.action(gid, parts[4], parts[5]))
+                    if len(parts) == 4 and parts[3] == 'browser' and self.command == 'POST':
+                        return self._send(200, service.workspace.observed(service.groups.workspace_owner(gid), data))
+                    if len(parts) == 4 and parts[3] == 'control' and self.command == 'POST':
+                        service.groups.get(gid, active=True)
+                        op = data.get('op', '')
+                        if not op.startswith('workspace_'):
+                            raise APIError(400, 'Only workspace operations are supported here')
+                        return self._send(200, service.workspace.control(service.groups.workspace_owner(gid), op.removeprefix('workspace_'), data))
             if path == "/api/agents" and self.command == "POST":
                 return self._send(201, service.create_agent(data))
             if path == "/api/preferences" and self.command == "PUT":
