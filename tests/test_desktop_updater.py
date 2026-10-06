@@ -1,6 +1,7 @@
 """Release switching must preserve state and hold jobs until startup is verified."""
 import importlib.util
 import json
+import plistlib
 from pathlib import Path
 import tempfile
 import shutil
@@ -20,6 +21,16 @@ spec.loader.exec_module(updater)
 
 
 class DesktopUpdaterTests(unittest.TestCase):
+    def desktop_bundle(self, path, revision):
+        (path / 'Contents/Resources').mkdir(parents=True, exist_ok=True)
+        (path / 'Contents/MacOS').mkdir(exist_ok=True)
+        (path / 'Contents/Info.plist').write_bytes(plistlib.dumps(dict(
+            CFBundleIdentifier='com.sapiens4.desktop', SapiensDesktopRevision=revision)))
+        (path / 'Contents/Resources/Launcher.plist').write_bytes(plistlib.dumps(dict(ManagedHome=str(self.manager.home))))
+        executable = path / 'Contents/MacOS/Sapiens4'
+        executable.write_text('desktop')
+        executable.chmod(0o755)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -357,14 +368,16 @@ class DesktopUpdaterTests(unittest.TestCase):
 
     def test_desktop_failures_remain_retryable_without_touching_backend(self):
         candidate = self.home / 'candidate.app'
+        self.desktop_bundle(candidate, self.new['sha'])
         helper = Path('Contents/Resources/updater.py')
-        (candidate / helper).parent.mkdir(parents=True)
         (candidate / helper).write_text('new helper')
         installed = self.home / 'installed.app'
         self.manager.config['app'] = str(installed)
         self.new['desktop'] = str(candidate)
 
         def copy_bundle(args):
+            if args[0] == 'codesign':
+                return ''
             self.assertEqual(args[0], 'ditto')
             shutil.copytree(args[1], args[2])
 
@@ -409,6 +422,73 @@ class DesktopUpdaterTests(unittest.TestCase):
                 status = json.loads(manager.status_file.read_text())
                 self.assertEqual(status['phase'], 'current')
                 self.assertEqual(status['desktop_revision'], self.new['sha'])
+
+    def test_check_detects_false_desktop_success_record(self):
+        installed = self.home / 'installed.app'
+        self.desktop_bundle(installed, self.old['sha'])
+        self.manager.config['app'] = str(installed)
+        release = dict(self.new, desktop='/candidate.app', desktop_revision=self.new['sha'])
+        updater.atomic(self.home / 'current.json', release)
+        for missing in (False, True):
+            if missing:
+                (installed / 'Contents/Info.plist').unlink()
+            with patch.object(updater, 'command', return_value=self.new['sha'] + '\trefs/heads/main'):
+                self.manager.check()
+            status = json.loads(self.manager.status_file.read_text())
+            self.assertEqual(status['phase'], 'available')
+            self.assertEqual(status['desktop_revision'], None if missing else self.old['sha'])
+
+    def test_invalid_candidate_never_replaces_running_desktop(self):
+        candidate = self.home / 'candidate.app'
+        self.desktop_bundle(candidate, self.old['sha'])
+        self.new['desktop'] = str(candidate)
+        self.manager.config['app'] = str(self.home / 'installed.app')
+        with patch.object(updater, 'replace_app') as replace, patch.object(updater, 'command') as command:
+            with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                self.manager.install_desktop(self.new)
+        replace.assert_not_called()
+        command.assert_not_called()
+        self.assertEqual(self.manager.current(), self.old)
+
+    def test_corrupted_staged_bundle_never_replaces_running_desktop(self):
+        candidate = self.home / 'candidate.app'
+        self.desktop_bundle(candidate, self.new['sha'])
+        self.new['desktop'] = str(candidate)
+        self.manager.config['app'] = str(self.home / 'installed.app')
+        def corrupt_copy(args):
+            if args[0] == 'ditto':
+                shutil.copytree(args[1], args[2])
+                self.desktop_bundle(Path(args[2]), self.old['sha'])
+        with patch.object(updater, 'command', side_effect=corrupt_copy), patch.object(updater, 'replace_app') as replace:
+            with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                self.manager.install_desktop(self.new)
+        replace.assert_not_called()
+        self.assertFalse(list(self.home.glob('Sapiens4-staged-*.app')))
+        self.assertEqual(self.manager.current(), self.old)
+
+    def test_post_exchange_verification_failure_restores_previous_bundle(self):
+        candidate, installed = self.home / 'candidate.app', self.home / 'installed.app'
+        self.desktop_bundle(candidate, self.new['sha'])
+        self.desktop_bundle(installed, self.old['sha'])
+        self.new['desktop'] = str(candidate)
+        self.manager.config['app'] = str(installed)
+        exchanges = []
+        def exchange(staged, app):
+            temporary = self.home / 'exchange.app'
+            app.rename(temporary); staged.rename(app); temporary.rename(staged)
+            exchanges.append(True)
+            if len(exchanges) == 1:
+                self.desktop_bundle(app, 'corrupted')
+            return True
+        def copy(args):
+            if args[0] == 'ditto':
+                shutil.copytree(args[1], args[2])
+        with patch.object(updater, 'command', side_effect=copy), patch.object(updater, 'replace_app', side_effect=exchange):
+            with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                self.manager.install_desktop(self.new)
+        self.assertEqual(len(exchanges), 2)
+        self.assertEqual(self.manager.installed_desktop_revision(), self.old['sha'])
+        self.assertEqual(self.manager.current(), self.old)
 
     def test_waits_for_work_before_stopping(self):
         activation = self.home / 'activate-test'

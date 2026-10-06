@@ -5,6 +5,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import plistlib
 import re
 import shutil
 import signal
@@ -182,7 +183,26 @@ class Manager:
         return json.loads((self.home / 'current.json').read_text())
 
     def desktop_pending(self, release):
-        return bool(release.get('desktop')) and release.get('desktop_revision') != release['sha']
+        return bool(release.get('desktop')) and (release.get('desktop_revision') != release['sha']
+                or self.installed_desktop_revision() != release['sha'])
+
+    def installed_desktop_revision(self):
+        try:
+            info = plistlib.loads((Path(self.config['app']) / 'Contents/Info.plist').read_bytes())
+            return info.get('SapiensDesktopRevision') if isinstance(info, dict) else None
+        except (KeyError, OSError, ValueError, plistlib.InvalidFileException):
+            return None
+
+    def validate_desktop(self, app, sha):
+        app = Path(app)
+        info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+        launcher = plistlib.loads((app / 'Contents/Resources/Launcher.plist').read_bytes())
+        if (info.get('CFBundleIdentifier') != 'com.sapiens4.desktop'
+                or info.get('SapiensDesktopRevision') != sha
+                or launcher.get('ManagedHome') != str(self.home)
+                or not os.access(app / 'Contents/MacOS/Sapiens4', os.X_OK)):
+            raise RuntimeError('Desktop bundle does not match the requested release or installation')
+        command(['codesign', '--verify', '--strict', str(app)])
 
     def check(self):
         output = command(['git', 'ls-remote', UPSTREAM, 'refs/heads/main'], timeout=45)
@@ -197,7 +217,7 @@ class Manager:
                    'Sapiens4 is up to date')
         self.status('available' if available else 'current',
                     message, sha=sha, current=current['sha'], checked_at=time.time(),
-                    desktop_revision=current.get('desktop_revision'))
+                    desktop_revision=self.installed_desktop_revision())
         return sha
 
     def prepare(self, sha):
@@ -220,12 +240,7 @@ class Manager:
             if build.returncode:
                 raise RuntimeError('Desktop build failed: ' + build.stderr[-2000:])
             app = destination / '.build/macos/Sapiens4.app'
-            command(['codesign', '--verify', '--strict', str(app)])
-            import plistlib
-            info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
-            launcher = plistlib.loads((app / 'Contents/Resources/Launcher.plist').read_bytes())
-            if info.get('CFBundleIdentifier') != 'com.sapiens4.desktop' or launcher.get('ManagedHome') != str(self.home):
-                raise RuntimeError('New desktop build does not support this managed installation')
+            self.validate_desktop(app, sha)
             release['desktop'] = str(app)
         return release
 
@@ -376,12 +391,25 @@ class Manager:
         sha = release['sha']
         desktop_revision = release.get('desktop_revision')
         if self.desktop_pending(release):
+            self.validate_desktop(release['desktop'], sha)
             self.status('installing', 'Installing the desktop app…', sha=sha)
             app = Path(self.config['app'])
             staged = app.with_name('Sapiens4-staged-' + uuid.uuid4().hex + '.app')
             previous = self.home / 'backups' / ('desktop-' + uuid.uuid4().hex + '.app')
-            command(['ditto', release['desktop'], str(staged)])
+            try:
+                command(['ditto', release['desktop'], str(staged)])
+                self.validate_desktop(staged, sha)
+            except Exception:
+                shutil.rmtree(staged, ignore_errors=True)
+                raise
             exchanged = replace_app(staged, app)
+            try:
+                self.validate_desktop(app, sha)
+            except Exception:
+                if exchanged:
+                    replace_app(staged, app)
+                    shutil.rmtree(staged, ignore_errors=True)
+                raise
             if exchanged:
                 shutil.move(str(staged), str(previous))
             helper = app / 'Contents/Resources/updater.py'

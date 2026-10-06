@@ -20,7 +20,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var updateMenu: NSMenuItem!
     var updatePhase = ""
     var helperRunning = false
-    var relaunching = false
     let base = URL(string: "http://127.0.0.1:4174")!
     var config: [String: String] = [:]
 
@@ -131,18 +130,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         dismissUpdateButton.isHidden = busy
         showUpdateBanner(busy || ((phase == "available" || phase == "error") && !dismissed))
         if previous == "installing" && phase == "current" { reload() }
-        if phase == "current", let revision = status["desktop_revision"] as? String,
-           revision != Bundle.main.object(forInfoDictionaryKey: "SapiensDesktopRevision") as? String, !relaunching {
-            relaunching = true
-            let options = NSWorkspace.OpenConfiguration(); options.createsNewApplicationInstance = true
-            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: options) { _, error in
-                DispatchQueue.main.async {
-                    if error == nil { NSApp.terminate(nil) }
-                    else {
-                        self.updateLabel.stringValue = "Updated. Quit and reopen Sapiens4 to load the new app."
-                        self.showUpdateBanner(true)
-                    }
-                }
+        if phase == "current" {
+            let notice = desktopUpdateNotice(expected: status["desktop_revision"] as? String,
+                running: Bundle.main.object(forInfoDictionaryKey: "SapiensDesktopRevision") as? String,
+                app: Bundle.main.bundleURL)
+            if let notice = notice {
+                updateLabel.stringValue = notice
+                updateLabel.toolTip = notice
+                dismissUpdateButton.isHidden = false
+                showUpdateBanner(!dismissed)
             }
         }
     }
