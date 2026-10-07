@@ -46,3 +46,11 @@ See [terminal commands and output formats](documentation/specs/CLI.md).
 [Setup, features, API and tests](documentation/reference.md)
 
 [Contributing and code guidelines](CONTRIBUTING.md)
+
+
+## License
+
+Sapiens4 is source-available under the [Sustainable Use License 1.0](LICENSE.md).
+See [licensing and commercial services](LICENSING.md) for community use,
+contributions, and future enterprise additions. Commercial inquiries:
+[license@sapiens4.ai](mailto:license@sapiens4.ai).

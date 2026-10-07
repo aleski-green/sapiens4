@@ -30,5 +30,8 @@ info['SapiensDesktopRevision'] = subprocess.check_output(['git', 'rev-parse', 'H
 (contents / 'Resources' / 'Launcher.plist').write_bytes(plistlib.dumps(dict(Repository=root, Python=python, Path=path, **({'ManagedHome': os.environ['SAPIENS_DESKTOP_HOME']} if os.environ.get('SAPIENS_DESKTOP_HOME') else {}))))
 PY
 cp "$ROOT/macos/updater.py" "$APP/Contents/Resources/updater.py"
+mkdir -p "$APP/Contents/Resources/Licenses/Blindly4"
+cp "$ROOT/LICENSE.md" "$ROOT/LICENSING.md" "$APP/Contents/Resources/Licenses/"
+cp "$ROOT/blindly4/LICENSE.md" "$APP/Contents/Resources/Licenses/Blindly4/"
 codesign --force --sign - "$APP"
 printf 'Built: %s\n' "$APP"
