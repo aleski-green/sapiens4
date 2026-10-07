@@ -78,8 +78,7 @@ class ImportArchitectureTest(unittest.TestCase):
                   'prompts.py', 'validation.py', 'assets.py', 'service.py', 'server.py'}
         splits = {
             '': ({'sapiens', 'web', 'macos'}, {'blindly4', 'documentation', 'prompts', 'tests',
-                                             'CONTRIBUTING.md', 'README.md', 'LICENSE.md', 'LICENSING.md',
-                                             'CONTRIBUTOR_LICENSE_AGREEMENT.md', 'requirements-cli.txt', 'start.sh', 'sapiens4'}),
+                                             'CONTRIBUTING.md', 'README.md', 'license', 'requirements-cli.txt', 'start.sh', 'sapiens4'}),
             'sapiens': ({'corpora', 'runtime', 'computer'}, shared),
             'sapiens/corpora': ({'sapis', 'browser.py', 'host'}, {'__init__.py'}),
             'sapiens/computer': ({'commands.py', 'reader.py', 'focus.py'}, {'__init__.py'}),
