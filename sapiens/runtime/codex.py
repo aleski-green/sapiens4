@@ -46,6 +46,7 @@ class CodexLLM:
         process = subprocess.Popen(
             command,
             cwd=self.workdir,
+            env={**os.environ, **({'SAPIENS_AGENCY_RUN': self.agency_run_id} if getattr(self, 'agency_run_id', None) else {})},
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

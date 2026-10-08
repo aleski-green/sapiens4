@@ -31,7 +31,7 @@ class Lifecycle:
                        for work in self.service.store.workloads() for c in work['calls']):
                     raise APIError(409, 'Cancel the accepted handoff before retiring this Sapi')
                 if any(
-                        j['status'] in {'queued', 'running'} for j in agent.state['turns']):
+                        j['status'] in {'queued', 'running', 'output_pending'} for j in agent.state['turns']):
                     raise APIError(409, 'Finish or cancel queued work before retiring this Sapi')
                 if any(entry.get('parent') == agid and not self.retired(self.service._agent(child))
                        for child, entry in self.service.registry.directory().items()):

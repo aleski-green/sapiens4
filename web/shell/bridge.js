@@ -12,8 +12,8 @@ let uploading = 0;
 const nameRule = /^[A-Z][A-Za-z0-9_.:#+|()&$^\-]*$/;
 const nameHelp = 'Start with A–Z. Letters, numbers, and - _ . : # + | ( ) & $ ^ are allowed. No spaces.';
 const attention = new Set(['failed','interrupted','conflict']);
-const blocksChat = turn => ['queued','running'].includes(turn.status);
-const statusNames = {queued:'Queued',running:'Running',done:'Completed',warning:'Warning',failed:'Failed',
+const blocksChat = turn => ['queued','running','output_pending'].includes(turn.status);
+const statusNames = {output_pending:'Awaiting output pulse',queued:'Queued',running:'Running',done:'Completed',warning:'Warning',failed:'Failed',
   interrupted:'Interrupted',conflict:'Needs review',cancelled:'Dismissed'};
 const displayTime = value => new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 const originalConversation = renderConversation;
@@ -47,18 +47,18 @@ async function flushPreferences() {
 getMessages = id => state.messages[id] || [];
 
 function turnActions(turn) {
-  if (turn.status === 'running') return `<div class="actions"><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}" ${!online || live.activity?.[turn.agent]?.stopping ? 'disabled' : ''}>Stop</button><small>Already completed actions are not undone.</small></div>`;
+  if (turn.status === 'running') return `<div class="actions"><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}" ${!online || (live.run_activity?.[turn.batch_id || turn.id] || live.activity?.[turn.agent])?.stopping ? 'disabled' : ''}>Stop</button><small>Already completed actions are not undone.</small></div>`;
   if (attention.has(turn.status)) return `<div class="actions"><button class="button" data-live-turn="retry" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Retry</button><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Dismiss</button></div>`;
   if (turn.status === 'queued') return `<div class="actions"><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Cancel queued turn</button></div>`;
   return '';
 }
 
 function turnProgress(turn, now = Date.now()) {
-  const current = live.activity?.[turn.agent];
+  const current = live.run_activity?.[turn.batch_id || turn.id] || live.activity?.[turn.agent];
   const a = current?.turn === turn.id ? current : {};
   const elapsed = Math.max(0, Math.floor((now - (a.started || Date.parse(turn.created))) / 1000));
   const quiet = Math.max(0, Math.floor((now - (a.updated || a.started || now)) / 1000));
-  const phase = !online ? 'Disconnected' : a.stopping ? 'Stopping…' : turn.status === 'queued' ? 'Queued' : a.phase || 'Starting model';
+  const phase = !online ? 'Disconnected' : a.stopping ? 'Stopping…' : turn.status === 'output_pending' ? 'Awaiting output pulse' : turn.status === 'queued' ? 'Queued' : a.phase || 'Starting model';
   const detail = a.tool ? `Current tool: ${a.tool}` : a.last_action ? `Last completed action: ${a.last_action}` : '';
   return `<strong>${esc(phase)} · ${elapsed}s</strong><p>${esc(detail)}</p>${quiet >= 60 ? `<small>No recent update · ${quiet}s since last activity</small>` : ''}`;
 }
@@ -110,7 +110,7 @@ function applySnapshot(snapshot) {
     const timestamp = Date.parse(turn.created);
     if (['chat','computer'].includes(turn.flow)) messages.push({role:'user',author:turn.origin?.caller,text:turn.input,time:displayTime(turn.created),timestamp,attachments:turn.attachments,requestTurn:turn});
     if (['chat','computer'].includes(turn.flow) && ['done','warning'].includes(turn.status) && turn.output !== null) {
-      messages.push({role:'assistant',...chatResult(turn),time:displayTime(turn.created),timestamp,turnId:turn.id});
+      messages.push({role:'assistant',...chatResult(turn),time:displayTime(turn.output_at || turn.created),timestamp:Date.parse(turn.output_at || turn.created),outputOrder:turn.output_order,turnId:turn.id});
     }
     const a = state.agents.find(a => a.id === turn.agent);
     if (a && (['chat','computer'].includes(turn.flow))) {
@@ -124,7 +124,7 @@ function applySnapshot(snapshot) {
     state.messages[group.id]=group.messages.map(m=>({role:m.author==='admin'?'user':'assistant',author:m.author==='admin'?null:m.author,text:m.text,time:displayTime(m.created),timestamp:Date.parse(m.created)}));
   }
   delegationMessages(snapshot);
-  for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp);
+  for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp || (a.outputOrder || 0)-(b.outputOrder || 0));
   if (!state.agents.some(a => a.id === state.selected) ||
       (agent(state.selected).retired && !old.get(state.selected)?.retired)) {
     state.drafts[state.selected] = $('#message-input').value;
@@ -150,7 +150,7 @@ renderAgentHeader = function() {
   $('#message-input').placeholder = `Message ${a.name}…`;
   renderActivityNavigation();
   $('#attach-button').hidden = Boolean(a.archived);
-  $('.send-button').disabled = a.retired || a.archived || !online || Boolean(turn) || submitting.has(a.id) || uploading > 0;
+  $('.send-button').disabled = a.retired || a.archived || !online || submitting.has(a.id) || uploading > 0;
 };
 
 let renderedConversation = '';
@@ -194,8 +194,8 @@ renderConversation = function() {
     });
     taskCallControls(host);
     if (!getMessages(state.selected).length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
-    const turn = turns.find(j => blocksChat(j) && !(attention.has(j.status) && ['chat','computer'].includes(j.flow)));
-    if (turn) {
+    const activeTurns = turns.filter(j => blocksChat(j) && (!j.batch_id || j.batch_id===j.id));
+    for (const turn of activeTurns) {
       host.insertAdjacentHTML('beforeend', `<section class="live-status"><div data-turn-progress="${esc(turn.id)}">${turnProgress(turn)}</div>${turnActions(turn)}</section>`);
     }
   } else if (state.panel === 'tasks') {
@@ -388,7 +388,7 @@ async function refresh() {
   refreshing = (async () => {
     try {
       const snapshot = await api('/api/state');
-      const changed = ['agents','groups','turns','computer','orchestration','activity','workloads'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k]));
+      const changed = ['agents','groups','turns','computer','orchestration','activity','run_activity','workloads','pulses'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k]));
       const reconnected = !online;
       online = true;
       const tabsChanged = (snapshot.preferences.workspace_revision || 0) > workspaceRevision;

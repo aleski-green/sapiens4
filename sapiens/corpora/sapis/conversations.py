@@ -10,6 +10,8 @@ from sapiens.files import atomic_bytes, atomic_json, encode, file_lock, safe_chi
 from sapiens.paths import ROOT
 from sapiens.prompts import prompt
 from sapiens.runtime.contracts import Flow, Role
+from sapiens.corpora.sapis.notes import Notes
+from sapiens.validation import APIError
 
 
 class Config:
@@ -25,6 +27,7 @@ def computer_manifest(binary):
 class Conversation:
     def __init__(self, *, agid, root):
         self.agid = agid
+        self.workspace = Path(root).resolve().parent / 'workspaces' / agid
         root = Path(root).resolve()
         self.root = safe_child(root / 'agents', agid)
         self.path = self.root / 'state.json'
@@ -85,7 +88,7 @@ class Conversation:
     def manifests(self):
         # Explicit allowlist keeps legacy scheduling/learning instructions inert.
         return {name: (self.root / 'manifests' / (name + '.md')).read_text()
-                for name in ('identity','computer-use','host-control','host-facts')
+                for name in ('identity','computer-use','host-control','host-facts','corpora-state')
                 if (self.root / 'manifests' / (name + '.md')).is_file()}
 
     def set_manifest(self, name, text):
@@ -108,7 +111,7 @@ class Conversation:
         for field in ('chat', 'events', 'turns'):
             rows = state[field]
             # A bounded chat window; full transcripts and UI history stay durable.
-            settled = [r for r in rows if r.get('status') not in {'queued','running'}]
+            settled = [r for r in rows if r.get('status') not in {'queued','running','output_pending'}]
             removed = settled[:-100]
             if removed:
                 self.archive(f'{field}/{uuid4().hex}', removed)
@@ -119,20 +122,32 @@ class Conversation:
             for row in list(state[field]):
                 if len(json.dumps(state, ensure_ascii=False).encode()) <= 800_000:
                     break
-                if row.get('status') not in {'queued','running'} and not (field == 'turns' and row == state[field][-1]):
+                if row.get('status') not in {'queued','running','output_pending'} and not (field == 'turns' and row == state[field][-1]):
                     state[field].remove(row)
                     removed.append(row)
             if removed:
                 self.archive(f'{field}/{uuid4().hex}', removed)
 
     def context(self, snapshot, text, config):
-        chat = [m for m in snapshot['chat'] if not (m.get('origin') or {}).get('group') and m.get('turn') != snapshot.get('current_turn')][-10:]
-        blocks = dict(manifests=self.manifests, chat=chat)
-        # Keep the current request and fresh notes ahead of older conversation.
-        allowance = 60_000 - len(text) - len(config.roles['conversation'].prompt) - 100
-        while len(json.dumps(blocks, ensure_ascii=False)) > allowance and chat:
-            chat.pop(0)
-            blocks['history_truncated'] = True
+        chat = [dict(m) for m in snapshot['chat'] if not (m.get('origin') or {}).get('group')][-20:]
+        current = snapshot.get('current_turn')
+        turns = {t['id']: t for t in snapshot.get('turns', [])}
+        for message in chat:
+            turn = turns.get(message.get('turn'), {})
+            if (message.get('role') == 'user' and turn.get('batch_id', turn.get('id')) != current
+                    and turn.get('status') in {'running', 'failed', 'interrupted'}):
+                message['underPrevAgencyReview'] = True
+        try:
+            memo = Notes(self.workspace).read()['content']
+        except (OSError, ValueError, APIError) as error:
+            memo = dict(error=str(error))
+        manifests = self.manifests
+        blocks = dict(manifests={k: v for k, v in manifests.items() if k != 'corpora-state'},
+                      staticContext=manifests.get('corpora-state', ''),
+                      instantContext=dict(chat=chat, memo=memo),
+                      inputs=snapshot.get('agency_batch', [dict(content=text)]))
+        # TODO: context-specific SubMemo. Preserve the full Memo and all 20
+        # messages now; snapshot maintenance belongs to a separate Agency.
         return dict(context=json.dumps(blocks, ensure_ascii=False), task=text, last='',
                     notes_example=str(ROOT / 'prompts/examples/jarvis-notes.html'))
 

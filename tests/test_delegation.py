@@ -13,6 +13,7 @@ from sapiens.corpora.host.server import Server
 from sapiens.corpora.host.service import Service
 from sapiens.validation import APIError
 from sapiens.runtime.contracts import RUN_TIMEOUT_SECONDS
+from sapiens.runtime.turns import TurnRunner
 
 
 CRITERION = 'Return a sourced comparison.'
@@ -63,7 +64,7 @@ class DelegationTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.provider = Provider()
-        self.service = Service(self.temp.name, factory_builder=self.provider.builder, start_worker=False)
+        self.service = Service(self.temp.name, factory_builder=self.provider.builder, pulse_clock=lambda: time.monotonic() * 20, start_worker=False)
         self.addCleanup(lambda: self.service.close())
         self.chief = self.service.registry.main
         self.researcher = self.service.create_agent(dict(name='Researcher', role='Research'))['id']
@@ -82,12 +83,13 @@ class DelegationTest(unittest.TestCase):
         self.fail('Timed out: ' + str(self.service.snapshot().get('workloads')))
 
     def wait_idle(self):
-        self.until(lambda: not any(t['status'] in {'running','queued'} for t in self.service.snapshot()['turns']))
-        self.until(lambda: not self.service._runners)
+        self.until(lambda: not any(t['status'] in {'running','queued','output_pending'} for t in self.service.snapshot()['turns'])
+                   and not any(c['state'] == 'Queued' for w in self.service.store.workloads() for c in w['calls']))
+        self.until(lambda: not self.service._runners and not self.service.agencies.slots)
 
     def restart(self, start_worker=True):
         self.service.close()
-        self.service = Service(self.temp.name, factory_builder=self.provider.builder, start_worker=start_worker)
+        self.service = Service(self.temp.name, factory_builder=self.provider.builder, pulse_clock=lambda: time.monotonic() * 20, start_worker=start_worker)
 
     def chief_routes(self, target=None):
         self.provider.responses[self.chief, 'Assessing'] = answer('OutsideSpecialization')
@@ -266,9 +268,9 @@ class DelegationTest(unittest.TestCase):
         self.assertIn('Call time limit exhausted',turn['error'])
 
     def test_decision_steps_use_the_remainder_of_the_same_thirty_minutes(self):
-        runner = self.service._agent(self.chief).runner
+        original = TurnRunner.invoke
         with patch('sapiens.corpora.host.delegation.monotonic', side_effect=[0, 400, 1000, 1500]), \
-             patch.object(runner, 'invoke', wraps=runner.invoke) as invoke:
+             patch.object(TurnRunner, 'invoke', autospec=True, side_effect=original) as invoke:
             call_id = self.run_request()
         self.assertEqual(self.service.store.projected_turn(call_id)['status'], 'done')
         self.assertEqual([call.kwargs['timeout_seconds'] for call in invoke.call_args_list], [1400, 800, 300])
@@ -327,7 +329,7 @@ class DelegationTest(unittest.TestCase):
         self.chief_routes()
         def stop(agid, node, text):
             if node == 'Delegation':
-                self.service._agent(agid).runner.cancel_event.set()
+                self.service.turn_action(agid, self.service._active_turn(agid), 'cancel')
         self.provider.observe = stop
         call_id = self.run_request()
         self.assertEqual(self.service.store.projected_turn(call_id)['status'],'interrupted')

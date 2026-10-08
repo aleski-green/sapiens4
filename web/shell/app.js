@@ -115,7 +115,7 @@ document.addEventListener('click',e=>{
     return;
   }
   if(d.scope&&!b.disabled){leaveGroup(d.scope);return;}
-  if(d.panel && !b.disabled && ['chat','tasks','notes','work','updates'].includes(d.panel)){state.panel=d.panel;if(d.panel==='work')workView='tasks';if(d.panel==='chat')chatView='conversation';if(d.panel==='updates')updatesView='runtime';closeActivityMenus();renderConversation();save();return;}
+  if(d.panel && !b.disabled && ['chat','tasks','notes','work','updates'].includes(d.panel)){state.panel=d.panel;if(d.panel==='work')workView='tasks';if(d.panel==='chat')chatView='conversation';if(d.panel==='updates')updatesView='pulses';closeActivityMenus();renderConversation();save();return;}
   if(d.tab){browserAction('focus',{id:d.tab});return;}
   if(d.closeTab){browserAction('close',{id:d.closeTab});return;}
 

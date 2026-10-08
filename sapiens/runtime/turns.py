@@ -18,7 +18,7 @@ class TurnRunner:
         self.cancel_event, self.active_llm = Event(), None
         self.execute = execute
 
-    def submit(self, flow, text, *, turn_id=None, origin=None):
+    def submit(self, flow, text, *, turn_id=None, origin=None, batchable=False):
         if flow not in {'chat', 'computer'}:
             raise ValueError('Only chat turns are supported')
         with self.store.transaction() as state:
@@ -27,10 +27,10 @@ class TurnRunner:
                 if existing['input'] != text or existing.get('origin') != origin:
                     raise ValueError('Turn ID already belongs to another request')
                 return turn_id
-            if any(t['status'] in {'queued','running'} for t in state['turns']):
+            if not batchable and any(t['status'] in {'queued','running'} for t in state['turns']):
                 raise ValueError('A conversation turn is already pending')
             turn = dict(id=turn_id or uuid4().hex, flow=flow, input=text, status='queued',
-                        created=utcnow().isoformat(), attempt=1, origin=origin)
+                        created=utcnow().isoformat(), attempt=1, origin=origin, batchable=batchable)
             state['turns'].append(turn)
             state['chat'].append(dict(role='user', content=text, turn=turn['id'], time=turn['created'], origin=origin))
             self.store.trim(state)
@@ -86,6 +86,7 @@ class TurnRunner:
         if timeout_seconds is not None:
             llm.timeout_seconds = timeout_seconds
         llm.cancel_event = self.cancel_event
+        llm.agency_run_id = getattr(self, 'agency_run_id', None)
         self.active_llm = llm
         log = dict(role=role, prompt=text, session=llm.id)
         result.logs.append(log)
@@ -114,15 +115,34 @@ class TurnRunner:
                 turn['warning'] = ' '.join(warnings)
             else:
                 turn.pop('warning', None)
+            members = set(turn.get('batch_members', [turn_id]))
+            affected = [t for t in state['turns'] if t['id'] in members]
             if outcome.error:
-                turn.update(status='interrupted' if self.cancel_event.is_set() else 'failed', error=outcome.error)
+                for item in affected:
+                    item.update(status='interrupted' if self.cancel_event.is_set() else 'failed', error=outcome.error)
+            elif turn.get('agency_kind') == 'chatInput':
+                # The reply is durable, but only chatOutput may publish it.
+                for item in affected:
+                    item.update(status='output_pending')
+                state.setdefault('output_buffer', []).append(dict(
+                    turn=turn_id, members=list(turn.get('batch_members', [turn_id])),
+                    content=outcome.output, origin=turn.get('origin')))
             else:
                 turn['status'] = 'done'
-                state['chat'].append(dict(role='agent', content=outcome.output, turn=turn_id, time=utcnow().isoformat(), origin=turn.get('origin')))
+                turn['output_at'] = utcnow().isoformat()
+                state['chat'].append(dict(role='agent', content=outcome.output, turn=turn_id, time=turn['output_at'], origin=turn.get('origin')))
                 state['last_output'] = outcome.output
-            self.store.trim(state)
+            if not turn.get('batch_members'):
+                self.store.trim(state)
+            # Batched transitions are projected before retention can trim them.
 
-    async def run(self):
+    def run_claimed(self, turn, snapshot):
+        """Host reserved this turn and its slot atomically before dispatch."""
+        self.agency_run_id = turn['id']
+        outcome = self._work(turn, snapshot, self.config)
+        self._finish(turn['id'], outcome)
+
+    async def run(self, *, legacy_only=False):
         try:
             lock = file_lock(self.store.root / '.runner.lock', blocking=False)
             lock.__enter__()
@@ -130,9 +150,11 @@ class TurnRunner:
             return
         try:
             with self.store.transaction() as state:
-                self.cancel_event.clear()
+                if not legacy_only:
+                    self.cancel_event.clear()
                 self._recover(state)
-                turn = next((t for t in state['turns'] if t['status'] == 'queued'), None)
+                turn = next((t for t in state['turns'] if t['status'] == 'queued'
+                             and (not legacy_only or not t.get('batchable'))), None)
                 if turn is None:
                     return
                 turn['status'] = 'running'
