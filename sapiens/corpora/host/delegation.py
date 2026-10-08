@@ -134,6 +134,8 @@ class Delegation:
         template = PROMPTS[node]
         source = next(p for p in self.templates() if p['node'] == node)
         instruction = source['content']
+        if snapshot.get('agency_batch'):
+            instruction += '\n\n' + prompt('agency-chat')
         with self.service._lock:
             work, call = self.find(turn['id'])
             prepared = runner.context(snapshot, turn['input'], runner.config)
@@ -150,9 +152,9 @@ class Delegation:
                 rendered = prompt('decision-envelope', node=node, instruction=instruction,
                                   notes_wiki=wiki, context=json.dumps(context, ensure_ascii=False),
                                   events=', '.join(sorted(EVENTS[node])))
-                if len(rendered) <= 60000 or not context['conversation']['chat']:
+                if snapshot.get('agency_batch') or len(rendered) <= 60000 or not context['conversation']['instantContext']['chat']:
                     break
-                context['conversation']['chat'].pop(0)
+                context['conversation']['instantContext']['chat'].pop(0)
                 context['conversation']['history_truncated'] = True
             model, effort = model_defaults()
             if execution_settings(runner.store.root)['mode'] == 'deep':
@@ -222,7 +224,8 @@ class Delegation:
             existing = next((c for c in work['calls'] if c['causedBy'] == turn['id']), None)
             if existing:
                 return existing
-            if self.service._agent(agid).runner.cancel_event.is_set():
+            active = self.service.agencies.active_runner(agid, turn['id']) or self.service._agent(agid).runner
+            if active.cancel_event.is_set():
                 raise APIError(409, 'Stopped before handoff acceptance')
             self.validate_target(work, agid, target)
             request = text_field(response, 'request', 16000)

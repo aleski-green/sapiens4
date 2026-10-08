@@ -17,9 +17,18 @@ class Store:
         with self.connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4, 5):
+            if version not in (0, 1, 2, 3, 4, 5, 6):
                 raise RuntimeError(f"Unsupported CORPORA schema: {version}")
             db.executescript("""
+                CREATE TABLE IF NOT EXISTS system_pulse (
+                    id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS pulse_calls (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS turn_details (
+                    id TEXT PRIMARY KEY, value TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS agents (
                     id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL,
                     color TEXT NOT NULL, face TEXT NOT NULL, created TEXT NOT NULL
@@ -61,7 +70,7 @@ class Store:
                     value['panel'] = 'chat'
                 value.pop('work_views', None)
                 db.execute('UPDATE preferences SET value=? WHERE id=1', (json.dumps(value),))
-            db.execute('PRAGMA user_version=5')
+            db.execute('PRAGMA user_version=6')
 
     @contextmanager
     def connect(self):
@@ -130,6 +139,9 @@ class Store:
     def project(self, agent, snapshot, outputs):
         with self.connect() as db:
             for turn in snapshot["turns"]:
+                details = {k: turn[k] for k in ('batch_id', 'batch_members', 'agency_kind', 'slot', 'pulseId', 'output_at', 'output_order') if k in turn}
+                db.execute('INSERT INTO turn_details VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value',
+                           (turn['id'], json.dumps(details)))
                 db.execute("""INSERT INTO turns VALUES (?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(id) DO UPDATE SET status=excluded.status,
                     output=COALESCE(excluded.output,turns.output), error=excluded.error""",
@@ -141,7 +153,9 @@ class Store:
             query = "SELECT * FROM turns" + (" WHERE agent=?" if agent else "")
             turns = [dict(row) for row in db.execute(query + " ORDER BY created, id", (agent,) if agent else ())]
             messages = {row["job"]: row for row in db.execute("SELECT * FROM message_inputs")}
+            details = {row['id']: json.loads(row['value']) for row in db.execute('SELECT * FROM turn_details')}
             for turn in turns:
+                turn.update(details.get(turn['id'], {}))
                 turn.pop("tokens", None)  # Legacy SQL column stays archived, not exposed.
                 message = messages.get(turn["id"])
                 turn["attachments"] = json.loads(message["attachments"]) if message else []
@@ -160,3 +174,32 @@ class Store:
         with self.connect() as db:
             db.execute("INSERT INTO preferences VALUES (1,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value",
                        (json.dumps(value, ensure_ascii=False, allow_nan=False),))
+
+    def pulse_state(self):
+        with self.connect() as db:
+            row = db.execute('SELECT value FROM system_pulse WHERE id=1').fetchone()
+            return json.loads(row[0]) if row else {}
+
+    def save_pulse_state(self, value):
+        with self.connect() as db:
+            db.execute('INSERT INTO system_pulse VALUES (1,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value',
+                       (json.dumps(value),))
+
+    def record_pulse_call(self, tick, agent, kind, slot):
+        record = dict(tick, agent=agent, agencyKind=kind, slot=slot, timestamp=now())
+        with self.connect() as db:
+            db.execute('INSERT INTO pulse_calls(value) VALUES (?)', (json.dumps(record),))
+        return record
+
+    def pulse_calls(self, agent=None, limit=500):
+        with self.connect() as db:
+            # Filter before limiting so a busy Sapi cannot hide another's history.
+            rows = db.execute('SELECT value FROM pulse_calls ORDER BY sequence DESC')
+            result = []
+            for row in rows:
+                value = json.loads(row[0])
+                if agent is None or value['agent'] == agent:
+                    result.append(value)
+                    if len(result) == limit:
+                        break
+            return result

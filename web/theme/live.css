@@ -367,3 +367,7 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 .activity-chevron{display:block;width:12px;height:12px;flex:none}
 .activity-chevron.sideways{transform:rotate(-90deg)}
 [aria-expanded="true"]>.activity-chevron:not(.sideways){transform:rotate(180deg)}
+
+.pulse-event dl { display:grid; grid-template-columns:auto minmax(0,1fr); gap:4px 12px; margin:12px 0 0; font-size:12px; }
+.pulse-event dt { opacity:.6; }
+.pulse-event dd { margin:0; overflow-wrap:anywhere; font-family:monospace; }

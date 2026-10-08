@@ -70,9 +70,9 @@ function renderGroupPanel(host) {
   }
   renderAttachment();
 }
-let groupTaskFilter='active', workView='tasks', chatView='conversation', updatesView='runtime';
+let groupTaskFilter='active', workView='tasks', chatView='conversation', updatesView='pulses';
 const openGroupTasks=new Set();
-const activityLabels={tasks:'Tasks',automation:'Automation',workflows:'Workflows',memo:'Memo',conversation:'Conversation',pins:'Pins',threads:'Threads',comments:'Comments',runtime:'Runtime',events:'Events',archived:'Archived'};
+const activityLabels={tasks:'Tasks',automation:'Automation',workflows:'Workflows',memo:'Memo',conversation:'Conversation',pins:'Pins',threads:'Threads',comments:'Comments',pulses:'Pulses'};
 const activityChevron = sideways => `<svg class="activity-chevron${sideways?' sideways':''}" viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true" focusable="false"><path d="m4.5 6.25 3.5 3.5 3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 function closeActivityMenus() {
   document.querySelectorAll('.activity-menu').forEach(menu=>menu.hidden=true);
@@ -84,7 +84,7 @@ function renderActivityNavigation() {
   const item=(name,panel)=>`<button data-activity-view="${name}" data-activity-panel="${panel}" class="${view===name?'selected':''}" aria-pressed="${view===name}">${activityLabels[name]}</button>`;
   const menus={chat:['pins','threads','comments'].map(v=>item(v,'chat')).join('')+'<hr><button data-activity-feedback>＋ Add feedback</button>',
     work:item('tasks','work')+`<div class="activity-submenu-row">${item('automation','work')}<button data-activity-menu="activity-automation-menu" aria-label="Automation menu" aria-expanded="false" aria-controls="activity-automation-menu">${activityChevron(true)}</button><div class="activity-menu activity-submenu" id="activity-automation-menu" hidden>${item('workflows','work')}</div></div>`+item('memo','work'),
-    updates:['runtime','events','archived'].map(v=>item(v,'updates')).join('')};
+    updates:['pulses'].map(v=>item(v,'updates')).join('')};
   const html=['chat','work','updates'].map(panel=>`<div class="activity-tab ${state.panel===panel?'active':''}"><button data-panel="${panel}" aria-pressed="${state.panel===panel}">${panel[0].toUpperCase()+panel.slice(1)}</button><button class="activity-toggle" data-activity-menu="activity-${panel}-menu" aria-label="${panel[0].toUpperCase()+panel.slice(1)} menu" aria-expanded="false" aria-controls="activity-${panel}-menu">${activityChevron(false)}</button><div class="activity-menu" id="activity-${panel}-menu" hidden>${menus[panel]}</div></div>`).join('');
   // Keep open menus and keyboard focus intact across polling snapshots.
   if(nav.dataset.view!==html){nav.innerHTML=html;nav.dataset.view=html;}
@@ -187,20 +187,14 @@ function taskDialog(group, task=null) {
 }
 function renderUpdates(host, group=null) {
   $('#composer-area').hidden=true;
-  const groups=group?[group]:state.agents.filter(g=>g.kind==='group'&&g.members.includes(state.selected));
-  const events=groups.flatMap(g=>g.events.map(e=>({...e,group:g}))).sort((a,b)=>b.created.localeCompare(a.created));
+  const pulses=(live.pulses || []).filter(p=>group?group.members.includes(p.agent):p.agent===state.selected);
   host.innerHTML='<div class="group-updates"></div>';
   const list=host.firstElementChild;
-  if(updatesView==='archived'){list.innerHTML='<p class="empty">Archived updates are not available yet.</p>';return;}
-  if(updatesView==='runtime') {
-    for(const turn of live.turns.filter(t=>group?t.group===group.id:t.agent===state.selected&&!t.group).slice().reverse())list.insertAdjacentHTML('beforeend',`<article class="group-event"><strong>${esc(statusNames[turn.status]||turn.status)}</strong><time>${esc(displayTime(turn.created))}</time><p>${esc(turn.input.slice(0,180))}</p></article>`);
+  for(const pulse of pulses) {
+    list.insertAdjacentHTML('beforeend', `<article class="group-event pulse-event"><strong>${esc(pulse.agencyKind)} · Slot ${esc(pulse.slot)}</strong><time>${esc(new Date(pulse.timestamp).toLocaleString())}</time><dl><dt>Frequency</dt><dd>${esc(pulse.frequency)}</dd><dt>Pulse number</dt><dd>${esc(pulse.num)}</dd><dt>Pulse</dt><dd>${esc(pulse.pulse)}</dd><dt>Pulse ID</dt><dd>${esc(pulse.pulseId)}</dd></dl></article>`);
   }
-  for(const event of updatesView==='events'?events:[]) {
-    const author=event.actor==='admin'?'Admin':agent(event.actor).name;
-    const task=event.group.tasks.find(t=>t.id===event.detail);
-    list.insertAdjacentHTML('beforeend',`<article class="group-event"><strong>${esc(author)} · ${esc(event.action)}</strong><time>${esc(new Date(event.created).toLocaleString())}</time><p>${esc(event.group.name)}${task?' · '+esc(task.title):''}</p></article>`);
-  }
-  if(!list.children.length)list.innerHTML='<p class="empty">No updates yet.</p>';
+  if(!pulses.length)list.innerHTML='<p class="empty">No dispatched pulses yet.</p>';
+
 }
 function renderPersonalWork(host) {
   $('#composer-area').hidden=true;

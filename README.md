@@ -2,7 +2,10 @@
 
 Local conversational agents with CORPORA UI, Codex CLI and Blindly4 computer access. Each Sapi manages a linked HTML notes wiki. SQLite stores UI data.
 
-Chat, Groups, shared tasks, Notes, workspaces, and [delegation](documentation/delegation.md) are active. Tasks has Upcoming and Past lists; opening a task shows its YAML body and result. Jobs, cron, task graphs, and memory consolidation remain inactive.
+Chat, Groups, shared tasks, Notes, workspaces, and [delegation](documentation/delegation.md) are active. Tasks has Upcoming and Past lists; opening a task shows its YAML body and result. Personal chat uses a global Pulse clock: messages batch every two `bpm60` pulses,
+with two `chatInput` slots and two `chatOutput` rendering slots per Sapi. Updates
+shows only pulses that dispatch calls. Jobs, user cron automation, task graphs,
+and memory consolidation remain inactive.
 
 ## Core principles
 
@@ -41,7 +44,7 @@ For a keyboard-only terminal connected to the same running app, install terminal
 Use `./sapiens4 status`, `./sapiens4 show`, or `./sapiens4 help` for individual commands.
 See [terminal commands and output formats](documentation/specs/CLI.md).
 
-[Architecture notation and analysis](documentation/haskell-notation-specs/SapiensSpecNotation.md) · [Haskell specification](documentation/haskell-notation-specs/SapiensSpecNotation.hs) · [WorkGraph design](documentation/specs/WorkGraph.md)
+[Architecture notation and analysis](documentation/haskell-notation-specs/SapiensSpecNotation.md) · [Haskell specification](documentation/haskell-notation-specs/SapiensSpecNotation.hs) · [System Pulsation](documentation/haskell-notation-specs/SystemPulsation.hs) · [WorkGraph design](documentation/specs/WorkGraph.md)
 
 [Setup, features, API and tests](documentation/reference.md)
 

@@ -22,7 +22,7 @@ class NotesTest(IntegrationFixture):
                 '<section id="map"><nav><a href="#facts">Facts</a> — saved facts</nav></section>'
                 f'<section id="content"><article id="facts"><pre><code class="language-yaml">{escape(content)}</code></pre></article></section>')
 
-    def test_model_updates_or_keeps_wiki_and_context_only_contains_about_and_map(self):
+    def test_model_updates_or_keeps_wiki_and_context_contains_full_memo(self):
         service = self.service()
         agid = service.registry.main
         notes = Notes(service.workspace.root(service._agent(agid)))
@@ -39,7 +39,7 @@ class NotesTest(IntegrationFixture):
         self.assertEqual(notes.metadata()['revision'], revision)
         self.assertIn('who: Nova', self.factory.prompts[-1])
         self.assertIn('saved facts', self.factory.prompts[-1])
-        self.assertNotIn('UniqueSavedName', self.factory.prompts[-1], 'Detailed content is read on demand')
+        self.assertIn('UniqueSavedName', self.factory.prompts[-1], 'Full Memo is supplied until SubMemo selection exists')
         self.assertIn('decide to update or keep it intact', self.factory.prompts[-1])
         service = self.restart(service)
         self.assertEqual(notes.read()['content'], content)
@@ -251,7 +251,8 @@ class NotesTest(IntegrationFixture):
         request = service.submit(agent.agid, dict(text='Current request ' * 900))
         self.wait_turn(service, request['id'])
         prompt = self.factory.prompts[-1]
-        self.assertLessEqual(len(prompt), 60_000)
+        context = json.loads(prompt.split('\nContext:\n', 1)[1])['conversation']
+        self.assertEqual(len(context['instantContext']['chat']), 11)
         self.assertIn('Keep my name Aleksi.', prompt)
         self.assertIn(('Current request ' * 900).strip(), prompt)
-        self.assertIn('history_truncated', prompt)
+        self.assertNotIn('history_truncated', prompt)

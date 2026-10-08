@@ -44,6 +44,21 @@ class Orchestration:
 
 
     def control(self, agid, data):
+        run_id = data.get('agencyRun')
+        if run_id is None:
+            return self._control(agid, data)
+        with self.service._lock:
+            if not any(t['id'] == run_id and t['status'] == 'running'
+                       for t in self.service._agent(agid).state['turns']):
+                raise APIError(409, 'AgencyRun is no longer active')
+            previous = getattr(self.service._execution, 'turn', None)
+            self.service._execution.turn = run_id
+            try:
+                return self._control(agid, {k: v for k, v in data.items() if k != 'agencyRun'})
+            finally:
+                self.service._execution.turn = previous
+
+    def _control(self, agid, data):
         with self.service._lock:
             agent = self.service._agent(agid)
             op = data.get("op")

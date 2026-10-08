@@ -62,7 +62,7 @@ class IntegrationFixture(unittest.TestCase):
             service.close()
 
     def service(self, **kwargs):
-        service = Service(self.directory.name, factory_builder=self.factory.builder, **kwargs)
+        service = Service(self.directory.name, factory_builder=self.factory.builder, pulse_clock=lambda: time.monotonic() * 20, **kwargs)
         self.services.append(service)
         return service
 
@@ -111,7 +111,7 @@ class IntegrationTest(IntegrationFixture):
         self.assertIn("Inspect apps", prompt)
         self.assertEqual(service._agent(row["id"]).state["chat"][-1]["content"], "Connected through AgentPy.")
 
-    def test_duplicate_submission_is_per_sapi(self):
+    def test_messages_continue_accumulating_per_sapi(self):
         gate = self.factory.gate = threading.Event()
         self.addCleanup(gate.set)
         service = self.service()
@@ -120,9 +120,8 @@ class IntegrationTest(IntegrationFixture):
         first = service.submit(a, {"text":"First", "flow":"computer"})
         self.assertTrue(self.factory.started.wait(2))
         second = service.submit(b, {"text":"Second", "flow":"computer"})
-        with self.assertRaises(APIError) as caught:
-            service.submit(a, {"text":"Duplicate"})
-        self.assertEqual(caught.exception.status, 409)
+        additional = service.submit(a, {"text":"Another message"})
+        self.assertEqual(additional['status'], 'queued')
         state = service.snapshot()
         self.assertIsNone(state["computer"]["owner"])
         self.wait_turn(service, second["id"], "running")

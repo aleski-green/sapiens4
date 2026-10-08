@@ -1,4 +1,6 @@
 -- Sapiens: navigation and workload notation
+-- 2026-10-08: SystemPulsation.hs supersedes the Pulse scheduler interpretation
+-- below. This older pure classifier remains workload-design notation only.
 -- Revised 2026-10-03 from the slide and Admin's clarifications.
 -- Design notation, not the current Python implementation.
 module SapiensSpecNotation where
