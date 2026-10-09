@@ -18,10 +18,11 @@ state.selected='a';state.workspaces.a={tabs:[legacy,file],activeTab:legacy.id};c
 assert.deepEqual(Array.from(state.tabs),[file]);assert.equal(state.activeTab,file.id);
 state.workspaces.a={tabs:[legacy,file,blank],activeTab:blank.id};context.syncWorkspace();
 assert.deepEqual(Array.from(state.tabs),[file,blank]);assert.equal(state.activeTab,blank.id);
-state.workspaces.a={tabs:[legacy],activeTab:legacy.id};context.syncWorkspace();assert.equal(state.tabs[0],legacy);
+state.workspaces.a={tabs:[legacy],activeTab:legacy.id};context.syncWorkspace();assert.equal(state.tabs.length,0);assert.equal(state.activeTab,null);
 state.workspaces.a={tabs:[]};context.syncWorkspace();assert.equal(state.tabs.length,0);assert.equal(state.activeTab,null);
 const sourceAll=fs.readFileSync('web/features/workspaces.js','utf8'), dom={};
 context.esc=String;context.$=selector=>dom[selector] ||= {innerHTML:'',setAttribute(k,v){this[k]=v;},querySelector:()=>null};
+context.renderPanes=context.syncWorkspace;
 vm.runInContext(sourceAll.slice(sourceAll.indexOf('const bookmarks ='),sourceAll.indexOf('function renderWorkspace()')),context);
 Object.assign(context.$('#browser-tabs'),{clientWidth:200,scrollWidth:400,children:[]});
 state.workspaces.a={tabs:[file,blank],activeTab:file.id,bookmarks:[{id:'saved',url:file.url}]};context.renderTabs();

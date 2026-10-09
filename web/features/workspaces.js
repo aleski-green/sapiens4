@@ -40,7 +40,7 @@ function setBrowserMenu(mode=null) {
   syncNativeBrowser();
 }
 function renderTabs() {
-  syncWorkspace();
+  renderPanes();
   const rows=tabs=>tabs.map(t=>`<div class="workspace-tab ${t.id===state.activeTab?'active':''}">${starButton(t)}<button class="tab-select" data-tab="${esc(t.id)}" aria-pressed="${t.id===state.activeTab}" title="${esc(t.path || t.url)}">${esc(t.title || 'New tab')}</button><button class="tab-close" data-close-tab="${esc(t.id)}" aria-label="Close ${esc(t.title)}">×</button></div>`).join('');
   $('#browser-tabs').innerHTML=rows([...state.tabs].sort((a,b)=>Number(!!tabBookmark(b))-Number(!!tabBookmark(a)))) || '<div class="workspace-tab active"><button class="tab-select" data-action="new-tab" aria-pressed="true">New tab</button></div>';
   $('#browser-all-tabs').innerHTML=`<div class="browser-menu-label">Open tabs · ${state.tabs.length}</div>${rows(state.tabs)}`;
@@ -91,7 +91,7 @@ function syncNativeBrowser() {
   const rect=$('#workspace-content').getBoundingClientRect();
   const palette=getComputedStyle($('.workspace'));
   bridge.postMessage({workspaces:state.workspaces,owner:state.selected,active:state.activeTab,
-    visible:!!state.panes.workspace && !$('#modal').open && $('#browser-menu').hidden, dark:document.documentElement.dataset.theme==='dark',
+    visible:!$('#workspace-panel').hidden && !$('#modal').open && $('#browser-menu').hidden, dark:document.documentElement.dataset.theme==='dark',
     background:palette.getPropertyValue('--sapi-white').trim(),foreground:palette.getPropertyValue('--sapi-ink').trim(),
     rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height}});
 }
