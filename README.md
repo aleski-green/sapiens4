@@ -1,6 +1,6 @@
 # Sapiens4
 
-This is a modified fork of [aleski-green/sapiens4](https://github.com/aleski-green/sapiens4), maintained at [fatmahalqaisi-code/sapiens4](https://github.com/fatmahalqaisi-code/sapiens4). One repository supports **macOS 13+ and Windows 10/11**: the Python runtime and web UI are shared, with native Swift/WebKit and C#/WebView2 desktop apps. The Windows port adds native Blindly4 UI Automation, portable ARM64/x64 packages, an app icon and browser theme synchronization.
+Windows support was added in the [fatmahalqaisi-code/sapiens4 fork](https://github.com/fatmahalqaisi-code/sapiens4). This modified version supports **macOS 13+ and Windows 10/11** in one repository: the Python runtime and web UI are shared, with native Swift/WebKit and C#/WebView2 desktop apps. The Windows port adds native Blindly4 UI Automation, portable ARM64/x64 packages, an app icon and browser theme synchronization.
 
 Local conversational agents with CORPORA UI, Codex CLI and Blindly4 computer access. Each Sapi manages a linked HTML notes wiki. SQLite stores UI data.
 
@@ -38,7 +38,7 @@ On macOS, Blindly4 requires macOS 13+, Swift 6 and Accessibility permission. Win
 builds use .NET SDK 10; portable packages bundle Python, .NET and Blindly4.
 
 ```sh
-git clone --recurse-submodules https://github.com/fatmahalqaisi-code/sapiens4.git
+git clone --recurse-submodules https://github.com/aleski-green/sapiens4.git
 cd sapiens4
 ./start.sh --open
 ```

@@ -75,7 +75,9 @@ class DelegationTest(unittest.TestCase):
                 for w in self.service.store.workloads() for d in w['decisions'] if d['agent'] == agid]
 
     def until(self, predicate):
-        end = time.monotonic() + 6
+        # Windows CI can spend several seconds creating/persisting a new Sapi
+        # before the final output pulse. Keep polling bounded without racing it.
+        end = time.monotonic() + 30
         while time.monotonic() < end:
             result = predicate()
             if result:

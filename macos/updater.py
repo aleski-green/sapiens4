@@ -18,7 +18,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-UPSTREAM = 'https://github.com/fatmahalqaisi-code/sapiens4.git'
+UPSTREAM = 'https://github.com/aleski-green/sapiens4.git'
 BASE = 'http://127.0.0.1:4174'
 
 

@@ -17,7 +17,7 @@ The first build is unsigned. No automatic updater or installer is included: repl
 Install Python 3.9+, Git and .NET SDK 10. Then:
 
 ```powershell
-git clone --recurse-submodules https://github.com/fatmahalqaisi-code/sapiens4.git
+git clone --recurse-submodules https://github.com/aleski-green/sapiens4.git
 cd sapiens4
 .\start.ps1 -Open
 ```
