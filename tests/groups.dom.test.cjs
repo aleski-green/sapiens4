@@ -63,7 +63,7 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
   nav.querySelector('[data-activity-view=automation]').click();ctx.renderGroupPanel(host);ctx.renderActivityNavigation();
   assert.match(host.textContent,/not available yet/);assert.equal(window.document.querySelector('[data-new-group-task]'),null);
   nav.querySelector('[data-activity-view=tasks]').click();ctx.renderGroupPanel(host);assert.match(host.textContent,/Shared task/);assert.match(host.textContent,/Researcher/);
-  state.selected='b';ctx.renderWork(host);assert.match(host.textContent,/Shared task/);assert.match(host.textContent,/Personal tasks/);
+  state.selected='b';ctx.renderWork(host);assert.doesNotMatch(host.textContent,/Shared task/);assert.match(host.textContent,/Personal tasks/);
   group.archived=true;state.selected=group.id;state.panel='chat';ctx.renderGroupPanel(host);
   assert.equal(window.document.querySelector('#composer-area').hidden,true);assert.match(host.textContent,/history is preserved/);
   assert.equal(refreshed,2);

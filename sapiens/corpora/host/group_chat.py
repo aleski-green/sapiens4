@@ -5,6 +5,8 @@ import re
 
 from sapiens.corpora.host.database import now
 from sapiens.corpora.sapis.attachments import resolve_attachments, attachment_prompt
+from sapiens.corpora.sapis.notes import Notes
+from sapiens.paths import ROOT
 from sapiens.prompts import prompt
 from sapiens.runtime.settings import execution_settings
 from sapiens.validation import APIError
@@ -59,6 +61,10 @@ class GroupChat:
         group['requests'].append(request)
         return request
 
+    def active_root(self, gid, actor):
+        group, request = self.find(self.service._active_turn(actor)) if actor != 'admin' else (None, None)
+        return request['root'] if group and group['id'] == gid else None
+
     def submit(self, gid, data, actor='admin'):
         with self.service._lock:
             group = self.groups.get(gid, active=True)
@@ -85,10 +91,13 @@ class GroupChat:
                 targets = [group['lead']]
             message = self.message(actor, text)
             message['attachments'] = attachments
+            if actor == 'admin':
+                message['memo_pending'] = True
+            root = self.active_root(gid, actor)
             group['messages'].append(message)
             for target in dict.fromkeys(targets):
                 if target != actor:
-                    self.request(group, message, target)
+                    self.request(group, message, target, root)
             self.groups.save(group, actor, 'message', message['id'])
             self.dispatch()
             return message
@@ -111,6 +120,9 @@ class GroupChat:
                     if request['status'] != 'queued':
                         continue
                     agid = request['target']
+                    if request.get('memo') and agid != group['lead']:
+                        request['target'] = agid = group['lead']
+                        self.service.store.save_group(group)
                     agent = self.service._agent(agid)
                     if self.service.store.projected_turn(request['id']):
                         continue
@@ -134,6 +146,11 @@ class GroupChat:
             request['status'] = 'running'
             self.service.store.save_group(group)
             manifests = runner.store.manifests
+            notes = Notes(self.groups.folder(group['id']))
+            try:
+                memo = notes.read()['content']
+            except (APIError, OSError) as error:
+                memo = dict(path=str(notes.path), error=str(error))
             # Personal chat, other groups' work and private host-facts are not copied into shared context.
             context = dict(group=dict(id=group['id'], name=group['name'], description=group['description'],
                                       lead=group['lead'], members=group['members'], workspace=str(self.groups.folder(group['id']))),
@@ -141,19 +158,22 @@ class GroupChat:
                            members=[a for a in self.service.store.agents() if a['id'] in group['members']],
                            tasks=[{k: t[k] for k in ('id', 'title', 'assignee', 'state', 'revision', 'deleted')}
                                   for t in group['tasks'][-50:]],
-                           messages=group['messages'][-30:], request=request,
+                           messages=group['messages'][:] if request.get('memo') else group['messages'][-30:], memo=memo, request=request,
                            scheduledExecutionPrompt=(turn.get('origin') or {}).get('executionPrompt'),
                            identity=manifests.get('identity'), host_control=manifests.get('host-control'),
                            computer=manifests.get('computer-use'))
             while True:
-                rendered = prompt('group-conversation', context=json.dumps(context, ensure_ascii=False), task=turn['input'])
+                rendered = prompt('group-memo' if request.get('memo') else 'group-conversation',
+                                  context=json.dumps(context, ensure_ascii=False), task=turn['input'])
+                if request.get('memo'):
+                    rendered += '\n\n' + prompt('notes-wiki', notes_example=str(ROOT / 'prompts/examples/jarvis-notes.html'))
                 if (turn.get('origin') or {}).get('routine'):
                     rendered = prompt('scheduled-execution') + '\n\n' + rendered
                 if len(rendered) <= 60000 or not context['messages']:
                     break
                 context['messages'].pop(0)
                 context['history_truncated'] = True
-        return runner.invoke(rendered, 'group', result,
+        return runner.invoke(rendered, 'group-memo' if request.get('memo') else 'group', result,
                              timeout_seconds=execution_settings(runner.store.root)['timeout_seconds'])
 
     def reconcile(self):
@@ -175,6 +195,12 @@ class GroupChat:
                         continue
                     request['settled'] = True
                     changed = True
+                    if request.get('memo'):
+                        if turn.get('error'):
+                            request['error'] = turn['error']
+                        group['events'].append(dict(id=uuid4().hex, actor=request['target'],
+                            action='memo ' + turn['status'], detail=request['id'], created=now()))
+                        continue
                     routine = (request.get('origin') or {}).get('routine')
                     targets = []
                     if request['target'] == group['lead'] and not group['archived'] and turn['output']:
@@ -205,6 +231,16 @@ class GroupChat:
                     group['events'].append(dict(id=uuid4().hex, actor=request['target'],
                         action='result needs review' if stale else 'call ' + turn['status'],
                         detail=request['id'], created=now()))
+                if not group['archived']:
+                    for message in group['messages']:
+                        if not message.get('memo_pending'):
+                            continue
+                        related = [r for r in group['requests'] if r['root'] == message['id']]
+                        if related and all(r['settled'] for r in related):
+                            request = self.request(group, message, group['lead'])
+                            request.update(memo=True, origin=dict(group=group['id'], author='system', memo=True))
+                            message['memo_pending'] = False
+                            changed = True
                 if changed:
                     group['revision'] += 1
                     group['updated'] = now()
@@ -232,6 +268,9 @@ class GroupChat:
                 if action == 'retry':
                     request.update(settled=False, status='queued')
                     request.pop('error', None)
+                    root = next((m for m in group['messages'] if m['id'] == request['root']), None)
+                    if not request.get('memo') and root and root['author'] == 'admin':
+                        root['memo_pending'] = True
                     self.groups.save(group, 'admin', 'call retried', rid)
                 else:
                     self.groups.save(group, 'admin', 'call cancelled', rid)

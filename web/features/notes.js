@@ -173,7 +173,6 @@ function presentMemo(root, profile, metadata, turnCount) {
   if (list.children.length > 1) { const title = document.createElement('strong'); title.textContent = 'Contents'; toc.append(title,list); map.replaceWith(toc); }
   else map.remove();
   const header = document.createElement('header'); header.className = 'memo-header';
-  const title = document.createElement('h1'); title.textContent = 'Memo'; header.append(title);
   const dates = document.createElement('p'); dates.className = 'memo-meta';
   function history(label, date, author) {
     const row = document.createElement('span');

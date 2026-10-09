@@ -10,7 +10,7 @@ const ctx=vm.createContext({document:window.document,console,ResizeObserver:clas
 vm.runInContext(fs.readFileSync('web/shell/app.js','utf8'),ctx);
 vm.runInContext(fs.readFileSync('web/features/tasks.js','utf8'),ctx);
 vm.runInContext(fs.readFileSync('web/features/groups.js','utf8'),ctx);
-vm.runInContext(`save=()=>{};closeModal=()=>{};render=()=>{renderSidebar();};`,ctx);
+vm.runInContext(`save=()=>{};closeModal=()=>{};formatText=esc;render=()=>{renderSidebar();};`,ctx);
 const bridge=fs.readFileSync('web/shell/bridge.js','utf8');
 vm.runInContext(bridge.slice(bridge.indexOf('addAgent = function()'),bridge.indexOf('agentSettings = function()')),ctx);
 const click=s=>{const e=window.document.querySelector(s);assert.ok(e,s);e.click();};
@@ -53,7 +53,7 @@ click('[data-scope=groups]');assert.equal(initial.scope,'all');
 group.archived=false;ctx.renderSidebar();assert.equal(window.document.querySelector('[data-scope=groups]').disabled,false);
 // Split tabs remain available for both Groups and Sapis.
 ctx.taskPeriod='upcoming';ctx.renderNotes=host=>host.textContent='Memo';ctx.renderTasks=host=>host.textContent='Tasks';
-ctx.live={turns:[]};ctx.renderAttachment=()=>{};
+ctx.live={turns:[],workloads:[{participants:['b'],state:'Running'}]};ctx.renderAttachment=()=>{};
 group.tasks=[{id:'shared',title:'Shared work',state:'in_progress',assignee:'b',results:[],history:[]}];group.requests=[];group.messages=[];group.events=[];group.notes={revision:'missing'};
 vm.runInContext(`renderConversation=()=>{const host=$('#conversation-body');if(!renderChatCollection(host)&&state.panel==='work'){renderWork(host);}renderActivityNavigation();};`,ctx);
 for(const id of ['g','b']) {
@@ -168,9 +168,27 @@ for(const id of ['b','g']) {
   assert.equal(vm.runInContext('workView',ctx),'memo'); // Polling preserves manual navigation.
 }
 ctx.openChat('b');ctx.live.routines=[];ctx.live.workloads=[];
-group.tasks=[sharedTask('backlog')];workDefault('tasks','Planned');
-group.tasks=[sharedTask('done')];workDefault('tasks','Executed');
+group.tasks=[sharedTask('backlog')];workDefault('memo');
+group.tasks=[sharedTask('done')];workDefault('memo');
 group.tasks=[sharedTask('in_progress','out')];workDefault('memo');
+// Existing Group calls are visible without creating or replaying tasks.
+group.tasks=[];
+group.messages=[{id:'request',author:'admin',text:'Compare <choices>'},{id:'reply',author:'b',text:'Member result',turn:'call'}];
+group.requests=[{id:'call',message:'request',target:'b',status:'running'}];
+ctx.openChat('g');workDefault('tasks','Planned');
+assert.equal(window.document.querySelector('.task-title').textContent,'Compare <choices>');
+assert.equal(window.document.querySelector('.task-state').textContent,'Running');
+assert.equal(window.document.querySelector('choices'),null);
+row=window.document.querySelector('.task-row');row.open=true;row.dispatchEvent(new window.Event('toggle'));
+ctx.renderWork(window.document.querySelector('#conversation-body'));assert.equal(window.document.querySelector('.task-row').open,true);
+group.requests[0].status='done';workDefault('tasks','Executed');
+assert.match(window.document.querySelector('.task-result').textContent,/Member result/);
+group.requests[0].status='failed';group.requests[0].error='Provider failed';workDefault('tasks','Executed');
+assert.match(window.document.querySelector('.task-error').textContent,/Provider failed/);
+group.requests.push({id:'linked',message:'request',target:'b',status:'done',task:'shared'});
+assert.equal(ctx.groupCallTasks(group).length,1); // A persisted task already owns its execution.
+ctx.openChat('b');workDefault('memo');
+assert.doesNotMatch(window.document.querySelector('#conversation-body').textContent,/Compare <choices>|Member result/);
 console.log('Work defaults: active tasks, planned routines, executed tasks, Memo; Sapi/Group scope and manual navigation passed');
 
 ctx.renderActivityNavigation();click('[aria-label="Updates menu"]');

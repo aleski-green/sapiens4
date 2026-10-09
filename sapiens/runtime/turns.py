@@ -32,7 +32,8 @@ class TurnRunner:
             turn = dict(id=turn_id or uuid4().hex, flow=flow, input=text, status='queued',
                         created=utcnow().isoformat(), attempt=1, origin=origin, batchable=batchable)
             state['turns'].append(turn)
-            state['chat'].append(dict(role='user', content=text, turn=turn['id'], time=turn['created'], origin=origin))
+            if not (origin or {}).get('group'):
+                state['chat'].append(dict(role='user', content=text, turn=turn['id'], time=turn['created'], origin=origin))
             self.store.trim(state)
         return turn['id']
 
@@ -130,8 +131,9 @@ class TurnRunner:
             else:
                 turn['status'] = 'done'
                 turn['output_at'] = utcnow().isoformat()
-                state['chat'].append(dict(role='agent', content=outcome.output, turn=turn_id, time=turn['output_at'], origin=turn.get('origin')))
-                state['last_output'] = outcome.output
+                if not (turn.get('origin') or {}).get('group'):
+                    state['chat'].append(dict(role='agent', content=outcome.output, turn=turn_id, time=turn['output_at'], origin=turn.get('origin')))
+                    state['last_output'] = outcome.output
             if not turn.get('batch_members'):
                 self.store.trim(state)
             # Batched transitions are projected before retention can trim them.

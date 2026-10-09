@@ -131,13 +131,14 @@ class ChatAgencies:
                 buffer.remove(item)
                 timestamp = utcnow().isoformat()
                 state['output_sequence'] = state.get('output_sequence', 0) + 1
-                if not any(m.get('turn') == item['turn'] and m['role'] == 'agent' for m in state['chat']):
+                if not (item.get('origin') or {}).get('group') and not any(m.get('turn') == item['turn'] and m['role'] == 'agent' for m in state['chat']):
                     state['chat'].append(dict(role='agent', content=item['content'],
                         turn=item['turn'], time=timestamp, origin=item.get('origin')))
                 for turn in state['turns']:
                     if turn['id'] in item['members']:
                         turn.update(status='done', output_at=timestamp, output_order=state['output_sequence'])
-                state['last_output'] = item['content']
+                if not (item.get('origin') or {}).get('group'):
+                    state['last_output'] = item['content']
             self.service.store.record_pulse_call(tick, agent.agid, 'chatOutput', slot,
                 groups=[item['origin']['group']] if (item.get('origin') or {}).get('group') else [])
         self.service._sync(agent)

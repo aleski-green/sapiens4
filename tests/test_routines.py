@@ -248,6 +248,9 @@ class RoutinesTest(unittest.TestCase):
         self.assertEqual(len(current['tasks'][0]['results']), 1)
         self.assertEqual(current['tasks'][0]['results'][0]['author'], self.other)
         self.assertEqual(len(current['requests']), 2)
+        self.assertFalse(any(r.get('memo') for r in current['requests']))
+        for agid in (self.chief, self.other):
+            self.assertFalse(any((m.get('origin') or {}).get('group') for m in self.service._agent(agid).state['chat']))
         self.assertEqual(self.service.store.routines()[0]['runCount'], 1)
 
     def test_group_limit_counts_one_occurrence_and_preserves_migration(self):

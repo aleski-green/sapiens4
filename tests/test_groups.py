@@ -61,6 +61,72 @@ class GroupsTest(IntegrationFixture):
         self.assertIn('define the first task', group['messages'][0]['text'])
         self.assertEqual(len(group['messages']), 3)
 
+    def test_group_history_and_lead_memo_after_all_member_replies(self):
+        s, chief, lead, member, outsider, g = self.setup_group()
+        folder = s.groups.folder(g['id'])
+        original = '<section id="about">Our group</section><section id="map"></section><section id="content">Existing knowledge</section>'
+        (folder / 'Notes.html').write_text(original)
+        personal = {a: (s._agent(a).workspace / 'Notes.html').read_bytes() for a in (lead, member)}
+        contexts = []
+        base_spawn = self.factory.spawn
+        def spawn(spec):
+            llm = base_spawn(spec)
+            def complete(text):
+                self.factory.prompts.append(text)
+                context = json.JSONDecoder().raw_decode(text.split('Current Group context:\n', 1)[1])[0]
+                contexts.append((spec.role, context))
+                if spec.role == 'group-memo':
+                    self.assertEqual(context['self_id'], lead)
+                    self.assertEqual(context['memo'], original)
+                    self.assertTrue(any(m['text'] == 'Verified member finding' for m in context['messages']))
+                    (folder / 'Notes.html').write_text(original.replace('Existing knowledge', 'Existing knowledge; Verified member finding'))
+                    return 'Memo saved.'
+                return '@Researcher investigate' if context['self_id'] == lead else 'Verified member finding'
+            llm.complete = complete
+            return llm
+        self.factory.spawn = spawn
+        s.groups.chat.submit(g['id'], dict(text='Investigate together'))
+        s.start()
+        self.until(lambda: any(r.get('memo') and r['settled'] for r in s.groups.get(g['id'])['requests']))
+        self.until(lambda: not s._runners)
+        group = s.groups.get(g['id'])
+        self.assertEqual([role for role, _ in contexts], ['group', 'group', 'group-memo'])
+        self.assertIn('Verified member finding', (folder / 'Notes.html').read_text())
+        self.assertNotIn('Memo saved.', [m['text'] for m in group['messages']])
+        self.assertEqual(len(group['messages']), 6)
+        for agid in (lead, member):
+            self.assertEqual(s._agent(agid).state['chat'], [])
+            self.assertIsNone(s._agent(agid).state['last_output'])
+            self.assertEqual((s._agent(agid).workspace / 'Notes.html').read_bytes(), personal[agid])
+            self.assertEqual(s.delegation.task_list(agid)['tasks'], [])
+        s = self.restart(s)
+        s.groups.chat.reconcile()
+        self.assertEqual(len(s.groups.get(g['id'])['requests']), 3)
+
+    def test_member_addressed_admin_call_queues_current_lead_memo_durably(self):
+        s, chief, lead, member, outsider, g = self.setup_group()
+        message = s.groups.chat.submit(g['id'], dict(text='@Researcher answer directly'))
+        request = s.groups.get(g['id'])['requests'][0]
+        agent = s._agent(member)
+        # Run only the member; leave the Lead's follow-up queued across restart.
+        import asyncio
+        asyncio.run(agent.runner.run())
+        s._sync(agent); s.groups.chat.reconcile()
+        group = s.groups.get(g['id'])
+        self.assertEqual(len(group['requests']), 2)
+        followup = group['requests'][-1]
+        self.assertTrue(followup['memo'])
+        self.assertEqual(followup['root'], message['id'])
+        self.assertEqual(followup['target'], lead)
+        s = self.restart(s, start_worker=False)
+        s.groups.chat.reconcile()
+        self.assertEqual(len(s.groups.get(g['id'])['requests']), 2)
+        group = s.groups.get(g['id'])
+        s.groups.update(g['id'], dict(revision=group['revision'], lead=member), chief)
+        s.groups.chat.dispatch()
+        self.assertEqual(s.groups.get(g['id'])['requests'][-1]['target'], member)
+        self.assertEqual(s._agent(member).state['chat'], [])
+
     def test_nonexclusive_membership_stable_identity_and_transfer(self):
         s, chief, lead, member, outsider, g = self.setup_group()
         other = s.groups.create(dict(name='Second', lead=member, members=[lead, member]))
@@ -123,7 +189,7 @@ class GroupsTest(IntegrationFixture):
         s, chief, lead, member, outsider, g = self.setup_group(start_worker=True)
         private = s.submit(lead, dict(text='PRIVATE PERSONAL CONTEXT'))
         self.wait_turn(s, private['id'])
-        self.until(lambda: not s._runners)
+        self.until(lambda: not s._runners and all(r['settled'] for r in s.groups.get(g['id'])['requests']))
         s.groups.chat.submit(g['id'], dict(text='Hello Group'))
         self.until(lambda: len(s.groups.get(g['id'])['messages']) == 5)
         group = s.groups.get(g['id'])
@@ -132,10 +198,10 @@ class GroupsTest(IntegrationFixture):
         self.assertNotIn('PRIVATE PERSONAL CONTEXT', self.factory.prompts[-1])
         s.groups.chat.submit(g['id'], dict(text='@Researcher Please reply'))
         self.until(lambda: len(s.groups.get(g['id'])['messages']) == 7)
-        self.assertEqual(s.groups.get(g['id'])['requests'][-1]['target'], member)
+        self.assertEqual([r for r in s.groups.get(g['id'])['requests'] if not r.get('memo')][-1]['target'], member)
         self.assertEqual(s.groups.get(g['id'])['messages'][-1]['author'], member)
         self.assertTrue(all(t.get('group') == g['id'] for t in s.snapshot()['turns'] if t['id'] != private['id']))
-        self.until(lambda: not s._runners)
+        self.until(lambda: not s._runners and all(r['settled'] for r in s.groups.get(g['id'])['requests']))
         personal = s.submit(lead, dict(text='Personal again'))
         self.wait_turn(s, personal['id'])
         self.assertNotIn('Hello Group', self.factory.prompts[-1])
@@ -151,11 +217,11 @@ class GroupsTest(IntegrationFixture):
         s.groups.chat.submit(g['id'], dict(text='Coordinate'))
         s.start()
         self.until(lambda: len(s.groups.get(g['id'])['messages']) == 6)
-        self.until(lambda: not s._runners)
+        self.until(lambda: not s._runners and all(r['settled'] for r in s.groups.get(g['id'])['requests']))
         for _ in range(3):
             s.groups.chat.reconcile(); s.groups.chat.dispatch()
         group = s.groups.get(g['id'])
-        self.assertEqual([r['target'] for r in group['requests']], [lead, member])
+        self.assertEqual([r['target'] for r in group['requests'] if not r.get('memo')], [lead, member])
         self.assertEqual([m['author'] for m in group['messages'][3:]], ['admin', lead, member])
 
     def test_queued_group_requests_survive_restart_without_duplicate_execution(self):
@@ -165,10 +231,10 @@ class GroupsTest(IntegrationFixture):
         self.assertEqual(len(s._agent(lead).state['turns']), 1)
         s = self.restart(s)
         self.until(lambda: len(s.groups.get(g['id'])['messages']) == 7)
-        self.until(lambda: not s._runners)
-        self.assertEqual(len(self.factory.prompts), 2)
+        self.until(lambda: not s._runners and all(r['settled'] for r in s.groups.get(g['id'])['requests']))
+        self.assertEqual(len([p for p in self.factory.prompts if p.startswith('You are acting as yourself inside')]), 2)
         s = self.restart(s)
-        self.assertEqual(len(self.factory.prompts), 2)
+        self.assertEqual(len([p for p in self.factory.prompts if p.startswith('You are acting as yourself inside')]), 2)
         self.assertEqual(len(s.groups.get(g['id'])['messages']), 7)
 
     def test_autonomous_tasks_use_one_record_and_reject_stale_edits(self):
@@ -207,12 +273,12 @@ class GroupsTest(IntegrationFixture):
         task = s.groups.work.create(g['id'], dict(title='Complete', assignee=member), lead)
         s.groups.work.run(g['id'], task['id'], task['revision'], lead)
         self.until(lambda: s.groups.get(g['id'])['tasks'][0]['state'] == 'done')
-        self.until(lambda: not s._runners)
+        self.until(lambda: not s._runners and all(r['settled'] for r in s.groups.get(g['id'])['requests']))
         group = s.groups.get(g['id'])
         group = s.groups.update(g['id'], dict(revision=group['revision'], archived=True), chief)
         group = s.groups.update(g['id'], dict(revision=group['revision'], archived=False), chief)
         s = self.restart(s)
-        self.assertEqual(len(self.factory.prompts), 1)
+        self.assertEqual(len([p for p in self.factory.prompts if p.startswith('You are acting as yourself inside')]), 1)
         self.assertEqual(s.groups.get(g['id'])['tasks'][0]['state'], 'done')
 
     def test_archive_cancels_pending_requests_and_preserves_history(self):
@@ -284,14 +350,14 @@ class GroupsTest(IntegrationFixture):
         self.factory.fail = True
         s.groups.chat.submit(g['id'], dict(text='Try once'))
         self.until(lambda: s.groups.get(g['id'])['requests'][0]['status'] == 'failed')
-        self.until(lambda: not s._runners)
+        self.until(lambda: not s._runners and all(r['settled'] for r in s.groups.get(g['id'])['requests']))
         self.assertEqual(len(s.groups.get(g['id'])['messages']), 4)
         self.factory.fail = False
         rid = s.groups.get(g['id'])['requests'][0]['id']
         s.groups.chat.action(g['id'], rid, 'retry')
         self.until(lambda: len(s.groups.get(g['id'])['messages']) == 5)
-        self.assertEqual(len(s.groups.get(g['id'])['requests']), 1)
-        self.assertEqual(len(self.factory.prompts), 2)
+        self.assertEqual(len([r for r in s.groups.get(g['id'])['requests'] if not r.get('memo')]), 1)
+        self.assertEqual(len([p for p in self.factory.prompts if p.startswith('You are acting as yourself inside')]), 2)
 
     def test_transfer_during_call_preserves_author_and_new_calls_reach_new_lead(self):
         s, chief, lead, member, outsider, g = self.setup_group()

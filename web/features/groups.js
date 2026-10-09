@@ -71,10 +71,19 @@ function renderGroupPanel(host) {
   renderAttachment();
 }
 let scheduledPeriod='upcoming', groupTaskFilter='active', workView='tasks', chatView='conversation', updatesView='events';
+function groupCallTasks(group) {
+  const states={queued:'Queued',running:'Running',output_pending:'Running',done:'Completed',warning:'Completed',failed:'Failed',interrupted:'Interrupted',cancelled:'Cancelled'};
+  return (group.requests||[]).filter(r=>!r.task).slice().reverse().map(r=>{
+    const message=group.messages.find(m=>m.id===r.message), result=group.messages.find(m=>m.turn===r.id);
+    const title=r.memo?'Update group Memo':message?.text||'Group call';
+    return {id:r.id,title,state:states[r.status]||r.status,owner:r.target,sender:r.target,taskType:'call',
+      body:`objective: ${JSON.stringify(title)}\nassignee: ${JSON.stringify(agent(r.target).name)}\n`,result:result?.text,error:r.error};
+  });
+}
 function selectDefaultWorkView() {
   const group=selected().kind==='group';
-  const states=group?[]:(live.workloads||[]).filter(w=>w.participants.includes(state.selected)).map(w=>w.state);
-  const groups=group?[selected()]:state.agents.filter(a=>a.kind==='group');
+  const states=group?groupCallTasks(selected()).map(t=>t.state):(live.workloads||[]).filter(w=>!w.origin?.group&&w.participants.includes(state.selected)).map(w=>w.state);
+  const groups=group?[selected()]:[];
   for(const g of groups)for(const task of g.tasks||[]) {
     if(!task.deleted&&(group||task.assignee===state.selected))states.push(task.state==='done'?'Completed':'Queued');
   }
@@ -132,7 +141,7 @@ function renderActivityNavigation() {
   if(nav.dataset.view!==html){nav.innerHTML=html;nav.dataset.view=html;}
   let bar=$('#activity-viewbar');
   if(!bar){bar=document.createElement('div');bar.id='activity-viewbar';nav.after(bar);}
-  bar.hidden=state.panel==='updates'||(state.panel==='chat'&&chatView==='conversation');
+  bar.hidden=state.panel==='updates'||(state.panel==='work'&&workView==='memo')||(state.panel==='chat'&&chatView==='conversation');
   let detail=`<span class="activity-view-title">${activityLabels[view]||''}</span>`;
   if(state.panel==='work') {
     const path=workPaths[view]||[];
@@ -247,7 +256,12 @@ function workDraft(preset, placeholder) {
 }
 function renderGroupTasks(host, group) {
   host.querySelectorAll('[data-open-group-task]').forEach(row=>row.open?openGroupTasks.add(row.dataset.openGroupTask):openGroupTasks.delete(row.dataset.openGroupTask));
-  host.innerHTML=`<section class="group-work"><div class="group-task-list">${group.tasks.filter(t=>workView!=='tasks-automated'||t.taskType==='automated').filter(t=>groupTaskFilter==='deleted'?t.deleted:!t.deleted&&(groupTaskFilter==='done'?t.state==='done':t.state!=='done')).map(t=>groupTaskCard(group,t)).join('')||'<p class="empty">No tasks here yet.</p>'}</div></section>`;
+  host.innerHTML=`<section class="group-work"><div class="group-task-list">${group.tasks.filter(t=>workView!=='tasks-automated'||t.taskType==='automated').filter(t=>groupTaskFilter==='deleted'?t.deleted:!t.deleted&&(groupTaskFilter==='done'?t.state==='done':t.state!=='done')).map(t=>groupTaskCard(group,t)).join('')}</div></section>`;
+  const list=host.querySelector('.group-task-list');
+  if(workView!=='tasks-automated'&&groupTaskFilter!=='deleted')for(const task of groupCallTasks(group)) {
+    if(pastTaskStates.has(task.state)===(groupTaskFilter==='done'))list.append(taskRow(task,group.id));
+  }
+  if(!list.children.length)list.innerHTML='<p class="empty">No tasks here yet.</p>';
 }
 function taskDialog(group, task=null) {
   modal(task?'Edit Group task':'Create Group task',`<form id="group-task-form" class="form-stack"><label>Title<input name="title" required maxlength="500" value="${esc(task?.title||'')}"></label><label>Work to do<textarea name="body" rows="5" maxlength="16000">${esc(task?.body||'')}</textarea></label><label>Assignee<select name="assignee">${group.members.map(id=>`<option value="${esc(id)}" ${id===(task?.assignee||group.lead)?'selected':''}>${esc(agent(id).name)}</option>`).join('')}</select></label>${task?`<label>Status<select name="state">${Object.entries(taskStateLabel).map(([v,label])=>`<option value="${v}" ${v===task.state?'selected':''}>${label}</option>`).join('')}</select></label>`:''}<button type="submit" class="button primary">${task?.deleted?'Restore task':'Save task'}</button>${task&&!task.deleted?'<button type="button" class="button" id="delete-group-task">Delete task</button>':''}<p class="form-hint">Saving keeps this as shared work. Use Run task to call the assignee. Deletions can be restored.</p></form>`,'GROUP WORK');
@@ -300,7 +314,7 @@ function renderWork(host) {
   const key=state.selected+':'+workView;
   if(host.dataset.work!==key||!host.querySelector('#work-content')) {
     host.dataset.work=key;
-    host.innerHTML=(group?'':'<div id="personal-group-tasks"></div>')+'<div id="work-content"></div>';
+    host.innerHTML='<div id="work-content"></div>';
   }
   const content=host.querySelector('#work-content');
   host.classList.toggle('notes-view',workView==='memo');
@@ -310,11 +324,7 @@ function renderWork(host) {
   } else if(workView==='routine-scheduled')renderScheduledRoutines(content);
   else if(!['tasks','tasks-automated'].includes(workView))content.innerHTML=`<p class="empty">${activityLabels[workView]} is not available yet.</p>`;
   else if(group)renderGroupTasks(content,group);
-  else {
-    const groups=state.agents.filter(g=>g.kind==='group');
-    host.querySelector('#personal-group-tasks').innerHTML=groups.flatMap(g=>g.tasks.filter(t=>workView!=='tasks-automated'||t.taskType==='automated').filter(t=>t.assignee===state.selected&&!t.deleted&&((t.state==='done')===(taskPeriod==='past'))).map(t=>groupTaskCard(g,t))).join('');
-    renderTasks(content);
-  }
+  else renderTasks(content);
 }
 document.addEventListener('click',async e=>{
   const b=e.target.closest('button');if(!b)return;const d=b.dataset;

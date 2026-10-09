@@ -10,7 +10,7 @@ const metadata = {modified_at:'2026-10-01T20:30:00+00:00',workspace:'/workspace/
 const render = source => sandbox.notesWiki(source,'/workspace/sapi_test/Notes.html',profile.id,profile,metadata,6);
 const wrap = (content,about='<p>A saved lead.</p>',map='<a href="#topic">Topic</a>') => `<section id="about">${about}</section><section id="map"><nav>${map}</nav></section><section id="content">${content}</section>`;
 let root = render(wrap('<article id="topic"><h2>Topic</h2><p>Fact <sup><a href="#source">[1]</a></sup>.</p><blockquote id="source">Recorded evidence.</blockquote><img src="image.png" alt="Asset"><script>alert(1)</script><p onclick="alert(1)">Safe text</p><a href="javascript:alert(1)">Unsafe URL</a></article>'));
-assert.equal(root.querySelector('h1').textContent,'Memo');
+assert.equal(root.querySelector('.memo-header h1'),null);
 assert.equal(root.querySelector('h2').textContent,'Topic');
 assert.equal(root.querySelector('blockquote').textContent,'Recorded evidence.');
 assert.equal(root.querySelector('.memo-avatar').textContent,'(¬o¬)');

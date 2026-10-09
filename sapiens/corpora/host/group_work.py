@@ -1,4 +1,4 @@
-"""Shared, revisioned Group tasks; personal Work is a projection of these records."""
+"""Shared, revisioned tasks owned by the Group, with attributable member execution."""
 from copy import deepcopy
 from uuid import uuid4
 
@@ -79,8 +79,10 @@ class GroupWork:
             task.update(state='in_progress', revision=task['revision'] + 1, updated_by=actor)
             message = self.groups.chat.message(actor, task['title'] + '\n\n' + task['body'])
             message['task'] = tid
+            if actor == 'admin':
+                message['memo_pending'] = True
             group['messages'].append(message)
-            request = self.groups.chat.request(group, message, task['assignee'])
+            request = self.groups.chat.request(group, message, task['assignee'], self.groups.chat.active_root(gid, actor))
             request.update(task=tid, task_revision=task['revision'])
             self.groups.save(group, actor, 'task started', tid)
             self.groups.chat.dispatch()
