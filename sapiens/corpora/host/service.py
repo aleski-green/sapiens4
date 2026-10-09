@@ -113,6 +113,7 @@ class Service:
         self.delegation.dispatch_pending()
         self.groups.chat.reconcile()
         self.groups.chat.dispatch()
+        self.store.events.record(self.registry.main, 'corpora', 'system.started', {}, actor='system')
         if start_worker:
             self.start()
 
@@ -227,6 +228,7 @@ class Service:
             self.registry.register(row["id"], parent=parent)
             agent = self._agent(row["id"])
             self.orchestration.settings(agent)
+            self.store.events.record(row['id'], row['id'], 'sapi.created', dict(row, manager=parent))
             return row
 
     def update_agent(self, agid, data):
@@ -248,6 +250,7 @@ class Service:
             if policy is not None:
                 atomic_bytes(agent.root / 'run-settings.json', json.dumps(policy).encode())
             self.store.update_agent(agid, row)
+            self.store.events.record(agid, agid, 'sapi.updated', data)
             self._manifests(agent, next(a for a in self.store.agents() if a['id'] == agid))
         return {"id": agid, **row}
 
@@ -351,6 +354,7 @@ class Service:
             snapshot["computer"] = {"owner": self._active,
                                     "built": os.access(self.binary, os.X_OK)}
             snapshot['pulses'] = self.store.pulse_calls(agid)
+            snapshot['events'] = self.store.events.snapshot(agid)
             snapshot['pulse'] = dict(id=self.pulse.identity, running=self.pulse.running, numbers=dict(self.pulse.numbers))
             snapshot["provider"] = "codex"
             snapshot['activity'] = {a.agid: {**getattr(a.runner.active_llm, 'activity', {}),
@@ -426,7 +430,8 @@ class Service:
                     j['status'] in {'queued', 'running'} for j in agent.state['turns']):
                 return
             self.orchestration.prepare(agent)
-        asyncio.run(agent.runner.run(legacy_only=legacy_only))
+        with self.store.events.context(agid, 'chatInput'):
+            asyncio.run(agent.runner.run(legacy_only=legacy_only))
 
     def _dispatch(self, agid, tick=None):
         with self._lock:
@@ -457,7 +462,9 @@ class Service:
             thread = threading.Thread(target=run, name=f'sapiens-{agid}', daemon=True)
             self._runners[agid] = thread
             if tick:
-                self.store.record_pulse_call(tick, agid, 'chatInput', 1)
+                self.store.record_pulse_call(tick, agid, 'chatInput', 1,
+                    groups={t['origin']['group'] for t in self._agent(agid).state['turns']
+                            if t['status'] in {'queued', 'running'} and (t.get('origin') or {}).get('group')})
             thread.start()
             return thread
 
@@ -508,5 +515,6 @@ class Service:
             runners = list(self._runners.values()) + [entry[1] for entry in self.agencies.slots.values()]
         for runner in runners:
             runner.join()  # Retain host.lock until every call has finished.
+        self.store.events.record(self.registry.main, 'corpora', 'system.stopped', {}, actor='system')
         fcntl.flock(self._file_lock, fcntl.LOCK_UN)
         self._file_lock.close()

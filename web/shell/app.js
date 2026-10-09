@@ -29,9 +29,8 @@ function openChat(id){
   const a=state.agents.find(a=>a.id===id);if(!a)return;
   state.drafts ??= {};state.drafts[state.selected]=$('#message-input').value;
   state.selected=id;state.panel='chat';chatView='conversation';closeActivityMenus();state.panes.chat=true;a.unread=false;
-  const context=state.agents.find(g=>g.id===state.groupView&&!g.archived);
   if(a.kind==='group') {state.groupView=a.id;state.scope='groups';}
-  else if(!context?.members.includes(id)) {state.groupView=null;if(state.scope!=='all')state.scope='sapis';}
+  else {if(state.groupView||state.scope==='groups')state.scope='all';state.groupView=null;}
   search='';$('#agent-search').value='';$('#message-input').value=state.drafts[id]||'';
   closeModal();setBrowserMenu();render();$('#conversation-body').scrollTop=$('#conversation-body').scrollHeight;
 }
@@ -105,7 +104,7 @@ document.addEventListener('click',e=>{
   if(d.mention){openChat(d.mention);return;}
   if(d.agent){
     const group=state.agents.find(g=>g.id===state.groupView&&!g.archived);
-    if(b.closest('#agent-list')&&group?.members.includes(d.agent)) {
+    if(!b.matches('.agent-name')&&b.closest('#agent-list')&&group?.members.includes(d.agent)) {
       openChat(group.id);
       const input=$('#message-input');
       const previous=group.members.map(id=>'@'+agent(id).name+' ').find(prefix=>input.value.startsWith(prefix));
@@ -115,7 +114,7 @@ document.addEventListener('click',e=>{
     return;
   }
   if(d.scope&&!b.disabled){leaveGroup(d.scope);return;}
-  if(d.panel && !b.disabled && ['chat','tasks','notes','work','updates'].includes(d.panel)){state.panel=d.panel;if(d.panel==='work')selectDefaultWorkView();if(d.panel==='chat')chatView='conversation';if(d.panel==='updates')updatesView='pulses';closeActivityMenus();renderConversation();save();return;}
+  if(d.panel && !b.disabled && ['chat','tasks','notes','work','updates'].includes(d.panel)){state.panel=d.panel;if(d.panel==='work')selectDefaultWorkView();if(d.panel==='chat')chatView='conversation';if(d.panel==='updates')updatesView='events';closeActivityMenus();renderConversation();save();return;}
   if(d.tab){browserAction('focus',{id:d.tab});return;}
   if(d.closeTab){browserAction('close',{id:d.closeTab});return;}
 

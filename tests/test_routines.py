@@ -58,6 +58,10 @@ class RoutinesTest(unittest.TestCase):
         self.tick(59)
         self.assertEqual(self.occurrences(), [])
         self.tick(1)
+        events = self.service.store.events.snapshot(self.chief)[self.chief]
+        running = [e for e in events if e['event'] == 'task.running']
+        self.assertTrue(running)
+        self.assertTrue(all(e['agency'] == 'chatInput' for e in running))
         runs = self.occurrences()
         self.assertEqual([t['origin']['routine'] for t in runs], [one['id']])
         self.assertEqual(runs[0]['status'], 'output_pending')

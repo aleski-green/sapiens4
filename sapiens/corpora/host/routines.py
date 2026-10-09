@@ -85,6 +85,7 @@ class ScheduledRoutines:
                 if source_call:
                     value['sourceCall'] = source_call
             routine = service.store.save_routine(value)
+            service.store.events.record(owner, routine['id'], 'routine.updated' if routine_id else 'routine.created', routine)
             return routine
 
     def set_paused(self, owner, routine_id, paused):
@@ -101,6 +102,7 @@ class ScheduledRoutines:
                         routine['runCount'] = 0
                     routine['nextDue'] = (at + timedelta(minutes=routine['minutes'])).isoformat()
                 self.service.store.save_routine(routine)
+                self.service.store.events.record(owner, routine_id, 'routine.paused' if paused else 'routine.resumed', routine)
             return routine
 
     @staticmethod
@@ -133,6 +135,7 @@ class ScheduledRoutines:
             if routine['runCount'] >= self.RUN_LIMIT:
                 routine['paused'] = True
                 service.store.save_routine(routine)
+                service.store.events.record(routine['owner'], routine['id'], 'routine.paused', dict(reason='run limit', runCount=routine['runCount']), actor='system')
                 continue
             due = datetime.fromisoformat(routine['nextDue'])
             if due > at:
@@ -178,4 +181,8 @@ class ScheduledRoutines:
             routine['runCount'] += 1
             routine['paused'] = routine['runCount'] >= self.RUN_LIMIT
             service.store.save_routine(routine)
+            service.store.events.record(owner, routine['id'], 'routine.triggered',
+                dict(turn=turn_id, runCount=routine['runCount'], nextDue=routine['nextDue']), actor='system')
+            if routine['paused']:
+                service.store.events.record(owner, routine['id'], 'routine.paused', dict(reason='run limit', runCount=routine['runCount']), actor='system')
         service.groups.chat.dispatch()

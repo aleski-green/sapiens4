@@ -18,14 +18,22 @@ ctx.openChat('g');assert.equal(initial.scope,'groups');assert.equal(initial.grou
 assert.ok(window.document.querySelector('[data-scope=groups].group-open'));
 assert.deepEqual([...window.document.querySelectorAll('.agent-row')].map(e=>e.dataset.agent),['a','b']);
 assert.equal(window.document.querySelectorAll('.group-roster').length,0);
-click('.agent-name[data-agent=b]');assert.equal(initial.selected,'g');assert.equal(initial.groupView,'g');
+click('.agent-row[data-agent=b]');assert.equal(initial.selected,'g');assert.equal(initial.groupView,'g');
 const draft=window.document.querySelector('#message-input');
 assert.equal(draft.value,'@Member ');
 assert.equal(window.document.querySelector('.agent-row-copy p').textContent,'Lead · Test');
 draft.value='@Member Review this';
-click('.agent-name[data-agent=a]');assert.equal(draft.value,'@Lead Review this');
-click('.agent-name[data-agent=a]');assert.equal(draft.value,'@Lead Review this');
+click('.agent-row[data-agent=a]');assert.equal(draft.value,'@Lead Review this');
+click('.agent-row[data-agent=a]');assert.equal(draft.value,'@Lead Review this');
 assert.equal(initial.drafts.g,'@Lead Review this');
+// Names and mentions leave Group context; each conversation retains its draft.
+click('.agent-name[data-agent=b]');
+assert.equal(initial.selected,'b');assert.equal(initial.groupView,null);assert.equal(initial.scope,'all');assert.equal(initial.panel,'chat');
+assert.equal(initial.drafts.g,'@Lead Review this');assert.equal(draft.value,'');
+ctx.openChat('g');window.document.querySelector('#conversation-body').innerHTML=ctx.mention('a');
+click('[data-mention=a]');assert.equal(initial.selected,'a');assert.equal(initial.groupView,null);assert.equal(initial.scope,'all');
+ctx.openChat('g');
+
 assert.equal(window.document.querySelector('.group-chip').textContent,'R★');
 click('[data-scope=groups]');assert.equal(initial.selected,'chief');assert.equal(initial.groupView,null);assert.equal(initial.scope,'groups');
 assert.deepEqual([...window.document.querySelectorAll('.agent-row')].map(e=>e.dataset.agent),['g']);
@@ -164,3 +172,13 @@ group.tasks=[sharedTask('backlog')];workDefault('tasks','Planned');
 group.tasks=[sharedTask('done')];workDefault('tasks','Executed');
 group.tasks=[sharedTask('in_progress','out')];workDefault('memo');
 console.log('Work defaults: active tasks, planned routines, executed tasks, Memo; Sapi/Group scope and manual navigation passed');
+
+ctx.renderActivityNavigation();click('[aria-label="Updates menu"]');
+const updatesMenu=window.document.querySelector('#activity-updates-menu');
+assert.match(updatesMenu.textContent,/Events/);assert.match(updatesMenu.textContent,/Records/);
+assert.equal(updatesMenu.querySelector('button[disabled]').textContent,'Records');
+assert.equal(updatesMenu.querySelector('[data-activity-view=pulses]'),null);
+
+click('[data-panel=updates]');
+assert.equal(window.document.querySelector('#activity-viewbar').hidden,true);
+assert.doesNotMatch(window.document.querySelector('#activity-viewbar').textContent,/Latest 100/);

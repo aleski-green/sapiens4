@@ -44,6 +44,10 @@ class Orchestration:
 
 
     def control(self, agid, data):
+        with self.service.store.events.context(agid, 'chatInput' if self.service._active_turn(agid) else None):
+            return self._control_run(agid, data)
+
+    def _control_run(self, agid, data):
         run_id = data.get('agencyRun')
         if run_id is None:
             return self._control(agid, data)

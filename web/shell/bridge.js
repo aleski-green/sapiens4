@@ -388,7 +388,7 @@ async function refresh() {
   refreshing = (async () => {
     try {
       const snapshot = await api('/api/state');
-      const changed = ['agents','groups','turns','computer','orchestration','activity','run_activity','workloads','pulses','routines'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k]));
+      const changed = ['agents','groups','turns','computer','orchestration','activity','run_activity','workloads','pulses','routines','events'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k]));
       const reconnected = !online;
       online = true;
       const tabsChanged = (snapshot.preferences.workspace_revision || 0) > workspaceRevision;

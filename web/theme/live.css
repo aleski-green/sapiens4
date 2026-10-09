@@ -327,7 +327,7 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 :root body.sapi-workspace .agent-row-name small{margin-left:auto;flex:none;font-size:10px}
 :root[data-theme] body.sapi-workspace .scope-switch button.group-open{background:var(--sapi-hover);color:var(--sapi-accent)}
 .group-avatar{position:relative;color:#20252a;overflow:hidden}.group-avatar>span{padding:2px 3px;border-radius:6px;background:#ffffffb0;font-size:inherit}
-.group-members{border:1px solid var(--border,#7775);border-radius:10px;padding:12px;max-height:240px;overflow:auto}.group-members legend{font-size:12px}.group-members label{display:flex;align-items:center;gap:9px;padding:6px}.group-members input{width:auto}.group-banner{display:block;padding:10px;background:#bda05522;border-radius:8px;font-size:12px}.group-task{border:0;border-bottom:1px solid var(--line);border-radius:0;padding:0;margin:0}.group-task-body{white-space:pre-wrap;font-size:13px;margin:10px 0}.group-task .actions{margin:12px 0;display:flex;gap:8px;flex-wrap:wrap}.group-task details{font-size:12px;margin-top:10px}.group-task-result{border-top:1px solid #8883;padding:10px 0;white-space:pre-wrap}.group-task-result strong{font-size:11px}.group-event{border-bottom:1px solid #8883;padding:14px 0}.group-event time{display:block;font-size:10px;opacity:.65;margin-top:4px}.group-event p{font-size:12px;opacity:.8}.group-work,.group-updates{padding:4px 2px}
+.group-members{border:1px solid var(--border,#7775);border-radius:10px;padding:12px;max-height:240px;overflow:auto}.group-members legend{font-size:12px}.group-members label{display:flex;align-items:center;gap:9px;padding:6px}.group-members input{width:auto}.group-banner{display:block;padding:10px;background:#bda05522;border-radius:8px;font-size:12px}.group-task{border:0;border-bottom:1px solid var(--line);border-radius:0;padding:0;margin:0}.group-task-body{white-space:pre-wrap;font-size:13px;margin:10px 0}.group-task .actions{margin:12px 0;display:flex;gap:8px;flex-wrap:wrap}.group-task details{font-size:12px;margin-top:10px}.group-task-result{border-top:1px solid #8883;padding:10px 0;white-space:pre-wrap}.group-task-result strong{font-size:11px}.group-work{padding:4px 2px}
 .agent-heading:has(.group-labels){height:auto;min-height:69px}.conversation-body.notes-view:has(#work-content){display:flex;flex-direction:column}.notes-view #work-content{flex:1;min-height:0;overflow:auto}
 @media(max-width:600px){.agent-list>.agent-entry{flex:0 0 180px;width:180px}}
 
@@ -364,8 +364,19 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 .activity-chevron.sideways{transform:rotate(-90deg)}
 [aria-expanded="true"]>.activity-chevron:not(.sideways){transform:rotate(180deg)}
 
-.pulse-event dl { display:grid; grid-template-columns:auto minmax(0,1fr); gap:4px 12px; margin:12px 0 0; font-size:12px; }
-.pulse-event dt { opacity:.6; }
-.pulse-event dd { margin:0; overflow-wrap:anywhere; font-family:monospace; }
 
 .workspace-text{margin:0;padding:20px;width:100%;min-height:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--sapi-ink);font:13px/1.6 ui-monospace,monospace;user-select:text}
+
+/* Compact Updates journal; JSON shares the task row disclosure behavior. */
+.event-log { overflow-x:auto; }
+.event-columns { display:grid; grid-template-columns:152px 70px minmax(130px,1fr) 112px 72px 12px; gap:6px; align-items:center; min-width:568px; font-size:11px; line-height:1.5; }
+.event-head { padding:6px 0 10px; color:var(--muted); border-bottom:1px solid var(--line); }
+.event-row { min-width:568px; }
+.event-row summary { padding:10px 0; list-style:none; cursor:pointer; }
+.event-row summary::-webkit-details-marker { display:none; }
+.event-row summary:hover { background:var(--sapi-purple-tint); }
+.event-columns > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.event-row time { font-family:ui-monospace,monospace; font-variant-numeric:tabular-nums; color:var(--muted); }
+.event-row .event-chevron { display:flex; justify-content:center; }
+.event-row[open] .event-chevron { transform:rotate(90deg); }
+.event-row pre { margin:0 0 12px; padding:12px; background:var(--sapi-purple-tint); border-radius:6px; font:12px/1.5 ui-monospace,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }

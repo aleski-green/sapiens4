@@ -62,3 +62,6 @@ class Registry:
     def assign(self, agent, parent):
         entry = self.directory()[agent.agid]
         self.register(agent.agid, parent=parent, scope=entry['scope'])
+        if entry['parent'] != parent:
+            self.service.store.events.record(agent.agid, agent.agid, 'sapi.manager.changed',
+                dict(previous=entry['parent'], manager=parent))

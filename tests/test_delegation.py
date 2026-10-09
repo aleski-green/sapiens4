@@ -85,7 +85,11 @@ class DelegationTest(unittest.TestCase):
     def wait_idle(self):
         self.until(lambda: not any(t['status'] in {'running','queued','output_pending'} for t in self.service.snapshot()['turns'])
                    and not any(c['state'] == 'Queued' for w in self.service.store.workloads() for c in w['calls']))
-        self.until(lambda: not self.service._runners and not self.service.agencies.slots)
+        def settled():
+            # Slot release and final workload reconciliation share this lock.
+            with self.service._lock:
+                return not self.service._runners and not self.service.agencies.slots
+        self.until(settled)
 
     def restart(self, start_worker=True):
         self.service.close()
@@ -302,6 +306,8 @@ class DelegationTest(unittest.TestCase):
         self.assertEqual(len(work['calls']),2)
         self.assertEqual(work['calls'][-1]['state'],'Failed')
         self.assertIn('already assessed', work['calls'][-1]['error'])
+        events = self.service.store.events.snapshot(self.chief)[self.chief]
+        self.assertTrue(any(e['event'] == 'task.failed' and e['agency'] == 'chatInput' for e in events))
 
     def test_prompt_edit_changes_future_calls_without_rewriting_history(self):
         self.run_request()
@@ -324,6 +330,18 @@ class DelegationTest(unittest.TestCase):
         work = self.service.store.workloads()[0]
         self.assertIsNone(work['outcome'])
         self.assertFalse(work['decisions'][-1]['accepted'])
+
+    def test_conditional_completion_publishes_once_without_repeating_execution(self):
+        fallback = 'If no suitable result is found, report that.'
+        self.provider.responses['ReadyToWork'] = answer('TaskPrepared', taskType='research', specification=dict(
+            objective='Compare.', inputs=[], expectedOutputs=['Comparison'], completionCriteria=[CRITERION, fallback]))
+        self.provider.responses['Execution'] = answer('Outcome', reply='Saved comparison.', outcome=dict(
+            status='Completed', satisfiedCriteria=[CRITERION], notApplicableCriteria={fallback: 'A sourced comparison was verified.'}, artifacts=[]))
+        call_id = self.run_request()
+        self.assertEqual(self.service.store.projected_turn(call_id)['status'], 'done')
+        self.assertEqual(sum(node == 'Execution' for _, node, _ in self.provider.calls), 1)
+        self.assertEqual(sum(m.get('turn') == call_id and m['role'] == 'agent'
+                             for m in self.service._agent(self.chief).state['chat']), 1)
 
     def test_stop_between_nodes_does_not_admit_a_handoff(self):
         self.chief_routes()

@@ -43,6 +43,7 @@ class Lifecycle:
                 if parent and self.retired(self.service._agent(parent)):
                     self.service.registry.assign(agent, self.service.registry.main)
             self.service.orchestration.save(agent, settings)
+            self.service.store.events.record(agid, agid, 'sapi.retired' if retire else 'sapi.restored', dict(reason=reason))
             return dict(id=agid, retired=retire, changed=True)
 
 

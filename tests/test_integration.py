@@ -208,7 +208,7 @@ class IntegrationTest(IntegrationFixture):
         state = service.snapshot()
         self.assertEqual(state['preferences']['panel'], 'chat')
         self.assertEqual(state['preferences']['drafts'][agid], 'Keep this')
-        for field in ('events', 'cursor', 'latest_cursor'):
+        for field in ('cursor', 'latest_cursor'):
             self.assertNotIn(field, state)
         self.assertEqual(state['turns'], [])
         with service.store.connect() as db:
@@ -261,7 +261,7 @@ class IntegrationTest(IntegrationFixture):
         self.assertEqual(request("GET","/.git/config")[0], 404)
         status, raw = request("GET", "/api/state")
         self.assertEqual(status, 200)
-        self.assertNotIn("events", json.loads(raw))
+        self.assertIn("events", json.loads(raw))
         self.assertEqual(request("GET","/workspace/app.js")[0], 200)
 
     def test_adapter_is_generated_and_cli_accepts_external_workdir(self):

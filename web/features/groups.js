@@ -70,7 +70,7 @@ function renderGroupPanel(host) {
   }
   renderAttachment();
 }
-let scheduledPeriod='upcoming', groupTaskFilter='active', workView='tasks', chatView='conversation', updatesView='pulses';
+let scheduledPeriod='upcoming', groupTaskFilter='active', workView='tasks', chatView='conversation', updatesView='events';
 function selectDefaultWorkView() {
   const group=selected().kind==='group';
   const states=group?[]:(live.workloads||[]).filter(w=>w.participants.includes(state.selected)).map(w=>w.state);
@@ -85,7 +85,7 @@ function selectDefaultWorkView() {
   else workView='memo';
 }
 const openGroupTasks=new Set();
-const activityLabels={conversation:'Conversation',pins:'Pins',threads:'Threads',comments:'Comments',pulses:'Pulses'};
+const activityLabels={conversation:'Conversation',pins:'Pins',threads:'Threads',comments:'Comments',events:'Events',records:'Records'};
 // Stable view IDs distinguish Composer workflows from goal-specific composers.
 const workNavigation=[
   {id:'memo',label:'Memo'},
@@ -126,13 +126,13 @@ function renderActivityNavigation() {
   }).join('');
   const menus={chat:['pins','threads','comments'].map(v=>item(v,'chat')).join('')+'<hr><button data-activity-feedback>＋ Add feedback</button>',
     work:workMenu,
-    updates:['pulses'].map(v=>item(v,'updates')).join('')};
+    updates:item('events','updates')+'<button disabled title="Not active yet">Records</button>'};
   const html=['chat','work','updates'].map(panel=>`<div class="activity-tab ${state.panel===panel?'active':''}"><button data-panel="${panel}" aria-pressed="${state.panel===panel}">${panel[0].toUpperCase()+panel.slice(1)}</button><button class="activity-toggle" data-activity-menu="activity-${panel}-menu" aria-label="${panel[0].toUpperCase()+panel.slice(1)} menu" aria-expanded="false" aria-controls="activity-${panel}-menu">${activityChevron(false)}</button><div class="activity-menu" id="activity-${panel}-menu" hidden>${menus[panel]}</div></div>`).join('');
   // Keep open menus and keyboard focus intact across polling snapshots.
   if(nav.dataset.view!==html){nav.innerHTML=html;nav.dataset.view=html;}
   let bar=$('#activity-viewbar');
   if(!bar){bar=document.createElement('div');bar.id='activity-viewbar';nav.after(bar);}
-  bar.hidden=state.panel==='chat'&&chatView==='conversation';
+  bar.hidden=state.panel==='updates'||(state.panel==='chat'&&chatView==='conversation');
   let detail=`<span class="activity-view-title">${activityLabels[view]||''}</span>`;
   if(state.panel==='work') {
     const path=workPaths[view]||[];
@@ -264,16 +264,33 @@ function taskDialog(group, task=null) {
   form.addEventListener('submit',e=>{e.preventDefault();saveTask(false);});
   $('#delete-group-task')?.addEventListener('click',()=>saveTask(true));
 }
-function renderUpdates(host, group=null) {
+function eventTimestamp(value) {
+  const date=new Date(value),pad=(n,width=2)=>String(n).padStart(width,'0');
+  return `${pad(date.getDate())} ${date.toLocaleString('en-GB',{month:'short'})} ${pad(date.getHours())}:${pad(date.getMinutes())} ${pad(date.getSeconds())}s .${pad(date.getMilliseconds(),3)}`;
+}
+function renderUpdates(host) {
   $('#composer-area').hidden=true;
-  const pulses=(live.pulses || []).filter(p=>group?group.members.includes(p.agent):p.agent===state.selected);
-  host.innerHTML='<div class="group-updates"></div>';
-  const list=host.firstElementChild;
-  for(const pulse of pulses) {
-    list.insertAdjacentHTML('beforeend', `<article class="group-event pulse-event"><strong>${esc(pulse.agencyKind)} · Slot ${esc(pulse.slot)}</strong><time>${esc(new Date(pulse.timestamp).toLocaleString())}</time><dl><dt>Frequency</dt><dd>${esc(pulse.frequency)}</dd><dt>Pulse number</dt><dd>${esc(pulse.num)}</dd><dt>Pulse</dt><dd>${esc(pulse.pulse)}</dd><dt>Pulse ID</dt><dd>${esc(pulse.pulseId)}</dd></dl></article>`);
+  host.classList.remove('notes-view');
+  const events=(live.events?.[state.selected]||[]).slice(0,100);
+  const name=id=>id==='admin'?'Admin':id==='system'?'System':id==='corpora'?'Corpora':state.agents.find(a=>a.id===id)?.name||(id.startsWith('routine_sch_')?'@'+id:id);
+  const key=JSON.stringify([state.selected,events.map(e=>e.id),state.agents.map(a=>[a.id,a.name])]);
+  if(host.dataset.events===key&&host.querySelector('.event-log'))return;
+  const open=host.dataset.eventOwner===state.selected?new Set([...host.querySelectorAll('details[open]')].map(d=>d.dataset.event)):new Set();
+  host.dataset.events=key;host.dataset.eventOwner=state.selected;
+  host.innerHTML='<section class="event-log"><div class="event-columns event-head"><span>Timestamp</span><span>Actor</span><span>Entity</span><span>Event</span><span>Agency</span><span></span></div><div class="event-rows"></div></section>';
+  const list=host.querySelector('.event-rows');
+  for(const event of events) {
+    const row=document.createElement('details');row.className='task-row event-row';row.dataset.event=String(event.id);
+    const values=[eventTimestamp(event.timestamp),name(event.actor),name(event.entity),event.event,event.agency||'—'];
+    row.innerHTML=`<summary class="event-columns">${values.map((v,i)=>i===0?`<time datetime="${esc(event.timestamp)}" title="${esc(event.timestamp)}">${esc(v)}</time>`:`<span title="${esc(v)}">${esc(v)}</span>`).join('')}<span class="event-chevron">${activityChevron(true)}</span></summary>`;
+    const details=()=>{
+      if(row.open&&!row.querySelector('pre')){const pre=document.createElement('pre');pre.textContent=JSON.stringify(event.details,null,2);row.append(pre);}
+      if(!row.open)row.querySelector('pre')?.remove();
+    };
+    row.addEventListener('toggle',details);
+    row.open=open.has(String(event.id));details();list.append(row);
   }
-  if(!pulses.length)list.innerHTML='<p class="empty">No dispatched pulses yet.</p>';
-
+  if(!events.length)list.innerHTML='<p class="empty">No events yet.</p>';
 }
 function renderWork(host) {
   $('#composer-area').hidden=true;

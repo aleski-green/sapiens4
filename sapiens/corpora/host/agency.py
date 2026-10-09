@@ -88,7 +88,8 @@ class ChatAgencies:
         def run():
             service._execution.turn = execution['id']
             try:
-                runner.run_claimed(execution, snapshot)
+                with service.store.events.context(agent.agid, 'chatInput'):
+                    runner.run_claimed(execution, snapshot)
             except Exception:
                 logging.exception('AgencyRun failed: %s', execution['id'])
                 with agent.transaction() as state:
@@ -108,7 +109,8 @@ class ChatAgencies:
 
         thread = threading.Thread(target=run, name=f'{agent.agid}-chatInput-{slot}', daemon=True)
         self.slots[key] = (runner, thread, execution['id'])
-        service.store.record_pulse_call(tick, agent.agid, 'chatInput', slot)
+        service.store.record_pulse_call(tick, agent.agid, 'chatInput', slot,
+            groups={t['origin']['group'] for t in queued if (t.get('origin') or {}).get('group')})
         service._sync(agent)
         thread.start()
 
@@ -136,7 +138,8 @@ class ChatAgencies:
                     if turn['id'] in item['members']:
                         turn.update(status='done', output_at=timestamp, output_order=state['output_sequence'])
                 state['last_output'] = item['content']
-            self.service.store.record_pulse_call(tick, agent.agid, 'chatOutput', slot)
+            self.service.store.record_pulse_call(tick, agent.agid, 'chatOutput', slot,
+                groups=[item['origin']['group']] if (item.get('origin') or {}).get('group') else [])
         self.service._sync(agent)
         with agent.transaction() as state:
             agent.trim(state)

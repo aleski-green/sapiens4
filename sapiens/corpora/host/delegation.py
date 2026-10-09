@@ -82,6 +82,28 @@ def strings(value, name, *, nonempty=False):
     return value
 
 
+def validate_outcome(response, criteria):
+    outcome = response.get('outcome')
+    required = {'status', 'satisfiedCriteria', 'artifacts'}
+    if not isinstance(outcome, dict) or not required <= set(outcome) or set(outcome) - required - {'notApplicableCriteria'}:
+        raise ValueError('Outcome requires status, satisfiedCriteria, artifacts; notApplicableCriteria is optional')
+    if outcome['status'] not in {'Completed', 'Unresolved'}:
+        raise ValueError('Outcome status must be Completed or Unresolved')
+    strings(outcome['satisfiedCriteria'], 'satisfiedCriteria')
+    strings(outcome['artifacts'], 'artifacts')
+    skipped = outcome.get('notApplicableCriteria', {})
+    if not isinstance(skipped, dict):
+        raise ValueError('notApplicableCriteria must map exact conditional criteria to reasons')
+    for criterion, reason in skipped.items():
+        if criterion not in criteria or not criterion.startswith('If ') or criterion in outcome['satisfiedCriteria']:
+            raise ValueError('Only an unsatisfied, explicit If criterion can be not applicable')
+        text_field(dict(reason=reason), 'reason', 4000)
+    if outcome['status'] == 'Completed' and (not response['evidence'] or
+            not set(criteria) <= set(outcome['satisfiedCriteria']) | set(skipped)):
+        raise ValueError('Completed outcome requires evidence for all applicable completion criteria')
+    return outcome
+
+
 class Delegation:
     def __init__(self, service):
         self.service = service
@@ -378,16 +400,7 @@ class Delegation:
                             following = 'ChiefTriage' if agid == self.service.registry.main else 'Delegation'
                         else:
                             reply = text_field(response, 'reply', 64000)
-                            outcome = response.get('outcome')
-                            if not isinstance(outcome, dict) or set(outcome) != {'status','satisfiedCriteria','artifacts'}:
-                                raise ValueError('Outcome requires status, satisfiedCriteria, artifacts')
-                            if outcome['status'] not in {'Completed', 'Unresolved'}:
-                                raise ValueError('Outcome status must be Completed or Unresolved')
-                            strings(outcome['satisfiedCriteria'], 'satisfiedCriteria')
-                            strings(outcome['artifacts'], 'artifacts')
-                            if outcome['status'] == 'Completed' and (not response['evidence'] or
-                                    not set(work['task']['specification']['completionCriteria']).issubset(outcome['satisfiedCriteria'])):
-                                raise ValueError('Completed outcome requires evidence for all completion criteria')
+                            outcome = validate_outcome(response, work['task']['specification']['completionCriteria'])
                             work['outcome'] = dict(outcome, reply=reply, evidence=response['evidence'], author=agid)
                             call.update(state=outcome['status'], output=reply)
                             following = 'Outcome'
