@@ -1,6 +1,7 @@
 """One local host, parallel Sapi runners, and recoverable UI projections."""
 from pathlib import Path
 from uuid import uuid4
+from time import monotonic
 import asyncio
 import json
 import logging
@@ -14,9 +15,13 @@ import threading
 from sapiens.corpora.sapis.attachments import attachment_prompt, resolve_attachments
 from sapiens.corpora.sapis.registry import Registry
 from sapiens.corpora.sapis.retirement import Lifecycle
+from sapiens.corpora.host.agency import ChatAgencies
+from sapiens.corpora.host.routines import ScheduledRoutines
+from sapiens.corpora.host.pulsation import SystemPulse
 from sapiens.corpora.host.commands import Orchestration
 from sapiens.corpora.host.delegation import Delegation
 from sapiens.paths import ROOT, blindly_binary
+from sapiens.corpora.host.groups import Groups
 from sapiens.prompts import prompt
 from sapiens.corpora.sapis.notes import Notes
 from sapiens.corpora.sapis.conversations import Config, Conversation, computer_manifest
@@ -52,7 +57,7 @@ def random_avatar(used):
 
 
 class Service:
-    def __init__(self, data_dir, *, factory_builder=None, start_worker=True, max_parallel_agents=4):
+    def __init__(self, data_dir, *, factory_builder=None, start_worker=True, max_parallel_agents=4, pulse_clock=monotonic):
         if type(max_parallel_agents) is not int or not 1 <= max_parallel_agents <= 32:
             raise ValueError("max_parallel_agents must be between 1 and 32")
         self.root = Path(data_dir).resolve()
@@ -80,6 +85,8 @@ class Service:
         self._queue = queue.Queue()
         self._stopping = threading.Event()
         self._active = None
+        self._computer_turn = None
+        self._execution = threading.local()
         self.max_parallel_agents = max_parallel_agents
         self._runners = {}
         self.orchestration = Orchestration(self)
@@ -87,10 +94,15 @@ class Service:
         self.registry = Registry(self)
         self.worker = None
         self.delegation = Delegation(self)
+        self.groups = Groups(self)
+        self.agencies = ChatAgencies(self)
+        self.routines = ScheduledRoutines(self)
+        self.pulse = SystemPulse(self.store, self._on_pulse, clock=pulse_clock)
         if not self.store.agents():
             self.create_agent({"name": "SapiTheMain", "role": "Head of Corpora"})
         for row in self.store.agents():
             agent = self._agent(row["id"])
+            self.agencies.recover(agent)
             self._sync(agent)
             # Public run() recovers running turns to interrupted without replaying.
             # Only previously queued, never-started work is admitted automatically.
@@ -99,10 +111,14 @@ class Service:
         self.registry.repair()
         self.delegation.reconcile()
         self.delegation.dispatch_pending()
+        self.groups.chat.reconcile()
+        self.groups.chat.dispatch()
+        self.store.events.record(self.registry.main, 'corpora', 'system.started', {}, actor='system')
         if start_worker:
             self.start()
 
     def start(self):
+        self.pulse.start()
         if self.worker is None:
             self.worker = threading.Thread(target=self._work, name="sapiens-runner", daemon=True)
             self.worker.start()
@@ -127,7 +143,7 @@ class Service:
                     llm, text, lambda restore: self.release_computer(agid, restore))
             agent.runner = TurnRunner(store=agent, context=agent.context, config=Config(),
                                       factory=factory, complete=complete,
-                                      execute=lambda *args: self.delegation.run(agid, *args))
+                                      execute=lambda runner, turn, snapshot, result: (self.groups.chat if (turn.get("origin") or {}).get("group") else self.delegation).run(agid, runner, turn, snapshot, result))
             if not self.factory_builder:
                 factory.execution = lambda: execution_settings(agent.root)
             self._agents[agid] = agent
@@ -144,14 +160,19 @@ class Service:
                 raise APIError(409, "Computer access requires a running Sapi turn")
             if self._active not in (None, agid):
                 raise APIError(409, "Shared computer is busy with another Sapi. Continue non-UI work or report the blocker; do not retry in a loop.")
+            turn_id = self._active_turn(agid)
+            if self._computer_turn not in (None, turn_id):
+                raise APIError(409, "Shared computer is busy with another AgencyRun")
             self._active = agid
+            self._computer_turn = turn_id
             return {"owner": agid}
 
-    def release_computer(self, agid, restore=lambda: None):
+    def release_computer(self, agid, restore=lambda: None, *, turn_id=None):
         # Keep ownership while restoring focus; another Sapi must not begin UI
         # work between the last action and the return to CORPORA.
         with self._lock:
-            if self._active != agid:
+            turn_id = turn_id or getattr(self._execution, 'turn', None)
+            if self._active != agid or (turn_id and self._computer_turn != turn_id):
                 return None
         try:
             return restore()
@@ -159,9 +180,13 @@ class Service:
             with self._lock:
                 if self._active == agid:
                     self._active = None
+                    self._computer_turn = None
 
     def _active_turn(self, agid):
         agent = self._agents.get(agid)
+        specific = getattr(self._execution, 'turn', None)
+        if agent and specific:
+            return next((t['id'] for t in agent.state['turns'] if t['id'] == specific and t['status'] == 'running'), None)
         if agent:
             return next((j["id"] for j in agent.state["turns"] if j["status"] == "running"), None)
         return None
@@ -172,7 +197,7 @@ class Service:
             return
         outputs = {m["turn"]: m["content"] for m in snapshot["chat"] if m.get("turn") and m["role"] == "agent"}
         for turn in snapshot["turns"]:
-            if turn["status"] == "done" and turn["id"] not in outputs:
+            if turn["status"] == "done" and turn["id"] not in outputs and turn.get("batch_id", turn["id"]) == turn["id"]:
                 try:
                     outputs[turn["id"]] = agent.result(turn["id"])
                 except FileNotFoundError:
@@ -189,7 +214,7 @@ class Service:
         if not isinstance(face, str) or not 1 <= len(face) <= 24:
             raise APIError(400, "face must contain 1–24 characters")
         if data.get("kind", "sapi") != "sapi":
-            raise APIError(400, "Groups are planned for the next iteration")
+            raise APIError(400, "Use /api/groups to create a Group")
         with self._lock:
             appearance = random_avatar({a["face"] for a in self.store.agents()})
             if "face" in data and face not in {a["face"] for a in self.store.agents()}:
@@ -203,6 +228,7 @@ class Service:
             self.registry.register(row["id"], parent=parent)
             agent = self._agent(row["id"])
             self.orchestration.settings(agent)
+            self.store.events.record(row['id'], row['id'], 'sapi.created', dict(row, manager=parent))
             return row
 
     def update_agent(self, agid, data):
@@ -224,6 +250,7 @@ class Service:
             if policy is not None:
                 atomic_bytes(agent.root / 'run-settings.json', json.dumps(policy).encode())
             self.store.update_agent(agid, row)
+            self.store.events.record(agid, agid, 'sapi.updated', data)
             self._manifests(agent, next(a for a in self.store.agents() if a['id'] == agid))
         return {"id": agid, **row}
 
@@ -249,16 +276,13 @@ class Service:
             agent = self._agent(agid)
             # A failed attempt remains reviewable; a new message is not a retry.
             self.lifecycle.require_active(agent)
-            waiting = any(j['status'] in {'queued', 'running'} for j in agent.state['turns'])
-            if waiting:
-                raise APIError(409, "Wait for this Sapi's turn, or retry/dismiss the turn needing attention")
-            if any(c['state'] == 'Queued' and c['addressedTo'] == agid
-                   for w in self.store.workloads() for c in w['calls']):
-                raise APIError(409, 'This Sapi already has an accepted handoff')
+            routine = self.routines.command(agid, text, attachments)
+            if routine:
+                return self.routines.acknowledge(agent, text, routine)
             if data.get('workload'):
                 turn = self.delegation.clarify(agid, data['workload'], message)
             else:
-                turn = agent.runner.submit(flow, message)
+                turn = agent.runner.submit(flow, message, batchable=True)
             self.store.message(turn, text, attachments)
             self._sync(agent)
             self._queue.put(agid)
@@ -275,17 +299,37 @@ class Service:
             work, call = self.delegation.find(turn_id)
             if call and any(c['causedBy'] == turn_id for c in work['calls']):
                 raise APIError(409, 'This request was delegated; use the recipient call controls')
-            if action == "retry":
-                if any(j["status"] in {"queued", "running"} for j in turns):
-                    raise APIError(409, "This Sapi already has work queued or running")
+            leader = turn.get('batch_id', turn_id)
+            if turn.get('batchable'):
+                if action == 'retry':
+                    if turn['status'] not in {'failed', 'interrupted'}:
+                        raise APIError(409, 'Only failed or interrupted batches can be retried')
+                    with agent.transaction() as state:
+                        for item in state['turns']:
+                            if item.get('batch_id', item['id']) == leader:
+                                item.update(status='queued', attempt=item.get('attempt', 1) + 1)
+                                for field in ('error', 'batch_id', 'batch_members', 'agency_kind', 'slot', 'pulseId'):
+                                    item.pop(field, None)
+                elif action == 'cancel':
+                    if turn['status'] in {'done', 'output_pending'}:
+                        raise APIError(409, 'Completed input cannot be cancelled')
+                    runner = self.agencies.active_runner(agid, leader)
+                    if runner:
+                        runner.cancel_event.set()
+                    else:
+                        with agent.transaction() as state:
+                            for item in state['turns']:
+                                if item.get('batch_id', item['id']) == leader:
+                                    item['status'] = 'cancelled'
+                else:
+                    raise APIError(404, 'Unknown turn action')
+            elif action == 'retry':
                 agent.runner.retry(turn_id)
                 self._queue.put(agid)
-            elif action == "cancel":
-                if turn["status"] == "done":
-                    raise APIError(409, "Completed turns cannot be cancelled")
+            elif action == 'cancel':
                 agent.runner.cancel(turn_id)
             else:
-                raise APIError(404, "Unknown turn action")
+                raise APIError(404, 'Unknown turn action')
             self._sync(agent)
             self.delegation.reconcile(agid)
             return {"id": turn_id, "status": next(j["status"] for j in agent.state["turns"] if j["id"] == turn_id)}
@@ -296,15 +340,32 @@ class Service:
                 self._agent(agid)
             for agent in self._agents.values():
                 self._sync(agent)
+            self.groups.chat.reconcile()
             snapshot = self.store.snapshot(agid)
+            snapshot["groups"] = self.groups.snapshot()
+            snapshot["routines"] = self.store.routines()
+            snapshot["creation_template"] = prompt("creation-request").strip()
+            group_turns = {r["id"]: g["id"] for g in snapshot["groups"] for r in g["requests"]}
+            for turn in snapshot["turns"]:
+                if turn["id"] in group_turns:
+                    turn["group"] = group_turns[turn["id"]]
             for row in snapshot['agents']:
                 row['retired'] = self.lifecycle.retired(self._agent(row['id']))
             snapshot["computer"] = {"owner": self._active,
                                     "built": os.access(self.binary, os.X_OK), "platform": sys.platform}
+            snapshot['pulses'] = self.store.pulse_calls(agid)
+            snapshot['events'] = self.store.events.snapshot(agid)
+            snapshot['pulse'] = dict(id=self.pulse.identity, running=self.pulse.running, numbers=dict(self.pulse.numbers))
             snapshot["provider"] = "codex"
             snapshot['activity'] = {a.agid: {**getattr(a.runner.active_llm, 'activity', {}),
                 'turn': self._active_turn(a.agid), 'stopping': a.runner.cancel_event.is_set()}
                 for a in self._agents.values() if self._active_turn(a.agid)}
+            snapshot['run_activity'] = {}
+            for (owner, kind, slot), (runner, _, batch_id) in self.agencies.slots.items():
+                activity = dict(getattr(runner.active_llm, 'activity', {}), turn=batch_id,
+                                stopping=runner.cancel_event.is_set(), agencyKind=kind, slot=slot)
+                snapshot['run_activity'][batch_id] = activity
+                snapshot['activity'][owner] = activity
             snapshot["main_agent_id"] = self.registry.main
             workloads = self.store.workloads()
             snapshot["workloads"] = self.delegation.summaries(workloads)
@@ -317,7 +378,7 @@ class Service:
                                                    'parentCall': call['causedBy']}
             for turn in snapshot['turns']:
                 if turn['id'] in origins:
-                    turn['origin'] = origins[turn['id']]
+                    turn['origin'] = {**(turn.get('origin') or {}), **origins[turn['id']]}
             snapshot["attachment_drafts"] = {
                 agid: [a for a in self.store.attachments(agid) if a["id"] in ids]
                 for agid, ids in snapshot["preferences"].get("attachment_drafts", {}).items()}
@@ -332,16 +393,18 @@ class Service:
 
     def save_preferences(self, data):
         # Browser state never gets authority over runtime turns, agents or computer ownership.
-        if set(data) - {"selected", "panel", "scope", "panes", "drafts", "attachment_drafts"}:
+        if set(data) - {"selected", "panel", "scope", "groupView", "panes", "drafts", "attachment_drafts"}:
             raise APIError(400, "Unknown preference field")
         for field in ("panes", "drafts", "attachment_drafts"):
             if field in data and not isinstance(data[field], dict):
                 raise APIError(400, f"{field} must be an object")
-        if "selected" in data and data["selected"] not in {a["id"] for a in self.store.agents()}:
+        if "selected" in data and data["selected"] not in {a["id"] for a in self.store.agents()} | {g["id"] for g in self.store.groups()}:
             raise APIError(400, "Unknown selected Sapi")
-        if data.get("panel", "chat") not in {"chat", "tasks", "notes"}:
+        if data.get("groupView") is not None and data["groupView"] not in {g["id"] for g in self.store.groups()}:
+            raise APIError(400, "Unknown Group view")
+        if data.get("panel", "chat") not in {"chat", "tasks", "notes", "work", "updates"}:
             raise APIError(400, "Unknown panel")
-        if data.get("scope", "all") not in {"all", "sapis"}:
+        if data.get("scope", "all") not in {"all", "sapis", "groups"}:
             raise APIError(400, "Unknown view")
         if any(k not in {"sidebar", "chat", "workspace"} or type(v) is not bool
                for k, v in data.get("panes", {}).items()):
@@ -358,22 +421,30 @@ class Service:
             return {"saved": True, "preferences": current}
 
 
-    def _run_queued(self, agid):
+    def _run_queued(self, agid, *, legacy_only=False):
         with self._lock:
             agent = self._agent(agid)
+            if legacy_only and (not self.pulse.running or self._stopping.is_set()):
+                return
             if self.lifecycle.retired(agent) or not any(
                     j['status'] in {'queued', 'running'} for j in agent.state['turns']):
                 return
             self.orchestration.prepare(agent)
-        asyncio.run(agent.runner.run())
+        with self.store.events.context(agid, 'chatInput'):
+            asyncio.run(agent.runner.run(legacy_only=legacy_only))
 
-    def _dispatch(self, agid):
+    def _dispatch(self, agid, tick=None):
         with self._lock:
-            if self._stopping.is_set() or agid in self._runners or len(self._runners) >= self.max_parallel_agents:
+            if self.lifecycle.retired(self._agent(agid)):
                 return False
+            owners = {key[0] for key in self.agencies.slots} | set(self._runners)
+            if (not self.pulse.running or self._stopping.is_set() or agid in owners
+                    or len(owners) >= self.max_parallel_agents):
+                return False
+            self._agent(agid).runner.cancel_event.clear()
             def run():
                 try:
-                    self._run_queued(agid)
+                    self._run_queued(agid, legacy_only=True)
                 except Exception:
                     logging.exception("Sapi runner failed: %s", agid)
                 finally:
@@ -386,43 +457,64 @@ class Service:
                             self._runners.pop(agid, None)
                             self.delegation.reconcile(agid)
                             self.delegation.dispatch_pending()
+                            self.groups.chat.reconcile()
+                            self.groups.chat.dispatch()
             thread = threading.Thread(target=run, name=f'sapiens-{agid}', daemon=True)
             self._runners[agid] = thread
+            if tick:
+                self.store.record_pulse_call(tick, agid, 'chatInput', 1,
+                    groups={t['origin']['group'] for t in self._agent(agid).state['turns']
+                            if t['status'] in {'queued', 'running'} and (t.get('origin') or {}).get('group')})
             thread.start()
             return thread
 
+    def _on_pulse(self, tick):
+        with self._lock:
+            if not self.pulse.running or self._stopping.is_set():
+                return
+            self.routines.dispatch(tick)
+            self.agencies.dispatch(tick)
+            if tick['frequency'] == 'bpm60' and tick['num'] % self.agencies.policies['chatInput'].every == 0:
+                self.delegation.dispatch_pending()
+                self.groups.chat.reconcile()
+                self.groups.chat.dispatch()
+                for agent in list(self._agents.values()):
+                    if any(t['status'] == 'queued' and not t.get('batchable') for t in agent.state['turns']):
+                        self._dispatch(agent.agid, tick)
+
+    def stop_pulse(self):
+        with self._lock:
+            self.pulse.stop()
+            self.agencies.cancel_all()
+            for agid in self._runners:
+                self._agent(agid).runner.cancel_event.set()
+
     def _work(self):
-        pending = {}
-        while not self._stopping.is_set():
+        while not self._stopping.wait(.05):
             try:
-                agid = self._queue.get(timeout=.1)
-                if agid is None:
-                    break
-                pending[agid] = None
-                # Coalesce wakeups, retaining one pending wake while a Sapi runs.
-                for _ in range(100):
+                with self._lock:
+                    self.pulse.step()
+                # Compatibility wakeups no longer start execution themselves.
+                while True:
                     try:
-                        agid = self._queue.get_nowait()
+                        self._queue.get_nowait()
                     except queue.Empty:
                         break
-                    if agid is not None:
-                        pending[agid] = None
-            except queue.Empty:
-                pass
-            for agid in list(pending):
-                if self._dispatch(agid):
-                    del pending[agid]
+            except Exception:
+                logging.exception('System Pulse dispatch failed')
 
     def close(self):
         if self._file_lock.closed:
             return
         self._stopping.set()
+        self.stop_pulse()
         self._queue.put(None)
         if self.worker:
             self.worker.join()
         with self._lock:
-            runners = list(self._runners.values())
+            runners = list(self._runners.values()) + [entry[1] for entry in self.agencies.slots.values()]
         for runner in runners:
             runner.join()  # Retain host.lock until every call has finished.
+        self.store.events.record(self.registry.main, 'corpora', 'system.stopped', {}, actor='system')
         unlock_file(self._file_lock)
         self._file_lock.close()

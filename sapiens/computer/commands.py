@@ -59,7 +59,10 @@ def acquire():
     if not config_path.exists():
         return  # Standalone helper outside a managed Sapi workspace.
     config = json.loads(config_path.read_text(encoding='utf-8'))
-    request = Request(config['url'], data=b'{"op":"computer_acquire"}', headers={
+    payload = dict(op='computer_acquire')
+    if os.environ.get('SAPIENS_AGENCY_RUN'):
+        payload['agencyRun'] = os.environ['SAPIENS_AGENCY_RUN']
+    request = Request(config['url'], data=json.dumps(payload).encode(), headers={
         'Content-Type': 'application/json', 'X-Sapiens-Local': '1'})
     try:
         with urlopen(request, timeout=20) as response:

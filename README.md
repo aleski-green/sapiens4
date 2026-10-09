@@ -1,8 +1,13 @@
 # Sapiens4
 
+This is a modified fork of [aleski-green/sapiens4](https://github.com/aleski-green/sapiens4), maintained at [fatmahalqaisi-code/sapiens4](https://github.com/fatmahalqaisi-code/sapiens4). One repository supports **macOS 13+ and Windows 10/11**: the Python runtime and web UI are shared, with native Swift/WebKit and C#/WebView2 desktop apps. The Windows port adds native Blindly4 UI Automation, portable ARM64/x64 packages, an app icon and browser theme synchronization.
+
 Local conversational agents with CORPORA UI, Codex CLI and Blindly4 computer access. Each Sapi manages a linked HTML notes wiki. SQLite stores UI data.
 
-Chat, Notes, workspaces, and [delegation](documentation/delegation.md) are active. Tasks has Upcoming and Past lists; opening a task shows its YAML body and result. Jobs, cron, task graphs, and memory consolidation remain inactive.
+Chat, Groups, shared tasks, Notes, workspaces, and [delegation](documentation/delegation.md) are active. Tasks has Upcoming and Past lists; opening a task shows its YAML body and result. Personal chat uses a global Pulse clock: messages batch every two `bpm60` pulses,
+with two `chatInput` slots and two `chatOutput` rendering slots per Sapi. Updates
+shows only pulses that dispatch calls. Jobs, user cron automation, task graphs,
+and memory consolidation remain inactive.
 
 ## Core principles
 
@@ -33,7 +38,7 @@ On macOS, Blindly4 requires macOS 13+, Swift 6 and Accessibility permission. Win
 builds use .NET SDK 10; portable packages bundle Python, .NET and Blindly4.
 
 ```sh
-git clone --recurse-submodules https://github.com/aleski-green/sapiens4.git
+git clone --recurse-submodules https://github.com/fatmahalqaisi-code/sapiens4.git
 cd sapiens4
 ./start.sh --open
 ```
@@ -47,8 +52,16 @@ For a keyboard-only terminal connected to the same running app, install terminal
 Use `./sapiens4 status`, `./sapiens4 show`, or `./sapiens4 help` for individual commands.
 See [terminal commands and output formats](documentation/specs/CLI.md).
 
-[Architecture notation and analysis](documentation/haskell-notation-specs/SapiensSpecNotation.md) · [Haskell specification](documentation/haskell-notation-specs/SapiensSpecNotation.hs) · [WorkGraph design](documentation/specs/WorkGraph.md)
+[Architecture notation and analysis](documentation/haskell-notation-specs/SapiensSpecNotation.md) · [Haskell specification](documentation/haskell-notation-specs/SapiensSpecNotation.hs) · [System Pulsation](documentation/haskell-notation-specs/SystemPulsation.hs) · [WorkGraph design](documentation/specs/WorkGraph.md)
 
 [Setup, features, API and tests](documentation/reference.md)
 
 [Contributing and code guidelines](CONTRIBUTING.md)
+
+
+## License
+
+Sapiens4 is source-available under the [Sustainable Use License 1.0](license/LICENSE.md).
+See [licensing and commercial services](license/LICENSING.md) for community use,
+contributions, and future enterprise additions. Commercial inquiries:
+[license@sapiens4.ai](mailto:license@sapiens4.ai).

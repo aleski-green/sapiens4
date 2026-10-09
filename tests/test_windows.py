@@ -1,5 +1,6 @@
 """Windows persistence, process lifetime and portable path regressions."""
 import json
+import io
 import os
 from pathlib import Path
 import subprocess
@@ -14,9 +15,28 @@ from sapiens.paths import blindly_binary, shell_command
 from sapiens.runtime.codex import CodexLLM
 from sapiens.runtime.contracts import LLMSpec
 from sapiens.corpora.host.service import Service
+from sapiens.computer.commands import acquire
 
 
 class PortableTests(unittest.TestCase):
+    def test_agency_identity_reaches_child_and_computer_reservation(self):
+        code = ('import json,os,sys; sys.stdin.read(); '
+                'print(json.dumps({"type":"item.completed","item":{"type":"agent_message",'
+                '"text":os.environ["SAPIENS_AGENCY_RUN"]}}))')
+        with tempfile.TemporaryDirectory() as folder:
+            llm = CodexLLM(LLMSpec(), Path(folder), timeout_seconds=10)
+            llm.agency_run_id = 'run-123'
+            llm._command = lambda prompt: [sys.executable, '-X', 'utf8', '-c', code]
+            self.assertEqual(llm.complete('Reserve the computer for this run'), 'run-123')
+            (Path(folder) / 'host-control.json').write_text(
+                json.dumps({'url': 'http://127.0.0.1:4174/api/agents/test/control'}), encoding='utf-8')
+            with patch('sapiens.computer.commands.Path.cwd', return_value=Path(folder)), \
+                    patch.dict(os.environ, {'SAPIENS_AGENCY_RUN': 'run-123'}), \
+                    patch('sapiens.computer.commands.urlopen', return_value=io.BytesIO(b'{}')) as request:
+                acquire()
+                self.assertEqual(json.loads(request.call_args.args[0].data),
+                                 {'op': 'computer_acquire', 'agencyRun': 'run-123'})
+
     def test_direct_helper_runs_with_isolated_python(self):
         helper = Path(__file__).resolve().parents[1] / 'sapiens/computer/commands.py'
         result = subprocess.run([sys.executable, '-I', str(helper)], capture_output=True, text=True, encoding='utf-8')

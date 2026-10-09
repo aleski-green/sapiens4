@@ -24,9 +24,9 @@
     </header>
     <div class="main-grid">
       <aside class="sidebar" id="chat-list-panel" aria-label="Chat list">
-        <div class="sidebar-heading"><h1>CORPORA<span id="agent-count">0</span></h1><button class="icon-button" id="add-agent" aria-label="Add an agent">＋</button></div>
-        <div class="scope-switch" aria-label="Agent views"><button data-scope="all" class="active">All</button><button data-scope="sapis">Sapis</button><button data-scope="groups" disabled title="Groups are coming in the next iteration">Groups</button></div>
-        <label class="search-field"><span aria-hidden="true">⌕</span><input id="agent-search" type="search" placeholder="Find a Sapi…" aria-label="Search agents"><kbd>/</kbd></label>
+        <div class="sidebar-heading"><h1>CORPORA<span id="agent-count">0</span></h1><button class="icon-button" id="add-agent" aria-label="Create through Chief">＋</button></div>
+        <div class="scope-switch" aria-label="Agent views"><button data-scope="all" class="active">All</button><button data-scope="sapis">Sapis</button><button data-scope="groups">Groups</button></div>
+        <label class="search-field"><span aria-hidden="true">⌕</span><input id="agent-search" type="search" placeholder="Find a Sapi or Group…" aria-label="Search agents"><kbd>/</kbd></label>
         <div id="agent-list" class="agent-list"></div>
         <footer class="sidebar-bottom">
           <div class="resource-card"><button id="resource-button" class="resource-open" aria-label="Open shared computer"><span class="computer-icon" aria-hidden="true">▣</span><strong>SHARED COMPUTER</strong><span class="status-dot" id="resource-status"></span></button><small id="resource-owner">Connecting…</small></div>
@@ -34,7 +34,7 @@
       </aside>
       <section class="conversation" id="chat-panel" aria-label="Agent conversation">
         <div class="agent-heading" id="agent-heading"></div>
-        <nav class="conversation-tabs" aria-label="Agent activity"><button data-panel="chat" class="active">Chat</button><button data-panel="tasks">Tasks</button><button data-panel="cron" disabled aria-disabled="true" title="Inactive">Jobs</button><button data-panel="notes">Memo</button></nav>
+        <nav class="conversation-tabs" aria-label="Agent activity"><button data-panel="chat" class="active">Chat</button><button data-panel="work">Work</button><button data-panel="updates">Updates</button></nav>
         <div class="conversation-body" id="conversation-body"></div>
         <div class="composer-area" id="composer-area">
           <div id="attachment-chip"></div>

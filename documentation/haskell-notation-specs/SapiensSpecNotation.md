@@ -1,5 +1,10 @@
 # Sapiens: navigation and workload
 
+**2026-10-08 update:** [SystemPulsation.hs](SystemPulsation.hs) specifies the
+implemented global Pulse clock and chat Agency batching. Its clock, slot,
+context, and dispatch semantics supersede this document's earlier classifier-only
+Pulse proposal. The remaining workload/automation design below is still a proposal.
+
 The [Haskell notation](SapiensSpecNotation.hs) replaces the previous ontology
 with the slide and Admin's clarifications of 2026-10-03. It describes the target
 UI and workload behavior; it does not change the running application.

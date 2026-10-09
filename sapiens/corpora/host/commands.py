@@ -43,18 +43,47 @@ class Orchestration:
 
 
     def control(self, agid, data):
+        with self.service.store.events.context(agid, 'chatInput' if self.service._active_turn(agid) else None):
+            return self._control_run(agid, data)
+
+    def _control_run(self, agid, data):
+        run_id = data.get('agencyRun')
+        if run_id is None:
+            return self._control(agid, data)
+        with self.service._lock:
+            if not any(t['id'] == run_id and t['status'] == 'running'
+                       for t in self.service._agent(agid).state['turns']):
+                raise APIError(409, 'AgencyRun is no longer active')
+            previous = getattr(self.service._execution, 'turn', None)
+            self.service._execution.turn = run_id
+            try:
+                return self._control(agid, {k: v for k, v in data.items() if k != 'agencyRun'})
+            finally:
+                self.service._execution.turn = previous
+
+    def _control(self, agid, data):
         with self.service._lock:
             agent = self.service._agent(agid)
             op = data.get("op")
             fields = {"batch": {"operations"}, "status": {'target'},
                       "delegate": {'decision'},
+                      "routines": set(), "routine_create": {"minutes", "prompt"},
+                      "routine_update": {"id", "minutes", "prompt"},
+                      "routine_pause": {"id"}, "routine_resume": {"id"},
+                      "group_create": {'name', 'description', 'lead', 'members'},
+                      "group_get": {'group'},
+                      "group_update": {'group', 'revision', 'name', 'description', 'lead', 'members', 'archived'},
+                      "group_message": {'group', 'text', 'target'},
+                      "group_task_create": {'group', 'title', 'body', 'assignee'},
+                      "group_task_update": {'group', 'task', 'revision', 'title', 'body', 'assignee', 'state', 'deleted'},
+                      "group_task_run": {'group', 'task', 'revision'},
                       "create_agent": {"name", "role", "manager"},
                       "retire_agent": {"target", "reason"}, "rehire_agent": {"target"},
                       "computer_acquire": set(), "manager": {"manager", "target"},
-                      "workspace": set(), "workspace_open": {"url", "path", "id"},
-                      **{"workspace_" + action: {"id"} for action in
+                      "workspace": {'group'}, "workspace_open": {"url", "path", "id", "group"},
+                      **{"workspace_" + action: {"id", "group"} for action in
                          ("close", "focus", "reload", "back", "forward", "bookmark", "unbookmark")},
-                      "workspace_zoom": {"id", "factor"}}
+                      "workspace_zoom": {"id", "factor", "group"}}
             if not isinstance(op, str) or op not in fields or set(data) - fields[op] - {"op"}:
                 raise APIError(400, "Unknown operation or field")
             if op not in {'status', 'workspace'} and not op.startswith('workspace_'):
@@ -76,12 +105,28 @@ class Orchestration:
                                 'partial': bool(results)}
                 return {'self_id': agid, 'saved': True, 'results': results}
             result = {}
+            workspace_owner = agent
+            if data.get('group') and (op == 'workspace' or op.startswith('workspace_')):
+                group = self.service.groups.get(data['group'], active=True)
+                self.service.groups.authorize(group, agid)
+                workspace_owner = self.service.groups.workspace_owner(group['id'])
+            if op.startswith("group_"):
+                return self.service.groups.control(agid, data)
+            if op == 'routines':
+                return {'routines': [r for r in self.service.store.routines() if r['owner'] == agid]}
+            if op in {'routine_pause', 'routine_resume'}:
+                routine = self.service.routines.set_paused(agid, text_field(data, 'id', 80), op == 'routine_pause')
+                return {'self_id': agid, 'saved': True, 'routine': routine}
+            if op in {'routine_create', 'routine_update'}:
+                routine = self.service.routines.save(agid, data.get('minutes'), data.get('prompt'),
+                    routine_id=text_field(data, 'id', 80) if op == 'routine_update' else None, source_call=self.service._active_turn(agid))
+                return {'self_id': agid, 'saved': True, 'routine': routine}
             if op == 'delegate':
                 return self.service.delegation.apply(agid, data.get('decision'))
             if op == 'computer_acquire':
                 return self.service.acquire_computer(agid)
             if op == 'workspace':
-                return self.service.workspace.summary(agent)
+                return self.service.workspace.summary(workspace_owner)
             if op == 'status':
                 target = self.resolve(data['target'], include_retired=True) if 'target' in data else agent
                 return self.status(target)
@@ -108,7 +153,7 @@ class Orchestration:
                     result = {'agent': self.service.create_agent(dict(name=name, role=role, manager=parent)), 'created': True}
                 self.prepare(self.service._agent(result['agent']['id']))
             elif op.startswith('workspace_'):
-                result['workspace'] = self.service.workspace.control(agent, op.removeprefix('workspace_'), data)
+                result['workspace'] = self.service.workspace.control(workspace_owner, op.removeprefix('workspace_'), data)
             elif op == "manager":
                 if "manager" not in data:
                     raise APIError(400, "manager is required; use null to clear it")
@@ -145,5 +190,6 @@ class Orchestration:
     def status(self, agent):
         return dict(self_id=agent.agid, main_agent_id=self.service.registry.main,
                     team=self.team(), retired_team=self.service.lifecycle.catalog(),
+                    groups=self.service.groups.facts(agent.agid),
                     workspace=self.service.workspace.summary(agent),
                     notes=Notes(self.service.workspace.root(agent)).metadata())

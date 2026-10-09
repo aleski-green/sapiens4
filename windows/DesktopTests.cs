@@ -5,6 +5,37 @@ namespace SapiensDesktop;
 
 internal static class DesktopTests
 {
+    internal static async Task CheckGroupWorkspace(Browser browser, WebView2 shell, Host host, string main)
+    {
+        using var client = new HttpClient { BaseAddress = host.Origin };
+        client.DefaultRequestHeaders.Add("X-Sapiens-Local", "1");
+        async Task<JsonElement> Post(string route, object data)
+        {
+            using var response = await client.PostAsync(route, new StringContent(JsonSerializer.Serialize(data), System.Text.Encoding.UTF8, "application/json"));
+            response.EnsureSuccessStatusCode();
+            return JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+        }
+        var member = await Post("/api/agents", new { name = "BrowserTest", role = "Local test fixture" });
+        var group = await Post("/api/groups", new { name = "Browser smoke", lead = main, members = new[] { main, member.GetProperty("id").GetString()! } });
+        string owner = group.GetProperty("id").GetString()!;
+        string file = Path.Combine(host.DataDirectory, "workspaces", owner, "group مرحبا #1.html");
+        File.WriteAllText(file, "<!doctype html><title>Group browser smoke</title><h1>Shared local document</h1>");
+        await shell.CoreWebView2.ExecuteScriptAsync($"window.sapiensBrowserEvent({JsonSerializer.Serialize(new { owner, file })})");
+        for (int attempt = 0; attempt < 100; attempt++)
+        {
+            var state = JsonDocument.Parse(await client.GetStringAsync("/api/state")).RootElement;
+            var workspaces = state.GetProperty("preferences").GetProperty("workspaces");
+            if (workspaces.TryGetProperty(owner, out var workspace) && browser.HasGuestTitle("Group browser smoke") &&
+                workspace.GetProperty("tabs").EnumerateArray().Any(tab => tab.GetProperty("title").GetString() == "Group browser smoke"))
+            {
+                if (state.GetProperty("turns").GetArrayLength() != 0) throw new Exception("Browser fixture unexpectedly dispatched model work");
+                return;
+            }
+            await Task.Delay(100);
+        }
+        throw new Exception("Group browser navigation was not rendered and persisted through the native bridge");
+    }
+
     internal static async Task<int> CheckThemes(Browser browser, WebView2 shell, string dataDirectory)
     {
         // Run only in an isolated --smoke-report workspace. Exercise the real shell toggle,

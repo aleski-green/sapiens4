@@ -16,6 +16,9 @@ dotnet publish (Join-Path $PSScriptRoot 'Sapiens4.csproj') -c Release -r $Runtim
 if ($LASTEXITCODE -ne 0) { throw 'Sapiens4 desktop build failed' }
 dotnet publish (Join-Path $BlindlySource 'windows/Blindly4.csproj') -c Release -r $Runtime --self-contained true -o (Join-Path $payload 'blindly4/.build/windows')
 if ($LASTEXITCODE -ne 0) { throw 'Blindly4 build failed' }
+Copy-Item -LiteralPath (Join-Path $repo 'license') -Destination $destination -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $BlindlySource 'license') -Destination (Join-Path $payload 'blindly4') -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $BlindlySource 'README.md') -Destination (Join-Path $payload 'blindly4/README.md') -Force
 
 foreach ($folder in @('sapiens','prompts','web')) {
     $source = Join-Path $repo $folder

@@ -1,5 +1,6 @@
 """Real gated provider calls prove overlap without paid model requests."""
 from pathlib import Path
+from itertools import count
 import tempfile
 import threading
 import time
@@ -32,7 +33,7 @@ class ParallelTest(unittest.TestCase):
         return factory
 
     def service(self, **kwargs):
-        service = Service(self.temp.name, factory_builder=self.builder, **kwargs)
+        service = Service(self.temp.name, factory_builder=self.builder, pulse_clock=count(step=.5).__next__, **kwargs)
         self.services.append(service)
         return service
 
@@ -59,12 +60,12 @@ class ParallelTest(unittest.TestCase):
         self.assertFalse(self.factories[c].started.is_set())
         self.assertEqual(s._agent(c).state['turns'][-1]['status'], 'queued')
         self.assertIsNone(s.snapshot()['computer']['owner'])
-        with self.assertRaises(APIError):
-            s.submit(a, dict(text='Duplicate'))
+        extra = s.submit(a, dict(text='Next batch'))
+        self.assertEqual(extra['status'], 'queued')
         self.factories[a].gate.set()
         self.assertTrue(self.factories[c].started.wait(3))
         self.assertFalse(self.factories[b].gate.is_set())
-        self.assertEqual(len(self.factories[a].prompts),1)
+        self.assertLessEqual(len(self.factories[a].prompts),2)
 
 
     def test_close_waits_for_all_runners_and_preserves_queued_work(self):
@@ -128,7 +129,7 @@ class ParallelTest(unittest.TestCase):
         self.assertTrue(self.factories[a].started.wait(3))
         s.turn_action(b, second['id'], 'cancel')
         self.factories[a].gate.set()
-        self.until(lambda:not s._runners)
+        self.until(lambda:not s._runners and not s.agencies.slots)
         self.assertFalse(self.factories[b].started.is_set())
         third = s.submit(b, dict(text='New request'))
         self.assertTrue(self.factories[b].started.wait(3))
@@ -188,7 +189,7 @@ class ParallelTest(unittest.TestCase):
         with self.assertRaises(APIError):
             s.acquire_computer(b)
         self.factories[a].gate.set()
-        self.until(lambda: a not in s._runners)
+        self.until(lambda: a not in s._runners and not any(k[0] == a for k in s.agencies.slots))
         turn = next(t for t in s.snapshot()['turns'] if t['id'] == turns[a])
         self.assertEqual(turn['status'], 'interrupted')
         self.assertIsNone(turn['output'])

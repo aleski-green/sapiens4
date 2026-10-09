@@ -12,7 +12,7 @@ function browserDestination(value) {
 }
 async function browserAction(action, fields={}, owner=state.selected) {
   try {
-    await api(`/api/agents/${owner}/control`, 'POST', {op:`workspace_${action}`,...fields});
+    await api(`/api/${owner.startsWith('group_')?'groups':'agents'}/${owner}/control`, 'POST', {op:`workspace_${action}`,...fields});
     const snapshot=await api('/api/state');
     receiveWorkspaces(snapshot.preferences);
     if (['open','focus','close','back','forward','reload'].includes(action)) {setBrowserMenu();state.panes.workspace=true;}
@@ -56,8 +56,34 @@ function renderWorkspace() {
   $('#browser-zoom').textContent=`${Math.round((t?.zoom || 1)*100)}%`;
   $('#browser-status').textContent=t?.error || (t?.loading?'Loading…':'');
   $$('[data-browser-action]').forEach(b=>b.disabled=!t || (b.dataset.browserAction==='back'&&!t.can_back) || (b.dataset.browserAction==='forward'&&!t.can_forward));
-  $('#workspace-content').textContent=window.webkit?.messageHandlers?.browser ? (t?'':'Open a URL or file to get started.') : 'Open Sapiens4 desktop to use the tabbed browser.';
+  if(window.webkit?.messageHandlers?.browser)$('#workspace-content').textContent=t?'':'Open a URL or file to get started.';
+  else refreshWorkspacePreview();
   syncNativeBrowser();
+}
+let workspacePreview = null;
+async function refreshWorkspacePreview() {
+  if(window.webkit?.messageHandlers?.browser)return;
+  const host=$('#workspace-content'),tab=state.tabs.find(t=>t.id===state.activeTab);
+  const key=JSON.stringify([state.selected,tab?.id,tab?.path,tab?.command?.seq]);
+  if(workspacePreview?.key!==key){
+    workspacePreview={key,checked:0,pending:false};
+    host.replaceChildren();
+    if(!tab?.path){host.textContent=tab&&tab.url!=='about:blank'?'Open Sapiens4 desktop to browse this web page.':'Open a URL or file to get started.';return;}
+    const pre=document.createElement('pre');pre.className='workspace-text';
+    pre.setAttribute('aria-label',tab.title);pre.textContent='Loading…';host.append(pre);
+  }
+  if(!tab?.path||!state.panes.workspace)return;
+  const pre=host.querySelector('.workspace-text'),current=workspacePreview;
+  pre.style.fontSize=`${13*(tab.zoom||1)}px`;
+  $('#browser-status').textContent='';
+  if(current.pending||Date.now()-current.checked<2000)return;
+  current.pending=true;current.checked=Date.now();
+  try{
+    const type=state.selected.startsWith('group_')?'groups':'agents';
+    const data=await api(`/api/${type}/${encodeURIComponent(state.selected)}/browser/${encodeURIComponent(tab.id)}/content`);
+    if(workspacePreview===current&&pre.textContent!==data.content)pre.textContent=data.content;
+  }catch(error){if(workspacePreview===current)pre.textContent=error.message;}
+  finally{current.pending=false;}
 }
 function syncNativeBrowser() {
   const bridge=window.webkit?.messageHandlers?.browser;
@@ -76,7 +102,7 @@ window.sapiensBrowserEvent = data => {
     if (data.open) return browserAction('open',{url:data.open},data.owner);
     if (data.file) return browserAction('open',{path:data.file},data.owner);
     if (data.action) return browserAction(data.action,data.fields || {},data.owner);
-    await api(`/api/agents/${data.owner}/browser`,'POST',data);
+    await api(`/api/${data.owner.startsWith('group_')?'groups':'agents'}/${data.owner}/browser`,'POST',data);
     const snapshot=await api('/api/state');receiveWorkspaces(snapshot.preferences);
     renderTabs();renderWorkspace();
   }).catch(error=>toast(error.message));
@@ -93,7 +119,7 @@ $('#browser-address-form').addEventListener('submit',async e=>{
 });
 $('#add-tab').addEventListener('click',openNewTab);
 $('#open-file').addEventListener('click',()=>{
-  const bridge=window.webkit?.messageHandlers?.browser, directory=live.orchestration[state.selected].notes.path.replace(/[\\/][^\\/]+$/, '');
+  const bridge=window.webkit?.messageHandlers?.browser, directory=selected().kind==='group'?selected().workspace:live.orchestration[state.selected].notes.path.replace(/[\\/][^\\/]+$/, '');
   setBrowserMenu();
   if(bridge)bridge.postMessage({pickFile:true,owner:state.selected,directory});else {editingAddress=state.activeTab;renderWorkspace();$('#browser-address').value=directory+'/';$('#browser-address').focus();}
 });

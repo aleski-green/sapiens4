@@ -3,6 +3,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import json
+import os
 import sys
 
 
@@ -12,6 +13,8 @@ def main():
         payload = json.loads(sys.argv[2])
         if not isinstance(payload, dict):
             raise ValueError("Expected a JSON object")
+        if os.environ.get('SAPIENS_AGENCY_RUN'):
+            payload['agencyRun'] = os.environ['SAPIENS_AGENCY_RUN']
         request = Request(config["url"], data=json.dumps(payload).encode(), headers={
             "Content-Type": "application/json", "X-Sapiens-Local": "1"})
         with urlopen(request, timeout=20) as response:

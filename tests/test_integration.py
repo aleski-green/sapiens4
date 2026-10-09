@@ -1,4 +1,5 @@
 from http.client import HTTPConnection
+from itertools import count
 import json
 from pathlib import Path
 import tempfile
@@ -62,7 +63,9 @@ class IntegrationFixture(unittest.TestCase):
             service.close()
 
     def service(self, **kwargs):
-        service = Service(self.directory.name, factory_builder=self.factory.builder, **kwargs)
+        # Advance one half-second per worker poll. Accelerated wall time can
+        # skip every eligible even pulse when filesystem work is slow on CI.
+        service = Service(self.directory.name, factory_builder=self.factory.builder, pulse_clock=count(step=.5).__next__, **kwargs)
         self.services.append(service)
         return service
 
@@ -111,7 +114,7 @@ class IntegrationTest(IntegrationFixture):
         self.assertIn("Inspect apps", prompt)
         self.assertEqual(service._agent(row["id"]).state["chat"][-1]["content"], "Connected through AgentPy.")
 
-    def test_duplicate_submission_is_per_sapi(self):
+    def test_messages_continue_accumulating_per_sapi(self):
         gate = self.factory.gate = threading.Event()
         self.addCleanup(gate.set)
         service = self.service()
@@ -120,9 +123,8 @@ class IntegrationTest(IntegrationFixture):
         first = service.submit(a, {"text":"First", "flow":"computer"})
         self.assertTrue(self.factory.started.wait(2))
         second = service.submit(b, {"text":"Second", "flow":"computer"})
-        with self.assertRaises(APIError) as caught:
-            service.submit(a, {"text":"Duplicate"})
-        self.assertEqual(caught.exception.status, 409)
+        additional = service.submit(a, {"text":"Another message"})
+        self.assertEqual(additional['status'], 'queued')
         state = service.snapshot()
         self.assertIsNone(state["computer"]["owner"])
         self.wait_turn(service, second["id"], "running")
@@ -209,7 +211,7 @@ class IntegrationTest(IntegrationFixture):
         state = service.snapshot()
         self.assertEqual(state['preferences']['panel'], 'chat')
         self.assertEqual(state['preferences']['drafts'][agid], 'Keep this')
-        for field in ('events', 'cursor', 'latest_cursor'):
+        for field in ('cursor', 'latest_cursor'):
             self.assertNotIn(field, state)
         self.assertEqual(state['turns'], [])
         with service.store.connect() as db:
@@ -262,7 +264,7 @@ class IntegrationTest(IntegrationFixture):
         self.assertEqual(request("GET","/.git/config")[0], 404)
         status, raw = request("GET", "/api/state")
         self.assertEqual(status, 200)
-        self.assertNotIn("events", json.loads(raw))
+        self.assertIn("events", json.loads(raw))
         self.assertEqual(request("GET","/workspace/app.js")[0], 200)
 
     def test_adapter_is_generated_and_cli_accepts_external_workdir(self):

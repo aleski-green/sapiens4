@@ -39,8 +39,9 @@ def codex_binary():
         return shutil.which(override)
     candidates = [shutil.which('codex')]
     if sys.platform == 'darwin':
-        candidates += [f'/Applications/{app}.app/Contents/Resources/codex'
-                       for app in ('Codex', 'ChatGPT')]
+        candidates += [f'/Applications/{app}.app/Contents/Resources/{binary}'
+                       for app in ('Codex', 'ChatGPT')
+                       for binary in ('codex', 'codex-cli/bin/codex')]
     elif sys.platform == 'win32':
         local = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData/Local'))
         roaming = Path(os.environ.get('APPDATA', Path.home() / 'AppData/Roaming'))

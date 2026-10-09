@@ -14,7 +14,6 @@ function find(root, predicate) {
   for (const child of root.children) {const found=find(child,predicate);if(found)return found;}
 }
 const byClass=(root,name)=>find(root,n=>n.className?.split(' ').includes(name));
-const tab=(root,name)=>find(root,n=>n.id==='tasks-'+name);
 function fixture(fetch) {
   const messages = [];
   const ctx = vm.createContext({Map,Set,JSON,Date,AbortSignal,fetch,encodeURIComponent,
@@ -40,10 +39,9 @@ const task=(state,id=state)=>({id,state,title:'Research <script>bad</script>',ow
   f.ctx.renderTasks(f.host);assert.equal(f.host.firstElementChild,view,'Unchanged polling preserves DOM and focus');
   assert.equal(requests,1);
   const row=byClass(list,'task-row');row.open=true;row.listeners.toggle();
-  tab(f.host,'past').listeners.click();
+  vm.runInContext("taskPeriod='past'",f.ctx);f.ctx.renderTasks(f.host);
   assert.equal(byClass(f.host,'task-list').children.length,5,'Terminal outcomes appear in Past');
-  assert.equal(tab(f.host,'past').attributes['aria-selected'],'true');
-  tab(f.host,'upcoming').listeners.click();
+  vm.runInContext("taskPeriod='upcoming'",f.ctx);f.ctx.renderTasks(f.host);
   assert.equal(byClass(f.host,'task-row').open,true,'Expansion survives changing tabs');
 
   let finish;
@@ -58,7 +56,7 @@ const task=(state,id=state)=>({id,state,title:'Research <script>bad</script>',ow
   assert.equal(byClass(failed.host,'task-copy').textContent,'Try again');
   const empty=fixture(async()=>({ok:true,json:async()=>({tasks:[]})}));
   empty.ctx.renderTasks(empty.host);await tick();
-  assert.equal(byClass(empty.host,'task-empty').children[0].textContent,'No upcoming tasks');
+  assert.equal(byClass(empty.host,'task-empty').children[0].textContent,'No planned tasks');
 
   const routing=fixture();
   const turn={id:'child',agent:'researcher',status:'running',created:'2026-09-29T12:00:00Z'};

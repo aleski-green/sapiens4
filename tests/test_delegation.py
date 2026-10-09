@@ -1,5 +1,6 @@
 """Real host/runner/persistence with deterministic, schema-shaped model decisions."""
 from http.client import HTTPConnection
+from itertools import count
 import json
 from pathlib import Path
 import tempfile
@@ -13,6 +14,7 @@ from sapiens.corpora.host.server import Server
 from sapiens.corpora.host.service import Service
 from sapiens.validation import APIError
 from sapiens.runtime.contracts import RUN_TIMEOUT_SECONDS
+from sapiens.runtime.turns import TurnRunner
 
 
 CRITERION = 'Return a sourced comparison.'
@@ -63,7 +65,7 @@ class DelegationTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.provider = Provider()
-        self.service = Service(self.temp.name, factory_builder=self.provider.builder, start_worker=False)
+        self.service = Service(self.temp.name, factory_builder=self.provider.builder, pulse_clock=count(step=.5).__next__, start_worker=False)
         self.addCleanup(lambda: self.service.close())
         self.chief = self.service.registry.main
         self.researcher = self.service.create_agent(dict(name='Researcher', role='Research'))['id']
@@ -82,12 +84,20 @@ class DelegationTest(unittest.TestCase):
         self.fail('Timed out: ' + str(self.service.snapshot().get('workloads')))
 
     def wait_idle(self):
-        self.until(lambda: not any(t['status'] in {'running','queued'} for t in self.service.snapshot()['turns']))
-        self.until(lambda: not self.service._runners)
+        def settled():
+            # Check runners, projections and pending handoffs in one snapshot: a
+            # finishing runner can enqueue a recipient before releasing its slot.
+            with self.service._lock:
+                return (not self.service._runners and not self.service.agencies.slots
+                        and not any(t['status'] in {'running','queued','output_pending'}
+                                    for t in self.service.snapshot()['turns'])
+                        and not any(c['state'] == 'Queued'
+                                    for w in self.service.store.workloads() for c in w['calls']))
+        self.until(settled)
 
     def restart(self, start_worker=True):
         self.service.close()
-        self.service = Service(self.temp.name, factory_builder=self.provider.builder, start_worker=start_worker)
+        self.service = Service(self.temp.name, factory_builder=self.provider.builder, pulse_clock=count(step=.5).__next__, start_worker=start_worker)
 
     def chief_routes(self, target=None):
         self.provider.responses[self.chief, 'Assessing'] = answer('OutsideSpecialization')
@@ -266,9 +276,9 @@ class DelegationTest(unittest.TestCase):
         self.assertIn('Call time limit exhausted',turn['error'])
 
     def test_decision_steps_use_the_remainder_of_the_same_thirty_minutes(self):
-        runner = self.service._agent(self.chief).runner
+        original = TurnRunner.invoke
         with patch('sapiens.corpora.host.delegation.monotonic', side_effect=[0, 400, 1000, 1500]), \
-             patch.object(runner, 'invoke', wraps=runner.invoke) as invoke:
+             patch.object(TurnRunner, 'invoke', autospec=True, side_effect=original) as invoke:
             call_id = self.run_request()
         self.assertEqual(self.service.store.projected_turn(call_id)['status'], 'done')
         self.assertEqual([call.kwargs['timeout_seconds'] for call in invoke.call_args_list], [1400, 800, 300])
@@ -300,6 +310,8 @@ class DelegationTest(unittest.TestCase):
         self.assertEqual(len(work['calls']),2)
         self.assertEqual(work['calls'][-1]['state'],'Failed')
         self.assertIn('already assessed', work['calls'][-1]['error'])
+        events = self.service.store.events.snapshot(self.chief)[self.chief]
+        self.assertTrue(any(e['event'] == 'task.failed' and e['agency'] == 'chatInput' for e in events))
 
     def test_prompt_edit_changes_future_calls_without_rewriting_history(self):
         self.run_request()
@@ -323,11 +335,23 @@ class DelegationTest(unittest.TestCase):
         self.assertIsNone(work['outcome'])
         self.assertFalse(work['decisions'][-1]['accepted'])
 
+    def test_conditional_completion_publishes_once_without_repeating_execution(self):
+        fallback = 'If no suitable result is found, report that.'
+        self.provider.responses['ReadyToWork'] = answer('TaskPrepared', taskType='research', specification=dict(
+            objective='Compare.', inputs=[], expectedOutputs=['Comparison'], completionCriteria=[CRITERION, fallback]))
+        self.provider.responses['Execution'] = answer('Outcome', reply='Saved comparison.', outcome=dict(
+            status='Completed', satisfiedCriteria=[CRITERION], notApplicableCriteria={fallback: 'A sourced comparison was verified.'}, artifacts=[]))
+        call_id = self.run_request()
+        self.assertEqual(self.service.store.projected_turn(call_id)['status'], 'done')
+        self.assertEqual(sum(node == 'Execution' for _, node, _ in self.provider.calls), 1)
+        self.assertEqual(sum(m.get('turn') == call_id and m['role'] == 'agent'
+                             for m in self.service._agent(self.chief).state['chat']), 1)
+
     def test_stop_between_nodes_does_not_admit_a_handoff(self):
         self.chief_routes()
         def stop(agid, node, text):
             if node == 'Delegation':
-                self.service._agent(agid).runner.cancel_event.set()
+                self.service.turn_action(agid, self.service._active_turn(agid), 'cancel')
         self.provider.observe = stop
         call_id = self.run_request()
         self.assertEqual(self.service.store.projected_turn(call_id)['status'],'interrupted')

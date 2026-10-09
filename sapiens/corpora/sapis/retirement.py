@@ -25,11 +25,13 @@ class Lifecycle:
             if self.retired(agent) == retire:
                 return dict(id=agid, retired=retire, changed=False)
             if retire:
+                if any(agid in g['members'] and not g['archived'] for g in self.service.store.groups()):
+                    raise APIError(409, 'Remove this Sapi from active Groups before retiring it')
                 if any(c['addressedTo'] == agid and c['state'] == 'Queued'
                        for work in self.service.store.workloads() for c in work['calls']):
                     raise APIError(409, 'Cancel the accepted handoff before retiring this Sapi')
                 if any(
-                        j['status'] in {'queued', 'running'} for j in agent.state['turns']):
+                        j['status'] in {'queued', 'running', 'output_pending'} for j in agent.state['turns']):
                     raise APIError(409, 'Finish or cancel queued work before retiring this Sapi')
                 if any(entry.get('parent') == agid and not self.retired(self.service._agent(child))
                        for child, entry in self.service.registry.directory().items()):
@@ -41,6 +43,7 @@ class Lifecycle:
                 if parent and self.retired(self.service._agent(parent)):
                     self.service.registry.assign(agent, self.service.registry.main)
             self.service.orchestration.save(agent, settings)
+            self.service.store.events.record(agid, agid, 'sapi.retired' if retire else 'sapi.restored', dict(reason=reason))
             return dict(id=agid, retired=retire, changed=True)
 
 

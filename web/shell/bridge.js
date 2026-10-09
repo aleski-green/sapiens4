@@ -12,14 +12,14 @@ let uploading = 0;
 const nameRule = /^[A-Z][A-Za-z0-9_.:#+|()&$^\-]*$/;
 const nameHelp = 'Start with A–Z. Letters, numbers, and - _ . : # + | ( ) & $ ^ are allowed. No spaces.';
 const attention = new Set(['failed','interrupted','conflict']);
-const blocksChat = turn => ['queued','running'].includes(turn.status);
-const statusNames = {queued:'Queued',running:'Running',done:'Completed',warning:'Warning',failed:'Failed',
+const blocksChat = turn => ['queued','running','output_pending'].includes(turn.status);
+const statusNames = {output_pending:'Awaiting output pulse',queued:'Queued',running:'Running',done:'Completed',warning:'Warning',failed:'Failed',
   interrupted:'Interrupted',conflict:'Needs review',cancelled:'Dismissed'};
 const displayTime = value => new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 const originalConversation = renderConversation;
 
 function preferences() {
-  return {selected:state.selected,panel:state.panel,scope:state.scope,panes:state.panes,
+  return {selected:state.selected,panel:state.panel,scope:state.scope,groupView:state.groupView,panes:state.panes,
     drafts:state.drafts,
     attachment_drafts:Object.fromEntries(Object.entries(attachmentDrafts).map(([id, items]) => [id, items.map(a => a.id)]))};
 }
@@ -47,18 +47,18 @@ async function flushPreferences() {
 getMessages = id => state.messages[id] || [];
 
 function turnActions(turn) {
-  if (turn.status === 'running') return `<div class="actions"><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}" ${!online || live.activity?.[turn.agent]?.stopping ? 'disabled' : ''}>Stop</button><small>Already completed actions are not undone.</small></div>`;
+  if (turn.status === 'running') return `<div class="actions"><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}" ${!online || (live.run_activity?.[turn.batch_id || turn.id] || live.activity?.[turn.agent])?.stopping ? 'disabled' : ''}>Stop</button><small>Already completed actions are not undone.</small></div>`;
   if (attention.has(turn.status)) return `<div class="actions"><button class="button" data-live-turn="retry" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Retry</button><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Dismiss</button></div>`;
   if (turn.status === 'queued') return `<div class="actions"><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Cancel queued turn</button></div>`;
   return '';
 }
 
 function turnProgress(turn, now = Date.now()) {
-  const current = live.activity?.[turn.agent];
+  const current = live.run_activity?.[turn.batch_id || turn.id] || live.activity?.[turn.agent];
   const a = current?.turn === turn.id ? current : {};
   const elapsed = Math.max(0, Math.floor((now - (a.started || Date.parse(turn.created))) / 1000));
   const quiet = Math.max(0, Math.floor((now - (a.updated || a.started || now)) / 1000));
-  const phase = !online ? 'Disconnected' : a.stopping ? 'Stopping…' : turn.status === 'queued' ? 'Queued' : a.phase || 'Starting model';
+  const phase = !online ? 'Disconnected' : a.stopping ? 'Stopping…' : turn.status === 'output_pending' ? 'Awaiting output pulse' : turn.status === 'queued' ? 'Queued' : a.phase || 'Starting model';
   const detail = a.tool ? `Current tool: ${a.tool}` : a.last_action ? `Last completed action: ${a.last_action}` : '';
   return `<strong>${esc(phase)} · ${elapsed}s</strong><p>${esc(detail)}</p>${quiet >= 60 ? `<small>No recent update · ${quiet}s since last activity</small>` : ''}`;
 }
@@ -105,11 +105,12 @@ function applySnapshot(snapshot) {
     autonomy:'assist',status:'online',lastActivity:Date.parse(a.created),preview:'Ready for your message.'}));
   state.messages = {};
   for (const turn of snapshot.turns) {
+    if(turn.group) continue;
     const messages = state.messages[turn.agent] ||= [];
     const timestamp = Date.parse(turn.created);
     if (['chat','computer'].includes(turn.flow)) messages.push({role:'user',author:turn.origin?.caller,text:turn.input,time:displayTime(turn.created),timestamp,attachments:turn.attachments,requestTurn:turn});
     if (['chat','computer'].includes(turn.flow) && ['done','warning'].includes(turn.status) && turn.output !== null) {
-      messages.push({role:'assistant',...chatResult(turn),time:displayTime(turn.created),timestamp,turnId:turn.id});
+      messages.push({role:'assistant',...chatResult(turn),time:displayTime(turn.output_at || turn.created),timestamp:Date.parse(turn.output_at || turn.created),outputOrder:turn.output_order,turnId:turn.id});
     }
     const a = state.agents.find(a => a.id === turn.agent);
     if (a && (['chat','computer'].includes(turn.flow))) {
@@ -118,8 +119,12 @@ function applySnapshot(snapshot) {
     }
     if (a && turn.status === 'running') a.status = 'busy';
   }
+  for(const group of snapshot.groups || []) {
+    state.agents.push({...group,status:group.requests.some(r=>r.status==='running')?'busy':'online',lastActivity:Date.parse(group.updated),preview:group.messages.at(-1)?.text || group.description || 'Shared workspace'});
+    state.messages[group.id]=group.messages.map(m=>({role:m.author==='admin'?'user':'assistant',author:m.author==='admin'?null:m.author,text:m.text,time:displayTime(m.created),timestamp:Date.parse(m.created)}));
+  }
   delegationMessages(snapshot);
-  for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp);
+  for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp || (a.outputOrder || 0)-(b.outputOrder || 0));
   if (!state.agents.some(a => a.id === state.selected) ||
       (agent(state.selected).retired && !old.get(state.selected)?.retired)) {
     state.drafts[state.selected] = $('#message-input').value;
@@ -140,23 +145,28 @@ renderGlobal = function() {
 
 renderAgentHeader = function() {
   const a = selected();
-  const turn = live.turns.find(j => j.agent === a.id && blocksChat(j));
-  $('#agent-heading').innerHTML = `${avatar(a,isMainSapi(a)?'large main-sapi-avatar':'large')}<div><h2>${esc(a.name)}</h2><p class="agent-role">${esc(a.role)}</p></div><button class="icon-button" data-action="agent-settings" aria-label="Sapi settings">···</button>`;
+  const turn = a.kind==='group'?null:live.turns.find(j => j.agent === a.id && blocksChat(j));
+  $('#agent-heading').innerHTML = `${avatar(a,isMainSapi(a)?'large main-sapi-avatar':'large')}<div><div class="agent-title"><h2>${esc(a.name)}</h2>${a.kind==='group'?'':groupLabels(a)}</div><p class="agent-role">${esc(a.kind==='group'?a.description:a.role)}</p></div><button class="icon-button" data-action="agent-settings" aria-label="Sapi settings">···</button>`;
   $('#message-input').placeholder = `Message ${a.name}…`;
-  $$('[data-panel]').forEach(b => {b.classList.toggle('active',b.dataset.panel === state.panel);b.setAttribute('aria-pressed',b.dataset.panel === state.panel);});
-  $('.send-button').disabled = a.retired || !online || Boolean(turn) || submitting.has(a.id) || uploading > 0;
+  renderActivityNavigation();
+  $('#attach-button').hidden = Boolean(a.archived);
+  $('.send-button').disabled = a.retired || a.archived || !online || submitting.has(a.id) || uploading > 0;
 };
 
 let renderedConversation = '';
 renderConversation = function() {
   const host = $('#conversation-body');
+  if(['tasks','notes'].includes(state.panel)){workView=state.panel==='notes'?'memo':'tasks';state.panel='work';}
   host.classList.toggle('notes-view', state.panel === 'notes');
   const turns = live.turns.filter(j => j.agent === state.selected);
-  const key = state.selected + ':' + state.panel;
+  const key = state.selected + ':' + state.panel + ':'+(state.panel==='work'?workView:state.panel==='chat'?chatView:updatesView);
   const changedView = renderedConversation !== key;
   renderedConversation = key;
   const scroll = changedView ? 0 : host.scrollTop;
   const bottom = state.panel === 'chat' && (changedView || host.scrollHeight - host.scrollTop - host.clientHeight < 80);
+  if(renderChatCollection(host)){renderAgentHeader();renderGlobal();return;}
+  if(selected().kind==='group') {renderGroupPanel(host);renderAgentHeader();renderGlobal();host.scrollTop=bottom?host.scrollHeight:scroll;return;}
+  if(state.panel==='work' || state.panel==='updates') {renderWork(host);renderAgentHeader();renderGlobal();if(changedView)host.scrollTop=0;return;}
   if (state.panel === 'chat') {
     originalConversation();
     host.querySelectorAll('.message').forEach((node,i) => {
@@ -184,8 +194,8 @@ renderConversation = function() {
     });
     taskCallControls(host);
     if (!getMessages(state.selected).length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
-    const turn = turns.find(j => blocksChat(j) && !(attention.has(j.status) && ['chat','computer'].includes(j.flow)));
-    if (turn) {
+    const activeTurns = turns.filter(j => blocksChat(j) && (!j.batch_id || j.batch_id===j.id));
+    for (const turn of activeTurns) {
       host.insertAdjacentHTML('beforeend', `<section class="live-status"><div data-turn-progress="${esc(turn.id)}">${turnProgress(turn)}</div>${turnActions(turn)}</section>`);
     }
   } else if (state.panel === 'tasks') {
@@ -206,7 +216,8 @@ sendChat = async function(value) {
   if ((!text && !attachments.length) || submitting.has(id) || uploading) return;
   submitting.add(id); renderAgentHeader();
   try {
-    await api(`/api/agents/${id}/messages`, 'POST', {text,attachments:attachments.map(a => a.id),
+    if(selected().kind==='group') await api(`/api/groups/${id}/messages`, 'POST', {text,attachments:attachments.map(a=>a.id)});
+    else await api(`/api/agents/${id}/messages`, 'POST', {text,attachments:attachments.map(a => a.id),
       ...(clarificationWorkload?.owner === id ? {workload:clarificationWorkload.id} : {})});
     clarificationWorkload = null;
     attachmentDrafts[id] = (attachmentDrafts[id] || []).filter(a => !attachments.some(sent => sent.id === a.id));
@@ -222,10 +233,18 @@ sendChat = async function(value) {
 };
 
 addAgent = function() {
-  modal('Create Sapi', `<form id="live-agent-form" class="form-stack"><label>Name<input name="name" required maxlength="24" placeholder="e.g. Nova" aria-describedby="name-help" autocomplete="off"></label>${nameSuggestions()}<label>Role<input name="role" required maxlength="60" placeholder="e.g. Research assistant"></label><button type="submit" class="button primary">Create Sapi</button></form>`, 'SAPIENS4');
+  leaveGroup('all');
+  const input=$('#message-input');
+  if(!input.value.trim())input.value=bootstrap.creation_template;
+  state.drafts[state.mainSapiId]=input.value;
+  input.focus();
+  const start=input.value.indexOf('WORKFLOW');
+  if(start>=0)input.setSelectionRange(start,start+8);
+  save();
 };
 agentSettings = function() {
   const a = selected();
+  if(a.kind==='group'){groupDialog(a);return;}
   const execution = live.orchestration[a.id].execution;
   modal(`${a.name} settings`, `<form id="live-settings-form" data-id="${esc(a.id)}" class="form-stack">
     <div class="settings-tabs" role="tablist" aria-label="Sapi settings">${[['profile','Profile'],['context','Context'],['usage','Usage'],['limits','Limits']].map(([key,label],i)=>`<button type="button" role="tab" id="settings-tab-${key}" aria-controls="settings-panel-${key}" aria-selected="${i===0}" tabindex="${i===0?0:-1}" ${i ? 'disabled aria-disabled="true" title="Inactive"' : ''}>${label}</button>`).join('')}</div>
@@ -252,7 +271,7 @@ autonomyDialog = function() {
 
 document.addEventListener('submit', async e => {
   const form = e.target;
-  if (!['live-agent-form','live-settings-form'].includes(form.id)) return;
+  if (form.id !== 'live-settings-form') return;
   e.preventDefault(); e.stopImmediatePropagation();
   const button = form.querySelector('button[type="submit"]') || form.querySelector('button');
   if (button.disabled) return;
@@ -260,17 +279,11 @@ document.addEventListener('submit', async e => {
   try {
     const data = Object.fromEntries(new FormData(form));
     if (!nameRule.test(data.name)) throw new Error(nameHelp);
-    const created = form.id === 'live-agent-form';
-    if (!created) {
-      data.manager = data.manager || null;
-      data.execution = {mode:data.mode};
-      for (const key of Object.keys(data.execution)) delete data[key];
-    }
-    const row = await api(created ? '/api/agents' : `/api/agents/${form.dataset.id}`, created ? 'POST' : 'PUT', data);
-    await refresh();
-    closeModal();
-    if (created) openChat(row.id);
-    toast(created ? `${row.name} is ready.` : 'Sapi saved.');
+    data.manager = data.manager || null;
+    data.execution = {mode:data.mode};
+    delete data.mode;
+    await api(`/api/agents/${form.dataset.id}`, 'PUT', data);
+    await refresh();closeModal();toast('Sapi saved.');
   } catch (error) { toast(error.message); }
   finally { button.disabled = false; }
 }, true);
@@ -303,7 +316,7 @@ function attachmentMenu() {
 }
 async function saveAttachment(id, data) {
   if ((attachmentDrafts[id] || []).length >= 8) throw new Error('Attach up to 8 items per message.');
-  const item = await api(`/api/agents/${id}/attachments`, 'POST', data);
+  const item = await api(`/api/${id.startsWith('group_')?'groups':'agents'}/${id}/attachments`, 'POST', data);
   (attachmentDrafts[id] ||= []).push(item);
   if (state.selected === id) renderAttachment();
   save();
@@ -376,12 +389,13 @@ async function refresh() {
   refreshing = (async () => {
     try {
       const snapshot = await api('/api/state');
-      const changed = ['agents','turns','computer','orchestration','activity','workloads'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k]));
+      const changed = ['agents','groups','turns','computer','orchestration','activity','run_activity','workloads','pulses','routines','events'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k]));
       const reconnected = !online;
       online = true;
       const tabsChanged = (snapshot.preferences.workspace_revision || 0) > workspaceRevision;
       applySnapshot(snapshot);
       if (tabsChanged) {renderTabs(); renderWorkspace();}
+      else refreshWorkspacePreview();
       if (changed || reconnected) {
         renderSidebar(); renderConversation(); renderGlobal();
         if ($('#modal').open && $('#modal-title')?.textContent === 'Shared computer') computerDialog();

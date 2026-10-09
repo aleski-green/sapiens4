@@ -270,10 +270,6 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 [data-theme="dark"] #workspace-content { background:#000; }
 
 .task-browser { min-width:0;color:var(--ink); }
-.task-periods { display:flex;gap:22px;border-bottom:1px solid var(--line);margin-bottom:6px; }
-.task-period { display:flex;align-items:center;gap:7px;padding:0 0 12px;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font:inherit;font-size:12px;cursor:pointer; }
-.task-period[aria-selected=true] { color:var(--ink);border-bottom-color:var(--ink);font-weight:600; }
-.task-count { color:var(--muted);font-size:11px;font-weight:400; }
 .task-row { border-bottom:1px solid var(--line); }
 .task-summary { display:flex;align-items:flex-start;gap:11px;padding:17px 2px;list-style:none;cursor:pointer;border-radius:4px; }
 .task-summary::-webkit-details-marker { display:none; }
@@ -297,6 +293,9 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 .task-format { font:10px ui-monospace,SFMono-Regular,Menlo,monospace;opacity:.7; }
 .task-copy { margin-left:auto;padding:2px 0;border:0;background:none;color:var(--muted);font:inherit;font-size:11px;cursor:pointer; }
 .task-copy:hover { color:var(--ink); }
+.task-routine .task-summary { flex-wrap:wrap; }
+.task-routine-action { display:flex;align-items:center;margin-left:0; }
+.task-reference { order:1;display:flex;justify-content:space-between;gap:8px;flex-basis:100%;margin-left:28px;color:var(--muted);font-size:11px;user-select:text; }
 .task-body-yaml { margin:0;padding:12px;background:var(--panel);border:1px solid var(--line);border-top:0;border-radius:0 0 6px 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;user-select:text; }
 .task-result-heading { margin:16px 0 7px;font-size:11px;font-weight:500;color:var(--muted); }
 .task-result { font-size:12px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere; }
@@ -305,8 +304,79 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 .task-empty { padding:32px 8px;text-align:center;color:var(--muted);font-size:12px; }
 .task-empty p { margin:0 0 5px;color:var(--ink); }
 .task-empty small { font-size:11px; }
-.task-summary:focus-visible,.task-period:focus-visible,.task-copy:focus-visible { outline:2px solid var(--sapi-accent);outline-offset:3px; }
-:root[data-theme] body.sapi-workspace button.task-period:hover { background:transparent;color:var(--ink); }
+.task-summary:focus-visible,.task-copy:focus-visible { outline:2px solid var(--sapi-accent);outline-offset:3px; }
 :root[data-theme] body.sapi-workspace summary.task-summary:hover { background:var(--panel);color:var(--ink); }
 
 .notes-wiki .citation{font-size:9px;vertical-align:super;white-space:nowrap;margin-left:2px}.notes-wiki .permalink{font-family:system-ui,sans-serif;font-size:10px;margin-left:7px;color:var(--muted);opacity:0}.notes-wiki h2:hover .permalink,.notes-wiki h3:hover .permalink,.notes-wiki .permalink:focus{opacity:1}.notes-wiki .references{font-size:10px;padding-left:19px}.notes-wiki .references li{margin:7px 0}.notes-wiki .references .origin{display:block;color:var(--muted);font-size:9px}.notes-wiki .backref{margin-right:4px}.notes-wiki .file-list{font-size:10px;line-height:1.9}.notes-wiki .draft-note{font-size:10px;color:var(--muted)}
+/* Groups retain stable label identities while their avatars reflect membership. */
+.agent-entry{min-width:0}.agent-entry>.agent-row{width:100%;cursor:pointer}
+.group-labels{display:inline-flex;gap:4px;flex-wrap:wrap;min-width:0}
+.group-chip{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:4px;background:color-mix(in srgb,var(--group-color,#888) 40%,var(--sapi-bg));color:var(--ink);font-size:10px;padding:3px 5px;cursor:pointer}
+.group-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.group-chip:hover,.group-chip:focus-visible{outline:1px solid var(--group-color);z-index:2}
+.group-labels.compact{flex:0 1 calc(var(--label-count)*25px);max-width:50%;min-width:var(--label-min,22px);flex-wrap:nowrap;gap:0;align-items:center;overflow:hidden;height:19px}
+.group-labels.compact .group-chip{width:22px;min-width:22px;height:17px;padding:0;border-radius:3px;font-size:10px;flex:none;box-shadow:-1px 0 var(--sapi-bg)}
+.group-labels.compact .group-chip+.group-chip{margin-left:calc(var(--label-step,25px) - 22px)}
+.group-labels.colour-only .group-chip span{visibility:hidden}
+.agent-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.agent-title .group-labels{max-width:100%}
+:root body.sapi-workspace .agent-row-name{display:flex;align-items:center;gap:4px;overflow:hidden;white-space:nowrap}
+:root body.sapi-workspace .agent-row-name:has(.compact) .agent-name{flex-shrink:0;max-width:calc(100% - var(--name-reserve,56px))}
+.agent-name{font:inherit;color:inherit;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:24px;flex:0 1 auto}
+:root body.sapi-workspace #agent-list .group-row .agent-name{color:var(--sapi-accent)}
+:root body.sapi-workspace #agent-heading:has(>.group-avatar) .agent-title h2{color:var(--sapi-accent)}
+:root body.sapi-workspace .agent-row-name small{margin-left:auto;flex:none;font-size:10px}
+:root[data-theme] body.sapi-workspace .scope-switch button.group-open{background:var(--sapi-hover);color:var(--sapi-accent)}
+.group-avatar{position:relative;color:#20252a;overflow:hidden}.group-avatar>span{padding:2px 3px;border-radius:6px;background:#ffffffb0;font-size:inherit}
+.group-members{border:1px solid var(--border,#7775);border-radius:10px;padding:12px;max-height:240px;overflow:auto}.group-members legend{font-size:12px}.group-members label{display:flex;align-items:center;gap:9px;padding:6px}.group-members input{width:auto}.group-banner{display:block;padding:10px;background:#bda05522;border-radius:8px;font-size:12px}.group-task{border:0;border-bottom:1px solid var(--line);border-radius:0;padding:0;margin:0}.group-task-body{white-space:pre-wrap;font-size:13px;margin:10px 0}.group-task .actions{margin:12px 0;display:flex;gap:8px;flex-wrap:wrap}.group-task details{font-size:12px;margin-top:10px}.group-task-result{border-top:1px solid #8883;padding:10px 0;white-space:pre-wrap}.group-task-result strong{font-size:11px}.group-work{padding:4px 2px}
+.agent-heading:has(.group-labels){height:auto;min-height:69px}.conversation-body.notes-view:has(#work-content){display:flex;flex-direction:column}.notes-view #work-content{flex:1;min-height:0;overflow:auto}
+@media(max-width:600px){.agent-list>.agent-entry{flex:0 0 180px;width:180px}}
+
+:root[data-theme] body.sapi-workspace .scope-switch button:disabled{opacity:.4;cursor:default;background:transparent;color:var(--muted)}
+
+/* Persistent activity tabs with independent dropdown buttons. */
+:root body.sapi-workspace .conversation-tabs{min-height:42px;gap:24px;overflow:visible;position:relative;z-index:6;flex-shrink:0;white-space:nowrap}
+.activity-tab{position:relative;display:flex;align-items:center;gap:4px;align-self:stretch;border-bottom:1.5px solid transparent;margin-bottom:-1px}
+.activity-tab.active{border-color:var(--ink)}
+:root body.sapi-workspace .activity-tab>button{font-size:12px;border:0;padding:9px 0;background:transparent;color:var(--muted)}
+:root body.sapi-workspace .activity-tab.active>button[data-panel]{color:var(--ink);font-weight:600}
+:root body.sapi-workspace .activity-tab>.activity-toggle{display:grid;place-items:center;width:24px;height:24px;padding:0;border-radius:5px}
+:root[data-theme] body.sapi-workspace .activity-toggle:hover,:root[data-theme] body.sapi-workspace .activity-toggle[aria-expanded=true]{background:var(--sapi-hover);color:var(--sapi-accent)}
+.activity-menu{position:absolute;top:calc(100% + 7px);left:-7px;min-width:180px;padding:5px;border:1px solid var(--line);border-radius:8px;background:var(--sapi-bg);box-shadow:0 8px 28px #0002;z-index:10;white-space:nowrap}
+:root body.sapi-workspace .activity-menu button{display:flex;align-items:center;text-align:left;width:100%;padding:10px 12px;border:0;border-radius:5px;font-size:12px;background:transparent;color:var(--ink);font-weight:400}
+:root[data-theme] body.sapi-workspace .activity-menu button:hover,:root[data-theme] body.sapi-workspace .activity-menu button.selected{background:var(--sapi-hover);color:var(--sapi-accent)}
+.activity-menu hr{border:0;border-top:1px solid var(--line);margin:5px 7px}
+.activity-submenu-row{position:relative;display:flex}
+:root body.sapi-workspace .activity-submenu-row>button[data-activity-menu]{width:30px;flex:none;padding:8px;justify-content:center}
+.activity-submenu{top:-5px;left:calc(100% + 6px);min-width:145px}
+#activity-viewbar{display:flex;align-items:center;gap:8px;padding:12px 20px 0;min-height:42px;flex-shrink:0;position:relative;z-index:5}
+.activity-view-title,.activity-view-menu>button{font-size:11px;color:var(--muted)}
+.activity-view-menu{position:relative}.activity-view-menu>button{display:flex;align-items:center;gap:7px;padding:4px 0}
+.work-nav-tools{display:flex;align-items:center;gap:16px;margin-left:auto;flex:none}
+.work-nav-tools .activity-menu{left:auto;right:0}
+:root body.sapi-workspace .work-nav-tools [data-new-task]{padding:6px 0;font-size:12px;color:var(--muted);border:0;flex:none}
+:root body.sapi-workspace .group-task .task-summary{padding-left:0;padding-right:0}
+/* Keep submenus within the narrow conversation pane as well as mobile screens. */
+.activity-submenu{left:14px;top:calc(100% + 4px)}
+@media(min-width:1000px){.main-grid[data-visible-panes="2"] .activity-submenu,.main-grid[data-visible-panes="1"] .activity-submenu{left:calc(100% + 6px);top:-5px}}
+.activity-tab:last-child>.activity-menu{left:auto;right:0}
+
+.activity-chevron{display:block;width:12px;height:12px;flex:none}
+.activity-chevron.sideways{transform:rotate(-90deg)}
+[aria-expanded="true"]>.activity-chevron:not(.sideways){transform:rotate(180deg)}
+
+
+.workspace-text{margin:0;padding:20px;width:100%;min-height:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--sapi-ink);font:13px/1.6 ui-monospace,monospace;user-select:text}
+
+/* Compact Updates journal; JSON shares the task row disclosure behavior. */
+.event-log { overflow-x:auto; }
+.event-columns { display:grid; grid-template-columns:152px 70px minmax(130px,1fr) 112px 72px 12px; gap:6px; align-items:center; min-width:568px; font-size:11px; line-height:1.5; }
+.event-head { padding:6px 0 10px; color:var(--muted); border-bottom:1px solid var(--line); }
+.event-row { min-width:568px; }
+.event-row summary { padding:10px 0; list-style:none; cursor:pointer; }
+.event-row summary::-webkit-details-marker { display:none; }
+.event-row summary:hover { background:var(--sapi-purple-tint); }
+.event-columns > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.event-row time { font-family:ui-monospace,monospace; font-variant-numeric:tabular-nums; color:var(--muted); }
+.event-row .event-chevron { display:flex; justify-content:center; }
+.event-row[open] .event-chevron { transform:rotate(90deg); }
+.event-row pre { margin:0 0 12px; padding:12px; background:var(--sapi-purple-tint); border-radius:6px; font:12px/1.5 ui-monospace,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }

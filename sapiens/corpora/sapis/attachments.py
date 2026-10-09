@@ -16,7 +16,10 @@ MAX_FILE = 10 * 1024 * 1024
 
 def create_attachment(service, agid, data):
     with service._lock:
-        service._agent(agid)
+        if agid.startswith('group_'):
+            service.groups.get(agid, active=True)
+        else:
+            service._agent(agid)
         kind = data.get("kind")
         if kind not in {"image", "document", "link", "filepath"}:
             raise APIError(400, "Choose image, document, link, or filepath")
