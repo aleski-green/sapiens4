@@ -10,7 +10,6 @@ const lightBrandIcon = favicon.href;
 function syncBrandIcon() {
   const dark = document.documentElement.dataset.theme === 'dark';
   favicon.href = dark ? lightBrandIcon.replace(encodeURIComponent('fill="#fff"'), encodeURIComponent('fill="#171717"')) : lightBrandIcon;
-  document.querySelector('.brand-icon').src = favicon.href;
 }
 syncBrandIcon();
 new MutationObserver(syncBrandIcon).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});

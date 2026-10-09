@@ -8,7 +8,7 @@ Chat uses your authenticated Codex CLI 0.156.1 or newer. The desktop app's insta
 
 User data is stored at `%LOCALAPPDATA%\Sapiens4`, separately from the application files. The native window supports Chat, Notes, attachments, tasks and per-Sapi browser tabs, bookmarks and zoom. Browser websites have separate profiles and no access to the desktop app bridge. Closing the app stops its local server and cancels active model processes; saved conversations remain recoverable.
 
-The Windows executable, taskbar and window use the workspace logo. The app header shows the logo without repeating the window title. The header logo, browser favicon and running window icon use a dark background in dark mode and a light background in light mode. The native title bar follows the same theme, including when the workspace is hidden. Windows 11 also matches the header's background and text colors. Browser blank pages and plain-text documents follow the app theme; websites receive the same light/dark preference and retain their own styles.
+The Windows executable, taskbar and window use the workspace logo. The native title bar shows only the icon; the Sapiens4 name appears once in the app header. The browser favicon and running window icon use a dark background in dark mode and a light background in light mode. The native title bar follows the same theme, including when the workspace is hidden. Windows 11 also matches the header's background and text colors. Browser blank pages and plain-text documents follow the app theme; websites receive the same light/dark preference and retain their own styles.
 
 The first build is unsigned. No automatic updater or installer is included: replace the extracted application directory to update it, keeping the data directory intact.
 
