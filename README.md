@@ -48,6 +48,8 @@ See [terminal commands and output formats](documentation/specs/CLI.md).
 
 [Setup, features, API and tests](documentation/reference.md)
 
+[Proposed iPhone remote control for CORPORA](documentation/specs/CorporaRemote.md)
+
 [Contributing and code guidelines](CONTRIBUTING.md)
 
 
