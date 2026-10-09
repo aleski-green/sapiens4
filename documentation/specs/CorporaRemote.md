@@ -58,6 +58,33 @@ relay routes opaque encrypted frames; it cannot grant admin access or decrypt
 application payloads. A relay outage affects availability, not local CORPORA.
 Remote access is disabled by default and starts only after desktop opt-in.
 
+## Required self-hosting and server choice
+
+Users must be able to deploy both the relay server and the Sapiens Remote web app
+on infrastructure they control. A project-operated service or account must not be
+required for pairing or remote control. Sapiens4 must let the admin configure their
+own HTTPS remote-app origin and secure relay endpoint before generating the QR.
+The phone opens that remote-app origin and pairs with the matching configured
+relay; the QR binds this configuration to the desktop invitation. Configuration
+must be explicit and validated, not an arbitrary redirect supplied by a scan.
+
+Provide reproducible deployment instructions and configuration for the relay and
+web app, including domain/TLS setup, reverse-proxy support, upgrades, access
+restrictions, and operational limits. Users operate and secure their own server:
+they manage certificates, patching, firewall/access policy, and availability.
+The software must still enforce authenticated pairing, encrypted transport,
+authorization, replay protection, and safe defaults independently of those
+operational responsibilities. End-to-end encryption is required on self-hosted
+installations too; do not replace it with reliance on the reverse proxy's TLS.
+
+The relay only routes ciphertext. The desktop remains the data and execution
+server, and the remote web app remains a trusted client because its JavaScript
+can use the phone's keys. Hosting both components themselves gives users control
+over the relay operator and frontend deployment trust. Document these distinct
+roles in setup instructions. Changing the trusted remote-app origin or relay
+configuration requires explicit re-pairing; never silently move credentials to a
+new origin or migrate existing device trust to another server.
+
 ## Pairing and encryption
 
 The QR establishes trust; it is not a permanent master key used for every message.
@@ -148,7 +175,7 @@ when the relay or phone is unreachable.
 
 ## Delivery and acceptance
 
-1. **Pairing foundation:** choose and review the protocol/library and relay model;
+1. **Pairing foundation:** choose and review the protocol/library and self-hosted relay model;
    implement QR lifecycle, desktop approval, device storage, and revocation.
 2. **Transport integration:** implement the allowlisted host adapter, encrypted
    state/command exchange, authorization, limits, replay rejection, and reconnect.
@@ -157,6 +184,10 @@ when the relay or phone is unreachable.
 
 Required validation before enabling the feature:
 
+- Deploy the relay and web app on an independently operated server using the
+  published instructions, with no project-operated service/account dependency.
+- Configure that server in desktop, pair from its remote-app origin, and verify
+  that changing the configured origin/relay requires explicit re-pairing.
 - Pair on a real iPhone over both the same Wi-Fi and a separate cellular network.
 - Reject expired/reused QR codes, identity substitution, modified ciphertext,
   replayed frames, unauthorized operations, and revoked devices.
@@ -171,7 +202,7 @@ Required validation before enabling the feature:
   continue to pass; remote access stays off on installations that never opt in.
 
 Open decisions for the implementation PR: protocol/library and cipher suite;
-relay hosting and deployment trust; exact initial operation allowlist; desktop
+self-hosted deployment packaging and hardening defaults; exact initial operation allowlist; desktop
 credential store; and whether remembered admin access requires user verification.
 This proposal intentionally leaves these review gates explicit instead of
 claiming a complete cryptographic specification.
