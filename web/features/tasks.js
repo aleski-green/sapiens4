@@ -34,6 +34,9 @@ function taskRow(task, sapi) {
   const arrow = taskElement('span', 'task-chevron', '›'); arrow.setAttribute('aria-hidden', 'true');
   summary.append(mark, copy);
   if(task.editRoutine){
+    const run=taskElement('button','task-copy','Run');run.type='button';run.dataset.runRoutine=task.editRoutine;
+    run.setAttribute('aria-label','Run routine');
+    run.addEventListener('click',e=>e.preventDefault());summary.append(run);
     const edit=taskElement('button','task-copy','Edit');edit.type='button';edit.dataset.editRoutine=task.editRoutine;
     edit.addEventListener('click',e=>e.preventDefault());summary.append(edit);
     const action=taskElement('button','task-copy task-routine-action');action.type='button';
