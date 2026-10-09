@@ -3,14 +3,25 @@ using System.Text.Json;
 
 namespace SapiensDesktop;
 
-internal sealed class WindowTheme
+internal sealed class WindowTheme : IDisposable
 {
     (bool Dark, int Background, int Foreground)? applied;
+    internal Icon LightIcon { get; } = LoadIcon("Light");
+    readonly Icon darkIcon = LoadIcon("Dark");
+
+    static Icon LoadIcon(string theme)
+    {
+        using var stream = typeof(WindowTheme).Assembly.GetManifestResourceStream($"Sapiens4.AppIcon.{theme}")!;
+        using var icon = new Icon(stream);
+        return (Icon)icon.Clone();
+    }
+
+    public void Dispose() { LightIcon.Dispose(); darkIcon.Dispose(); }
 
     [DllImport("dwmapi.dll")]
     static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
 
-    internal void Sync(IntPtr window, JsonElement message)
+    internal void Sync(Form form, JsonElement message)
     {
         // File-picker messages have no theme. Only the trusted shell supplies this palette.
         if (!message.TryGetProperty("dark", out var mode) || mode.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return;
@@ -25,6 +36,8 @@ internal sealed class WindowTheme
         int background = Palette("captionBackground", dark ? Color.FromArgb(23, 23, 23) : Color.FromArgb(246, 246, 246));
         int foreground = Palette("foreground", dark ? Color.FromArgb(236, 236, 236) : Color.FromArgb(32, 32, 32));
         if (applied == (dark, background, foreground)) return;
+        form.Icon = dark ? darkIcon : LightIcon;
+        IntPtr window = form.Handle;
         int enabled = dark ? 1 : 0;
         // Windows 10 used attribute 19 before adopting DWMWA_USE_IMMERSIVE_DARK_MODE (20).
         if (DwmSetWindowAttribute(window, 20, ref enabled, sizeof(int)) < 0)

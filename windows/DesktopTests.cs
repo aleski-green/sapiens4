@@ -14,7 +14,10 @@ internal static class DesktopTests
         int result = DwmGetWindowAttribute(window, 20, out int enabled, sizeof(int));
         if (result < 0) result = DwmGetWindowAttribute(window, 19, out enabled, sizeof(int));
         // Caption/text color attributes are write-only; inspect the native mode here.
-        return result >= 0 && enabled == (dark ? 1 : 0);
+        if (result < 0 || enabled != (dark ? 1 : 0)) return false;
+        using var icon = shell.FindForm()!.Icon?.ToBitmap();
+        return icon != null && icon.GetPixel(icon.Width / 2, icon.Height / 16).ToArgb() ==
+            (dark ? Color.FromArgb(23, 23, 23) : Color.White).ToArgb();
     }
 
     internal static async Task CheckGroupWorkspace(Browser browser, WebView2 shell, Host host, string main)

@@ -30,13 +30,13 @@ internal sealed class MainWindow : Form
     internal MainWindow(string[] args)
     {
         Text = "Sapiens4"; Width = 1440; Height = 960; MinimumSize = new Size(860, 600); StartPosition = FormStartPosition.CenterScreen;
-        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+        Icon = windowTheme.LightIcon;
         string? Option(string name) { int index = Array.IndexOf(args, name); return index >= 0 && index + 1 < args.Length ? args[index + 1] : null; }
         host = new Host(Option("--data-dir"), Option("--runtime-dir"));
         smokeReport = Option("--smoke-report");
         Controls.Add(shell); Controls.Add(status);
         Shown += async (_, _) => await Start();
-        FormClosed += (_, _) => { closing = true; browser?.Dispose(); shell.Dispose(); host.Dispose(); };
+        FormClosed += (_, _) => { closing = true; browser?.Dispose(); shell.Dispose(); host.Dispose(); windowTheme.Dispose(); };
     }
     async Task Start()
     {
@@ -59,7 +59,7 @@ internal sealed class MainWindow : Form
                 if (!Navigation.Trusted(e.Source, host.Origin) || !Navigation.Trusted(core.Source, host.Origin)) return;
                 try {
                     using var document = JsonDocument.Parse(e.WebMessageAsJson);
-                    windowTheme.Sync(Handle, document.RootElement);
+                    windowTheme.Sync(this, document.RootElement);
                     await browser.Sync(document.RootElement.Clone());
                 }
                 catch (Exception error) { if (!closing) Text = "Sapiens4 — " + error.Message; }
