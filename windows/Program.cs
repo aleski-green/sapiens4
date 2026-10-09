@@ -24,6 +24,7 @@ internal sealed class MainWindow : Form
     readonly WebView2 shell = new() { Dock = DockStyle.Fill };
     readonly Label status = new() { Text = "Starting Sapiens4…", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter };
     Browser? browser;
+    readonly WindowTheme windowTheme = new();
     bool closing;
     readonly string? smokeReport;
     internal MainWindow(string[] args)
@@ -56,7 +57,11 @@ internal sealed class MainWindow : Form
             core.NewWindowRequested += (_, e) => { e.Handled = true; if (Navigation.Guest(e.Uri, host.Origin)) _ = browser.Open(e.Uri); };
             core.WebMessageReceived += async (_, e) => {
                 if (!Navigation.Trusted(e.Source, host.Origin) || !Navigation.Trusted(core.Source, host.Origin)) return;
-                try { await browser.Sync(JsonDocument.Parse(e.WebMessageAsJson).RootElement.Clone()); }
+                try {
+                    using var document = JsonDocument.Parse(e.WebMessageAsJson);
+                    windowTheme.Sync(Handle, document.RootElement);
+                    await browser.Sync(document.RootElement.Clone());
+                }
                 catch (Exception error) { if (!closing) Text = "Sapiens4 — " + error.Message; }
             };
             core.NavigationCompleted += async (_, e) => {

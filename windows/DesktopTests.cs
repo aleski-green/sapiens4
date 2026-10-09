@@ -5,6 +5,18 @@ namespace SapiensDesktop;
 
 internal static class DesktopTests
 {
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int size);
+
+    static bool TitleBarMatches(WebView2 shell, bool dark)
+    {
+        IntPtr window = shell.FindForm()!.Handle;
+        int result = DwmGetWindowAttribute(window, 20, out int enabled, sizeof(int));
+        if (result < 0) result = DwmGetWindowAttribute(window, 19, out enabled, sizeof(int));
+        // Caption/text color attributes are write-only; inspect the native mode here.
+        return result >= 0 && enabled == (dark ? 1 : 0);
+    }
+
     internal static async Task CheckGroupWorkspace(Browser browser, WebView2 shell, Host host, string main)
     {
         using var client = new HttpClient { BaseAddress = host.Origin };
@@ -64,9 +76,10 @@ internal static class DesktopTests
                 string color = url == original ? "rgba(0, 0, 0, 0)" : html ? "rgb(18, 52, 86)" : dark ? "rgb(33, 33, 33)" : "rgb(255, 255, 255)";
                 string ink = url == original ? "rgb(0, 0, 0)" : html ? "rgb(171, 205, 239)" : dark ? "rgb(236, 236, 236)" : "rgb(32, 32, 32)";
                 await WaitFor(async () =>
+                    TitleBarMatches(shell, dark) &&
                     view.DefaultBackgroundColor.ToArgb() == (dark && !html ? Color.FromArgb(33, 33, 33) : Color.White).ToArgb() &&
                     await view.CoreWebView2.ExecuteScriptAsync($"matchMedia('(prefers-color-scheme: dark)').matches==={dark.ToString().ToLowerInvariant()} && getComputedStyle(document.body).backgroundColor==={JsonSerializer.Serialize(color)} && getComputedStyle(document.body).color==={JsonSerializer.Serialize(ink)}") == "true",
-                    $"Browser theme mismatch: {url}, {mode}");
+                    $"Browser or native title bar theme mismatch: {url}, {mode}");
                 if (view.CoreWebView2.Settings.IsWebMessageEnabled || view.CoreWebView2.Settings.AreHostObjectsAllowed) throw new Exception("Guest bridge isolation changed");
                 checks++;
             }
