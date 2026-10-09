@@ -17,9 +17,12 @@ class Store:
         with self.connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4, 5, 6):
+            if version not in (0, 1, 2, 3, 4, 5, 6, 7):
                 raise RuntimeError(f"Unsupported CORPORA schema: {version}")
             db.executescript("""
+                CREATE TABLE IF NOT EXISTS scheduled_routines (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS system_pulse (
                     id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL
                 );
@@ -70,7 +73,7 @@ class Store:
                     value['panel'] = 'chat'
                 value.pop('work_views', None)
                 db.execute('UPDATE preferences SET value=? WHERE id=1', (json.dumps(value),))
-            db.execute('PRAGMA user_version=6')
+            db.execute('PRAGMA user_version=7')
 
     @contextmanager
     def connect(self):
@@ -139,7 +142,7 @@ class Store:
     def project(self, agent, snapshot, outputs):
         with self.connect() as db:
             for turn in snapshot["turns"]:
-                details = {k: turn[k] for k in ('batch_id', 'batch_members', 'agency_kind', 'slot', 'pulseId', 'output_at', 'output_order') if k in turn}
+                details = {k: turn[k] for k in ('origin', 'batch_id', 'batch_members', 'agency_kind', 'slot', 'pulseId', 'output_at', 'output_order') if k in turn}
                 db.execute('INSERT INTO turn_details VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value',
                            (turn['id'], json.dumps(details)))
                 db.execute("""INSERT INTO turns VALUES (?,?,?,?,?,?,?,?,?)
@@ -203,3 +206,17 @@ class Store:
                     if len(result) == limit:
                         break
             return result
+
+    def routines(self):
+        with self.connect() as db:
+            return [json.loads(row[0]) for row in db.execute('SELECT value FROM scheduled_routines ORDER BY sequence')]
+
+    def save_routine(self, value):
+        value = dict(value)
+        with self.connect() as db:
+            if 'id' not in value:
+                sequence = db.execute("INSERT INTO scheduled_routines(value) VALUES ('{}')").lastrowid
+                value['id'] = f'routine_sch_{sequence:05d}'
+            db.execute('UPDATE scheduled_routines SET value=? WHERE sequence=?',
+                       (json.dumps(value, ensure_ascii=False), int(value['id'].rsplit('_', 1)[1])))
+        return value

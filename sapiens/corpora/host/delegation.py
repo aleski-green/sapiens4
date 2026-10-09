@@ -118,9 +118,12 @@ class Delegation:
         if work is None:
             call = dict(callId=turn['id'], addressedTo=agid, causedBy=None,
                         node='Assessing', state='Running', request=turn['input'], attempt=1)
-            work = dict(workloadId=turn['id'], originalIntent=turn['input'], tracked=False,
-                        task=dict(taskId='task_' + turn['id'], taskType='work', specification=None),
-                        origin=dict(agent=agid, call=turn['id']), calls=[call], decisions=[], outcome=None)
+            routine = (turn.get('origin') or {}).get('routine')
+            if routine:
+                call['node'] = 'ReadyToWork'
+            work = dict(workloadId=turn['id'], originalIntent=turn['input'], tracked=bool(routine),
+                        task=dict(taskId='task_' + turn['id'], taskType='automated' if routine else 'work', specification=None),
+                        origin=dict(agent=agid, call=turn['id'], **(turn.get('origin') or {})), calls=[call], decisions=[], outcome=None)
         if call.get('output') is None:
             call['state'] = 'Running'
             call.pop('error', None)
@@ -146,6 +149,8 @@ class Delegation:
                 conversation=json.loads(prepared['context']),
                 observation=extra)
             wiki = prompt('notes-wiki', notes_example=prepared['notes_example'])
+            if work['origin'].get('routine'):
+                instruction += '\n\n' + prompt('scheduled-execution')
             # Budget the complete decision envelope, including routing and wiki
             # guidance, before retaining optional conversation history.
             while True:
@@ -259,17 +264,20 @@ class Delegation:
         with self.service._lock:
             for work in self.service.store.workloads():
                 for call in work['calls']:
-                    if call['state'] != 'Queued':
+                    if call['state'] != 'Queued' or not call['causedBy']:
                         continue
                     agent = self.service._agent(call['addressedTo'])
                     origin = dict(workloadId=work['workloadId'], taskId=work['task']['taskId'],
                                   caller=next(c['addressedTo'] for c in work['calls'] if c['callId'] == call['causedBy']),
                                   parentCall=call['causedBy'])
+                    if work['origin'].get('routine'):
+                        origin.update({k: v for k, v in work['origin'].items() if k not in {'agent', 'call'}})
                     # A permanent SQL projection and active JSON both count as
                     # delivery receipts, including when old turns were archived.
                     saved = self.service.store.projected_turn(call['callId'])
                     if saved is None:
-                        agent.runner.submit('chat', call['request'], turn_id=call['callId'], origin=origin)
+                        agent.runner.submit('chat', call['request'], turn_id=call['callId'], origin=origin,
+                                            batchable=bool(origin.get('routine')))
                         self.service._sync(agent)
                     self.service._queue.put(agent.agid)
 
@@ -359,7 +367,7 @@ class Delegation:
                         previous = work['task']['specification']
                         if previous and not set(previous['completionCriteria']).issubset(spec['completionCriteria']):
                             raise ValueError('A handoff cannot remove accepted completion criteria')
-                        work['task'].update(taskType=task_type, specification=spec)
+                        work['task'].update(taskType='automated' if work['origin'].get('routine') else task_type, specification=spec)
                         following = 'Execution'
                     elif node == 'Delegation':
                         self.service.orchestration.control(agid, dict(op='delegate', decision=record['decisionId']))
@@ -438,7 +446,7 @@ class Delegation:
         for item in self.tasks(agid)['tasks']:
             body = item['task']['specification'] or dict(objective=item['originalIntent'])
             rows.append(dict(id=item['workloadId'], title=body['objective'],
-                state=item['execution']['state'], owner=item['execution']['owner'],
+                taskType=item['task']['taskType'], state=item['execution']['state'], owner=item['execution']['owner'],
                 sender=item['calls'][0]['addressedTo'], body=yaml_text(body) + '\n',
                 result=(item['outcome'] or {}).get('reply'),
                 error=item['calls'][-1].get('error')))
@@ -463,7 +471,7 @@ class Delegation:
             if not work['tracked']:
                 continue
             call = work['calls'][-1]
-            result.append(dict(id=work['workloadId'], taskId=work['task']['taskId'], origin=work['origin'],
+            result.append(dict(taskType=work['task']['taskType'], id=work['workloadId'], taskId=work['task']['taskId'], origin=work['origin'],
                 callId=call['callId'], owner=call['addressedTo'], state=call['state'],
                 participants=list(dict.fromkeys(c['addressedTo'] for c in work['calls'])),
                 output=call.get('output'), error=call.get('error'),

@@ -64,6 +64,9 @@ class Orchestration:
             op = data.get("op")
             fields = {"batch": {"operations"}, "status": {'target'},
                       "delegate": {'decision'},
+                      "routines": set(), "routine_create": {"minutes", "prompt"},
+                      "routine_update": {"id", "minutes", "prompt"},
+                      "routine_pause": {"id"}, "routine_resume": {"id"},
                       "group_create": {'name', 'description', 'lead', 'members'},
                       "group_get": {'group'},
                       "group_update": {'group', 'revision', 'name', 'description', 'lead', 'members', 'archived'},
@@ -106,6 +109,15 @@ class Orchestration:
                 workspace_owner = self.service.groups.workspace_owner(group['id'])
             if op.startswith("group_"):
                 return self.service.groups.control(agid, data)
+            if op == 'routines':
+                return {'routines': [r for r in self.service.store.routines() if r['owner'] == agid]}
+            if op in {'routine_pause', 'routine_resume'}:
+                routine = self.service.routines.set_paused(agid, text_field(data, 'id', 80), op == 'routine_pause')
+                return {'self_id': agid, 'saved': True, 'routine': routine}
+            if op in {'routine_create', 'routine_update'}:
+                routine = self.service.routines.save(agid, data.get('minutes'), data.get('prompt'),
+                    routine_id=text_field(data, 'id', 80) if op == 'routine_update' else None, source_call=self.service._active_turn(agid))
+                return {'self_id': agid, 'saved': True, 'routine': routine}
             if op == 'delegate':
                 return self.service.delegation.apply(agid, data.get('decision'))
             if op == 'computer_acquire':

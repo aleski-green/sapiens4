@@ -9,7 +9,7 @@ const ctx=vm.createContext({document:window.document,Date,console,esc,$:s=>windo
  selected:()=>({id:'a',name:'Alpha',role:'Tester'}),avatar:()=>'',isMainSapi:()=>false,groupLabels:()=>'',renderActivityNavigation:()=>{},
  online:true,submitting:new Set(),uploading:0,blocksChat:t=>['running','queued'].includes(t.status)});
 const groups=fs.readFileSync('web/features/groups.js','utf8');
-vm.runInContext(groups.slice(groups.indexOf('function renderUpdates('),groups.indexOf('function renderPersonalWork(')),ctx);
+vm.runInContext(groups.slice(groups.indexOf('function renderUpdates('),groups.indexOf('function renderWork(')),ctx);
 const host=window.document.querySelector('#updates');
 ctx.renderUpdates(host);
 assert.equal(host.querySelectorAll('article').length,2);

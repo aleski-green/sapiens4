@@ -70,7 +70,7 @@ function renderSidebar(){
   if(!group)state.groupView=null;
   const hasGroups=state.agents.some(a=>a.kind==='group'&&!a.archived);
   if(!hasGroups&&state.scope==='groups')state.scope='all';
-  $('#agent-count').textContent=String(group?group.members.length:state.agents.filter(a=>!a.retired&&!a.archived).length).padStart(2,'0');
+  $('#agent-count').textContent=String(state.agents.filter(a=>a.kind!=='group'&&!a.retired&&!a.archived).length).padStart(2,'0');
   $$('[data-scope]').forEach(b=>{
     const active=b.dataset.scope===state.scope;
     b.classList.toggle('active',active);b.classList.toggle('group-open',active&&!!group);
@@ -115,7 +115,7 @@ document.addEventListener('click',e=>{
     return;
   }
   if(d.scope&&!b.disabled){leaveGroup(d.scope);return;}
-  if(d.panel && !b.disabled && ['chat','tasks','notes','work','updates'].includes(d.panel)){state.panel=d.panel;if(d.panel==='work')workView='tasks';if(d.panel==='chat')chatView='conversation';if(d.panel==='updates')updatesView='pulses';closeActivityMenus();renderConversation();save();return;}
+  if(d.panel && !b.disabled && ['chat','tasks','notes','work','updates'].includes(d.panel)){state.panel=d.panel;if(d.panel==='work')selectDefaultWorkView();if(d.panel==='chat')chatView='conversation';if(d.panel==='updates')updatesView='pulses';closeActivityMenus();renderConversation();save();return;}
   if(d.tab){browserAction('focus',{id:d.tab});return;}
   if(d.closeTab){browserAction('close',{id:d.closeTab});return;}
 

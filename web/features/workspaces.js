@@ -56,8 +56,34 @@ function renderWorkspace() {
   $('#browser-zoom').textContent=`${Math.round((t?.zoom || 1)*100)}%`;
   $('#browser-status').textContent=t?.error || (t?.loading?'Loading…':'');
   $$('[data-browser-action]').forEach(b=>b.disabled=!t || (b.dataset.browserAction==='back'&&!t.can_back) || (b.dataset.browserAction==='forward'&&!t.can_forward));
-  $('#workspace-content').textContent=window.webkit?.messageHandlers?.browser ? (t?'':'Open a URL or file to get started.') : 'Open Sapiens4 desktop to use the tabbed browser.';
+  if(window.webkit?.messageHandlers?.browser)$('#workspace-content').textContent=t?'':'Open a URL or file to get started.';
+  else refreshWorkspacePreview();
   syncNativeBrowser();
+}
+let workspacePreview = null;
+async function refreshWorkspacePreview() {
+  if(window.webkit?.messageHandlers?.browser)return;
+  const host=$('#workspace-content'),tab=state.tabs.find(t=>t.id===state.activeTab);
+  const key=JSON.stringify([state.selected,tab?.id,tab?.path,tab?.command?.seq]);
+  if(workspacePreview?.key!==key){
+    workspacePreview={key,checked:0,pending:false};
+    host.replaceChildren();
+    if(!tab?.path){host.textContent=tab&&tab.url!=='about:blank'?'Open Sapiens4 desktop to browse this web page.':'Open a URL or file to get started.';return;}
+    const pre=document.createElement('pre');pre.className='workspace-text';
+    pre.setAttribute('aria-label',tab.title);pre.textContent='Loading…';host.append(pre);
+  }
+  if(!tab?.path||!state.panes.workspace)return;
+  const pre=host.querySelector('.workspace-text'),current=workspacePreview;
+  pre.style.fontSize=`${13*(tab.zoom||1)}px`;
+  $('#browser-status').textContent='';
+  if(current.pending||Date.now()-current.checked<2000)return;
+  current.pending=true;current.checked=Date.now();
+  try{
+    const type=state.selected.startsWith('group_')?'groups':'agents';
+    const data=await api(`/api/${type}/${encodeURIComponent(state.selected)}/browser/${encodeURIComponent(tab.id)}/content`);
+    if(workspacePreview===current&&pre.textContent!==data.content)pre.textContent=data.content;
+  }catch(error){if(workspacePreview===current)pre.textContent=error.message;}
+  finally{current.pending=false;}
 }
 function syncNativeBrowser() {
   const bridge=window.webkit?.messageHandlers?.browser;

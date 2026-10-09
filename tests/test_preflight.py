@@ -94,14 +94,16 @@ class VersionTest(unittest.TestCase):
     def test_runtime_and_installer_choose_newest_installed_cli(self):
         versions = {'/path/codex': (0, 145, 0),
                     '/Applications/Codex.app/Contents/Resources/codex': (0, 158, 0),
-                    '/Applications/ChatGPT.app/Contents/Resources/codex': (0, 156, 1)}
+                    '/Applications/ChatGPT.app/Contents/Resources/codex': (0, 156, 1),
+                    '/Applications/Codex.app/Contents/Resources/codex-cli/bin/codex': (0, 157, 0),
+                    '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex': (0, 162, 0)}
         with patch.dict(os.environ, {}, clear=True), \
                 patch.object(codex_config.sys, 'platform', 'darwin'), \
                 patch.object(codex_config.shutil, 'which', return_value='/path/codex'), \
                 patch.object(codex_config.os, 'access', return_value=True), \
                 patch.object(codex_config, 'cli_version', side_effect=versions.__getitem__):
             self.assertEqual(codex_config.codex_binary(),
-                             '/Applications/Codex.app/Contents/Resources/codex')
+                             '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex')
 
     def test_invalid_explicit_override_does_not_silently_select_another_cli(self):
         with patch.dict(os.environ, {'SAPIENS_CODEX_BINARY': '/missing/codex'}), \

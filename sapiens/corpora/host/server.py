@@ -77,6 +77,10 @@ class Handler(BaseHTTPRequestHandler):
         parts = path.strip("/").split("/")
         service = self.server.service
         if self.command == "GET":
+            if len(parts) == 6 and parts[0] == 'api' and parts[1] in {'agents', 'groups'} and parts[3] == 'browser' and parts[5] == 'content':
+                with service._lock:
+                    owner = service.groups.workspace_owner(parts[2]) if parts[1] == 'groups' else service._agent(parts[2])
+                    return self._send(200, service.workspace.text(owner, parts[4]))
             if path == '/api/decision-prompts':
                 return self._send(200, {'prompts': service.delegation.templates()})
             if len(parts) == 4 and parts[:2] == ['api', 'agents'] and parts[3] == 'tasks':

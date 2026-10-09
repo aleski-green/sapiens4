@@ -16,6 +16,7 @@ from sapiens.corpora.sapis.attachments import attachment_prompt, resolve_attachm
 from sapiens.corpora.sapis.registry import Registry
 from sapiens.corpora.sapis.retirement import Lifecycle
 from sapiens.corpora.host.agency import ChatAgencies
+from sapiens.corpora.host.routines import ScheduledRoutines
 from sapiens.corpora.host.pulsation import SystemPulse
 from sapiens.corpora.host.commands import Orchestration
 from sapiens.corpora.host.delegation import Delegation
@@ -95,6 +96,7 @@ class Service:
         self.delegation = Delegation(self)
         self.groups = Groups(self)
         self.agencies = ChatAgencies(self)
+        self.routines = ScheduledRoutines(self)
         self.pulse = SystemPulse(self.store, self._on_pulse, clock=pulse_clock)
         if not self.store.agents():
             self.create_agent({"name": "SapiTheMain", "role": "Head of Corpora"})
@@ -271,6 +273,9 @@ class Service:
             agent = self._agent(agid)
             # A failed attempt remains reviewable; a new message is not a retry.
             self.lifecycle.require_active(agent)
+            routine = self.routines.command(agid, text, attachments)
+            if routine:
+                return self.routines.acknowledge(agent, text, routine)
             if data.get('workload'):
                 turn = self.delegation.clarify(agid, data['workload'], message)
             else:
@@ -335,6 +340,7 @@ class Service:
             self.groups.chat.reconcile()
             snapshot = self.store.snapshot(agid)
             snapshot["groups"] = self.groups.snapshot()
+            snapshot["routines"] = self.store.routines()
             snapshot["creation_template"] = prompt("creation-request").strip()
             group_turns = {r["id"]: g["id"] for g in snapshot["groups"] for r in g["requests"]}
             for turn in snapshot["turns"]:
@@ -368,7 +374,7 @@ class Service:
                                                    'parentCall': call['causedBy']}
             for turn in snapshot['turns']:
                 if turn['id'] in origins:
-                    turn['origin'] = origins[turn['id']]
+                    turn['origin'] = {**(turn.get('origin') or {}), **origins[turn['id']]}
             snapshot["attachment_drafts"] = {
                 agid: [a for a in self.store.attachments(agid) if a["id"] in ids]
                 for agid, ids in snapshot["preferences"].get("attachment_drafts", {}).items()}
@@ -459,6 +465,7 @@ class Service:
         with self._lock:
             if not self.pulse.running or self._stopping.is_set():
                 return
+            self.routines.dispatch(tick)
             self.agencies.dispatch(tick)
             if tick['frequency'] == 'bpm60' and tick['num'] % self.agencies.policies['chatInput'].every == 0:
                 self.delegation.dispatch_pending()

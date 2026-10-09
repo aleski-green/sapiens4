@@ -57,7 +57,7 @@ function renderGroupPanel(host) {
   host.classList.remove('notes-view');
   $('#composer-area').hidden=state.panel!=='chat'||group.archived;
   if(state.panel==='updates'){renderUpdates(host,group);return;}
-  if(state.panel!=='chat') {renderGroupWork(host,group);return;}
+  if(state.panel!=='chat') {renderWork(host);return;}
   host.innerHTML=`${group.archived?'<p class="group-banner">Archived · history is preserved. Restore this Group from settings to continue.</p>':''}<div class="day-divider">GROUP CONVERSATION</div>`;
   for(const message of group.messages) {
     const author=message.author==='admin'?null:agent(message.author);
@@ -70,9 +70,46 @@ function renderGroupPanel(host) {
   }
   renderAttachment();
 }
-let groupTaskFilter='active', workView='tasks', chatView='conversation', updatesView='pulses';
+let scheduledPeriod='upcoming', groupTaskFilter='active', workView='tasks', chatView='conversation', updatesView='pulses';
+function selectDefaultWorkView() {
+  const group=selected().kind==='group';
+  const states=group?[]:(live.workloads||[]).filter(w=>w.participants.includes(state.selected)).map(w=>w.state);
+  const groups=group?[selected()]:state.agents.filter(a=>a.kind==='group');
+  for(const g of groups)for(const task of g.tasks||[]) {
+    if(!task.deleted&&(group||task.assignee===state.selected))states.push(task.state==='done'?'Completed':'Queued');
+  }
+  taskPeriod='upcoming';groupTaskFilter='active';scheduledPeriod='upcoming';
+  if(states.some(status=>!pastTaskStates.has(status)))workView='tasks';
+  else if((live.routines||[]).some(r=>r.owner===state.selected&&!r.paused))workView='routine-scheduled';
+  else if(states.length){workView='tasks';taskPeriod='past';groupTaskFilter='done';}
+  else workView='memo';
+}
 const openGroupTasks=new Set();
-const activityLabels={tasks:'Tasks',automation:'Automation',workflows:'Workflows',memo:'Memo',conversation:'Conversation',pins:'Pins',threads:'Threads',comments:'Comments',pulses:'Pulses'};
+const activityLabels={conversation:'Conversation',pins:'Pins',threads:'Threads',comments:'Comments',pulses:'Pulses'};
+// Stable view IDs distinguish Composer workflows from goal-specific composers.
+const workNavigation=[
+  {id:'memo',label:'Memo'},
+  {id:'tasks',label:'Tasks',children:[
+    {id:'tasks-call',label:'Call'},{id:'tasks-backlog',label:'Backlog'},{id:'tasks-automated',label:'Automated'}]},
+  {id:'automation',label:'Automation',children:[
+    {id:'routine',label:'Routines',children:[
+      {id:'routine-scheduled',label:'Scheduled'},{id:'routine-callback',label:'Callbacks'},{id:'routine-job',label:'Jobs'}]},
+    {id:'workflows',label:'Workflows',children:[
+      {id:'workflow-agentic',label:'Agentic'},{id:'workflow-pipeline',label:'Pipelines'},{id:'workflow-composer',label:'Composers'}]},
+    {id:'composer',label:'Composers',children:[
+      {id:'composer-workflow',label:'Workflow'},{id:'composer-routine',label:'Routine'},{id:'composer-call',label:'Call'}]}
+  ]}
+];
+// Index labels and paths once; rendering and selection share the same data.
+const workPaths={};
+function indexWorkNavigation(nodes,path=[]) {
+  for(const node of nodes) {
+    activityLabels[node.id]=node.label;
+    workPaths[node.id]=[...path,node];
+    if(node.children)indexWorkNavigation(node.children,workPaths[node.id]);
+  }
+}
+indexWorkNavigation(workNavigation);
 const activityChevron = sideways => `<svg class="activity-chevron${sideways?' sideways':''}" viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true" focusable="false"><path d="m4.5 6.25 3.5 3.5 3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 function closeActivityMenus() {
   document.querySelectorAll('.activity-menu').forEach(menu=>menu.hidden=true);
@@ -82,8 +119,13 @@ function renderActivityNavigation() {
   const nav=$('.conversation-tabs'), group=selected().kind==='group';
   const view=state.panel==='work'?workView:state.panel==='updates'?updatesView:chatView;
   const item=(name,panel)=>`<button data-activity-view="${name}" data-activity-panel="${panel}" class="${view===name?'selected':''}" aria-pressed="${view===name}">${activityLabels[name]}</button>`;
+  const workMenu=workNavigation.map(node=>{
+    if(!node.children)return item(node.id,'work');
+    const id=`activity-${node.id}-menu`;
+    return `<div class="activity-submenu-row">${item(node.id,'work')}<button data-activity-menu="${id}" aria-label="${node.label} menu" aria-expanded="false" aria-controls="${id}">${activityChevron(true)}</button><div class="activity-menu activity-submenu" id="${id}" hidden>${node.children.map(child=>item(child.id,'work')).join('')}</div></div>`;
+  }).join('');
   const menus={chat:['pins','threads','comments'].map(v=>item(v,'chat')).join('')+'<hr><button data-activity-feedback>＋ Add feedback</button>',
-    work:item('tasks','work')+`<div class="activity-submenu-row">${item('automation','work')}<button data-activity-menu="activity-automation-menu" aria-label="Automation menu" aria-expanded="false" aria-controls="activity-automation-menu">${activityChevron(true)}</button><div class="activity-menu activity-submenu" id="activity-automation-menu" hidden>${item('workflows','work')}</div></div>`+item('memo','work'),
+    work:workMenu,
     updates:['pulses'].map(v=>item(v,'updates')).join('')};
   const html=['chat','work','updates'].map(panel=>`<div class="activity-tab ${state.panel===panel?'active':''}"><button data-panel="${panel}" aria-pressed="${state.panel===panel}">${panel[0].toUpperCase()+panel.slice(1)}</button><button class="activity-toggle" data-activity-menu="activity-${panel}-menu" aria-label="${panel[0].toUpperCase()+panel.slice(1)} menu" aria-expanded="false" aria-controls="activity-${panel}-menu">${activityChevron(false)}</button><div class="activity-menu" id="activity-${panel}-menu" hidden>${menus[panel]}</div></div>`).join('');
   // Keep open menus and keyboard focus intact across polling snapshots.
@@ -92,10 +134,19 @@ function renderActivityNavigation() {
   if(!bar){bar=document.createElement('div');bar.id='activity-viewbar';nav.after(bar);}
   bar.hidden=state.panel==='chat'&&chatView==='conversation';
   let detail=`<span class="activity-view-title">${activityLabels[view]||''}</span>`;
-  if(state.panel==='work'&&['automation','workflows'].includes(view))detail=`<div class="activity-view-menu"><button data-activity-menu="activity-workflows-menu" aria-expanded="false" aria-controls="activity-workflows-menu" aria-label="Automation views">Automation ${activityChevron(false)}</button><div class="activity-menu" id="activity-workflows-menu" hidden>${item('workflows','work')}</div></div>${view==='workflows'?'<span class="activity-view-title"> / Workflows</span>':''}`;
-  if(state.panel==='work'&&workView==='tasks') {
-    const options=group?[['active','Active'],['done','Done'],['deleted','Deleted']]:[['upcoming','Upcoming'],['past','Past']];
-    detail+=`<div class="work-nav-tools"><select data-work-filter aria-label="${group?'Task status':'Task history'}">${options.map(([value,label])=>`<option value="${value}" ${(group?groupTaskFilter:taskPeriod)===value?'selected':''}>${label}</option>`).join('')}</select>${group&&!selected().archived?`<button data-new-group-task="${esc(state.selected)}">+ Task</button>`:''}</div>`;
+  if(state.panel==='work') {
+    const path=workPaths[view]||[];
+    detail=`<span class="activity-view-title">${path.map(node=>node.label).join(' / ')}</span>`;
+    if(path.length===3) {
+      const category=path[1];
+      detail=`<span class="activity-view-title">${path.slice(0,-1).map(node=>node.label).join(' / ')} /</span><div class="activity-view-menu"><button data-activity-menu="activity-category-menu" aria-expanded="false" aria-controls="activity-category-menu" aria-label="${category.label} views">${path[2].label} ${activityChevron(false)}</button><div class="activity-menu" id="activity-category-menu" hidden>${category.children.map(node=>item(node.id,'work')).join('')}</div></div>`;
+    }
+  }
+  if(state.panel==='work'&&['tasks','tasks-automated','routine-scheduled'].includes(workView)) {
+    const scheduled=workView==='routine-scheduled',groupTasks=group&&!scheduled;
+    const options=scheduled?[['upcoming','Planned'],['paused','Paused']]:groupTasks?[['active','Planned'],['done','Executed'],['deleted','Deleted']]:[['upcoming','Planned'],['past','Executed']];
+    const filter=scheduled?scheduledPeriod:groupTasks?groupTaskFilter:taskPeriod;
+    detail+=`<div class="work-nav-tools"><div class="activity-view-menu"><button data-activity-menu="activity-task-filter" aria-expanded="false" aria-controls="activity-task-filter" aria-label="${scheduled?'Routine history':group?'Task status':'Task history'}">${options.find(([value])=>value===filter)[1]} ${activityChevron(false)}</button><div class="activity-menu" id="activity-task-filter" hidden>${options.map(([value,label])=>`<button data-work-filter="${value}" class="${value===filter?'selected':''}" aria-pressed="${value===filter}">${label}</button>`).join('')}</div></div>${!selected().archived?'<button data-new-task>+ New</button>':''}</div>`;
   }
   if(bar.dataset.view!==detail){bar.innerHTML=detail;bar.dataset.view=detail;}
 }
@@ -119,11 +170,23 @@ document.addEventListener('click',e=>{
   if(d?.activityMenu) {
     const menu=document.getElementById(d.activityMenu),opening=menu.hidden;
     if(!menu.classList.contains('activity-submenu'))closeActivityMenus();
+    else {
+      // Close sibling branches and their descendants without closing ancestors.
+      const parent=button.closest('.activity-menu');
+      parent.querySelectorAll('[data-activity-menu]').forEach(trigger=>{
+        if(trigger===button)return;
+        document.getElementById(trigger.dataset.activityMenu).hidden=true;
+        trigger.setAttribute('aria-expanded','false');
+      });
+    }
     menu.hidden=!opening;button.setAttribute('aria-expanded',String(opening));return;
   }
   if(d?.activityView) {
     closeActivityMenus();state.panel=d.activityPanel;
-    if(state.panel==='work')workView=d.activityView;
+    if(state.panel==='work') {
+      const path=workPaths[d.activityView]||[],node=path.at(-1);
+      workView=path.length===2&&node.children?node.children[0].id:d.activityView;
+    }
     else if(state.panel==='chat')chatView=d.activityView;
     else updatesView=d.activityView;
     renderConversation();save();return;
@@ -152,23 +215,39 @@ function groupTaskCard(group, task) {
     <div class="actions">${!group.archived?`<button class="button" data-group-task="${esc(task.id)}" data-group="${esc(group.id)}">${task.deleted?'Restore / edit':'Edit'}</button>${!task.deleted?`<button class="button" data-task-run="${esc(task.id)}" data-group="${esc(group.id)}" ${running?'disabled':''}>${running?'Running / queued':task.state==='done'?'Run again':'Run task'}</button>`:''}`:''}</div>
     ${results?`<details><summary>Results · ${task.results.length}</summary>${results}</details>`:''}${task.history.length?`<details><summary>Change history · ${task.history.length}</summary>${task.history.slice().reverse().map(h=>`<div class="group-task-result"><strong>${esc(h.title)}</strong><p>${esc(agent(h.assignee).name)} · ${taskStateLabel[h.state]}${h.deleted?' · Deleted':''}</p><p>${esc(h.body)}</p></div>`).join('')}</details>`:''}</div></details>`;
 }
-function renderGroupWork(host, group) {
-  const key=group.id+':'+workView;
-  if(host.dataset.groupWork!==key||!host.querySelector('#group-work-content')) {
-    host.dataset.groupWork=key;
-    host.innerHTML='<div id="group-work-content"></div>';
-  }
-  const content=host.querySelector('#group-work-content');
-  host.classList.toggle('notes-view',workView==='memo');
-  if(workView==='memo') {
-    if(group.notes?.revision==='missing')content.innerHTML='<p class="empty">No shared Memo yet.</p>';
-    else renderNotes(content);
-  } else if(workView==='tasks')renderGroupTasks(content,group);
-  else content.innerHTML=`<p class="empty">${activityLabels[workView]} is not available yet.</p>`;
+function renderScheduledRoutines(host) {
+  const routines=(live.routines||[]).filter(r=>r.owner===state.selected);
+  const key=JSON.stringify([state.selected,scheduledPeriod,routines]);
+  if(host.firstElementChild?.taskViewKey===key)return;
+  const view=taskElement('section','task-browser');view.taskViewKey=key;
+  const list=taskElement('div','task-list');
+  const planned=scheduledPeriod==='upcoming';
+  list.setAttribute('aria-label',`${planned?'Planned':'Paused'} scheduled routines`);
+  const rows=routines.filter(r=>Boolean(r.paused)!==planned).map(r=>({id:r.id,title:r.title,state:r.paused?'Paused':'Planned',owner:r.owner,sender:r.owner,
+    reference:'@'+r.id,editRoutine:r.id,routineAction:r.paused?'resume':'pause',runCount:r.runCount||0,
+    meta:`Every ${r.minutes} minutes${r.paused?'':` · ${new Date(r.nextDue).toLocaleString()}`}`,
+    body:`Frequency: every ${r.minutes} minutes\nExecute: ${r.prompt}`}));
+  if(!rows.length){
+    const empty=taskElement('div','task-empty');
+    empty.append(taskElement('p','',planned?'No planned routines':'No paused routines'),
+      taskElement('small','',planned?'Create a scheduled routine through chat.':'Paused routines will appear here.'));
+    list.append(empty);
+  }else rows.forEach(row=>list.append(taskRow(row,state.selected)));
+  view.append(list);host.replaceChildren(view);
+}
+function workDraft(preset, placeholder) {
+  state.panel='chat';chatView='conversation';renderConversation();
+  const input=$('#message-input'),start=input.value.length+(input.value?2:0);
+  input.value=input.value?input.value+'\n\n'+preset:preset;
+  state.drafts ??= {};state.drafts[state.selected]=input.value;
+  input.focus();
+  const at=placeholder?preset.indexOf(placeholder):-1;
+  input.setSelectionRange(at<0?input.value.length:start+at,at<0?input.value.length:start+at+placeholder.length);
+  save();
 }
 function renderGroupTasks(host, group) {
   host.querySelectorAll('[data-open-group-task]').forEach(row=>row.open?openGroupTasks.add(row.dataset.openGroupTask):openGroupTasks.delete(row.dataset.openGroupTask));
-  host.innerHTML=`<section class="group-work"><div class="group-task-list">${group.tasks.filter(t=>groupTaskFilter==='deleted'?t.deleted:!t.deleted&&(groupTaskFilter==='done'?t.state==='done':t.state!=='done')).map(t=>groupTaskCard(group,t)).join('')||'<p class="empty">No tasks here yet.</p>'}</div></section>`;
+  host.innerHTML=`<section class="group-work"><div class="group-task-list">${group.tasks.filter(t=>workView!=='tasks-automated'||t.taskType==='automated').filter(t=>groupTaskFilter==='deleted'?t.deleted:!t.deleted&&(groupTaskFilter==='done'?t.state==='done':t.state!=='done')).map(t=>groupTaskCard(group,t)).join('')||'<p class="empty">No tasks here yet.</p>'}</div></section>`;
 }
 function taskDialog(group, task=null) {
   modal(task?'Edit Group task':'Create Group task',`<form id="group-task-form" class="form-stack"><label>Title<input name="title" required maxlength="500" value="${esc(task?.title||'')}"></label><label>Work to do<textarea name="body" rows="5" maxlength="16000">${esc(task?.body||'')}</textarea></label><label>Assignee<select name="assignee">${group.members.map(id=>`<option value="${esc(id)}" ${id===(task?.assignee||group.lead)?'selected':''}>${esc(agent(id).name)}</option>`).join('')}</select></label>${task?`<label>Status<select name="state">${Object.entries(taskStateLabel).map(([v,label])=>`<option value="${v}" ${v===task.state?'selected':''}>${label}</option>`).join('')}</select></label>`:''}<button type="submit" class="button primary">${task?.deleted?'Restore task':'Save task'}</button>${task&&!task.deleted?'<button type="button" class="button" id="delete-group-task">Delete task</button>':''}<p class="form-hint">Saving keeps this as shared work. Use Run task to call the assignee. Deletions can be restored.</p></form>`,'GROUP WORK');
@@ -196,26 +275,53 @@ function renderUpdates(host, group=null) {
   if(!pulses.length)list.innerHTML='<p class="empty">No dispatched pulses yet.</p>';
 
 }
-function renderPersonalWork(host) {
+function renderWork(host) {
   $('#composer-area').hidden=true;
-  if(state.panel==='updates'){renderUpdates(host);return;}
+  const group=selected().kind==='group'?selected():null;
+  if(state.panel==='updates'){renderUpdates(host,group);return;}
   // Preserve loaded task/Memo DOM between polling snapshots.
   const key=state.selected+':'+workView;
-  if(host.dataset.personalWork!==key||!host.querySelector('#personal-work-content')) {
-    host.dataset.personalWork=key;
-    host.innerHTML='<div id="personal-group-tasks"></div><div id="personal-work-content"></div>';
+  if(host.dataset.work!==key||!host.querySelector('#work-content')) {
+    host.dataset.work=key;
+    host.innerHTML=(group?'':'<div id="personal-group-tasks"></div>')+'<div id="work-content"></div>';
   }
-  const content=host.querySelector('#personal-work-content'), shared=host.querySelector('#personal-group-tasks');
+  const content=host.querySelector('#work-content');
   host.classList.toggle('notes-view',workView==='memo');
-  if(workView==='memo'){shared.innerHTML='';renderNotes(content);return;}
-  if(['automation','workflows'].includes(workView)){shared.innerHTML='';content.innerHTML=`<p class="empty">${activityLabels[workView]} is not available yet.</p>`;return;}
-  const groups=state.agents.filter(g=>g.kind==='group');
-  shared.innerHTML=groups.flatMap(g=>g.tasks.filter(t=>t.assignee===state.selected&&!t.deleted&&((t.state==='done')===(taskPeriod==='past'))).map(t=>groupTaskCard(g,t))).join('');
-  renderTasks(content);
+  if(workView==='memo') {
+    if(group?.notes?.revision==='missing')content.innerHTML='<p class="empty">No shared Memo yet.</p>';
+    else renderNotes(content);
+  } else if(workView==='routine-scheduled')renderScheduledRoutines(content);
+  else if(!['tasks','tasks-automated'].includes(workView))content.innerHTML=`<p class="empty">${activityLabels[workView]} is not available yet.</p>`;
+  else if(group)renderGroupTasks(content,group);
+  else {
+    const groups=state.agents.filter(g=>g.kind==='group');
+    host.querySelector('#personal-group-tasks').innerHTML=groups.flatMap(g=>g.tasks.filter(t=>workView!=='tasks-automated'||t.taskType==='automated').filter(t=>t.assignee===state.selected&&!t.deleted&&((t.state==='done')===(taskPeriod==='past'))).map(t=>groupTaskCard(g,t))).join('');
+    renderTasks(content);
+  }
 }
 document.addEventListener('click',async e=>{
   const b=e.target.closest('button');if(!b)return;const d=b.dataset;
-  if(d.newGroupTask){taskDialog(agent(d.newGroupTask));return;}
+  if('newTask' in d) {
+    const scheduled=workView==='routine-scheduled';
+    workDraft(scheduled?'Add New Scheduled Routine:\nFrequency: every XXX minutes\nExecute: PROMPT':'Add New Task: TODO',scheduled?'XXX':'TODO');return;
+  }
+  if(d.editRoutine) {
+    const r=(live.routines||[]).find(r=>r.id===d.editRoutine&&r.owner===state.selected);
+    if(r)workDraft(`Edit @${r.id} ( ${r.title} )\nEdit Frequency (prev every ${r.minutes} minutes): new every XXX minutes\nEdit Execution Prompt as: ${r.prompt}`,'XXX');
+    return;
+  }
+  if(d.pauseRoutine||d.resumeRoutine) {
+    const id=d.pauseRoutine||d.resumeRoutine;
+    if((live.routines||[]).some(r=>r.id===id&&r.owner===state.selected))
+      workDraft(`${d.pauseRoutine?'Pause Schedule Riutine':'Resume Scheduled Routine'}\n@${id}`);
+    return;
+  }
+  if(d.workFilter) {
+    closeActivityMenus();
+    if(workView==='routine-scheduled')scheduledPeriod=d.workFilter;
+    else if(selected().kind==='group')groupTaskFilter=d.workFilter;else taskPeriod=d.workFilter;
+    renderConversation();return;
+  }
   if(d.groupTask){const group=agent(d.group);taskDialog(group,group.tasks.find(t=>t.id===d.groupTask));return;}
   if(!d.groupArchive&&!d.taskRun&&!d.groupCall)return;
   b.disabled=true;
@@ -227,11 +333,6 @@ document.addEventListener('click',async e=>{
   }catch(error){toast(error.message);}finally{b.disabled=false;}
 });
 
-document.addEventListener('change',e=>{
-  if(!e.target.matches('[data-work-filter]'))return;
-  if(selected().kind==='group')groupTaskFilter=e.target.value;else taskPeriod=e.target.value;
-  renderConversation();
-});
 document.addEventListener('toggle',e=>{
   const id=e.target.dataset?.openGroupTask;
   if(id&&e.target.isConnected)e.target.open?openGroupTasks.add(id):openGroupTasks.delete(id);

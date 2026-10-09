@@ -166,7 +166,7 @@ renderConversation = function() {
   const bottom = state.panel === 'chat' && (changedView || host.scrollHeight - host.scrollTop - host.clientHeight < 80);
   if(renderChatCollection(host)){renderAgentHeader();renderGlobal();return;}
   if(selected().kind==='group') {renderGroupPanel(host);renderAgentHeader();renderGlobal();host.scrollTop=bottom?host.scrollHeight:scroll;return;}
-  if(state.panel==='work' || state.panel==='updates') {renderPersonalWork(host);renderAgentHeader();renderGlobal();if(changedView)host.scrollTop=0;return;}
+  if(state.panel==='work' || state.panel==='updates') {renderWork(host);renderAgentHeader();renderGlobal();if(changedView)host.scrollTop=0;return;}
   if (state.panel === 'chat') {
     originalConversation();
     host.querySelectorAll('.message').forEach((node,i) => {
@@ -388,12 +388,13 @@ async function refresh() {
   refreshing = (async () => {
     try {
       const snapshot = await api('/api/state');
-      const changed = ['agents','groups','turns','computer','orchestration','activity','run_activity','workloads','pulses'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k]));
+      const changed = ['agents','groups','turns','computer','orchestration','activity','run_activity','workloads','pulses','routines'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k]));
       const reconnected = !online;
       online = true;
       const tabsChanged = (snapshot.preferences.workspace_revision || 0) > workspaceRevision;
       applySnapshot(snapshot);
       if (tabsChanged) {renderTabs(); renderWorkspace();}
+      else refreshWorkspacePreview();
       if (changed || reconnected) {
         renderSidebar(); renderConversation(); renderGlobal();
         if ($('#modal').open && $('#modal-title')?.textContent === 'Shared computer') computerDialog();

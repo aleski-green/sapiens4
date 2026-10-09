@@ -56,7 +56,7 @@ const task=(state,id=state)=>({id,state,title:'Research <script>bad</script>',ow
   assert.equal(byClass(failed.host,'task-copy').textContent,'Try again');
   const empty=fixture(async()=>({ok:true,json:async()=>({tasks:[]})}));
   empty.ctx.renderTasks(empty.host);await tick();
-  assert.equal(byClass(empty.host,'task-empty').children[0].textContent,'No upcoming tasks');
+  assert.equal(byClass(empty.host,'task-empty').children[0].textContent,'No planned tasks');
 
   const routing=fixture();
   const turn={id:'child',agent:'researcher',status:'running',created:'2026-09-29T12:00:00Z'};

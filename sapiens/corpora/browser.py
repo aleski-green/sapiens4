@@ -120,6 +120,25 @@ class Workspace:
         self.persist(prefs)
         return self.summary(agent)
 
+    def text(self, agent, tab_id):
+        """Read only a file already opened in this owner's saved workspace."""
+        tab = next((t for t in self.summary(agent)['tabs'] if t['id'] == tab_id), None)
+        if tab is None or not tab.get('path'):
+            raise APIError(404, 'Unknown local file tab')
+        try:
+            with Path(tab['path']).open('rb') as stream:
+                raw = stream.read(2_000_001)
+            if len(raw) > 2_000_000:
+                raise APIError(413, 'This file is too large for the text preview; open it in the desktop app')
+            content = raw.decode('utf-8-sig')
+            if '\x00' in content:
+                raise UnicodeError()
+        except UnicodeError:
+            raise APIError(415, 'This file is not UTF-8 text; open it in the desktop app') from None
+        except OSError:
+            raise APIError(404, 'File not found or unreadable') from None
+        return dict(content=content, path=tab['path'])
+
     def observed(self, agent, data):
         """Accept native navigation metadata only for the current command/tab."""
         prefs = self.service.store.read_preferences()

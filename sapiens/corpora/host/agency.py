@@ -12,7 +12,8 @@ from sapiens.runtime.turns import TurnRunner
 class ChatAgencies:
     def __init__(self, service):
         self.service = service
-        self.policies = {'chatInput': BatchPolicy(), 'chatOutput': BatchPolicy()}
+        self.policies = {'chatInput': BatchPolicy(), 'chatOutput': BatchPolicy(),
+                         'scheduled': BatchPolicy(pulsation='bph60', every=1)}
         self.slots = {}  # (Sapi, AgencyKind, slot) -> (runner, thread, batch ID)
 
     def recover(self, agent):
@@ -41,13 +42,19 @@ class ChatAgencies:
                     continue
                 self.output(agent, tick)
                 self.input(agent, tick)
+                if tick['frequency'] == 'bph60':
+                    self.input(agent, tick)
 
     def input(self, agent, tick):
         service = self.service
+        scheduled = tick['frequency'] == 'bph60'
         queued = tuple(t for t in agent.state['turns']
-                       if t['status'] == 'queued' and t.get('batchable'))
+                       if t['status'] == 'queued' and t.get('batchable')
+                       and bool((t.get('origin') or {}).get('routine')) == scheduled)
+        if scheduled:
+            queued = queued[:1]
         batch = AgencyBatch(queued)
-        if not self.policies['chatInput'].admits(tick, batch):
+        if not self.policies['scheduled' if scheduled else 'chatInput'].admits(tick, batch):
             return
         if agent.agid in service._runners:
             return  # An older Group/delegation run retains its exclusive lease.
@@ -59,8 +66,9 @@ class ChatAgencies:
         runner = TurnRunner(store=agent, context=agent.context, config=agent.runner.config,
                             factory=agent.runner.factory, complete=agent.runner.complete,
                             execute=agent.runner.execute)
+        queued_ids = {t['id'] for t in queued}
         with agent.transaction() as state:
-            members = [t for t in state['turns'] if t['status'] == 'queued' and t.get('batchable')]
+            members = [t for t in state['turns'] if t['id'] in queued_ids]
             if not members:
                 return
             first = members[0]
@@ -105,17 +113,20 @@ class ChatAgencies:
         thread.start()
 
     def output(self, agent, tick):
-        batch = AgencyBatch(tuple(agent.state.get('output_buffer', [])))
-        if not self.policies['chatOutput'].admits(tick, batch):
+        scheduled = tick['frequency'] == 'bph60'
+        eligible = lambda item: bool((item.get('origin') or {}).get('routine')) == scheduled
+        batch = AgencyBatch(tuple(item for item in agent.state.get('output_buffer', []) if eligible(item)))
+        if not self.policies['scheduled' if scheduled else 'chatOutput'].admits(tick, batch):
             return
         # Each rendering slot takes one FIFO result. Publication is an atomic,
         # deterministic AgencyRun; two outputs become two separate bubbles.
         for slot in (1, 2):
             with agent.transaction() as state:
                 buffer = state.get('output_buffer', [])
-                if not buffer:
+                item = next((item for item in buffer if eligible(item)), None)
+                if item is None:
                     break
-                item = buffer.pop(0)
+                buffer.remove(item)
                 timestamp = utcnow().isoformat()
                 state['output_sequence'] = state.get('output_sequence', 0) + 1
                 if not any(m.get('turn') == item['turn'] and m['role'] == 'agent' for m in state['chat']):

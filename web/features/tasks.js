@@ -29,22 +29,40 @@ function taskRow(task, sapi) {
   const route = task.sender === task.owner ? owner : `${agent(task.sender).name} → ${owner}`;
   const status = task.state === 'WaitingForAdmin' ? 'Needs input' : task.state;
   const meta = taskElement('span', 'task-meta');
-  meta.append(taskElement('span', 'task-state ' + tone, status), taskElement('span', 'task-assignee', route));
+  meta.append(taskElement('span', 'task-state ' + tone, status), taskElement('span', 'task-assignee', task.meta || route));
   copy.append(title, meta);
   const arrow = taskElement('span', 'task-chevron', '›'); arrow.setAttribute('aria-hidden', 'true');
-  summary.append(mark, copy, arrow); row.append(summary);
+  summary.append(mark, copy);
+  if(task.editRoutine){
+    const edit=taskElement('button','task-copy','Edit');edit.type='button';edit.dataset.editRoutine=task.editRoutine;
+    edit.addEventListener('click',e=>e.preventDefault());summary.append(edit);
+    const action=taskElement('button','task-copy task-routine-action');action.type='button';
+    const paused=task.routineAction==='resume';
+    action.dataset[paused?'resumeRoutine':'pauseRoutine']=task.editRoutine;
+    action.title=paused?'Resume routine':'Pause routine';action.setAttribute('aria-label',action.title);
+    action.innerHTML=`<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">${paused?'<path d="M5 3l7 5-7 5z"/>':'<path d="M5 3v10M11 3v10"/>'}</svg>`;
+    action.addEventListener('click',e=>e.preventDefault());summary.append(action);
+  }
+  if(task.reference){
+    row.classList.add('task-routine');
+    const reference=taskElement('span','task-reference');
+    reference.append(taskElement('code','',task.reference),taskElement('span','',`${task.runCount}/1000`));
+    reference.title='Scheduled tasks queued in this allowance; pauses automatically at 1000.';
+    summary.append(reference);
+  }
+  summary.append(arrow); row.append(summary);
   const content = taskElement('div', 'task-content');
   const heading = taskElement('div', 'task-body-heading');
-  heading.append(taskElement('span', '', 'Task body'), taskElement('span', 'task-format', 'YAML'));
+  heading.append(taskElement('span', '', task.editRoutine?'Execution prompt':'Task body'), taskElement('span', 'task-format', task.editRoutine?'':'YAML'));
   const button = taskElement('button', 'task-copy', 'Copy'); button.type = 'button';
-  button.setAttribute('aria-label', 'Copy task YAML');
+  button.setAttribute('aria-label', task.editRoutine?'Copy execution prompt':'Copy task YAML');
   button.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(task.body); toast('Task YAML copied.'); }
+    try { await navigator.clipboard.writeText(task.body); toast(task.editRoutine?'Execution prompt copied.':'Task YAML copied.'); }
     catch (_) { toast('Could not copy. You can select the task body to copy it.'); }
   });
   heading.append(button);
   const body = taskElement('pre', 'task-body-yaml', task.body);
-  body.setAttribute('aria-label', 'Task body YAML');
+  body.setAttribute('aria-label', task.editRoutine?'Execution prompt':'Task body YAML');
   content.append(heading, body);
   if (task.result) {
     content.append(taskElement('h3', 'task-result-heading', 'Result'));
@@ -57,15 +75,16 @@ function taskRow(task, sapi) {
   return row;
 }
 function drawTasks(host, id, cached) {
-  const key = JSON.stringify([id, cached.revision, taskPeriod, cached.pending, cached.error]);
+  const automated=typeof workView!=='undefined'&&workView==='tasks-automated';
+  const key = JSON.stringify([id, cached.revision, taskPeriod, automated, cached.pending, cached.error]);
   if (host.firstElementChild?.taskViewKey === key) return;
   const view = taskElement('section', 'task-browser'); view.taskViewKey = key;
   const rows = cached.rows || [];
   const inPeriod = (task, period) => pastTaskStates.has(task.state) === (period === 'past');
   const list = taskElement('div', 'task-list'); list.id = 'task-list';
-  list.setAttribute('aria-label', taskPeriod==='past'?'Past tasks':'Upcoming tasks');
+  list.setAttribute('aria-label', taskPeriod==='past'?'Executed tasks':'Planned tasks');
   list.setAttribute('aria-busy', String(Boolean(cached.pending)));
-  const visible = rows.filter(t => inPeriod(t, taskPeriod));
+  const visible = rows.filter(t => inPeriod(t, taskPeriod)&&(!automated||t.taskType==='automated'));
   if (cached.error) {
     const error = taskElement('div', 'task-empty');
     error.append(taskElement('p', '', 'Could not load tasks.'));
@@ -76,7 +95,7 @@ function drawTasks(host, id, cached) {
     list.append(taskElement('p', 'task-empty', 'Loading tasks…'));
   } else if (!visible.length) {
     const empty = taskElement('div', 'task-empty');
-    empty.append(taskElement('p', '', taskPeriod === 'past' ? 'No past tasks' : 'No upcoming tasks'),
+    empty.append(taskElement('p', '', taskPeriod === 'past' ? 'No executed tasks' : 'No planned tasks'),
       taskElement('small', '', taskPeriod === 'past' ? 'Completed and stopped tasks will appear here.' : 'Queued, running and waiting tasks will appear here.'));
     list.append(empty);
   } else visible.forEach(task => list.append(taskRow(task, id)));

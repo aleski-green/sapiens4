@@ -37,8 +37,9 @@ def codex_binary():
         return shutil.which(override)
     candidates = [shutil.which('codex')]
     if sys.platform == 'darwin':
-        candidates += [f'/Applications/{app}.app/Contents/Resources/codex'
-                       for app in ('Codex', 'ChatGPT')]
+        candidates += [f'/Applications/{app}.app/Contents/Resources/{binary}'
+                       for app in ('Codex', 'ChatGPT')
+                       for binary in ('codex', 'codex-cli/bin/codex')]
     versions = []
     for path in dict.fromkeys(p for p in candidates if p and os.access(p, os.X_OK)):
         try:

@@ -72,6 +72,12 @@ class GroupChat:
             attachments = resolve_attachments(self.service, gid, data.get('attachments', []))
             if not text and not attachments:
                 raise APIError(400, 'Write a message or attach a file')
+            routine = self.service.routines.command(gid, text, attachments) if actor == 'admin' else None
+            if routine:
+                message = self.message(actor, text)
+                group['messages'].extend([message, self.message(group['lead'], self.service.routines.receipt(routine, text))])
+                self.groups.save(group, actor, 'routine saved', routine['id'])
+                return message
             targets = [data['target']] if 'target' in data else self.mentions(group, text)
             if any(t not in group['members'] for t in targets):
                 raise APIError(400, 'Address only current Group members')
@@ -115,7 +121,8 @@ class GroupChat:
                         continue
                     message = next(m for m in group['messages'] if m['id'] == request['message'])
                     agent.runner.submit('chat', message['text'] + attachment_prompt(message.get('attachments', [])), turn_id=request['id'],
-                                        origin=dict(group=group['id'], author=message['author']))
+                                        origin=request.get('origin') or dict(group=group['id'], author=message['author']),
+                                        batchable=bool(request.get('origin', {}).get('routine')))
                     self.service._sync(agent)
                     self.service._queue.put(agid)
 
@@ -135,10 +142,13 @@ class GroupChat:
                            tasks=[{k: t[k] for k in ('id', 'title', 'assignee', 'state', 'revision', 'deleted')}
                                   for t in group['tasks'][-50:]],
                            messages=group['messages'][-30:], request=request,
+                           scheduledExecutionPrompt=(turn.get('origin') or {}).get('executionPrompt'),
                            identity=manifests.get('identity'), host_control=manifests.get('host-control'),
                            computer=manifests.get('computer-use'))
             while True:
                 rendered = prompt('group-conversation', context=json.dumps(context, ensure_ascii=False), task=turn['input'])
+                if (turn.get('origin') or {}).get('routine'):
+                    rendered = prompt('scheduled-execution') + '\n\n' + rendered
                 if len(rendered) <= 60000 or not context['messages']:
                     break
                 context['messages'].pop(0)
@@ -161,26 +171,35 @@ class GroupChat:
                     if request['status'] != turn['status']:
                         request['status'] = turn['status']
                         changed = True
-                    if turn['status'] in {'queued', 'running'} or request['settled']:
+                    if turn['status'] in {'queued', 'running', 'output_pending'} or request['settled']:
                         continue
                     request['settled'] = True
                     changed = True
-                    stale = self.groups.work.settle(group, request, turn)
+                    routine = (request.get('origin') or {}).get('routine')
+                    targets = []
+                    if request['target'] == group['lead'] and not group['archived'] and turn['output']:
+                        called = {r['target'] for r in group['requests'] if r['root'] == request['root']}
+                        try:
+                            targets = [t for t in self.mentions(group, turn['output']) if t not in called]
+                        except APIError:
+                            pass
+                    if routine and targets:
+                        task = self.groups.work.task(group, request['task'])
+                        if task['deleted'] or task['revision'] != request['task_revision']:
+                            targets = []
+                    stale = None if routine and targets else self.groups.work.settle(group, request, turn)
                     if turn['output'] is not None:
                         message = self.message(request['target'], turn['output'])
                         message.update(turn=request['id'], stale=bool(stale))
                         group['messages'].append(message)
-                        # A Lead can call each member once within this Admin request. Replies
-                        # from members do not create an unbounded mention ping-pong.
-                        if request['target'] == group['lead'] and not group['archived']:
-                            called = {r['target'] for r in group['requests'] if r['root'] == request['root']}
-                            try:
-                                targets = self.mentions(group, turn['output'])
-                            except APIError:
-                                targets = []
-                            for target in targets:
-                                if target not in called:
-                                    self.request(group, message, target, request['root'])
+                        # Reuse the Lead's mention routing for scheduled work as well.
+                        for target in targets[:1] if routine else targets:
+                            child = self.request(group, message, target, request['root'])
+                            if routine:
+                                child['origin'] = request['origin']
+                                task = self.groups.work.task(group, request['task'])
+                                task.update(assignee=target, revision=task['revision'] + 1)
+                                child.update(task=task['id'], task_revision=task['revision'])
                     if turn.get('error'):
                         request['error'] = turn['error']
                     group['events'].append(dict(id=uuid4().hex, actor=request['target'],
