@@ -332,6 +332,11 @@ document.addEventListener('click',async e=>{
     const scheduled=workView==='routine-scheduled';
     workDraft(scheduled?'Add New Scheduled Routine:\nFrequency: every XXX minutes\nExecute: PROMPT':'Add New Task: TODO',scheduled?'XXX':'TODO');return;
   }
+  if(d.runRoutine) {
+    const r=(live.routines||[]).find(r=>r.id===d.runRoutine&&r.owner===state.selected);
+    if(r)workDraft(`@${r.id}\nRun it now.`);
+    return;
+  }
   if(d.editRoutine) {
     const r=(live.routines||[]).find(r=>r.id===d.editRoutine&&r.owner===state.selected);
     if(r)workDraft(`Edit @${r.id} ( ${r.title} )\nEdit Frequency (prev every ${r.minutes} minutes): new every XXX minutes\nEdit Execution Prompt as: ${r.prompt}`,'XXX');
