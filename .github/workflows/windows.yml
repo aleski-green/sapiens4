@@ -5,6 +5,7 @@ permissions:
 jobs:
   windows:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest

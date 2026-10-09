@@ -12,6 +12,10 @@ from sapiens.runtime.codex import CodexFactory
 from sapiens.corpora.host.server import Server
 from sapiens.corpora.host.service import APIError, Service
 
+# Slow Windows CI disks can take several seconds to persist a batch before its
+# provider starts. Wait on observable state, with a bounded failure deadline.
+TEST_TIMEOUT = 15
+
 
 class ScriptedLLM:
     id = "test-session"
@@ -23,7 +27,7 @@ class ScriptedLLM:
         self.factory.prompts.append(prompt)
         self.factory.started.set()
         if self.factory.gate:
-            if not self.factory.gate.wait(5):
+            if not self.factory.gate.wait(TEST_TIMEOUT * 2):
                 raise TimeoutError("Test gate timed out")
         if self.factory.fail:
             raise RuntimeError("Scripted provider failure")
@@ -76,7 +80,7 @@ class IntegrationFixture(unittest.TestCase):
         return self.service(**kwargs)
 
     def wait_turn(self, service, job_id, status="done"):
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + TEST_TIMEOUT
         while time.monotonic() < deadline:
             turn = next(j for j in service.snapshot()["turns"] if j["id"] == job_id)
             if turn["status"] == status:
@@ -121,7 +125,7 @@ class IntegrationTest(IntegrationFixture):
         a = service.store.agents()[0]["id"]
         b = service.create_agent({"name":"Other","role":"Assistant"})["id"]
         first = service.submit(a, {"text":"First", "flow":"computer"})
-        self.assertTrue(self.factory.started.wait(2))
+        self.assertTrue(self.factory.started.wait(TEST_TIMEOUT))
         second = service.submit(b, {"text":"Second", "flow":"computer"})
         additional = service.submit(a, {"text":"Another message"})
         self.assertEqual(additional['status'], 'queued')

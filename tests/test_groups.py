@@ -9,7 +9,7 @@ from http.client import HTTPConnection
 from sapiens.corpora.host.server import Server
 from sapiens.corpora.host.service import APIError
 from sapiens.corpora.sapis.attachments import create_attachment
-from test_integration import IntegrationFixture
+from test_integration import IntegrationFixture, TEST_TIMEOUT
 if sys.platform != 'win32':
     from macos.updater import busy
 
@@ -25,7 +25,7 @@ class GroupsTest(IntegrationFixture):
         return s, chief, lead, member, outsider, group
 
     def until(self, condition):
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + TEST_TIMEOUT
         while time.monotonic() < deadline:
             if condition():
                 return
@@ -261,7 +261,7 @@ class GroupsTest(IntegrationFixture):
         self.addCleanup(gate.set)
         task = s.groups.work.create(g['id'], dict(title='Original work', assignee=member), lead)
         running = s.groups.work.run(g['id'], task['id'], task['revision'], lead)
-        s.start(); self.assertTrue(self.factory.started.wait(2))
+        s.start(); self.assertTrue(self.factory.started.wait(TEST_TIMEOUT))
         deleted = s.groups.work.update(g['id'], task['id'], dict(revision=running['revision'], deleted=True), lead)
         gate.set()
         self.until(lambda: bool(s.groups.get(g['id'])['tasks'][0]['results']))
@@ -367,7 +367,7 @@ class GroupsTest(IntegrationFixture):
         gate = self.factory.gate = threading.Event()
         self.addCleanup(gate.set)
         s.groups.chat.submit(g['id'], dict(text='Already accepted by old Lead'))
-        s.start(); self.assertTrue(self.factory.started.wait(2))
+        s.start(); self.assertTrue(self.factory.started.wait(TEST_TIMEOUT))
         # Keep the revision read and transfer together while the background
         # dispatcher records that the gated call has started.
         with s._lock:
