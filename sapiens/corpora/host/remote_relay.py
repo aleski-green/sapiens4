@@ -1,16 +1,21 @@
 """Self-hosted opaque mailboxes. Run behind HTTPS; never imports the Sapiens runtime."""
 import argparse
+import asyncio
+import contextlib
 import hashlib
 import hmac
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
 import re
 import secrets
 import sqlite3
+import socket
+import threading
 import time
 from urllib.parse import urlsplit
+
+from aiohttp import web, WSMsgType
 
 from sapiens.corpora.host.remote_pairing import MAX_FRAME, origin, unb64
 from sapiens.paths import ROOT
@@ -117,90 +122,206 @@ class Mailboxes:
             raise RelayError(404, 'Not found')
 
 
-class RelayServer(ThreadingHTTPServer):
-    daemon_threads = True
-
+class RelayServer:
+    """One HTTP/WebSocket listener; ciphertext is committed before delivery."""
     def __init__(self, address, path, admin, public_origin):
         if len(admin) < 32 or not admin.isascii():
             raise ValueError('SAPIENS_RELAY_ADMIN_TOKEN must contain at least 32 ASCII characters')
         self.mailboxes, self.admin = Mailboxes(path), admin
         self.public_origin = origin(public_origin)
-        self.last_sweep = 0
-        super().__init__(address, RelayHandler)
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.socket.bind(address)
+        self.socket.listen(128)
+        self.server_port = self.socket.getsockname()[1]
+        self.loop = None
+        self.started, self.finished = threading.Event(), threading.Event()
+        self.listeners, self.connections = {}, set()
 
+    def transact(self, method, parts, bearer, body=None):
+        result = self.mailboxes.transact(method, parts, bearer, body or {}, self.admin)
+        if method != 'GET' and len(parts) >= 3:
+            for event in self.listeners.get(parts[2], ()):
+                event.set()
+        return result
 
-    def service_actions(self):
-        if time.time() - self.last_sweep >= 60:
+    def response(self, status, body, mime='application/json'):
+        raw = body if isinstance(body, bytes) else json.dumps(body).encode()
+        ws_origin = ('wss' if self.public_origin.startswith('https:') else 'ws') + self.public_origin[self.public_origin.index(':'):]
+        return web.Response(status=status, body=raw, headers={
+            'Content-Type': mime + '; charset=utf-8', 'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY',
+            'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "connect-src 'self' " + ws_origin + "; img-src 'self' blob: data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        })
+
+    async def handle(self, req):
+        try:
+            if req.headers.get('Host') != urlsplit(self.public_origin).netloc:
+                raise RelayError(403, 'Unexpected host')
+            request_origin = req.headers.get('Origin')
+            if request_origin and request_origin != self.public_origin:
+                raise RelayError(403, 'Unexpected origin')
+            path = req.path
+            if req.method == 'GET' and path == '/api/socket':
+                if req.query_string or request_origin != self.public_origin:
+                    raise RelayError(403, 'WebSocket requires the relay origin and no query credentials')
+                return await self.websocket(req)
+            if req.method == 'GET' and path in ASSETS:
+                name, mime = ASSETS[path]
+                return self.response(200, (ROOT / 'web' / name).read_bytes(), mime)
+            if req.method == 'GET' and path in {'/workspace/', '/workspace/app.js',
+                    '/workspace/styles.css', '/live.css', '/assets/sapi-theme.css', '/assets/sapi-theme.js'}:
+                found = asset(path)
+                return self.response(200, found[1], found[0].split(';')[0])
+            body = {}
+            if req.method == 'POST':
+                if not 0 < (req.content_length or 0) <= MAX_FRAME or req.content_type != 'application/json':
+                    raise RelayError(413, 'Invalid body size or content type')
+                body = await asyncio.wait_for(req.json(), 10)
+                if not isinstance(body, dict):
+                    raise RelayError(400, 'Expected object')
+            authorization = req.headers.get('Authorization', '')
+            if not re.fullmatch(r'Bearer [\x21-\x7e]{1,256}', authorization):
+                raise RelayError(401, 'Bearer token required')
+            result = self.transact(req.method, path.strip('/').split('/'), authorization[7:], body)
+            return self.response(200, result)
+        except RelayError as error:
+            return self.response(error.status, dict(error=str(error)))
+        except (ValueError, TypeError, KeyError):
+            return self.response(400, dict(error='Invalid request'))
+        except Exception:
+            return self.response(500, dict(error='Relay unavailable'))
+
+    async def websocket(self, req):
+        if len(self.connections) >= 128:
+            raise RelayError(429, 'Connection limit reached')
+        ws = web.WebSocketResponse(heartbeat=25, max_msg_size=MAX_FRAME + 4096, compress=False)
+        self.connections.add(ws)
+        room, event, delivery = None, asyncio.Event(), None
+        try:
+            await ws.prepare(req)
+            auth = await ws.receive_json(timeout=10)
+            if (not isinstance(auth, dict) or auth.get('type') != 'auth' or
+                    not isinstance(auth.get('room'), str) or not re.fullmatch(r'[A-Za-z0-9_-]{32,64}', auth['room']) or
+                    not isinstance(auth.get('token'), str) or not re.fullmatch(r'[\x21-\x7e]{32,256}', auth['token'])):
+                raise RelayError(401, 'Invalid mailbox authentication')
+            room, bearer = auth['room'], auth['token']
+            path = ['api', 'rooms', room, 'messages']
+            self.transact('GET', path, bearer)
+            if len(self.listeners.get(room, ())) >= 4:
+                raise RelayError(429, 'Mailbox connection limit reached')
+            self.listeners.setdefault(room, set()).add(event)
+            await ws.send_json(dict(type='ready'))
+            # At most one bounded batch is in flight. Unacknowledged frames remain
+            # in SQLite and are replayed on reconnect, never in an unbounded RAM queue.
+            in_flight = set()
+
+            async def deliver():
+                while not ws.closed:
+                    await event.wait()
+                    event.clear()
+                    try:
+                        result = self.transact('GET', path, bearer)
+                        # Expired frames no longer block subsequent deliveries.
+                        with self.mailboxes.connect() as db:
+                            live = {row[0] for row in db.execute('SELECT id FROM messages WHERE room=?', (room,))}
+                        in_flight.intersection_update(live)
+                        if not in_flight and result['messages']:
+                            in_flight.update(item['id'] for item in result['messages'])
+                            await asyncio.wait_for(ws.send_json(dict(type='messages', **result)), 10)
+                    except RelayError:
+                        await ws.close(code=4001, message=b'Mailbox expired or revoked')
+                        return
+                    except Exception:
+                        await ws.close(code=1011)
+                        return
+
+            delivery = asyncio.create_task(deliver())
+            event.set()
+            async for incoming in ws:
+                if incoming.type != WSMsgType.TEXT:
+                    break
+                value = json.loads(incoming.data)
+                if not isinstance(value, dict):
+                    raise ValueError('Expected object')
+                id_ = value.get('id')
+                if not isinstance(id_, str) or not 1 <= len(id_) <= 64:
+                    raise ValueError('Invalid request ID')
+                try:
+                    if value.get('type') == 'send' and isinstance(value.get('frame'), dict):
+                        if len(json.dumps(value['frame'])) > MAX_FRAME:
+                            raise RelayError(413, 'Frame too large')
+                        result = self.transact('POST', path, bearer, value['frame'])
+                    elif value.get('type') == 'ack' and type(value.get('message')) is int and value['message'] > 0:
+                        result = self.transact('DELETE', path + [str(value['message'])], bearer)
+                        in_flight.discard(value['message'])
+                    else:
+                        raise RelayError(400, 'Unsupported socket operation')
+                    await asyncio.wait_for(ws.send_json(dict(type='result', id=id_, result=result)), 10)
+                except RelayError as error:
+                    await ws.send_json(dict(type='result', id=id_, error=str(error)))
+        except (ValueError, TypeError, KeyError, RelayError, asyncio.TimeoutError):
+            if ws.prepared:
+                await ws.close(code=4001, message=b'Invalid or expired mailbox request')
+        finally:
+            if delivery:
+                delivery.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await delivery
+            if room in self.listeners:
+                self.listeners[room].discard(event)
+                if not self.listeners[room]:
+                    del self.listeners[room]
+            self.connections.discard(ws)
+            if ws.prepared:
+                await ws.close()
+        return ws
+
+    async def sweep(self):
+        while True:
+            await asyncio.sleep(60)
             with self.mailboxes.connect() as db:
                 now = time.time()
                 db.execute('DELETE FROM messages WHERE expires <= ? OR room IN '
                            '(SELECT id FROM rooms WHERE expires <= ?)', (now, now))
                 db.execute('DELETE FROM rooms WHERE expires <= ?', (now,))
-            self.last_sweep = time.time()
+            for events in self.listeners.values():
+                for event in events:
+                    event.set()  # Recheck expiry for already-open sockets too.
 
-
-class RelayHandler(BaseHTTPRequestHandler):
-    def log_message(self, *args):
-        pass  # No URLs, request bodies, bearer tokens, or exception details in access logs.
-
-    def setup(self):
-        super().setup()
-        self.connection.settimeout(10)
-
-    def send(self, status, body, mime='application/json'):
-        raw = body if isinstance(body, bytes) else json.dumps(body).encode()
-        self.send_response(status)
-        for key, value in {
-            'Content-Type': mime + '; charset=utf-8', 'Content-Length': str(len(raw)),
-            'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
-            'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY',
-            'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-                "connect-src 'self'; img-src 'self' blob: data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-        }.items():
-            self.send_header(key, value)
-        self.end_headers()
-        self.wfile.write(raw)
-
-    def handle_request(self):
+    async def run(self):
+        self.loop = asyncio.get_running_loop()
+        self.stop_event = asyncio.Event()
+        app = web.Application(client_max_size=MAX_FRAME)
+        app.router.add_route('*', '/{path:.*}', self.handle)
+        runner = web.AppRunner(app, access_log=None, shutdown_timeout=5)
+        await runner.setup()
+        await web.SockSite(runner, self.socket).start()
+        sweep = asyncio.create_task(self.sweep())
+        self.started.set()
         try:
-            path = urlsplit(self.path).path
-            if self.headers.get('Host') != urlsplit(self.server.public_origin).netloc:
-                raise RelayError(403, 'Unexpected host')
-            request_origin = self.headers.get('Origin')
-            if request_origin and request_origin != self.server.public_origin:
-                raise RelayError(403, 'Unexpected origin')
-            if self.command == 'GET' and path in ASSETS:
-                name, mime = ASSETS[path]
-                return self.send(200, (ROOT / 'web' / name).read_bytes(), mime)
-            # Static CORPORA code is public; no application data is served by this host.
-            if self.command == 'GET' and path in {'/workspace/', '/workspace/app.js',
-                    '/workspace/styles.css', '/live.css', '/assets/sapi-theme.css', '/assets/sapi-theme.js'}:
-                found = asset(path)
-                return self.send(200, found[1], found[0].split(';')[0])
-            body = {}
-            if self.command == 'POST':
-                length = int(self.headers.get('Content-Length', '0'))
-                if not 0 < length <= MAX_FRAME or self.headers.get_content_type() != 'application/json':
-                    raise RelayError(413, 'Invalid body size or content type')
-                body = json.loads(self.rfile.read(length))
-                if not isinstance(body, dict):
-                    raise RelayError(400, 'Expected object')
-            authorization = self.headers.get('Authorization', '')
-            if not re.fullmatch(r'Bearer [\x21-\x7e]{1,256}', authorization):
-                raise RelayError(401, 'Bearer token required')
-            result = self.server.mailboxes.transact(self.command, path.strip('/').split('/'),
-                                                   authorization[7:], body, self.server.admin)
-            self.send(200, result)
-        except RelayError as error:
-            self.send(error.status, dict(error=str(error)))
-        except (ValueError, TypeError, KeyError):
-            self.send(400, dict(error='Invalid request'))
-        except (BrokenPipeError, ConnectionResetError, TimeoutError):
-            pass
-        except Exception:
-            self.send(500, dict(error='Relay unavailable'))
+            await self.stop_event.wait()
+        finally:
+            sweep.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await sweep
+            await asyncio.gather(*(ws.close(code=1001) for ws in list(self.connections)))
+            await runner.cleanup()
 
-    do_GET = do_POST = do_DELETE = handle_request
+    def serve_forever(self):
+        try:
+            asyncio.run(self.run())
+        finally:
+            self.finished.set()
+
+    def shutdown(self):
+        if self.started.wait(5) and self.loop and self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.stop_event.set)
+            self.finished.wait(10)
+
+    def server_close(self):
+        self.socket.close()
 
 
 def main():

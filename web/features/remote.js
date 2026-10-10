@@ -16,7 +16,8 @@
     const label=$('status') || $('remote-status');
     if(label) { label.textContent=label.id==='status' ? text : text==='Remote · Disconnect' ? text : 'Remote · Waiting'; label.title=text; }
   };
-  let session=null, paired=false, polling=false;
+  let session=null, paired=false, polling=false, socket=null, ready=false, reconnectTimer=null, reconnectDelay=1000, serial=0;
+  const calls=new Map();
   const pending=new Map(), received=new Set();
   function frame(payload) {
     const message={v:protocol,room:session.room,direction:'phone-to-desktop',...payload};
@@ -36,15 +37,55 @@
        message.expires>Date.now()/1000+86400 || typeof message.id!=='string' || !message.result) throw new Error('Invalid message');
     return message;
   }
-  async function relay(method='GET',body,id) {
-    const controller=new AbortController(), timeout=setTimeout(()=>controller.abort(),10000);
-    try {
-    const response=await fetch('/api/rooms/'+session.room+'/messages'+(id ? '/'+id : ''), {
-      method,headers:{Authorization:'Bearer '+session.token,'Content-Type':'application/json'},
-      body:body ? JSON.stringify(body) : undefined,cache:'no-store',redirect:'error',signal:controller.signal});
-    if(!response.ok) throw new Error(response.status===401 ? 'Pairing revoked or mailbox expired. Pair again on desktop.' : 'Relay unavailable. Retrying.');
-    return await response.json();
-    } finally { clearTimeout(timeout); }
+  function connect() {
+    if(!session || socket) return;
+    const ws=new WebSocket(location.origin.replace(/^http/, 'ws')+'/api/socket');
+    socket=ws;ready=false;
+    let delivery=Promise.resolve(), queued=0;
+    const authTimer=setTimeout(()=>ws.close(),10000);
+    ws.onopen=()=>ws.send(JSON.stringify({type:'auth',room:session.room,token:session.token}));
+    ws.onmessage=event=>{
+      if(socket!==ws) return;
+      try {
+        if(typeof event.data!=='string' || event.data.length>22008192) throw new Error('Relay message too large');
+        const data=JSON.parse(event.data);
+        if(data.type==='ready') {
+          clearTimeout(authTimer);ready=true;reconnectDelay=1000;
+          for(const item of pending.values()) item.lastSent=0;
+          tick();
+        } else if(data.type==='result') {
+          const call=calls.get(data.id);
+          if(call) { calls.delete(data.id);clearTimeout(call.timer);data.error ? call.reject(new Error(data.error)) : call.resolve(data.result); }
+        } else if(data.type==='messages') {
+          if(++queued>2) throw new Error('Relay delivery overflow');
+          delivery=delivery.then(()=>consume(data)).catch(error=>{status(error.message);ws.close();}).finally(()=>queued--);
+        } else throw new Error('Invalid relay response');
+      } catch(error) { status(error.message);ws.close(); }
+    };
+    ws.onclose=event=>{
+      clearTimeout(authTimer);
+      if(socket!==ws) return;
+      socket=null;ready=false;
+      for(const call of calls.values()) {clearTimeout(call.timer);call.reject(new Error('Relay disconnected.'));}
+      calls.clear();
+      if(!session) return;
+      if(event.code===4001) {status('Pairing revoked or expired. Disconnect and pair again on desktop.');return;}
+      status('Relay disconnected. Reconnecting…');
+      reconnectTimer=setTimeout(connect,reconnectDelay+Math.random()*500);
+      reconnectDelay=Math.min(30000,reconnectDelay*2);
+    };
+    ws.onerror=()=>status('Relay connection unavailable. Retrying…');
+  }
+  function relay(method='POST', body, message) {
+    if(!ready || !socket || socket.readyState!==WebSocket.OPEN) return Promise.reject(new Error('Relay reconnecting.'));
+    if(calls.size>=128 || socket.bufferedAmount>24000000) return Promise.reject(new Error('Relay is busy. Retrying.'));
+    const id=String(++serial);
+    return new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{calls.delete(id);reject(new Error('Relay did not confirm delivery.'));socket?.close();},10000);
+      calls.set(id,{resolve,reject,timer});
+      try {socket.send(JSON.stringify(method==='DELETE' ? {type:'ack',id,message} : {type:'send',id,frame:body}));}
+      catch(error) {clearTimeout(timer);calls.delete(id);reject(error);}
+    });
   }
   async function send(payload, callbacks={}) {
     const id=b64(nacl.randomBytes(18)), expires=Date.now()/1000+120;
@@ -93,50 +134,49 @@
     }
   }
   function disconnect() {
+    clearTimeout(reconnectTimer);
     if(session) session.keys.secretKey.fill(0);
     for(const item of pending.values()) item.reject?.(new Error('Disconnected'));
-    pending.clear();paired=false;session=null;location.reload();
+    pending.clear();paired=false;session=null;socket?.close();location.reload();
   }
-  async function poll() {
+  async function consume(data) {
+    if(!session) return;
+    if(!Array.isArray(data.messages) || data.messages.length>20) throw new Error('Invalid relay response');
+    for(const item of data.messages) {
+      if(!Number.isSafeInteger(item.id) || item.id<=0) throw new Error('Invalid relay message');
+      let message;
+      try { message=decode(item.frame); } catch { await relay('DELETE',null,item.id); continue; }
+      if(!received.has(message.id) && pending.has(message.id)) {
+        const original=pending.get(message.id);
+        received.add(message.id);pending.delete(message.id);
+        if(received.size>1000) received.delete(received.values().next().value);
+        if(message.result.error) { status(message.result.error);original.reject?.(new Error(message.result.error)); }
+        else if(message.result.paired && original.kind==='pair') {
+          paired=true;status('Paired. Opening CORPORA…');openCorpora().catch(error=>status(error.message));
+        } else if(original.op==='api') {
+          original.resolve(message.result);status('Remote · Disconnect');
+        }
+      }
+      await relay('DELETE',null,item.id);
+    }
+  }
+  async function tick() {
     if(!session || polling) return;
     polling=true;
-    // Expiry must settle UI requests even while the relay is unreachable.
-    for(const [id,item] of pending) {
-      if(item.expires<=Date.now()/1000) {
-        pending.delete(id);
-        item.reject?.(new Error('Desktop did not confirm this request. Check desktop state before repeating an action.'));
-        if(item.kind==='pair') status('Pairing timed out. Disconnect this page and create a new QR on desktop.');
-      }
-    }
     try {
-      const data=await relay();
-      if(!Array.isArray(data.messages) || data.messages.length>20) throw new Error('Invalid relay response');
-      for(const item of data.messages) {
-        if(!Number.isSafeInteger(item.id) || item.id<=0) throw new Error('Invalid relay message');
-        let message;
-        try { message=decode(item.frame); } catch { await relay('DELETE',null,item.id); continue; }
-        if(!received.has(message.id) && pending.has(message.id)) {
-          const original=pending.get(message.id);
-          received.add(message.id);pending.delete(message.id);
-          if(received.size>1000) received.delete(received.values().next().value);
-          if(message.result.error) { status(message.result.error);original.reject?.(new Error(message.result.error)); }
-          else if(message.result.paired && original.kind==='pair') {
-            paired=true;status('Paired. Opening CORPORA…');openCorpora().catch(error=>status(error.message));
-          } else if(original.op==='api') {
-            original.resolve(message.result);status('Remote · Disconnect');
-          }
-        }
-        await relay('DELETE',null,item.id);
-      }
       for(const [id,item] of pending) {
-        if(Date.now()-item.lastSent>15000) {
-          // Retries reuse the exact encrypted request and ID; desktop durably deduplicates it.
-          await relay('POST',item.frame);item.lastSent=Date.now();
+        if(item.expires<=Date.now()/1000) {
+          pending.delete(id);
+          item.reject?.(new Error('Desktop did not confirm this request. Check desktop state before repeating an action.'));
+          if(item.kind==='pair') status('Pairing timed out. Disconnect this page and create a new QR on desktop.');
+        } else if(ready && Date.now()-item.lastSent>15000) {
+          item.lastSent=Date.now();
+          // Same ciphertext and ID on every retry; desktop durably deduplicates commands.
+          await relay('POST',item.frame);
         }
       }
-
-    } catch(error) { status(error.message); }
-    finally { polling=false; }
+    } catch(error) {status(error.message);}
+    finally {polling=false;}
   }
   async function upload(file) {
     if(!window.isSecureContext) throw new Error('Open this app over HTTPS.');
@@ -161,13 +201,14 @@
       const hash=await crypto.subtle.digest('SHA-256',session.keys.publicKey);
       $('fingerprint').textContent=Array.from(new Uint8Array(hash)).map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,32);
       $('pair-panel').hidden=true;$('verify-panel').hidden=false;$('forget').hidden=false;
+      connect();
       await send({kind:'pair',secret:data.secret});delete session.secret;
       $('qr-file').value='';status('Compare the fingerprint and approve this phone on desktop.');
-      await poll();
+      await tick();
     } finally { URL.revokeObjectURL(url); }
   }
   $('qr-file').addEventListener('change',async event=>{try{await upload(event.target.files[0]);}catch(error){status(error.message);}});
   $('forget').addEventListener('click',disconnect);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll();});
-  setInterval(poll,2000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(!socket){clearTimeout(reconnectTimer);connect();}tick();}});
+  setInterval(tick,1000); // Local expiry/retry clock only; no idle network polling.
 })();

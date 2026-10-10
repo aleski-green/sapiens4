@@ -18,6 +18,7 @@ from sapiens.corpora.host.remote_bridge import RemoteBridge, request
 from sapiens.corpora.host.remote_relay import Mailboxes, RelayError, RelayServer
 from sapiens.corpora.host.server import Server
 from sapiens.corpora.host import remote_setup
+from sapiens.corpora.host.remote_socket import SocketClient, websocket
 from test_integration import IntegrationFixture
 
 
@@ -306,6 +307,68 @@ class RemoteHTTPTest(unittest.TestCase):
         req=Request(self.local_url+path,data=json.dumps(body).encode() if body is not None else None,
                     headers={'Content-Type':'application/json','X-Sapiens-Local':'1'})
         with urlopen(req,timeout=10) as response:return json.load(response)
+
+    def test_websocket_delivery_replay_ack_and_revocation(self):
+        room = request(self.url, '/api/rooms', self.admin, 'POST', {})
+        desktop = SocketClient(dict(relay=self.url, room=room['room'], token=room['desktop']))
+        self.addCleanup(desktop.close)
+        phone = SocketClient(dict(relay=self.url, room=room['room'], token=room['phone']))
+        self.addCleanup(phone.close)
+        frame = dict(sender=crypto.b64(b'p'*32), nonce=crypto.b64(b'n'*24), ciphertext=crypto.b64(b'e'*350000))
+        phone.call('send', frame=frame)
+        item = desktop.receive()
+        self.assertEqual(item['frame'], frame)
+        desktop.close()  # No acknowledgment: must replay from durable storage.
+        desktop = SocketClient(dict(relay=self.url, room=room['room'], token=room['desktop']))
+        self.addCleanup(desktop.close)
+        self.assertEqual(desktop.receive(), item)
+        desktop.call('ack', message=item['id'])
+        desktop.call('send', frame=frame)
+        reply = phone.receive()
+        self.assertEqual(reply['frame'], frame)
+        phone.call('ack', message=reply['id'])
+        self.assertIsNone(phone.receive())
+        request(self.url, '/api/rooms/' + room['room'], room['desktop'], 'DELETE')
+        with self.assertRaises(Exception):
+            phone.read(2)
+
+    def test_websocket_auth_origin_and_plaintext_rejection(self):
+        room = request(self.url, '/api/rooms', self.admin, 'POST', {})
+        with self.assertRaises(Exception):
+            SocketClient(dict(relay=self.url, room=room['room'], token='bad'*15))
+        with self.assertRaises(websocket.WebSocketBadStatusException):
+            websocket.create_connection(self.url.replace('http:', 'ws:')+'/api/socket', origin='https://evil.example')
+        client = SocketClient(dict(relay=self.url, room=room['room'], token=room['phone']))
+        self.addCleanup(client.close)
+        with self.assertRaises(ValueError):
+            client.call('send', frame={'text':'private plaintext'})
+
+    def test_live_bridge_pairs_and_replies_over_socket(self):
+        invitation = self.api('/api/remote/pair', dict(relay=self.url, token=self.admin))['qr']
+        client = SocketClient(dict(relay=self.url, room=invitation['room'], token=invitation['token']))
+        self.addCleanup(client.close)
+        private, public = crypto.keypair()
+        def send(id_, **value):
+            client.call('send', frame=crypto.pack(private, invitation['desktop'], invitation['room'],
+                        'phone-to-desktop', dict(id=id_, expires=time.time()+120, **value)))
+        send('pair', kind='pair', secret=invitation['secret'])
+        deadline = time.time()+5
+        while not self.api('/api/remote')['pending'] and time.time()<deadline:
+            time.sleep(.05)
+        self.api('/api/remote/approve', dict(peer=public))
+        def receive():
+            deadline = time.time()+5
+            item = None
+            while item is None and time.time()<deadline:
+                item = client.receive()
+            self.assertIsNotNone(item)
+            result = crypto.unpack(private, invitation['desktop'], invitation['room'], 'desktop-to-phone', item['frame'])
+            client.call('ack', message=item['id'])
+            return result['result']
+        self.assertTrue(receive()['paired'])
+        send('chat', kind='request', op='api', method='POST', path='/api/agents/chief/messages', data={'text':'Socket chat'})
+        self.assertEqual(receive()['status'], 202)
+        self.assertEqual(len(self.service.calls), 1)
 
     def test_local_setup_creates_invitation_without_exposing_admin(self):
         path = Path(self.temp.name) / 'relay.connection.json'

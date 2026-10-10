@@ -15,6 +15,7 @@ from sapiens.corpora.host.corpora_api import dispatch
 from sapiens.files import atomic_json
 from sapiens.corpora.host import remote_pairing as crypto
 from sapiens.corpora.host.remote_setup import local_connection
+from sapiens.corpora.host.remote_socket import SocketClient, websocket
 from sapiens.validation import APIError
 
 
@@ -81,7 +82,7 @@ class RemoteBridge:
         with self.lock:
             config = self.config or {}
             pending = config.get('pending')
-            return dict(available=crypto.available(), enabled=bool(config),
+            return dict(available=crypto.available() and websocket is not None, enabled=bool(config),
                         local_relay=bool(local_connection()),
                         paired=bool(config.get('peer')), relay=config.get('relay'),
                         fingerprint=crypto.fingerprint(config['peer']) if config.get('peer') else None,
@@ -90,6 +91,8 @@ class RemoteBridge:
                         expires=config.get('expires'), error=self.error, last_contact=self.last_contact)
 
     def create(self, data):
+        if websocket is None:
+            raise ValueError('Install remote-requirements.txt to enable WebSocket remote access')
         if data.get('local') is True:
             data = local_connection()
             if not data:
@@ -285,9 +288,48 @@ class RemoteBridge:
             self.last_contact, self.error = time.time(), ''
 
     def run(self):
+        delay = 1
         while not self.stopped.is_set():
+            with self.lock:
+                config = self.config
+            if not config:
+                self.stopped.wait(.5)
+                continue
+            client = None
             try:
-                self.step()
+                client = SocketClient(config)
+                delay = 1
+                with self.lock:
+                    self.error, self.last_contact = '', time.time()
+                while not self.stopped.is_set():
+                    with self.lock:
+                        if self.config is not config:
+                            break
+                        if config.get('accept'):
+                            client.call('send', frame=config['accept'])
+                            config.pop('accept')
+                            self.save()
+                    item = client.receive()
+                    if item is None:
+                        continue
+                    with self.lock:
+                        if self.config is not config:
+                            break
+                        if not isinstance(item, dict) or type(item.get('id')) is not int or item['id'] <= 0:
+                            raise ValueError('Invalid relay message')
+                        try:
+                            reply = self.process(item.get('frame', {}))
+                        except Exception:
+                            reply = None
+                        if reply:
+                            client.call('send', frame=reply)
+                        client.call('ack', message=item['id'])
+                        self.last_contact, self.error = time.time(), ''
             except Exception:
-                self.error = 'Relay unavailable. Retrying; local CORPORA remains available.'
-            self.stopped.wait(2)
+                with self.lock:
+                    self.error = 'Relay disconnected. Reconnecting; local CORPORA remains available.'
+                self.stopped.wait(delay)
+                delay = min(30, delay * 2)
+            finally:
+                if client:
+                    client.close()

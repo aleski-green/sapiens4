@@ -39,22 +39,36 @@ function qrPixels(text) {
   w.URL.createObjectURL=()=> 'blob:test';w.URL.revokeObjectURL=()=>{};
   w.Image=class {constructor(){this.naturalWidth=pixels.width;this.naturalHeight=pixels.height;}async decode(){}};
   w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},getImageData(){return pixels;}});
-  w.fetch=async(url,options={})=>{
-    if(url==='/workspace/') return {ok:true,text:async()=>fs.readFileSync(path.join(root,'web/shell/index.html'),'utf8')};
-    assert.ok(url.startsWith('/api/rooms/'), 'Application data must never use plaintext fetch: '+url);
-    if(offline) throw new Error('Offline');
-    if(options.method==='POST') {
-      const frame=JSON.parse(options.body);
-      assert.equal(Object.keys(frame).sort().join(','),'ciphertext,nonce,sender');
-      const raw=nacl.box.open(bytes(frame.ciphertext),bytes(frame.nonce),bytes(frame.sender),desktop.secretKey);
-      assert.ok(raw);posted.push({frame,message:JSON.parse(Buffer.from(raw).toString())});
-      return {ok:true,json:async()=>({id:posted.length})};
+  let activeSocket, connections=0;
+  class FakeSocket {
+    static OPEN=1;
+    constructor(url) {
+      assert.equal(url,'wss://relay.example/api/socket');
+      activeSocket=this;connections++;this.readyState=1;this.bufferedAmount=0;
+      setTimeout(()=>this.onopen(),0);
     }
-    if(options.method==='DELETE') {
-      const id=Number(url.split('/').at(-1)),index=inbox.findIndex(m=>m.id===id);if(index>=0)inbox.splice(index,1);
-      return {ok:true,json:async()=>({deleted:true})};
+    deliver(value) { this.onmessage({data:JSON.stringify(value)}); }
+    send(raw) {
+      if(offline) throw new Error('Offline');
+      const data=JSON.parse(raw);
+      if(data.type==='auth') {
+        assert.equal(data.token,invitation.token);assert.equal(data.room,invitation.room);
+        setTimeout(()=>this.deliver({type:'ready'}),0);return;
+      }
+      if(data.type==='send') {
+        const frame=data.frame;
+        assert.equal(Object.keys(frame).sort().join(','),'ciphertext,nonce,sender');
+        const plain=nacl.box.open(bytes(frame.ciphertext),bytes(frame.nonce),bytes(frame.sender),desktop.secretKey);
+        assert.ok(plain);posted.push({frame,message:JSON.parse(Buffer.from(plain).toString())});
+      } else assert.equal(data.type,'ack');
+      this.deliver({type:'result',id:data.id,result:{stored:true}});
     }
-    return {ok:true,json:async()=>({messages:[...inbox]})};
+    close() {this.readyState=3;this.onclose?.({code:1000});}
+  }
+  w.WebSocket=FakeSocket;
+  w.fetch=async(url)=>{
+    assert.equal(url,'/workspace/', 'Only static assets may use fetch');
+    return {ok:true,text:async()=>fs.readFileSync(path.join(root,'web/shell/index.html'),'utf8')};
   };
   w.eval(fs.readFileSync(path.join(root,'web/features/remote.js'),'utf8'));
   const file=w.document.getElementById('qr-file');
@@ -70,11 +84,11 @@ function qrPixels(text) {
   function reply(id,result,wireId=1) {
     const nonce=nacl.randomBytes(24),message={v:invitation.v,room:invitation.room,direction:'desktop-to-phone',
       id,kind:'response',expires:Date.now()/1000+120,result};
-    inbox.push({id:wireId,frame:{sender:invitation.desktop,nonce:b64(nonce),ciphertext:b64(nacl.box(
-      Buffer.from(JSON.stringify(message)),nonce,phone,desktop.secretKey))}});
+    activeSocket.deliver({type:'messages',messages:[{id:wireId,frame:{sender:invitation.desktop,nonce:b64(nonce),ciphertext:b64(nacl.box(
+      Buffer.from(JSON.stringify(message)),nonce,phone,desktop.secretKey))}}]});
   }
   reply(posted[0].message.id,{paired:true});
-  await intervals[0]();
+  await intervals[0]();await sleep();
   for(let i=0;i<20&&!w.sapiensRemote;i++)await sleep();
   assert.ok(w.document.querySelector('.sapi-workspace .app'));
   assert.ok(w.document.querySelector('#agent-list'));
@@ -88,22 +102,29 @@ function qrPixels(text) {
   const state=posted.find(p=>p.message.path==='/api/state');assert.ok(state);
   reply(state.message.id,{status:200,mime:'application/json',body:{agents:[{id:'chief',name:'Chief'}],
     turns:[{input:'Private full desktop snapshot',output:'Reply from desktop',status:'done'}]}},2);
-  await intervals[0]();
+  await intervals[0]();await sleep();
   assert.equal((await (await reading).json()).turns[0].input,'Private full desktop snapshot');
   const sending=w.sapiensRemote.fetch('/api/agents/chief/messages',{method:'POST',body:JSON.stringify({text:'A private command'})});
   await sleep();
   const chat=posted.find(p=>p.message.path==='/api/agents/chief/messages');assert.ok(chat);
   assert.equal(chat.message.data.text,'A private command');
   assert.ok(!JSON.stringify(chat.frame).includes('A private command'));
-  reply(chat.message.id,{status:202,mime:'application/json',body:{id:'turn-1'}},3);await intervals[0]();
+  reply(chat.message.id,{status:202,mime:'application/json',body:{id:'turn-1'}},3);await intervals[0]();await sleep();
   assert.equal((await sending).status,202);
   const image=w.sapiensRemote.fetch('/api/agents/chief/notes?image=test.png');await sleep();
   const imageRequest=posted.at(-1);
   reply(imageRequest.message.id,{status:200,mime:'image/png',body:b64(Buffer.from([1,2,3])),binary:true},4);
-  await intervals[0]();assert.deepEqual(new Uint8Array(await (await image).arrayBuffer()),new Uint8Array([1,2,3]));
+  await intervals[0]();await sleep();assert.deepEqual(new Uint8Array(await (await image).arrayBuffer()),new Uint8Array([1,2,3]));
+  assert.equal(connections,1);
+  const count=posted.length;await intervals[0]();await sleep();assert.equal(posted.length,count,'Idle timer must not poll');
   const unanswered=w.sapiensRemote.fetch('/api/state').catch(error=>error.message);await sleep();
+  const beforeReconnect=posted.at(-1);
+  activeSocket.close();
+  await new Promise(resolve=>setTimeout(resolve,1600));
+  assert.equal(connections,2);
+  assert.deepEqual(posted.at(-1).frame,beforeReconnect.frame,'Reconnect must reuse ciphertext and request ID');
   offline=true;const future=Date.now()+121000;w.Date.now=()=>future;
-  await intervals[0]();assert.match(await unanswered,/did not confirm/);
+  await intervals[0]();await sleep();assert.match(await unanswered,/did not confirm/);
   assert.equal(w.localStorage.length,0);assert.equal(w.sessionStorage.length,0);
   dom.window.close();
   console.log('Remote QR upload, shared CORPORA shell, encrypted API and image transport, and volatile secrets passed.');

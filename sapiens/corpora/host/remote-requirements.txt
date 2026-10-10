@@ -1,2 +1,4 @@
-# Optional: only the local endpoint needs NaCl. Relay uses the Python standard library.
+# Optional remote control dependencies (desktop and relay).
 PyNaCl==1.6.2
+aiohttp==3.13.5
+websocket-client==1.9.0

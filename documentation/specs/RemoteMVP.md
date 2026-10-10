@@ -22,7 +22,7 @@ still runs on the desktop.
 ## Run locally for testing
 
 Use Python 3.9+ and an existing Sapiens4 checkout with its usual runtime setup.
-Install the optional desktop cryptography dependency into the Python environment
+Install the optional remote dependencies into the Python environment
 used to start Sapiens4:
 
 ```sh
@@ -38,8 +38,10 @@ python3 -m sapiens.corpora.host.remote_relay \
   --db .sapiens4/relay.sqlite3
 ```
 
-The relay itself uses only the Python standard library; it does not need a running
-Sapiens runtime or the optional PyNaCl package. Assets are included in the checkout.
+The relay uses aiohttp for HTTP and WebSockets. The desktop uses websocket-client
+and PyNaCl. Installing the remote requirements on both machines supplies these
+dependencies. The relay does not need a running Sapiens runtime. Assets are included
+in the checkout.
 On first launch the relay generates a random provisioning token and writes a private
 `relay.connection.json` beside its database (0600 on POSIX). It prints the file's
 location, never its contents. Subsequent launches reuse the token. An explicit
@@ -155,8 +157,30 @@ are reused. Inline CSS is allowed for the shared UI; inline scripts are blocked.
 
 ## Delivery, expiry, and failure semantics
 
-Both endpoints poll the relay approximately every two seconds. The shared UI requests a
-fresh snapshot two seconds after its previous refresh completes. Commands expire after two minutes;
+Both endpoints maintain a WebSocket connection at `/api/socket` (`wss://` over
+HTTPS). Mailbox credentials travel in the first socket message, never query
+parameters. Host and Origin checks apply before upgrade; authentication must finish
+within ten seconds. The relay commits ciphertext to SQLite before confirming a
+send, then pushes it to the recipient. Acknowledgments delete delivered frames;
+unacknowledged frames replay on reconnect. No idle mailbox polling is used by the
+new clients. HTTP room creation/revocation and legacy mailbox endpoints remain
+available for compatibility.
+
+The server sends protocol pings every 25 seconds. Clients reconnect with delays
+up to 30 seconds (browser adds jitter); the browser keeps a local timer for request
+expiry and identical-ciphertext retries. A relay restart preserves paired mailboxes
+and queued data. Existing browser pages must reload once to load this transport;
+that loses their volatile key, so revoke and pair again.
+
+A connection has at most one bounded delivery batch awaiting acknowledgment. The
+relay limits live sockets to 128 overall and four per room, disables compression,
+and checks mailbox expiry/revocation on open connections. Reverse proxies must
+forward WebSocket upgrades and allow idle connections beyond the heartbeat period.
+The bundled Caddy reverse proxy configuration supports upgrades automatically.
+
+The shared CORPORA UI still requests a fresh encrypted snapshot two seconds after
+its previous refresh completes, now over the socket. This transport change removes
+HTTP mailbox polling; it does not implement desktop state-change subscriptions. Commands expire after two minutes;
 unexpired queued commands execute when desktop reconnects. An unanswered request reports an uncertain outcome after expiry. After a missing confirmation, inspect desktop history before manually
 sending the same instruction again.
 
@@ -194,6 +218,7 @@ npm ci --prefix tests
 node tests/build_remote.cjs
 python3 -m unittest discover -s tests -p test_remote.py -v
 node tests/remote.test.cjs
+node tests/remote-desktop.test.cjs
 ```
 
 The vendor bundle is checked in so users do not need Node to run the relay. Rebuild
