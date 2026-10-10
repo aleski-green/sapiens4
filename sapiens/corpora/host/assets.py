@@ -34,6 +34,7 @@ def asset(path):
     # Never expose Python sources, runtime data, or Git metadata.
     files = {
         "/remote/": ("text/html", "shell/remote-desktop.html"),
+        "/remote/remote-code.js": ("text/javascript", "features/remote-code.js"),
         "/remote/desktop.js": ("text/javascript", "features/remote-desktop.js"),
         "/remote/remote-vendor.js": ("text/javascript", "features/remote-vendor.js"),
         "/remote/remote.css": ("text/css", "theme/remote.css"),

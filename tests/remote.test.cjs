@@ -70,10 +70,22 @@ function qrPixels(text) {
     assert.equal(url,'/workspace/', 'Only static assets may use fetch');
     return {ok:true,text:async()=>fs.readFileSync(path.join(root,'web/shell/index.html'),'utf8')};
   };
+  w.eval(fs.readFileSync(path.join(root,'web/features/remote-code.js'),'utf8'));
   w.eval(fs.readFileSync(path.join(root,'web/features/remote.js'),'utf8'));
+  const codeInput=w.document.getElementById('pairing-code'),codeForm=w.document.getElementById('code-form');
+  async function pasteCode(code) {
+    codeInput.value=code;codeForm.dispatchEvent(new w.Event('submit',{cancelable:true}));await sleep();
+  }
+  for(const invalid of ['s4.invalid','x'.repeat(4097),w.RemoteCode.encode({...invitation,relay:'https://other.example'}),
+      w.RemoteCode.encode({...invitation,expires:now-1})]) {
+    await pasteCode(invalid);assert.equal(connections,0,'Invalid codes must not create a socket');
+  }
   const file=w.document.getElementById('qr-file');
   Object.defineProperty(file,'files',{value:[{size:1000}]});
-  file.dispatchEvent(new w.Event('change'));
+  if(process.argv.includes('--code')) {
+    const code=w.RemoteCode.encode(invitation);
+    await pasteCode('  '+code.slice(0,50)+'\n'+code.slice(50)+'  ');
+  } else file.dispatchEvent(new w.Event('change'));
   for(let i=0;i<20&&!posted.length;i++)await sleep();
   assert.ok(posted.length,w.document.getElementById('status').textContent);
   assert.equal(posted[0].message.secret,invitation.secret);

@@ -168,7 +168,7 @@
         if(item.expires<=Date.now()/1000) {
           pending.delete(id);
           item.reject?.(new Error('Desktop did not confirm this request. Check desktop state before repeating an action.'));
-          if(item.kind==='pair') status('Pairing timed out. Disconnect this page and create a new QR on desktop.');
+          if(item.kind==='pair') status('Pairing timed out. Disconnect this page and create a new pairing code on desktop.');
         } else if(ready && Date.now()-item.lastSent>15000) {
           item.lastSent=Date.now();
           // Same ciphertext and ID on every retry; desktop durably deduplicates commands.
@@ -191,22 +191,33 @@
       const pixels=context.getImageData(0,0,canvas.width,canvas.height);
       const qr=jsQR(pixels.data,canvas.width,canvas.height);
       if(!qr || qr.data.length>4096) throw new Error('No supported QR found in this image.');
-      const data=JSON.parse(qr.data);
-      if(data.v!==protocol || data.relay!==location.origin || typeof data.expires!=='number' ||
-         data.expires<=Date.now()/1000 || data.expires>Date.now()/1000+180 ||
-         !['room','token','secret'].every(k=>typeof data[k]==='string' && /^[A-Za-z0-9_-]{32,64}$/.test(data[k])))
-        throw new Error('QR expired or belongs to a different relay. Open the address shown on desktop.');
-      bytes(data.desktop,32);
-      session={...data,keys:nacl.box.keyPair()};
-      const hash=await crypto.subtle.digest('SHA-256',session.keys.publicKey);
-      $('fingerprint').textContent=Array.from(new Uint8Array(hash)).map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,32);
-      $('pair-panel').hidden=true;$('verify-panel').hidden=false;$('forget').hidden=false;
-      connect();
-      await send({kind:'pair',secret:data.secret});delete session.secret;
-      $('qr-file').value='';status('Compare the fingerprint and approve this phone on desktop.');
-      await tick();
+      await pair(JSON.parse(qr.data));
     } finally { URL.revokeObjectURL(url); }
   }
+  async function pair(data) {
+    if (!window.isSecureContext) throw new Error('Open this app over HTTPS.');
+    if (session) throw new Error('A pairing is already in progress.');
+    if (!data || typeof data !== 'object') throw new Error('Invalid pairing invitation.');
+    if(data.v!==protocol || data.relay!==location.origin || typeof data.expires!=='number' ||
+       data.expires<=Date.now()/1000 || data.expires>Date.now()/1000+180 ||
+       !['room','token','secret'].every(k=>typeof data[k]==='string' && /^[A-Za-z0-9_-]{32,64}$/.test(data[k])))
+      throw new Error('Pairing code or QR expired or belongs to a different relay. Open the address shown on desktop.');
+    bytes(data.desktop,32);
+    session={...data,keys:nacl.box.keyPair()};
+    const hash=await crypto.subtle.digest('SHA-256',session.keys.publicKey);
+    $('fingerprint').textContent=Array.from(new Uint8Array(hash)).map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,32);
+    $('pair-panel').hidden=true;$('verify-panel').hidden=false;$('forget').hidden=false;
+    connect();
+    await send({kind:'pair',secret:data.secret});delete session.secret;
+    $('qr-file').value='';$('pairing-code').value='';status('Compare the fingerprint and approve this phone on desktop.');
+    await tick();
+  }
+  $('code-form').addEventListener('submit', async event => {
+    event.preventDefault(); $('connect-code').disabled = true;
+    try { await pair(RemoteCode.decode($('pairing-code').value)); }
+    catch (error) { status(error.message); }
+    finally { $('connect-code').disabled = false; }
+  });
   $('qr-file').addEventListener('change',async event=>{try{await upload(event.target.files[0]);}catch(error){status(error.message);}});
   $('forget').addEventListener('click',disconnect);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(!socket){clearTimeout(reconnectTimer);connect();}tick();}});

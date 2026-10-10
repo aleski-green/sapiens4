@@ -6,7 +6,7 @@ truth**: agents, chat history, execution and authorization remain local. A relay
 stores encrypted messages until the receiver acknowledges them or they expire.
 It does not run agents or hold application decryption keys.
 
-After QR approval, the phone mounts the same CORPORA HTML, JavaScript, and styles
+After pairing approval, the phone mounts the same CORPORA HTML, JavaScript, and styles
 used by the local app. Sapis, Groups, chat, Work, Notes, settings, attachments and
 workspace controls use a shared API dispatcher on the desktop. The browser's API
 adapter encrypts requests and decrypts replies, including note images, without a
@@ -58,16 +58,23 @@ it to the phone or embed it in a URL. Desktop pairing does not persist it.
    the token is never returned to the browser. This shortcut only accepts loopback
    HTTP origins. For a custom database/location or another server, select
    **Import relay connection file**, review the displayed address, then select
-   **Create pairing QR**. Manual address/token entry remains available.
-   Save the QR PNG; the invitation expires after two minutes.
-3. For a same-computer browser test, open `http://127.0.0.1:4180/` and upload the
-   image. For an actual iPhone, use the HTTPS deployment described below;
+   **Create pairing code**. Manual address/token entry remains available.
+   Select **Copy pairing code**; the invitation expires after two minutes.
+3. For a same-computer browser test, open `http://127.0.0.1:4180/`, paste the
+   code and select **Connect to desktop**. QR image upload is also available. For an actual iPhone, use the HTTPS deployment described below;
    `127.0.0.1` on the phone refers to the phone, not the PC.
 4. Compare the phone fingerprint on both screens and select **Approve phone** on
    desktop. This binds approval to that exact phone key.
 5. CORPORA opens automatically in the paired page. Use its normal Sapi/Group
    navigation, composer, Work, Notes and settings. Wait for desktop confirmation.
    Use **Revoke / disable remote access** to disconnect and delete the relay room.
+
+The compact `s4.` code encodes the same invitation as the QR, omitting verbose
+field names. This is encoding, not encryption: a fixed shared key would provide
+no secrecy. The code contains a temporary invitation secret, never either
+device’s private key or the relay provisioning token. Origin, expiry, phone
+fingerprint approval, and encrypted transport checks apply equally to both flows.
+Do not share the code publicly.
 
 QR decoding happens entirely in the phone browser; the uploaded image is never
 sent to a server. There is no camera permission or native QR-scanner dependency.

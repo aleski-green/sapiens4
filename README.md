@@ -65,7 +65,7 @@ See [terminal commands and output formats](documentation/specs/CLI.md).
 
 [Setup, features, API and tests](documentation/reference.md)
 
-[Remote control MVP: QR image pairing and self-hosted encrypted relay](documentation/specs/RemoteMVP.md)
+[Remote control MVP: copy/paste pairing and self-hosted encrypted relay](documentation/specs/RemoteMVP.md)
 
 [Contributing and code guidelines](CONTRIBUTING.md)
 

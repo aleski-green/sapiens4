@@ -25,6 +25,7 @@ from sapiens.corpora.host.remote_setup import provision
 
 ASSETS = {
     '/': ('shell/remote.html', 'text/html'),
+    '/remote-code.js': ('features/remote-code.js', 'text/javascript'),
     '/remote.js': ('features/remote.js', 'text/javascript'),
     '/remote-vendor.js': ('features/remote-vendor.js', 'text/javascript'),
     '/remote.css': ('theme/remote.css', 'text/css'),

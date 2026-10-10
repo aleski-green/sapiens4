@@ -22,10 +22,12 @@
       pending = data.pending;
       if (pending) $('fingerprint').textContent = pending.fingerprint;
       $('device').textContent = data.paired ? 'Approved phone · ' + data.fingerprint : 'Waiting for pairing and approval.';
-      if (data.paired || !data.enabled || data.expires < Date.now()/1000) $('qr-panel').hidden = true;
+      if (data.paired || !data.enabled || data.expires < Date.now()/1000) {
+        $('qr-panel').hidden = true; $('pairing-code').value = ''; $('copy-feedback').textContent = '';
+      }
       status(!data.available ? 'Install the optional remote Python dependencies, then restart Sapiens4.' :
         data.error || (data.paired ? 'Your phone can now connect.' : data.enabled ?
-          (data.expires < Date.now()/1000 ? 'Invitation expired. Revoke and create a new QR.' : 'Invitation ready. Upload the QR image on your phone.') : 'Remote access is off.'));
+          (data.expires < Date.now()/1000 ? 'Invitation expired. Revoke and create a new pairing code.' : 'Invitation ready. Copy the pairing code to your phone.') : 'Remote access is off.'));
     } catch (error) { status(error.message); }
   }
   async function createPairing(body, button) {
@@ -36,6 +38,8 @@
       $('token').value = '';
       $('connection-file').value = '';
       $('create-pair').disabled = true;
+      $('pairing-code').value = RemoteCode.encode(data.qr);
+      $('copy-feedback').textContent = '';
       await RemoteVendor.QRCode.toCanvas($('qr'), JSON.stringify(data.qr), {width:480, margin:3,errorCorrectionLevel:'M'});
       $('download').href = $('qr').toDataURL('image/png');
       $('remote-link').href = data.qr.relay + '/'; $('remote-link').textContent = data.qr.relay;
@@ -45,6 +49,15 @@
     } catch (error) { $('setup-feedback').textContent = error.message; }
     finally { button.disabled = button.id === 'create-pair' && !$('token').value; }
   }
+  $('copy-code').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText($('pairing-code').value);
+      $('copy-feedback').textContent = 'Copied. Paste this code in Sapiens Remote on your phone.';
+    } catch {
+      $('pairing-code').focus(); $('pairing-code').select();
+      $('copy-feedback').textContent = 'Code selected. Use Copy, then paste on your phone.';
+    }
+  });
   $('local-pair').addEventListener('click', () => createPairing({local:true}, $('local-pair')));
   $('pair-form').addEventListener('submit', event => {
     event.preventDefault();
@@ -69,7 +82,7 @@
       }
       $('relay').value = url.origin; $('token').value = data.token;
       $('create-pair').disabled = false;
-      $('setup-feedback').textContent = 'Ready to connect to ' + url.origin + '. Select Create pairing QR.';
+      $('setup-feedback').textContent = 'Ready to connect to ' + url.origin + '. Select Create pairing code.';
     } catch (error) {
       $('setup-feedback').textContent = 'Could not import connection file. ' + error.message;
     } finally { $('connection-file').value = ''; }

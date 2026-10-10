@@ -8,15 +8,19 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 0));
   const dom = new JSDOM(fs.readFileSync(path.join(root, 'web/shell/remote-desktop.html'), 'utf8'),
     {url: 'http://127.0.0.1:4174/remote/', runScripts: 'outside-only'});
   const w = dom.window, $ = id => w.document.getElementById(id), calls = [], intervals = [];
-  let fail = false;
+  let fail = false, enabled = false, copied = '';
+  Object.defineProperty(w.navigator, 'clipboard', {value:{writeText: async text => {copied = text;}}});
+  const invitation = {v:'sapiens-remote-box-v1',relay:'http://127.0.0.1:4180',room:'r'.repeat(43),
+    token:'t'.repeat(43),secret:'s'.repeat(43),desktop:Buffer.alloc(32,7).toString('base64'),expires:Math.floor(Date.now()/1000)+120};
+  w.eval(fs.readFileSync(path.join(root, 'web/features/remote-code.js'), 'utf8'));
   w.setInterval = fn => intervals.push(fn);
   w.RemoteVendor = {QRCode: {toCanvas: async () => {}}};
   $('qr').toDataURL = () => 'data:image/png;base64,test';
   w.fetch = async (url, opts) => {
     calls.push({url, body: opts.body && JSON.parse(opts.body)});
-    if (url.endsWith('/pair')) return {ok: !fail, json: async () => fail ?
-      {error: 'Relay unavailable'} : {qr: {relay: 'http://127.0.0.1:4180'}}};
-    return {ok: true, json: async () => ({available: true, enabled: false, local_relay: true})};
+    if (url.endsWith('/pair')) { enabled = !fail; return {ok: !fail, json: async () => fail ?
+      {error: 'Relay unavailable'} : {qr: invitation}}; }
+    return {ok: true, json: async () => ({available: true, enabled, local_relay: true, expires: invitation.expires})};
   };
   w.eval(fs.readFileSync(path.join(root, 'web/features/remote-desktop.js'), 'utf8'));
   await settle();
@@ -48,6 +52,13 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.deepEqual(calls.at(-2).body, {local: true});
   assert.equal($('token').value, '');
   assert.equal(w.localStorage.length, 0);
+  const code = $('pairing-code').value;
+  assert.ok(code.length < JSON.stringify(invitation).length);
+  assert.deepEqual(JSON.parse(JSON.stringify(w.RemoteCode.decode(code))), invitation);
+  $('copy-code').click(); await settle();
+  assert.equal(copied, code);
+  enabled = false; await intervals[0]();
+  assert.equal($('pairing-code').value, '', 'Disabled invitation must not remain copyable');
   dom.window.close();
   console.log('Remote desktop setup: import, invalid origins, local pairing, and persistent errors passed');
 })().catch(error => {console.error(error); process.exitCode = 1;});
