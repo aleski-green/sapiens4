@@ -1,3 +1,5 @@
 PyYAML>=6.0,<7
 -r ../requirements-cli.txt
 pyte==0.8.2
+
+-r ../sapiens/corpora/host/remote-requirements.txt

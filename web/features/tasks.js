@@ -111,7 +111,7 @@ function renderTasks(host) {
   if (cached?.revision === revision) { drawTasks(host, id, cached); return; }
   cached = {revision, rows:cached?.rows, pending:true};
   taskDocuments.set(id, cached); drawTasks(host, id, cached);
-  fetch(`/api/agents/${encodeURIComponent(id)}/tasks?format=json`, {signal:AbortSignal.timeout(15000)})
+  (typeof apiFetch === 'function' ? apiFetch : fetch)(`/api/agents/${encodeURIComponent(id)}/tasks?format=json`, {signal:AbortSignal.timeout(15000)})
     .then(async response => {
       if (!response.ok) throw new Error('Could not load tasks');
       return response.json();
