@@ -1,5 +1,11 @@
 {
   "private": true,
   "description": "DOM regression tests for the Sapiens4 web UI",
-  "devDependencies": {"jsdom": "26.1.0"}
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "jsdom": "26.1.0",
+    "jsqr": "1.4.0",
+    "qrcode": "1.5.4",
+    "tweetnacl": "1.0.3"
+  }
 }

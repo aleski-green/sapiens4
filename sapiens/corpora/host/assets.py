@@ -33,6 +33,10 @@ def asset(path):
         return "text/javascript; charset=utf-8", javascript().encode()
     # Never expose Python sources, runtime data, or Git metadata.
     files = {
+        "/remote/": ("text/html", "shell/remote-desktop.html"),
+        "/remote/desktop.js": ("text/javascript", "features/remote-desktop.js"),
+        "/remote/remote-vendor.js": ("text/javascript", "features/remote-vendor.js"),
+        "/remote/remote.css": ("text/css", "theme/remote.css"),
         "/live.css": ("text/css", "theme/live.css"),
         "/workspace/styles.css": ("text/css", "theme/styles.css"),
         "/assets/sapi-theme.css": ("text/css", "theme/sapi-theme.css"),

@@ -1,0 +1,2 @@
+# Optional: only the local endpoint needs NaCl. Relay uses the Python standard library.
+PyNaCl==1.6.2

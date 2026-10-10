@@ -4,6 +4,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import json
 import logging
 
+from sapiens.corpora.host.remote_bridge import RemoteBridge
 from sapiens.corpora.host.assets import asset
 from sapiens.corpora.sapis.attachments import create_attachment
 from sapiens.validation import APIError
@@ -19,6 +20,12 @@ class Server(ThreadingHTTPServer):
         super().__init__(("127.0.0.1", port), Handler)
         with service._lock:
             service.orchestration.attach(f"http://127.0.0.1:{self.server_port}")
+        self.remote = RemoteBridge(service)
+
+    def server_close(self):
+        if hasattr(self, "remote"):
+            self.remote.close()
+        super().server_close()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -95,6 +102,8 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) == 3 and parts[:2] == ['api', 'groups']:
                 with service._lock:
                     return self._send(200, service.groups.get(parts[2]))
+            if path == "/api/remote":
+                return self._send(200, self.server.remote.status())
             if path == "/api/state":
                 return self._send(200, service.snapshot())
             if len(parts) == 4 and parts[0] == 'api' and parts[1] in {'agents', 'groups'} and parts[3] == 'notes':
@@ -115,6 +124,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, found[1], found[0])
         elif write:
             data = self._body()
+            if path.startswith('/api/remote/') and self.command == 'POST':
+                action = path.removeprefix('/api/remote/')
+                if action == 'pair':
+                    return self._send(201, self.server.remote.create(data))
+                if action == 'approve':
+                    return self._send(200, self.server.remote.approve(data))
+                if action == 'revoke':
+                    return self._send(200, self.server.remote.revoke())
             if len(parts) == 3 and parts[:2] == ['api', 'decision-prompts'] and self.command == 'PUT':
                 return self._send(200, service.delegation.edit_template(parts[2], data))
             if path == '/api/groups' and self.command == 'POST':
