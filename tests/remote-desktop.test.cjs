@@ -11,7 +11,7 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 0));
   let fail = false, enabled = false, copied = '';
   Object.defineProperty(w.navigator, 'clipboard', {value:{writeText: async text => {copied = text;}}});
   const invitation = {v:'sapiens-remote-box-v1',relay:'http://127.0.0.1:4180',room:'r'.repeat(43),
-    token:'t'.repeat(43),secret:'s'.repeat(43),desktop:Buffer.alloc(32,7).toString('base64'),expires:Math.floor(Date.now()/1000)+120};
+    token:'t'.repeat(43),secret:'s'.repeat(43),desktop:Buffer.alloc(32,7).toString('base64'),expires:Math.floor(Date.now()/1000)+3600};
   w.eval(fs.readFileSync(path.join(root, 'web/features/remote-code.js'), 'utf8'));
   w.setInterval = fn => intervals.push(fn);
   w.RemoteVendor = {QRCode: {toCanvas: async () => {}}};

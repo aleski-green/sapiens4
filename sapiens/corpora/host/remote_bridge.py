@@ -112,7 +112,7 @@ class RemoteBridge:
                 raise ValueError('Invalid relay mailbox')
             self.error = ''
             secret = crypto.token()
-            expires = time.time() + 120
+            expires = time.time() + 3600
             self.config = dict(relay=relay, room=room['room'], token=room['desktop'],
                                private=private, public=public, secret=secret, expires=expires,
                                peer=None, pending=None)

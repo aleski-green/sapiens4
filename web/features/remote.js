@@ -88,11 +88,11 @@
     });
   }
   async function send(payload, callbacks={}) {
-    const id=b64(nacl.randomBytes(18)), expires=Date.now()/1000+120;
+    const id=b64(nacl.randomBytes(18)), expires=payload.kind==='pair' ? session.expires : Date.now()/1000+120;
     const encrypted=frame({id,expires,...payload});
     pending.set(id,{...payload,...callbacks,expires,frame:encrypted,lastSent:0});
     try { await relay('POST',encrypted); if(pending.has(id)) pending.get(id).lastSent=Date.now(); }
-    catch(error) { status(error.message+' Message remains pending until its two-minute expiry.'); }
+    catch(error) { status(error.message+(payload.kind==='pair' ? ' Pairing remains pending until the code expires.' : ' Message remains pending until its two-minute expiry.')); }
     return id;
   }
   function apiRequest(path, options={}) {
@@ -199,7 +199,7 @@
     if (session) throw new Error('A pairing is already in progress.');
     if (!data || typeof data !== 'object') throw new Error('Invalid pairing invitation.');
     if(data.v!==protocol || data.relay!==location.origin || typeof data.expires!=='number' ||
-       data.expires<=Date.now()/1000 || data.expires>Date.now()/1000+180 ||
+       data.expires<=Date.now()/1000 || data.expires>Date.now()/1000+3660 ||
        !['room','token','secret'].every(k=>typeof data[k]==='string' && /^[A-Za-z0-9_-]{32,64}$/.test(data[k])))
       throw new Error('Pairing code or QR expired or belongs to a different relay. Open the address shown on desktop.');
     bytes(data.desktop,32);

@@ -25,7 +25,7 @@ function qrPixels(text) {
 (async()=>{
   const desktop=nacl.box.keyPair(),now=Date.now()/1000;
   const invitation={v:'sapiens-remote-box-v1',relay:'https://relay.example',room:'r'.repeat(43),
-    token:'t'.repeat(43),secret:'s'.repeat(43),desktop:b64(desktop.publicKey),expires:now+120};
+    token:'t'.repeat(43),secret:'s'.repeat(43),desktop:b64(desktop.publicKey),expires:now+3600};
   const pixels=qrPixels(JSON.stringify(invitation));
   assert.deepEqual(JSON.parse(jsQR(pixels.data,pixels.width,pixels.height).data),invitation);
   const dom=new JSDOM(fs.readFileSync(path.join(root,'web/shell/remote.html'),'utf8'),
@@ -77,7 +77,7 @@ function qrPixels(text) {
     codeInput.value=code;codeForm.dispatchEvent(new w.Event('submit',{cancelable:true}));await sleep();
   }
   for(const invalid of ['s4.invalid','x'.repeat(4097),w.RemoteCode.encode({...invitation,relay:'https://other.example'}),
-      w.RemoteCode.encode({...invitation,expires:now-1})]) {
+      w.RemoteCode.encode({...invitation,expires:now-1}),w.RemoteCode.encode({...invitation,expires:now+7200})]) {
     await pasteCode(invalid);assert.equal(connections,0,'Invalid codes must not create a socket');
   }
   const file=w.document.getElementById('qr-file');
@@ -90,6 +90,7 @@ function qrPixels(text) {
   assert.ok(posted.length,w.document.getElementById('status').textContent);
   assert.equal(posted[0].message.secret,invitation.secret);
   assert.equal(posted[0].message.kind,'pair');
+  assert.ok(posted[0].message.expires > now+3590, 'Pairing request must remain valid with the one-hour code');
   assert.equal(w.document.getElementById('verify-panel').hidden,false);
   assert.equal(w.document.getElementById('chat-panel'),null);
   const phone=bytes(posted[0].frame.sender);

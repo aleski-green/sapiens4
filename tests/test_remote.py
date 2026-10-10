@@ -80,6 +80,26 @@ class RemoteTest(unittest.TestCase):
         self.assertNotIn('secret', self.bridge.config)
         self.assertTrue(self.decoded(self.bridge.config['accept'])['paired'])
 
+    def test_pairing_invitation_lasts_one_hour(self):
+        now = time.time()
+        room = dict(room='r'*43, desktop='d'*43, phone='p'*43)
+        for delay in (3540, 3601):
+            with self.subTest(delay=delay), patch('sapiens.corpora.host.remote_bridge.request', return_value=room), \
+                    patch.object(self.bridge, 'start'), patch('time.time', return_value=now):
+                self.bridge.config = None
+                invitation = self.bridge.create(dict(relay='https://relay.example', token='a'*43))['qr']
+                self.assertEqual(invitation['expires'], now+3600)
+                frame = crypto.pack(self.phone_private, invitation['desktop'], room['room'], 'phone-to-desktop',
+                    dict(id='hour-pair', kind='pair', secret=invitation['secret'], expires=now+3600))
+                with patch('time.time', return_value=now+delay):
+                    if delay < 3600:
+                        self.bridge.process(frame)
+                        self.bridge.approve(dict(peer=self.phone_public))
+                        self.assertEqual(self.bridge.config['peer'], self.phone_public)
+                    else:
+                        with self.assertRaises(ValueError):
+                            self.bridge.process(frame)
+
     def test_expired_pairing_is_rejected(self):
         self.bridge.config['expires'] = time.time()-1
         with self.assertRaises(ValueError):

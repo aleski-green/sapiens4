@@ -59,7 +59,7 @@ it to the phone or embed it in a URL. Desktop pairing does not persist it.
    HTTP origins. For a custom database/location or another server, select
    **Import relay connection file**, review the displayed address, then select
    **Create pairing code**. Manual address/token entry remains available.
-   Select **Copy pairing code**; the invitation expires after two minutes.
+   Select **Copy pairing code**; the invitation expires after one hour.
 3. For a same-computer browser test, open `http://127.0.0.1:4180/`, paste the
    code and select **Connect to desktop**. QR image upload is also available. For an actual iPhone, use the HTTPS deployment described below;
    `127.0.0.1` on the phone refers to the phone, not the PC.
