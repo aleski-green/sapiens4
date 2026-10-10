@@ -107,6 +107,37 @@ Sapiens sign-in/automatic account provisioning is not implemented. Desktop and p
 requests, so there is no inbound port or router change on the desktop. Origin
 changes require new pairing; QR upload never navigates to an arbitrary encoded URL.
 
+## Deploy this relay on Railway
+
+The root `Dockerfile` packages only the relay and public web assets; it does not
+include the local runtime, workspace data, desktop credentials, or Git metadata.
+Connect the repository and select the `codex/remote-control-mvp` branch. Railway
+automatically detects the Dockerfile. Keep the repository root as the build root.
+
+Before deploying:
+
+1. Attach a persistent volume at `/data`. Start with one service replica; SQLite
+   and the in-process delivery notifications are designed for one relay process.
+2. Generate a Railway public domain targeting the service's `PORT`. The relay
+   reads `RAILWAY_PUBLIC_DOMAIN` to validate the public HTTPS origin. For a custom
+   domain, set `SAPIENS_RELAY_ORIGIN=https://your-domain.example` instead.
+3. Configure the healthcheck path `/healthz`. It returns only an availability
+   result and accepts Railway's healthcheck Host; all other routes retain the
+   configured Host/Origin checks.
+4. Deploy. If running on Railway without the persistent mount, startup fails
+   instead of silently creating an ephemeral mailbox database.
+5. Retrieve `/data/relay.connection.json` using Railway's authenticated volume
+   file download or SSH tools, and import it in desktop CORPORA. Do not publish
+   this file or paste it in build logs. The phone receives its own room credential
+   through the QR and never needs the provisioning token.
+
+The database and generated provisioning credential survive redeployments on the
+volume. SIGTERM drains socket connections so clients can reconnect. Resource
+usage is charged to the selected Railway plan; choose account spending limits
+in Railway before expanding traffic. Changing the public origin requires a fresh
+pairing. Configure a private backup policy for the volume if retained mailboxes
+are important; the local PC remains the source of truth.
+
 ## Encryption and storage boundaries
 
 The implementation has three local responsibilities:

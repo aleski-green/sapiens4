@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import signal
 import sqlite3
 import socket
 import threading
@@ -157,6 +158,10 @@ class RelayServer:
 
     async def handle(self, req):
         try:
+            if req.method == 'GET' and req.path == '/healthz':
+                with self.mailboxes.connect() as db:
+                    db.execute('SELECT 1 FROM rooms LIMIT 1')
+                return self.response(200, dict(status='ok'))
             if req.headers.get('Host') != urlsplit(self.public_origin).netloc:
                 raise RelayError(403, 'Unexpected host')
             request_origin = req.headers.get('Origin')
@@ -293,6 +298,8 @@ class RelayServer:
     async def run(self):
         self.loop = asyncio.get_running_loop()
         self.stop_event = asyncio.Event()
+        if threading.current_thread() is threading.main_thread() and os.name != 'nt':
+            self.loop.add_signal_handler(signal.SIGTERM, self.stop_event.set)
         app = web.Application(client_max_size=MAX_FRAME)
         app.router.add_route('*', '/{path:.*}', self.handle)
         runner = web.AppRunner(app, access_log=None, shutdown_timeout=5)
@@ -326,13 +333,20 @@ class RelayServer:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--bind', default='127.0.0.1')
-    parser.add_argument('--port', type=int, default=4180)
-    parser.add_argument('--db', type=Path, default=Path('.sapiens4/relay.sqlite3'))
-    parser.add_argument('--origin', required=True, help='Public HTTPS origin, or loopback HTTP for tests')
+    parser.add_argument('--bind', default=os.environ.get('SAPIENS_RELAY_BIND', '127.0.0.1'))
+    parser.add_argument('--port', type=int, default=int(os.environ.get('PORT', '4180')))
+    parser.add_argument('--db', type=Path, default=Path(os.environ.get('SAPIENS_RELAY_DB', '.sapiens4/relay.sqlite3')))
+    railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
+    default_origin = os.environ.get('SAPIENS_RELAY_ORIGIN') or ('https://' + railway_domain if railway_domain else None)
+    parser.add_argument('--origin', default=default_origin, required=not default_origin,
+                        help='Public HTTPS origin, or loopback HTTP for tests')
     parser.add_argument('--connection-file', type=Path,
                         help='Private connection file to import in CORPORA (default: beside database)')
     args = parser.parse_args()
+    if os.environ.get('RAILWAY_ENVIRONMENT_ID'):
+        mount = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH')
+        if not mount or Path(mount).resolve() not in args.db.resolve().parents:
+            parser.error('Attach a persistent Railway volume at /data before deploying the relay')
     connection_path = args.connection_file or args.db.with_suffix('.connection.json')
     connection = provision(connection_path, args.origin, os.environ.get('SAPIENS_RELAY_ADMIN_TOKEN', ''))
     server = RelayServer((args.bind, args.port), args.db,

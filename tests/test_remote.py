@@ -308,6 +308,14 @@ class RemoteHTTPTest(unittest.TestCase):
                     headers={'Content-Type':'application/json','X-Sapiens-Local':'1'})
         with urlopen(req,timeout=10) as response:return json.load(response)
 
+    def test_healthcheck_allows_platform_host_but_application_does_not(self):
+        req = Request(self.url+'/healthz', headers={'Host':'healthcheck.railway.app'})
+        with urlopen(req) as response:
+            self.assertEqual(json.load(response), {'status':'ok'})
+        with self.assertRaises(HTTPError) as error:
+            urlopen(Request(self.url+'/', headers={'Host':'healthcheck.railway.app'}))
+        self.assertEqual(error.exception.code, 403)
+
     def test_websocket_delivery_replay_ack_and_revocation(self):
         room = request(self.url, '/api/rooms', self.admin, 'POST', {})
         desktop = SocketClient(dict(relay=self.url, room=room['room'], token=room['desktop']))
