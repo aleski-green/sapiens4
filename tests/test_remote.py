@@ -17,6 +17,7 @@ from sapiens.corpora.host import remote_pairing as crypto
 from sapiens.corpora.host.remote_bridge import RemoteBridge, request
 from sapiens.corpora.host.remote_relay import Mailboxes, RelayError, RelayServer
 from sapiens.corpora.host.server import Server
+from sapiens.corpora.host import remote_setup
 from test_integration import IntegrationFixture
 
 
@@ -209,6 +210,32 @@ console.log(JSON.stringify({decoded:JSON.parse(Buffer.from(m).toString()),frame:
         self.assertEqual(self.decoded(self.bridge.process(value['frame']))['agent'],'chief')
 
 
+class RelaySetupTest(unittest.TestCase):
+    def test_generated_connection_is_private_stable_and_rotatable(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'relay.connection.json'
+            first = remote_setup.provision(path, 'http://127.0.0.1:4180')
+            self.assertGreaterEqual(len(first['token']), 32)
+            self.assertEqual(first, remote_setup.provision(path, first['relay']))
+            if os.name != 'nt':
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            rotated = remote_setup.provision(path, 'https://relay.example', 'b' * 43)
+            self.assertEqual(rotated, remote_setup.read(path))
+            self.assertNotEqual(first['token'], rotated['token'])
+            with patch.object(remote_setup, 'LOCAL_CONNECTION', path):
+                self.assertIsNone(remote_setup.local_connection(), 'Automatic setup must stay loopback-only')
+
+    def test_invalid_file_is_not_silently_replaced(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'relay.connection.json'
+            path.write_text('{broken')
+            with self.assertRaises(ValueError):
+                remote_setup.provision(path, 'http://127.0.0.1:4180')
+            self.assertEqual(path.read_text(), '{broken')
+            with patch.object(remote_setup, 'LOCAL_CONNECTION', path):
+                self.assertIsNone(remote_setup.local_connection())
+
+
 class MailboxTest(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
@@ -279,6 +306,20 @@ class RemoteHTTPTest(unittest.TestCase):
         req=Request(self.local_url+path,data=json.dumps(body).encode() if body is not None else None,
                     headers={'Content-Type':'application/json','X-Sapiens-Local':'1'})
         with urlopen(req,timeout=10) as response:return json.load(response)
+
+    def test_local_setup_creates_invitation_without_exposing_admin(self):
+        path = Path(self.temp.name) / 'relay.connection.json'
+        remote_setup.provision(path, self.url, self.admin)
+        with patch.object(remote_setup, 'LOCAL_CONNECTION', path), patch.object(RemoteBridge, 'start'):
+            status = self.api('/api/remote')
+            self.assertTrue(status['local_relay'])
+            self.assertNotIn(self.admin, json.dumps(status))
+            invitation = self.api('/api/remote/pair', {'local': True})
+            self.assertEqual(invitation['qr']['relay'], self.url)
+            self.assertNotIn(self.admin, json.dumps(invitation))
+            self.assertNotIn(self.admin, self.local.remote.path.read_text())
+            with self.assertRaises(HTTPError):
+                urlopen(self.url + '/relay.connection.json')
 
     def test_full_pair_approve_chat_ciphertext_and_revoke(self):
         with patch.object(RemoteBridge,'start'):

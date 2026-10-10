@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 from sapiens.corpora.host.remote_pairing import MAX_FRAME, origin, unb64
 from sapiens.paths import ROOT
 from sapiens.corpora.host.assets import asset
+from sapiens.corpora.host.remote_setup import provision
 
 ASSETS = {
     '/': ('shell/remote.html', 'text/html'),
@@ -208,9 +209,16 @@ def main():
     parser.add_argument('--port', type=int, default=4180)
     parser.add_argument('--db', type=Path, default=Path('.sapiens4/relay.sqlite3'))
     parser.add_argument('--origin', required=True, help='Public HTTPS origin, or loopback HTTP for tests')
+    parser.add_argument('--connection-file', type=Path,
+                        help='Private connection file to import in CORPORA (default: beside database)')
     args = parser.parse_args()
+    connection_path = args.connection_file or args.db.with_suffix('.connection.json')
+    connection = provision(connection_path, args.origin, os.environ.get('SAPIENS_RELAY_ADMIN_TOKEN', ''))
     server = RelayServer((args.bind, args.port), args.db,
-                         os.environ.get('SAPIENS_RELAY_ADMIN_TOKEN', ''), args.origin)
+                         connection['token'], connection['relay'])
+    print('Relay connection file: ' + str(connection_path.resolve()), flush=True)
+    print('In desktop CORPORA → Connect phone → Import relay connection file. '
+          'Keep this file private; it contains the provisioning token.', flush=True)
     print('Remote relay ready. Configure HTTPS and proxy limits before internet exposure.', flush=True)
     try:
         server.serve_forever()

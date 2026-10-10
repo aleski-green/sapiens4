@@ -30,11 +30,9 @@ python3 -m pip install -r sapiens/corpora/host/remote-requirements.txt
 python3 -m sapiens --port 4174 --open
 ```
 
-In another terminal, choose a strong random provisioning token (at least 32 ASCII
-characters), keep it private, and start the relay:
+In another terminal, start the relay. No token needs to be invented or copied:
 
 ```sh
-export SAPIENS_RELAY_ADMIN_TOKEN="YOUR_RANDOM_PROVISIONING_TOKEN"
 python3 -m sapiens.corpora.host.remote_relay \
   --origin http://127.0.0.1:4180 --port 4180 \
   --db .sapiens4/relay.sqlite3
@@ -42,13 +40,24 @@ python3 -m sapiens.corpora.host.remote_relay \
 
 The relay itself uses only the Python standard library; it does not need a running
 Sapiens runtime or the optional PyNaCl package. Assets are included in the checkout.
-The provisioning token only authorizes creation of bounded mailboxes. Never give
-it to the phone or embed it in a URL. The desktop does not persist it.
+On first launch the relay generates a random provisioning token and writes a private
+`relay.connection.json` beside its database (0600 on POSIX). It prints the file's
+location, never its contents. Subsequent launches reuse the token. An explicit
+`SAPIENS_RELAY_ADMIN_TOKEN` overrides/rotates it; `--connection-file` selects a
+custom destination. Keep that file private and transfer it securely to the desktop
+owner. It is never served over HTTP. Windows requires a private directory/ACL.
+The token authorizes mailbox creation; it is not an encryption key. Never give
+it to the phone or embed it in a URL. Desktop pairing does not persist it.
 
 1. In local CORPORA, open **Connect phone**, or visit
    `http://127.0.0.1:4174/remote/` in your desktop browser.
-2. Enter `http://127.0.0.1:4180` and the provisioning token. Create the QR and save
-   its PNG image. The invitation expires after two minutes.
+2. Select **Use local test relay**. CORPORA reads the default connection file
+   from this checkout's `.sapiens4/relay.connection.json` on the server side;
+   the token is never returned to the browser. This shortcut only accepts loopback
+   HTTP origins. For a custom database/location or another server, select
+   **Import relay connection file**, review the displayed address, then select
+   **Create pairing QR**. Manual address/token entry remains available.
+   Save the QR PNG; the invitation expires after two minutes.
 3. For a same-computer browser test, open `http://127.0.0.1:4180/` and upload the
    image. For an actual iPhone, use the HTTPS deployment described below;
    `127.0.0.1` on the phone refers to the phone, not the PC.
@@ -88,8 +97,11 @@ requests with a different Host or Origin are rejected. Redact authorization head
 and request bodies from proxy logs. Keep the provisioning token in protected
 service configuration and rotate it when needed.
 
-Enter that HTTPS origin in the desktop pairing page, then open the same origin
-on the iPhone and upload the QR PNG. Desktop and phone both make outbound HTTP(S)
+Retrieve `relay.connection.json` from your server using your normal secure file
+transfer method. In desktop CORPORA, select **Import relay connection file** and
+create the pairing QR. Open the configured HTTPS origin on the iPhone and upload
+the QR PNG. The public relay site never displays the provisioning token. Hosted
+Sapiens sign-in/automatic account provisioning is not implemented. Desktop and phone both make outbound HTTP(S)
 requests, so there is no inbound port or router change on the desktop. Origin
 changes require new pairing; QR upload never navigates to an arbitrary encoded URL.
 

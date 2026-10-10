@@ -14,6 +14,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from sapiens.corpora.host.corpora_api import dispatch
 from sapiens.files import atomic_json
 from sapiens.corpora.host import remote_pairing as crypto
+from sapiens.corpora.host.remote_setup import local_connection
 from sapiens.validation import APIError
 
 
@@ -81,6 +82,7 @@ class RemoteBridge:
             config = self.config or {}
             pending = config.get('pending')
             return dict(available=crypto.available(), enabled=bool(config),
+                        local_relay=bool(local_connection()),
                         paired=bool(config.get('peer')), relay=config.get('relay'),
                         fingerprint=crypto.fingerprint(config['peer']) if config.get('peer') else None,
                         pending=dict(fingerprint=crypto.fingerprint(pending['peer']), peer=pending['peer'])
@@ -88,6 +90,10 @@ class RemoteBridge:
                         expires=config.get('expires'), error=self.error, last_contact=self.last_contact)
 
     def create(self, data):
+        if data.get('local') is True:
+            data = local_connection()
+            if not data:
+                raise ValueError('Local test relay setup is missing. Start the relay or import its connection file.')
         relay = crypto.origin(data.get('relay'))
         admin = data.get('token', '')
         if not isinstance(admin, str) or not 32 <= len(admin) <= 256 or not admin.isascii():
