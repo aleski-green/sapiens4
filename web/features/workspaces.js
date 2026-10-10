@@ -139,7 +139,7 @@ document.addEventListener('click',e=>{
   if(b.dataset.bookmarkOpen){const tab=state.tabs.find(t=>t.url===b.dataset.bookmarkOpen);browserAction(tab?'focus':'open',tab?{id:tab.id}:{url:b.dataset.bookmarkOpen});}
   if(b.dataset.bookmarkRemove)browserAction('unbookmark',{id:b.dataset.bookmarkRemove});
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#browser-menu').hidden){setBrowserMenu();$('#workspace-menu').focus();}if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='l'&&state.panes.workspace&&!$('#modal').open){e.preventDefault();$('[data-edit-address]').click();}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#browser-menu').hidden){setBrowserMenu();$('#workspace-menu').focus();}if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='l'&&state.panes.workspace&&!$('#modal').open){e.preventDefault();if(state.activeTab)$('[data-edit-address]').click();else openNewTab();}});
 const browserResize=new ResizeObserver(()=>{layoutTabs();syncNativeBrowser();});
 browserResize.observe($('#workspace-content'));browserResize.observe($('.browser-tabs-wrap'));
 new MutationObserver(syncNativeBrowser).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
