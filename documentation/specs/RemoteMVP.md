@@ -6,12 +6,18 @@ truth**: agents, chat history, execution and authorization remain local. A relay
 stores encrypted messages until the receiver acknowledges them or they expire.
 It does not run agents or hold application decryption keys.
 
-The initial remote UI lists Sapis, shows their eight most recent chat turns, and
-sends text messages through the existing local chat path. Agent replies appear
-when the phone refreshes its encrypted snapshot. Groups, attachments, notes,
-computer controls, persistent phone login, and multiple phones are not included.
-Chat messages can still instruct agents to act, so pairing grants meaningful
-admin access and requires explicit approval on desktop.
+After QR approval, the phone mounts the same CORPORA HTML, JavaScript, and styles
+used by the local app. Sapis, Groups, chat, Work, Notes, settings, attachments and
+workspace controls use a shared API dispatcher on the desktop. The browser's API
+adapter encrypts requests and decrypts replies, including note images, without a
+plaintext API fallback. Pairing grants full CORPORA admin access.
+
+The local PC owns state and performs actions. The relay serves public UI assets
+and stores encrypted envelopes only; it does not expose `/api/state` or other
+CORPORA data endpoints. Native desktop browser views, screen streaming, persistent
+phone login, and multiple phones are outside this MVP. Text file previews work
+through the existing browser fallback. Remote control of existing workspace tabs
+still runs on the desktop.
 
 ## Run locally for testing
 
@@ -48,7 +54,8 @@ it to the phone or embed it in a URL. The desktop does not persist it.
    `127.0.0.1` on the phone refers to the phone, not the PC.
 4. Compare the phone fingerprint on both screens and select **Approve phone** on
    desktop. This binds approval to that exact phone key.
-5. Read a Sapi's chat, send a text message, and wait for desktop confirmation.
+5. CORPORA opens automatically in the paired page. Use its normal Sapi/Group
+   navigation, composer, Work, Notes and settings. Wait for desktop confirmation.
    Use **Revoke / disable remote access** to disconnect and delete the relay room.
 
 QR decoding happens entirely in the phone browser; the uploaded image is never
@@ -113,7 +120,8 @@ drop traffic, or deny service, but cannot decrypt application content. The mobil
 web app's host remains trusted: hostile JavaScript served by that host could use
 phone keys or read decrypted content. Self-hosting both components lets users
 choose that trust boundary. Dependencies are bundled on the same origin; no CDN
-scripts or analytics are loaded, and chat is rendered as text.
+scripts or analytics are loaded. The existing CORPORA rendering and Notes sanitization
+are reused. Inline CSS is allowed for the shared UI; inline scripts are blocked.
 
 ### Explicit testing limitations
 
@@ -135,10 +143,9 @@ scripts or analytics are loaded, and chat is rendered as text.
 
 ## Delivery, expiry, and failure semantics
 
-Both endpoints poll the relay approximately every two seconds. Phone requests a
-fresh snapshot about every five seconds. Commands expire after two minutes;
-unexpired queued commands execute when desktop reconnects. The UI says this
-explicitly. After a missing confirmation, inspect desktop history before manually
+Both endpoints poll the relay approximately every two seconds. The shared UI requests a
+fresh snapshot two seconds after its previous refresh completes. Commands expire after two minutes;
+unexpired queued commands execute when desktop reconnects. An unanswered request reports an uncertain outcome after expiry. After a missing confirmation, inspect desktop history before manually
 sending the same instruction again.
 
 Retries preserve the exact request ID and ciphertext. Desktop writes a durable
@@ -146,12 +153,16 @@ receipt before executing a command and caches the encrypted response. A duplicat
 request returns the saved response without repeating the operation. If the process
 crashes between recording intent and recording the outcome, retries report an
 uncertain outcome instead of re-executing. This is deliberately not a guarantee
-of exactly-once completion. Local receipts outlive the request replay window.
+of exactly-once completion. Local receipts outlive the request replay window. Read-only API requests can be
+repeated safely and do not write snapshots into the replay ledger.
 
 The receiver acknowledges each fetched relay message. Ciphertext expires after
 24 hours, with an automatic sweep at least every minute while the relay runs.
 Mailbox credentials expire after seven days; re-pair afterwards. Limits are 100
-rooms per relay, 100 queued messages / 8 MB per room, and 512 KB per incoming frame.
+rooms per relay, 100 queued messages / 48 MB per room, 22 MB per incoming frame, and 16 MB
+per decrypted message. This accommodates the normal 10 MB attachment limit;
+responses exceeding the envelope limit return an explicit error. Fetches contain
+at most 20 messages and are bounded by the frame-size budget.
 Deployments serving more users need operational review of limits and abuse control.
 
 Local revocation removes the desktop credential immediately and attempts to delete
@@ -159,7 +170,9 @@ the mailbox, even if the relay is unavailable. Offline relay cleanup may wait fo
 expiry. Already received plaintext cannot be recalled. Disconnecting the phone
 page clears its volatile key but does not remotely revoke desktop authorization.
 Existing desktop HTTP remains loopback-only with its original Host/Origin guards;
-there is no generic remote proxy to local endpoints.
+remote requests dispatch to the same explicit service operations instead of
+proxying arbitrary URLs. Pairing/revocation endpoints and native browser event
+reporting remain desktop-only.
 
 ## Development and validation
 
@@ -175,8 +188,8 @@ The vendor bundle is checked in so users do not need Node to run the relay. Rebu
 it with the pinned dependencies in `tests/package-lock.json`; dependency licenses
 are recorded in `license/REMOTE_DEPENDENCIES.txt`.
 
-Tests cover real QR generation/decoding, upload-driven browser pairing, safe chat
-rendering, Python/JavaScript crypto interoperability, HTTP pairing/approval,
+Tests cover real QR generation/decoding, upload-driven browser pairing, shared CORPORA mounting, encrypted API and image
+responses, route restrictions, Python/JavaScript crypto interoperability, HTTP pairing/approval,
 reverse delivery, ciphertext-only relay persistence, tampering, expiry, bearer
 access, host/origin checks, revocation, and durable deduplication. Physical iPhone
 Safari testing and an external HTTPS deployment are still required before calling

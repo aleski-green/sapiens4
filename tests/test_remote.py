@@ -134,6 +134,38 @@ class RemoteTest(unittest.TestCase):
         with self.assertRaises(ValueError): self.bridge.process(frame)
         self.assertEqual(self.service.calls,[])
 
+    def test_shared_api_snapshot_and_idempotent_write(self):
+        self.pair()
+        frame = self.message(op='api', method='GET', path='/api/state')
+        result = self.decoded(self.bridge.process(frame))
+        self.assertEqual(result['status'], 200)
+        self.assertEqual(result['body'], self.service.snapshot())
+        self.assertFalse(self.bridge.receipts.exists(), 'Polling must not persist private snapshots')
+        write = self.message(id_='write', op='api', method='POST', path='/api/agents/chief/messages',
+                             data={'text': 'Shared CORPORA composer', 'flow': 'chat'})
+        reply = self.bridge.process(write)
+        self.assertEqual(self.decoded(reply)['status'], 202)
+        self.assertEqual(self.bridge.process(write), reply)
+        self.assertEqual(len(self.service.calls), 1)
+
+    def test_shared_api_cannot_pair_proxy_or_report_native_browser(self):
+        self.pair()
+        for target, method in [('/api/remote', 'GET'), ('/api/remote/revoke', 'POST'),
+                               ('https://evil.example/api/state', 'GET'),
+                               ('/api/agents/chief/browser', 'POST'),
+                               ('/api/agents/../remote', 'GET')]:
+            result = self.decoded(self.bridge.process(self.message(id_=crypto.token(), op='api',
+                                  method=method, path=target, data={})))
+            self.assertIn('error', result)
+        missing = self.decoded(self.bridge.process(self.message(op='api', method='GET', path='/api/missing')))
+        self.assertEqual(missing['status'], 404)
+
+    def test_full_snapshot_larger_than_old_chat_limit(self):
+        self.pair()
+        with patch.object(self.service, 'snapshot', return_value={'private': 'x' * 350000}):
+            reply = self.bridge.process(self.message(op='api', method='GET', path='/api/state'))
+            self.assertEqual(len(self.decoded(reply)['body']['private']), 350000)
+
     def test_revoke_is_local_even_when_relay_is_down(self):
         self.pair()
         with patch('sapiens.corpora.host.remote_bridge.request', side_effect=ValueError('offline')):
@@ -275,6 +307,15 @@ class RemoteHTTPTest(unittest.TestCase):
         self.api('/api/remote/revoke',{})
         with self.assertRaises(ValueError):request(self.url,path,invitation['token'])
 
+    def test_relay_serves_shared_code_but_never_plaintext_state(self):
+        for path, marker in [('/workspace/', b'CORPORA'), ('/workspace/app.js', b'sapiensRemote'),
+                             ('/workspace/styles.css', b'main-grid')]:
+            with urlopen(self.url + path) as response:
+                self.assertIn(marker, response.read())
+        for path in ['/api/state', '/api/remote', '/remote/', '/sapiens/corpora/host/service.py']:
+            with self.assertRaises(HTTPError):
+                urlopen(self.url + path)
+
     def test_host_origin_and_local_write_guards(self):
         for target,headers in [(self.url+'/',{'Host':'evil.example'}),
                                (self.url+'/',{'Origin':'https://evil.example'}),
@@ -298,13 +339,14 @@ class RemoteRuntimeTest(IntegrationFixture):
         agent = service.store.agents()[0]['id']
         command = crypto.pack(phone_private, public, 'runtime-test', 'phone-to-desktop',
                              dict(id='runtime-command', kind='request', expires=time.time()+120,
-                                  op='chat', agent=agent, text='Hello from an encrypted phone'))
+                                  op='api', method='POST', path='/api/agents/' + agent + '/messages',
+                                  data={'text': 'Hello from an encrypted phone', 'flow': 'chat'}))
         reply = bridge.process(command)
         result = crypto.unpack(phone_private, public, 'runtime-test', 'desktop-to-phone', reply)['result']
-        turn = self.wait_turn(service, result['submitted']['id'])
+        turn = self.wait_turn(service, result['body']['id'])
         self.assertEqual(turn['output'], 'Connected through AgentPy.')
         self.assertEqual(bridge.process(command), reply)
-        snapshot = bridge.execute(dict(op='state', agent=agent))
+        snapshot = bridge.execute(dict(op='api', method='GET', path='/api/state'))['body']
         self.assertEqual(snapshot['turns'][-1]['input'], 'Hello from an encrypted phone')
         self.assertEqual(snapshot['turns'][-1]['output'], 'Connected through AgentPy.')
         self.assertEqual(len(self.factory.prompts), 1)

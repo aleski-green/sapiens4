@@ -7,19 +7,24 @@
   const encoder = new TextEncoder(), decoder = new TextDecoder();
   const b64 = bytes => { let s=''; for(const b of bytes) s+=String.fromCharCode(b); return btoa(s); };
   const bytes = (text, length) => {
-    if(typeof text !== 'string' || text.length > 512000) throw new Error('Invalid encoded data');
+    if(typeof text !== 'string' || text.length > 22000000) throw new Error('Invalid encoded data');
     const raw = Uint8Array.from(atob(text), c => c.charCodeAt(0));
     if(length && raw.length !== length) throw new Error('Invalid key or nonce');
     return raw;
   };
-  const status = text => { $('status').textContent=text; };
-  let session=null, paired=false, polling=false, statePending=null, lastUpdate=0;
+  const status = text => {
+    const label=$('status') || $('remote-status');
+    if(label) { label.textContent=label.id==='status' ? text : text==='Remote · Disconnect' ? text : 'Remote · Waiting'; label.title=text; }
+  };
+  let session=null, paired=false, polling=false;
   const pending=new Map(), received=new Set();
   function frame(payload) {
     const message={v:protocol,room:session.room,direction:'phone-to-desktop',...payload};
+    const raw=encoder.encode(JSON.stringify(message));
+    if(raw.length>16000000) throw new Error('Remote request exceeds the 16 MB limit.');
     const nonce=nacl.randomBytes(24);
     return {sender:b64(session.keys.publicKey),nonce:b64(nonce),ciphertext:b64(nacl.box(
-      encoder.encode(JSON.stringify(message)),nonce,bytes(session.desktop,32),session.keys.secretKey))};
+      raw,nonce,bytes(session.desktop,32),session.keys.secretKey))};
   }
   function decode(frame) {
     if(frame.sender !== session.desktop) throw new Error('Wrong desktop identity');
@@ -41,43 +46,68 @@
     return await response.json();
     } finally { clearTimeout(timeout); }
   }
-  async function send(payload) {
+  async function send(payload, callbacks={}) {
     const id=b64(nacl.randomBytes(18)), expires=Date.now()/1000+120;
     const encrypted=frame({id,expires,...payload});
-    pending.set(id,{...payload,expires,frame:encrypted,lastSent:0});
+    pending.set(id,{...payload,...callbacks,expires,frame:encrypted,lastSent:0});
     try { await relay('POST',encrypted); if(pending.has(id)) pending.get(id).lastSent=Date.now(); }
     catch(error) { status(error.message+' Message remains pending until its two-minute expiry.'); }
     return id;
   }
-  function render(data) {
-    const selected=$('agent').value;
-    if(selected && data.agent!==selected) return; // A selection changed while this snapshot was in flight.
-    $('agent').replaceChildren();
-    for(const agent of data.agents) {
-      const option=document.createElement('option'); option.value=agent.id; option.textContent=agent.name;
-      $('agent').append(option);
-    }
-    $('agent').value=data.agent || selected;
-    $('history').replaceChildren();
-    for(const turn of data.turns) {
-      for(const [label,text,reply] of [['You',turn.input,false],['Sapi · '+turn.status,turn.output,true]]) {
-        if(!text) continue;
-        const item=document.createElement('div');item.className='message'+(reply?' reply':'');
-        const who=document.createElement('small');who.textContent=label;
-        item.append(who,document.createTextNode(text));$('history').append(item);
-      }
-    }
-    lastUpdate=data.updated*1000;
-    $('freshness').textContent='Desktop snapshot · '+new Date(lastUpdate).toLocaleTimeString();
-    $('history').scrollTop=$('history').scrollHeight;
+  function apiRequest(path, options={}) {
+    if(!paired) return Promise.reject(new Error('Pair this device first.'));
+    return new Promise((resolve,reject)=>{
+      let data;
+      try { data=options.body===undefined ? undefined : JSON.parse(options.body); }
+      catch(error) { reject(error); return; }
+      send({kind:'request',op:'api',method:options.method || 'GET',path,data},{
+        resolve(result) {
+          if(!Number.isInteger(result.status)) { reject(new Error('Invalid desktop response')); return; }
+          const body=result.binary ? bytes(result.body) : JSON.stringify(result.body);
+          resolve(new Response(body,{status:result.status,headers:{'Content-Type':result.mime}}));
+        },reject
+      }).catch(reject);
+    });
   }
-  async function readState() {
-    if(!session || !paired || statePending) return;
-    statePending=await send({kind:'request',op:'state',agent:$('agent').value || undefined});
+  async function openCorpora() {
+    // Fetch only the static shell here. All application requests use the paired transport.
+    const response=await fetch('/workspace/',{cache:'no-store',redirect:'error'});
+    if(!response.ok) throw new Error('Could not load CORPORA. Reconnect this page.');
+    const shell=new DOMParser().parseFromString(await response.text(),'text/html');
+    const scripts=[...shell.querySelectorAll('script[src]')].map(node=>new URL(node.getAttribute('src'),location.origin+'/workspace/').pathname);
+    shell.querySelectorAll('script').forEach(node=>node.remove());
+    for(const link of shell.querySelectorAll('link[rel="stylesheet"]')) {
+      link.href=new URL(link.getAttribute('href'),location.origin+'/workspace/').pathname;
+      document.head.append(document.importNode(link,true));
+    }
+    document.querySelector('link[href="/remote.css"]')?.remove();
+    document.body.className=shell.body.className;
+    document.body.replaceChildren(...[...shell.body.childNodes].map(node=>document.importNode(node,true)));
+    const connect=document.querySelector('a[href="/remote/"]');
+    const remote=document.createElement('button');remote.type='button';remote.className='pill';remote.id='remote-status';
+    remote.textContent='Remote · Disconnect';remote.setAttribute('aria-label','Disconnect remote device');
+    remote.addEventListener('click',disconnect);connect?.replaceWith(remote);
+    Object.defineProperty(window,'sapiensRemote',{value:Object.freeze({fetch:apiRequest}),configurable:false});
+    for(const src of scripts) {
+      const script=document.createElement('script');script.src=src;script.async=false;document.body.append(script);
+    }
+  }
+  function disconnect() {
+    if(session) session.keys.secretKey.fill(0);
+    for(const item of pending.values()) item.reject?.(new Error('Disconnected'));
+    pending.clear();paired=false;session=null;location.reload();
   }
   async function poll() {
     if(!session || polling) return;
     polling=true;
+    // Expiry must settle UI requests even while the relay is unreachable.
+    for(const [id,item] of pending) {
+      if(item.expires<=Date.now()/1000) {
+        pending.delete(id);
+        item.reject?.(new Error('Desktop did not confirm this request. Check desktop state before repeating an action.'));
+        if(item.kind==='pair') status('Pairing timed out. Disconnect this page and create a new QR on desktop.');
+      }
+    }
     try {
       const data=await relay();
       if(!Array.isArray(data.messages) || data.messages.length>20) throw new Error('Invalid relay response');
@@ -89,29 +119,22 @@
           const original=pending.get(message.id);
           received.add(message.id);pending.delete(message.id);
           if(received.size>1000) received.delete(received.values().next().value);
-          if(message.id===statePending) statePending=null;
-          if(message.result.error) status(message.result.error);
+          if(message.result.error) { status(message.result.error);original.reject?.(new Error(message.result.error)); }
           else if(message.result.paired && original.kind==='pair') {
-            paired=true;$('verify-panel').hidden=true;$('chat-panel').hidden=false;status('Paired. Reading desktop state…');
-          } else if(original.op==='state') {
-            render(message.result);status('Connected to your desktop.');
-          } else if(original.op==='chat') status('Desktop accepted your message.');
-          if(original.op==='chat') $('send').disabled=false;
+            paired=true;status('Paired. Opening CORPORA…');openCorpora().catch(error=>status(error.message));
+          } else if(original.op==='api') {
+            original.resolve(message.result);status('Remote · Disconnect');
+          }
         }
         await relay('DELETE',null,item.id);
       }
       for(const [id,item] of pending) {
-        if(item.expires<=Date.now()/1000) {
-          pending.delete(id);if(id===statePending)statePending=null;
-          if(item.op==='chat') { $('send').disabled=false; status('No confirmation received. Check desktop history before sending again.'); }
-          if(item.kind==='pair') status('Pairing timed out. Disconnect this page and create a new QR on desktop.');
-        } else if(Date.now()-item.lastSent>15000) {
+        if(Date.now()-item.lastSent>15000) {
           // Retries reuse the exact encrypted request and ID; desktop durably deduplicates it.
           await relay('POST',item.frame);item.lastSent=Date.now();
         }
       }
-      if(paired && Date.now()-lastUpdate>5000) await readState();
-      if(paired && lastUpdate && Date.now()-lastUpdate>20000) $('freshness').textContent='Waiting for desktop. Displaying the last received snapshot.';
+
     } catch(error) { status(error.message); }
     finally { polling=false; }
   }
@@ -144,14 +167,7 @@
     } finally { URL.revokeObjectURL(url); }
   }
   $('qr-file').addEventListener('change',async event=>{try{await upload(event.target.files[0]);}catch(error){status(error.message);}});
-  $('chat-form').addEventListener('submit',async event=>{
-    event.preventDefault();if(!paired || $('send').disabled || !$('message').value.trim())return;
-    $('send').disabled=true;
-    await send({kind:'request',op:'chat',agent:$('agent').value,text:$('message').value});
-    $('message').value='';status('Encrypted message queued. Waiting for desktop confirmation…');
-  });
-  $('agent').addEventListener('change',readState);$('refresh').addEventListener('click',readState);
-  $('forget').addEventListener('click',()=>{if(session)session.keys.secretKey.fill(0);location.reload();});
+  $('forget').addEventListener('click',disconnect);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll();});
   setInterval(poll,2000);
 })();

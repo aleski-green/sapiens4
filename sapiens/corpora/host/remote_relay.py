@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 
 from sapiens.corpora.host.remote_pairing import MAX_FRAME, origin, unb64
 from sapiens.paths import ROOT
+from sapiens.corpora.host.assets import asset
 
 ASSETS = {
     '/': ('shell/remote.html', 'text/html'),
@@ -83,7 +84,13 @@ class Mailboxes:
                 if method == 'GET':
                     rows = db.execute('SELECT id, body FROM messages WHERE room=? AND recipient=? '
                                       'ORDER BY id LIMIT 20', (room, role)).fetchall()
-                    return dict(messages=[dict(id=id_, frame=json.loads(raw)) for id_, raw in rows])
+                    messages, size = [], 0
+                    for id_, raw in rows:
+                        if messages and size + len(raw) > MAX_FRAME:
+                            break
+                        messages.append(dict(id=id_, frame=json.loads(raw)))
+                        size += len(raw)
+                    return dict(messages=messages)
                 if method == 'POST':
                     if set(body) != {'sender', 'nonce', 'ciphertext'}:
                         raise RelayError(400, 'Expected an encrypted frame')
@@ -94,7 +101,7 @@ class Mailboxes:
                     raw = json.dumps(body, separators=(',', ':'))
                     count, size = db.execute('SELECT count(*), coalesce(sum(length(body)),0) '
                                              'FROM messages WHERE room=?', (room,)).fetchone()
-                    if count >= 100 or size + len(raw) > 8_000_000:
+                    if count >= 100 or size + len(raw) > 48_000_000:
                         raise RelayError(429, 'Mailbox full')
                     recipient = 'phone' if role == 'desktop' else 'desktop'
                     cursor = db.execute('INSERT INTO messages(room,recipient,body,expires) VALUES(?,?,?,?)',
@@ -146,7 +153,7 @@ class RelayHandler(BaseHTTPRequestHandler):
             'Content-Type': mime + '; charset=utf-8', 'Content-Length': str(len(raw)),
             'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
             'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY',
-            'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; "
+            'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
                 "connect-src 'self'; img-src 'self' blob: data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
         }.items():
             self.send_header(key, value)
@@ -164,6 +171,11 @@ class RelayHandler(BaseHTTPRequestHandler):
             if self.command == 'GET' and path in ASSETS:
                 name, mime = ASSETS[path]
                 return self.send(200, (ROOT / 'web' / name).read_bytes(), mime)
+            # Static CORPORA code is public; no application data is served by this host.
+            if self.command == 'GET' and path in {'/workspace/', '/workspace/app.js',
+                    '/workspace/styles.css', '/live.css', '/assets/sapi-theme.css', '/assets/sapi-theme.js'}:
+                found = asset(path)
+                return self.send(200, found[1], found[0].split(';')[0])
             body = {}
             if self.command == 'POST':
                 length = int(self.headers.get('Content-Length', '0'))

@@ -72,8 +72,17 @@ function notesWiki(source, path, owner, profile = {}, metadata = {}, turnCount =
       const src = node.getAttribute('src') || '';
       element.alt = node.getAttribute('alt') || '';
       if (/^data:image\/(?:png|jpeg|gif|webp|svg\+xml)[;,]/i.test(src)) element.src = src;
-      else if (src && !/^(?:[a-z]+:|\/\/|\/)/i.test(src))
-        element.src = '/api/' + (profile.kind==='group'?'groups':'agents') + '/' + encodeURIComponent(owner) + '/notes?image=' + encodeURIComponent(src);
+      else if (src && !/^(?:[a-z]+:|\/\/|\/)/i.test(src)) {
+        const uri = '/api/' + (profile.kind==='group'?'groups':'agents') + '/' + encodeURIComponent(owner) + '/notes?image=' + encodeURIComponent(src);
+        if (typeof window !== 'undefined' && window.sapiensRemote) {
+          window.sapiensRemote.fetch(uri).then(async response => {
+            if (!response.ok) throw new Error('Image unavailable');
+            const url = URL.createObjectURL(await response.blob());
+            element.onload = element.onerror = () => URL.revokeObjectURL(url);
+            element.src = url;
+          }).catch(() => { element.alt ||= 'Image unavailable'; });
+        } else element.src = uri;
+      }
     }
     for (const attr of ['colspan','rowspan']) if (/^[1-9]\d?$/.test(node.getAttribute(attr) || '')) element.setAttribute(attr,node.getAttribute(attr));
     element.append(...[...node.childNodes].map(copy)); return element;

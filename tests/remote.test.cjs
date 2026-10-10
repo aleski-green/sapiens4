@@ -31,15 +31,18 @@ function qrPixels(text) {
   const dom=new JSDOM(fs.readFileSync(path.join(root,'web/shell/remote.html'),'utf8'),
     {url:invitation.relay,runScripts:'outside-only'});
   const w=dom.window;
-  const intervals=[],posted=[],inbox=[];
+  const intervals=[],posted=[],inbox=[];let offline=false;
   w.Uint8Array=Uint8Array;w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;
   Object.defineProperty(w,'crypto',{value:webcrypto});Object.defineProperty(w,'isSecureContext',{value:true});
-  w.RemoteVendor={nacl,jsQR,QRCode};
+  w.RemoteVendor={nacl,jsQR,QRCode};w.Response=Response;
   w.setInterval=fn=>{intervals.push(fn);return intervals.length;};
   w.URL.createObjectURL=()=> 'blob:test';w.URL.revokeObjectURL=()=>{};
   w.Image=class {constructor(){this.naturalWidth=pixels.width;this.naturalHeight=pixels.height;}async decode(){}};
   w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},getImageData(){return pixels;}});
   w.fetch=async(url,options={})=>{
+    if(url==='/workspace/') return {ok:true,text:async()=>fs.readFileSync(path.join(root,'web/shell/index.html'),'utf8')};
+    assert.ok(url.startsWith('/api/rooms/'), 'Application data must never use plaintext fetch: '+url);
+    if(offline) throw new Error('Offline');
     if(options.method==='POST') {
       const frame=JSON.parse(options.body);
       assert.equal(Object.keys(frame).sort().join(','),'ciphertext,nonce,sender');
@@ -62,7 +65,7 @@ function qrPixels(text) {
   assert.equal(posted[0].message.secret,invitation.secret);
   assert.equal(posted[0].message.kind,'pair');
   assert.equal(w.document.getElementById('verify-panel').hidden,false);
-  assert.equal(w.document.getElementById('chat-panel').hidden,true);
+  assert.equal(w.document.getElementById('chat-panel'),null);
   const phone=bytes(posted[0].frame.sender);
   function reply(id,result,wireId=1) {
     const nonce=nacl.randomBytes(24),message={v:invitation.v,room:invitation.room,direction:'desktop-to-phone',
@@ -72,24 +75,36 @@ function qrPixels(text) {
   }
   reply(posted[0].message.id,{paired:true});
   await intervals[0]();
-  assert.equal(w.document.getElementById('chat-panel').hidden,false);
-  const state=posted.find(p=>p.message.op==='state');assert.ok(state);
-  reply(state.message.id,{agents:[{id:'chief',name:'Chief'}],agent:'chief',updated:Date.now()/1000,
-    turns:[{input:'<img src=x onerror="window.compromised=true">',output:'Reply from desktop',status:'done'}]},2);
-  await intervals[0]();
-  assert.match(w.document.getElementById('history').textContent,/<img/);
-  assert.equal(w.document.querySelector('#history img'),null);
-  assert.equal(w.compromised,undefined);
-  w.document.getElementById('message').value='A private command';
-  w.document.getElementById('chat-form').dispatchEvent(new w.Event('submit',{cancelable:true}));
+  for(let i=0;i<20&&!w.sapiensRemote;i++)await sleep();
+  assert.ok(w.document.querySelector('.sapi-workspace .app'));
+  assert.ok(w.document.querySelector('#agent-list'));
+  assert.ok(w.document.querySelector('#workspace-panel'));
+  assert.ok(w.document.querySelector('button[data-panel="work"]'));
+  assert.ok(w.document.querySelector('button[data-scope="groups"]'));
+  assert.equal(w.document.querySelector('a[href="/remote/"]'),null);
+  assert.ok(w.document.querySelector('script[src="/workspace/app.js"]'));
+  const reading=w.sapiensRemote.fetch('/api/state');
   await sleep();
-  const chat=posted.find(p=>p.message.op==='chat');assert.ok(chat);
-  assert.equal(chat.message.text,'A private command');
+  const state=posted.find(p=>p.message.path==='/api/state');assert.ok(state);
+  reply(state.message.id,{status:200,mime:'application/json',body:{agents:[{id:'chief',name:'Chief'}],
+    turns:[{input:'Private full desktop snapshot',output:'Reply from desktop',status:'done'}]}},2);
+  await intervals[0]();
+  assert.equal((await (await reading).json()).turns[0].input,'Private full desktop snapshot');
+  const sending=w.sapiensRemote.fetch('/api/agents/chief/messages',{method:'POST',body:JSON.stringify({text:'A private command'})});
+  await sleep();
+  const chat=posted.find(p=>p.message.path==='/api/agents/chief/messages');assert.ok(chat);
+  assert.equal(chat.message.data.text,'A private command');
   assert.ok(!JSON.stringify(chat.frame).includes('A private command'));
-  assert.equal(w.document.getElementById('send').disabled,true);
-  reply(chat.message.id,{submitted:{id:'turn-1'}},3);await intervals[0]();
-  assert.equal(w.document.getElementById('send').disabled,false);
+  reply(chat.message.id,{status:202,mime:'application/json',body:{id:'turn-1'}},3);await intervals[0]();
+  assert.equal((await sending).status,202);
+  const image=w.sapiensRemote.fetch('/api/agents/chief/notes?image=test.png');await sleep();
+  const imageRequest=posted.at(-1);
+  reply(imageRequest.message.id,{status:200,mime:'image/png',body:b64(Buffer.from([1,2,3])),binary:true},4);
+  await intervals[0]();assert.deepEqual(new Uint8Array(await (await image).arrayBuffer()),new Uint8Array([1,2,3]));
+  const unanswered=w.sapiensRemote.fetch('/api/state').catch(error=>error.message);await sleep();
+  offline=true;const future=Date.now()+121000;w.Date.now=()=>future;
+  await intervals[0]();assert.match(await unanswered,/did not confirm/);
   assert.equal(w.localStorage.length,0);assert.equal(w.sessionStorage.length,0);
   dom.window.close();
-  console.log('Remote QR upload, authenticated chat flow, safe rendering, and no persistent browser secrets passed.');
+  console.log('Remote QR upload, shared CORPORA shell, encrypted API and image transport, and volatile secrets passed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -1,4 +1,4 @@
-"""Opt-in local authority: QR pairing, device approval, and two allowlisted operations."""
+"""Opt-in local authority: QR pairing, device approval, and the shared CORPORA API."""
 import hashlib
 import hmac
 import json
@@ -7,9 +7,11 @@ import secrets
 import sqlite3
 import threading
 import time
+from urllib.parse import urlsplit
 from urllib.error import HTTPError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from sapiens.corpora.host.corpora_api import dispatch
 from sapiens.files import atomic_json
 from sapiens.corpora.host import remote_pairing as crypto
 from sapiens.validation import APIError
@@ -26,8 +28,8 @@ def request(relay, path, bearer, method='GET', body=None):
                   headers={'Authorization': 'Bearer ' + bearer, 'Content-Type': 'application/json'})
     try:
         with build_opener(NoRedirect).open(req, timeout=5) as response:
-            raw = response.read(12_000_001)
-            if len(raw) > 12_000_000:
+            raw = response.read(24_000_001)
+            if len(raw) > 24_000_000:
                 raise ValueError('Relay response too large')
             value = json.loads(raw)
             if not isinstance(value, dict):
@@ -172,6 +174,14 @@ class RemoteBridge:
             return None
         if message.get('kind') != 'request' or message['expires'] > time.time() + 310:
             raise ValueError('Invalid request')
+        if message.get('op') == 'api' and message.get('method') == 'GET':
+            # Reads are safe to repeat; do not retain a full desktop snapshot per poll.
+            try:
+                return self.response(message['id'], self.execute(message))
+            except (ValueError, APIError) as error:
+                return self.response(message['id'], dict(error=str(error)))
+            except Exception:
+                return self.response(message['id'], dict(error='Local operation failed; check desktop'))
         hash_ = hashlib.sha256(json.dumps(message, sort_keys=True).encode()).hexdigest()
         with self.connect() as db:
             db.execute('DELETE FROM receipts WHERE created < ?', (time.time() - 86400,))
@@ -202,6 +212,25 @@ class RemoteBridge:
 
     def execute(self, message):
         op = message.get('op')
+        if op == 'api':
+            method, target = message.get('method'), message.get('path')
+            if method not in {'GET', 'POST', 'PUT'} or not isinstance(target, str) or len(target) > 8192:
+                raise ValueError('Unsupported remote API request')
+            url = urlsplit(target)
+            parts = url.path.strip('/').split('/')
+            if (url.scheme or url.netloc or url.fragment or not target.startswith('/api/') or
+                    '%' in url.path or '..' in parts or '\\' in target or
+                    parts[:2] == ['api', 'remote'] or
+                    (method != 'GET' and len(parts) == 4 and parts[3] == 'browser')):
+                raise ValueError('Remote API route is not allowed')
+            try:
+                status, value, mime = dispatch(self.service, method, target, message.get('data'))
+            except APIError as error:
+                status, value, mime = error.status, dict(error=str(error)), 'application/json'
+            except ValueError as error:
+                status, value, mime = 409, dict(error=str(error)), 'application/json'
+            binary = isinstance(value, bytes)
+            return dict(status=status, body=crypto.b64(value) if binary else value, mime=mime, binary=binary)
         if op == 'state':
             snapshot = self.service.snapshot()
             agents = [dict(id=a['id'], name=a.get('name', a['id']), role=a.get('role', ''))

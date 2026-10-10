@@ -412,6 +412,6 @@ render();
 async function poll() {
   await refresh();
   updateProgress();
-  setTimeout(poll, online ? 750 : 2000);
+  setTimeout(poll, window.sapiensRemote ? 2000 : online ? 750 : 2000);
 }
 setTimeout(poll, 750);

@@ -11,7 +11,8 @@ try:
 except ImportError:  # Local CORPORA does not require the optional remote dependency.
     Box = PrivateKey = PublicKey = None
 
-MAX_FRAME = 512_000
+MAX_FRAME = 22_000_000
+MAX_PLAINTEXT = 16_000_000
 PROTOCOL = 'sapiens-remote-box-v1'
 
 
@@ -64,7 +65,7 @@ def origin(value):
 def pack(secret, peer, room, direction, payload):
     body = dict(v=PROTOCOL, room=room, direction=direction, **payload)
     raw = json.dumps(body, separators=(',', ':'), allow_nan=False).encode()
-    if len(raw) > 300_000:
+    if len(raw) > MAX_PLAINTEXT:
         raise ValueError('Remote response is too large')
     message = Box(PrivateKey(unb64(secret, 32)), PublicKey(unb64(peer, 32))).encrypt(raw)
     return dict(sender=b64(PrivateKey(unb64(secret, 32)).public_key),
@@ -76,6 +77,8 @@ def unpack(secret, peer, room, direction, frame):
         raise ValueError('Unexpected sender')
     raw = Box(PrivateKey(unb64(secret, 32)), PublicKey(unb64(peer, 32))).decrypt(
         unb64(frame.get('ciphertext')), unb64(frame.get('nonce'), 24))
+    if len(raw) > MAX_PLAINTEXT:
+        raise ValueError("Remote request is too large")
     body = json.loads(raw)
     if (not isinstance(body, dict) or body.get('v') != PROTOCOL or
             body.get('room') != room or body.get('direction') != direction):
