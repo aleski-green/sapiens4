@@ -8,7 +8,7 @@ SCRIPTS = ("shell/bootstrap.js", "shell/app.js", "features/names.js", "features/
 
 
 def javascript():
-    source = "\n".join((WEB / name).read_text() for name in SCRIPTS)
+    source = "\n".join((WEB / name).read_text(encoding='utf-8') for name in SCRIPTS)
     return "(async () => {\n" + source + "\n})().catch(error => {\n" + """
         document.body.replaceChildren();
         const panel = document.createElement('main');
@@ -23,7 +23,7 @@ def javascript():
 
 
 def index():
-    return (WEB / "shell/index.html").read_text()
+    return (WEB / "shell/index.html").read_text(encoding='utf-8')
 
 
 def asset(path):

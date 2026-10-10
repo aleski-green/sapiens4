@@ -4,7 +4,10 @@ permissions:
   contents: read
 jobs:
   integration:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,14 +22,12 @@ jobs:
         run: python -m pip install -r tests/requirements.txt
       - name: Integration tests
         run: python -m unittest discover -s tests -v
-      - name: Frontend syntax
+      - name: Frontend regressions
         run: |
+          npm ci --prefix tests --ignore-scripts
           python -c 'from sapiens.corpora.host.assets import javascript; from pathlib import Path; Path("/tmp/sapiens4-app.js").write_text(javascript())'
           node --check /tmp/sapiens4-app.js
-          node tests/chat_links.test.cjs
-          node tests/workspace_merge.test.cjs
-          node tests/notes.test.cjs
-          node tests/tasks.test.cjs
+          for file in tests/*.test.cjs; do node "$file"; done
   blindly:
     runs-on: macos-latest
     steps:
@@ -44,3 +45,5 @@ jobs:
           /tmp/readiness-tests
           swiftc macos/DesktopUpdate.swift macos/DesktopUpdateTests.swift -o /tmp/desktop-update-tests
           /tmp/desktop-update-tests
+      - name: Build macOS desktop app
+        run: ./macos/build.sh

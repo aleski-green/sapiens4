@@ -8,9 +8,8 @@ let workspaceOwner = state.selected;
 function syncWorkspace(){
   workspaceOwner=state.selected;
   const ws=state.workspaces[workspaceOwner] || {tabs:[]};
-  // Old UI placeholders are unnecessary beside real or explicitly opened tabs.
+  // Old UI placeholders are not open tabs; explicitly opened blank tabs still count.
   state.tabs=ws.tabs.filter(t=>t.url!=='about:blank' || t.path || !/^(blank-|id-)/.test(t.id));
-  if(!state.tabs.length)state.tabs=ws.tabs;
   state.activeTab=state.tabs.some(t=>t.id===ws.activeTab)?ws.activeTab:state.tabs[0]?.id || null;
 }
 
@@ -41,18 +40,19 @@ function modal(title,content,eyebrow='SAPI WORKSPACE'){$('#modal-eyebrow').textC
 function closeModal(){$('#modal').close();}
 function render(){if($('#modal').open&&$('#modal-title')?.textContent==='Shared computer')computerDialog();renderPanes();renderSidebar();renderAgentHeader();renderConversation();renderTabs();renderWorkspace();renderGlobal();save();}
 function renderPanes(){
+  syncWorkspace();
   state.panes ??= {sidebar:true,chat:true,workspace:true};
+  const p={...state.panes,workspace:!!state.panes.workspace && !!state.activeTab};
   const names={sidebar:'chat list',chat:'chat',workspace:'workspace'};
   const ids={sidebar:'#chat-list-panel',chat:'#chat-panel',workspace:'#workspace-panel'};
   for(const pane of Object.keys(ids)){
-    $(ids[pane]).hidden=!state.panes[pane];
+    $(ids[pane]).hidden=!p[pane];
     const button=$(`[data-toggle-pane="${pane}"]`);
-    button.setAttribute('aria-pressed',String(state.panes[pane]));
-    button.setAttribute('aria-expanded',String(state.panes[pane]));
-    const label=`${state.panes[pane]?'Hide':'Show'} ${names[pane]}`;
+    button.setAttribute('aria-pressed',String(p[pane]));
+    button.setAttribute('aria-expanded',String(p[pane]));
+    const label=`${p[pane]?'Hide':'Show'} ${names[pane]}`;
     button.setAttribute('aria-label',label);button.title=label;
   }
-  const p=state.panes;
   const count=Object.values(p).filter(Boolean).length;
   $('.main-grid').dataset.visiblePanes=count;
   $('.main-grid').style.gridTemplateColumns=[p.sidebar?(count===1?'minmax(0,1fr)':'clamp(205px,18vw,250px)'):'0px',p.chat?'minmax(300px,1fr)':'0px',p.workspace?'minmax(350px,1.2fr)':'0px'].join(' ');
@@ -99,7 +99,10 @@ const actions = {'new-tab':openNewTab};
 document.addEventListener('click',e=>{
   const b=e.target.closest('button,[data-agent]');if(!b)return;const d=b.dataset;
 
-  if(d.togglePane){state.panes[d.togglePane]=!state.panes[d.togglePane];renderPanes();save();return;}
+  if(d.togglePane){
+    if(d.togglePane==='workspace'&&!state.activeTab){openNewTab();return;}
+    state.panes[d.togglePane]=!state.panes[d.togglePane];renderPanes();save();return;
+  }
   if(d.action){actions[d.action]?.();return;}
   if(d.mention){openChat(d.mention);return;}
   if(d.agent){

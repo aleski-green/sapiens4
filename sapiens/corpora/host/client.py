@@ -9,7 +9,7 @@ import sys
 
 def main():
     try:
-        config = json.loads(Path(sys.argv[1]).read_text())
+        config = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
         payload = json.loads(sys.argv[2])
         if not isinstance(payload, dict):
             raise ValueError("Expected a JSON object")

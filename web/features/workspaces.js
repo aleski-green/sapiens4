@@ -40,7 +40,7 @@ function setBrowserMenu(mode=null) {
   syncNativeBrowser();
 }
 function renderTabs() {
-  syncWorkspace();
+  renderPanes();
   const rows=tabs=>tabs.map(t=>`<div class="workspace-tab ${t.id===state.activeTab?'active':''}">${starButton(t)}<button class="tab-select" data-tab="${esc(t.id)}" aria-pressed="${t.id===state.activeTab}" title="${esc(t.path || t.url)}">${esc(t.title || 'New tab')}</button><button class="tab-close" data-close-tab="${esc(t.id)}" aria-label="Close ${esc(t.title)}">×</button></div>`).join('');
   $('#browser-tabs').innerHTML=rows([...state.tabs].sort((a,b)=>Number(!!tabBookmark(b))-Number(!!tabBookmark(a)))) || '<div class="workspace-tab active"><button class="tab-select" data-action="new-tab" aria-pressed="true">New tab</button></div>';
   $('#browser-all-tabs').innerHTML=`<div class="browser-menu-label">Open tabs · ${state.tabs.length}</div>${rows(state.tabs)}`;
@@ -89,8 +89,11 @@ function syncNativeBrowser() {
   const bridge=window.webkit?.messageHandlers?.browser;
   if (!bridge) return;
   const rect=$('#workspace-content').getBoundingClientRect();
+  const palette=getComputedStyle($('.workspace'));
   bridge.postMessage({workspaces:state.workspaces,owner:state.selected,active:state.activeTab,
-    visible:!!state.panes.workspace && !$('#modal').open && $('#browser-menu').hidden, dark:document.documentElement.dataset.theme==='dark',
+    visible:!$('#workspace-panel').hidden && !$('#modal').open && $('#browser-menu').hidden, dark:document.documentElement.dataset.theme==='dark',
+    background:palette.getPropertyValue('--sapi-white').trim(),foreground:palette.getPropertyValue('--sapi-ink').trim(),
+    captionBackground:palette.getPropertyValue('--sapi-bg').trim(),
     rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height}});
 }
 // Only the trusted app webview owns this callback; guest browser views have no bridge.
@@ -117,7 +120,7 @@ $('#browser-address-form').addEventListener('submit',async e=>{
 });
 $('#add-tab').addEventListener('click',openNewTab);
 $('#open-file').addEventListener('click',()=>{
-  const bridge=window.webkit?.messageHandlers?.browser, directory=selected().kind==='group'?selected().workspace:live.orchestration[state.selected].notes.path.replace(/\/[^/]+$/, '');
+  const bridge=window.webkit?.messageHandlers?.browser, directory=selected().kind==='group'?selected().workspace:live.orchestration[state.selected].notes.path.replace(/[\\/][^\\/]+$/, '');
   setBrowserMenu();
   if(bridge)bridge.postMessage({pickFile:true,owner:state.selected,directory});else {editingAddress=state.activeTab;renderWorkspace();$('#browser-address').value=directory+'/';$('#browser-address').focus();}
 });
@@ -136,7 +139,7 @@ document.addEventListener('click',e=>{
   if(b.dataset.bookmarkOpen){const tab=state.tabs.find(t=>t.url===b.dataset.bookmarkOpen);browserAction(tab?'focus':'open',tab?{id:tab.id}:{url:b.dataset.bookmarkOpen});}
   if(b.dataset.bookmarkRemove)browserAction('unbookmark',{id:b.dataset.bookmarkRemove});
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#browser-menu').hidden){setBrowserMenu();$('#workspace-menu').focus();}if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='l'&&state.panes.workspace&&!$('#modal').open){e.preventDefault();$('[data-edit-address]').click();}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#browser-menu').hidden){setBrowserMenu();$('#workspace-menu').focus();}if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='l'&&state.panes.workspace&&!$('#modal').open){e.preventDefault();if(state.activeTab)$('[data-edit-address]').click();else openNewTab();}});
 const browserResize=new ResizeObserver(()=>{layoutTabs();syncNativeBrowser();});
 browserResize.observe($('#workspace-content'));browserResize.observe($('.browser-tabs-wrap'));
 new MutationObserver(syncNativeBrowser).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});

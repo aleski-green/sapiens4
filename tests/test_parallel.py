@@ -1,5 +1,6 @@
 """Real gated provider calls prove overlap without paid model requests."""
 from pathlib import Path
+from itertools import count
 import tempfile
 import threading
 import time
@@ -9,7 +10,7 @@ from unittest.mock import patch
 from sapiens.computer import commands as computer
 from sapiens.corpora.host.service import APIError, Service
 from sapiens.corpora.host.server import Server
-from test_integration import ScriptedFactory
+from test_integration import ScriptedFactory, TEST_TIMEOUT
 
 
 class ParallelTest(unittest.TestCase):
@@ -32,12 +33,12 @@ class ParallelTest(unittest.TestCase):
         return factory
 
     def service(self, **kwargs):
-        service = Service(self.temp.name, factory_builder=self.builder, pulse_clock=lambda: time.monotonic() * 20, **kwargs)
+        service = Service(self.temp.name, factory_builder=self.builder, pulse_clock=count(step=.5).__next__, **kwargs)
         self.services.append(service)
         return service
 
     def until(self, predicate):
-        deadline = time.monotonic() + 4
+        deadline = time.monotonic() + TEST_TIMEOUT
         while time.monotonic() < deadline:
             if predicate():
                 return
@@ -54,15 +55,15 @@ class ParallelTest(unittest.TestCase):
         for _ in range(8):
             s._queue.put(a)
         s.start()
-        self.assertTrue(self.factories[a].started.wait(3))
-        self.assertTrue(self.factories[b].started.wait(3))
+        self.assertTrue(self.factories[a].started.wait(TEST_TIMEOUT))
+        self.assertTrue(self.factories[b].started.wait(TEST_TIMEOUT))
         self.assertFalse(self.factories[c].started.is_set())
         self.assertEqual(s._agent(c).state['turns'][-1]['status'], 'queued')
         self.assertIsNone(s.snapshot()['computer']['owner'])
         extra = s.submit(a, dict(text='Next batch'))
         self.assertEqual(extra['status'], 'queued')
         self.factories[a].gate.set()
-        self.assertTrue(self.factories[c].started.wait(3))
+        self.assertTrue(self.factories[c].started.wait(TEST_TIMEOUT))
         self.assertFalse(self.factories[b].gate.is_set())
         self.assertLessEqual(len(self.factories[a].prompts),2)
 
@@ -74,7 +75,7 @@ class ParallelTest(unittest.TestCase):
             s.submit(agid, dict(text='Keep this turn'))
         s.start()
         for agid in ids[:2]:
-            self.assertTrue(self.factories[agid].started.wait(3))
+            self.assertTrue(self.factories[agid].started.wait(TEST_TIMEOUT))
         closing = threading.Thread(target=s.close)
         closing.start()
         self.until(s._stopping.is_set)
@@ -84,12 +85,12 @@ class ParallelTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             Service(self.temp.name, start_worker=False)
         self.factories[ids[1]].gate.set()
-        closing.join(3)
+        closing.join(TEST_TIMEOUT)
         self.assertFalse(closing.is_alive())
         self.assertFalse(self.factories[ids[2]].started.is_set())
         self.assertEqual(s._agent(ids[2]).state['turns'][-1]['status'],'queued')
         resumed = self.service()
-        self.assertTrue(self.factories[ids[2]].started.wait(3))
+        self.assertTrue(self.factories[ids[2]].started.wait(TEST_TIMEOUT))
         for agid in ids[:2]:
             self.assertFalse(self.factories[agid].started.is_set())
 
@@ -104,7 +105,7 @@ class ParallelTest(unittest.TestCase):
             s.submit(agid, dict(text='Work'))
         s.start()
         for agid in (a,b):
-            self.assertTrue(self.factories[agid].started.wait(3))
+            self.assertTrue(self.factories[agid].started.wait(TEST_TIMEOUT))
         self.assertEqual(s.orchestration.control(a, dict(op='computer_acquire')), {'owner':a})
         self.assertEqual(s.acquire_computer(a), {'owner':a})
         with self.assertRaises(APIError) as error:
@@ -125,13 +126,13 @@ class ParallelTest(unittest.TestCase):
         s.submit(a, dict(text='First'))
         second = s.submit(b, dict(text='Cancel this queued turn'))
         s.start()
-        self.assertTrue(self.factories[a].started.wait(3))
+        self.assertTrue(self.factories[a].started.wait(TEST_TIMEOUT))
         s.turn_action(b, second['id'], 'cancel')
         self.factories[a].gate.set()
         self.until(lambda:not s._runners and not s.agencies.slots)
         self.assertFalse(self.factories[b].started.is_set())
         third = s.submit(b, dict(text='New request'))
-        self.assertTrue(self.factories[b].started.wait(3))
+        self.assertTrue(self.factories[b].started.wait(TEST_TIMEOUT))
         self.assertEqual(len(self.factories[b].prompts), 1)
         self.assertEqual(next(j for j in s._agent(b).state['turns'] if j['id']==second['id'])['status'], 'cancelled')
 
@@ -147,7 +148,7 @@ class ParallelTest(unittest.TestCase):
                 s.submit(agid, dict(text='Work'))
             s.start()
             for agid in (a,b):
-                self.assertTrue(self.factories[agid].started.wait(3))
+                self.assertTrue(self.factories[agid].started.wait(TEST_TIMEOUT))
             with patch.object(computer.Path, 'cwd', return_value=s.workspace.root(s._agent(a))):
                 computer.acquire()
             self.assertEqual(s.snapshot()['computer']['owner'], a)
@@ -177,7 +178,7 @@ class ParallelTest(unittest.TestCase):
         turns = {agid: s.submit(agid, dict(text='Work'))['id'] for agid in (a, b)}
         s.start()
         for agid in (a, b):
-            self.assertTrue(self.factories[agid].started.wait(3))
+            self.assertTrue(self.factories[agid].started.wait(TEST_TIMEOUT))
         s.acquire_computer(a)
         saved = s.workspace.root(s._agent(a)) / 'partial.md'
         saved.write_text('Saved before Stop')

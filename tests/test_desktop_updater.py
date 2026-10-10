@@ -13,6 +13,9 @@ import urllib.error
 import unittest
 from unittest.mock import patch, Mock
 
+if sys.platform == 'win32':
+    raise unittest.SkipTest('macOS updater and POSIX filesystem tests')
+
 from macos import install
 
 spec = importlib.util.spec_from_file_location('desktop_updater', Path(__file__).resolve().parents[1] / 'macos/updater.py')

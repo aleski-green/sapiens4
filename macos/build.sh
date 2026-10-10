@@ -32,6 +32,8 @@ PY
 cp "$ROOT/macos/updater.py" "$APP/Contents/Resources/updater.py"
 mkdir -p "$APP/Contents/Resources/Licenses/Blindly4"
 cp "$ROOT/license/LICENSE.md" "$ROOT/license/LICENSING.md" "$APP/Contents/Resources/Licenses/"
+cp "$ROOT/README.md" "$APP/Contents/Resources/README.md"
 cp "$ROOT/blindly4/license/LICENSE.md" "$APP/Contents/Resources/Licenses/Blindly4/"
+cp "$ROOT/blindly4/README.md" "$APP/Contents/Resources/Licenses/Blindly4/README.md"
 codesign --force --sign - "$APP"
 printf 'Built: %s\n' "$APP"

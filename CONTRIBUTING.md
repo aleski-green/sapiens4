@@ -23,6 +23,11 @@ The owned source roots are `sapiens/` (behavior), `web/` (presentation), and
 `runtime/`, and `computer/`; CORPORA divides into `sapis/`, `browser.py`, and
 `host/`. Web responsibilities are `shell/`, `features/`, and `theme/`.
 
+`windows/` is an additional platform collection required for native Windows
+distribution. Its leaves cover the Python host lifecycle, trusted app shell and
+isolated guest browser views, plus build and validation entrypoints. It does not
+change the three-way split of platform-independent behavior or presentation.
+
 Runtime accepts state and prepared context; it must not import CORPORA or desktop
 code. The host composes these responsibilities. Sapi persistence may use runtime
 contracts, but cannot import execution or host implementations. Keep shared file,

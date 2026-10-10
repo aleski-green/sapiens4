@@ -1,5 +1,6 @@
 """A source-only release must boot without either lab checkout or Git metadata."""
 from pathlib import Path
+from contextlib import closing
 import json
 import shutil
 import subprocess
@@ -108,9 +109,7 @@ finally:
             self.assertFalse((root / 'corpora/directory.json').exists(), 'Persistence must not register Sapis')
 
     def test_registration_is_explicit_and_reparenting_rejects_cycles_atomically(self):
-        with tempfile.TemporaryDirectory() as directory:
-            service = Service(directory, start_worker=False)
-            self.addCleanup(service.close)
+        with tempfile.TemporaryDirectory() as directory, closing(Service(directory, start_worker=False)) as service:
             registry = service.registry
             registry.register = Mock(wraps=registry.register)
             child = service.create_agent(dict(name='Child', role='Assistant'))['id']

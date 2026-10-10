@@ -52,7 +52,11 @@ class ProcessTests(unittest.TestCase):
                 with self.assertRaises(InterruptedError if cancel else TimeoutError):
                     llm.complete('test')
                 pid = int(path.read_text())
-                state = subprocess.run(['ps', '-p', str(pid), '-o', 'stat='], capture_output=True, text=True).stdout.strip()
+                if os.name == 'nt':
+                    rows = subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/FO', 'CSV', '/NH'], capture_output=True, text=True).stdout
+                    state = 'running' if f'"{pid}"' in rows else ''
+                else:
+                    state = subprocess.run(['ps', '-p', str(pid), '-o', 'stat='], capture_output=True, text=True).stdout.strip()
                 if state and not state.startswith('Z'):
                     os.kill(pid, 9)  # Clean up only the child created by this test.
                     self.fail('A detached command survived the stopped runner')

@@ -1,10 +1,9 @@
 """Validated team and workspace operations for conversational Sapis."""
 import json
-import shlex
 import sys
 
 from sapiens.corpora.sapis.notes import Notes
-from sapiens.paths import ROOT
+from sapiens.paths import ROOT, shell_command
 from sapiens.prompts import prompt
 from sapiens.files import atomic_bytes
 from sapiens.validation import APIError, sapi_name, text_field
@@ -17,7 +16,7 @@ class Orchestration:
 
     def settings(self, agent):
         path = agent.root / "host.json"
-        saved = json.loads(path.read_text()) if path.exists() else {}
+        saved = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
         return {k: saved[k] for k in ('retired_at', 'retirement_reason') if k in saved}
 
     @staticmethod
@@ -172,7 +171,7 @@ class Orchestration:
         if self.url:
             path = self.service.workspace.root(agent) / 'host-control.json'
             atomic_bytes(path, json.dumps({'url': f'{self.url}/api/agents/{agent.agid}/control'}).encode())
-            command = ' '.join(shlex.quote(str(p)) for p in (sys.executable, ROOT / 'sapiens/corpora/host/client.py', path))
+            command = shell_command((sys.executable, ROOT / 'sapiens/corpora/host/client.py', path))
             agent.set_manifest('host-control', prompt('host-control', command=command))
         facts = self.status(agent)
         facts['notes'] = Notes(self.service.workspace.root(agent)).context()

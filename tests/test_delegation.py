@@ -1,5 +1,6 @@
 """Real host/runner/persistence with deterministic, schema-shaped model decisions."""
 from http.client import HTTPConnection
+from itertools import count
 import json
 from pathlib import Path
 import tempfile
@@ -64,7 +65,7 @@ class DelegationTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.provider = Provider()
-        self.service = Service(self.temp.name, factory_builder=self.provider.builder, pulse_clock=lambda: time.monotonic() * 20, start_worker=False)
+        self.service = Service(self.temp.name, factory_builder=self.provider.builder, pulse_clock=count(step=.5).__next__, start_worker=False)
         self.addCleanup(lambda: self.service.close())
         self.chief = self.service.registry.main
         self.researcher = self.service.create_agent(dict(name='Researcher', role='Research'))['id']
@@ -74,7 +75,9 @@ class DelegationTest(unittest.TestCase):
                 for w in self.service.store.workloads() for d in w['decisions'] if d['agent'] == agid]
 
     def until(self, predicate):
-        end = time.monotonic() + 6
+        # Windows CI can spend several seconds creating/persisting a new Sapi
+        # before the final output pulse. Keep polling bounded without racing it.
+        end = time.monotonic() + 30
         while time.monotonic() < end:
             result = predicate()
             if result:
@@ -83,17 +86,20 @@ class DelegationTest(unittest.TestCase):
         self.fail('Timed out: ' + str(self.service.snapshot().get('workloads')))
 
     def wait_idle(self):
-        self.until(lambda: not any(t['status'] in {'running','queued','output_pending'} for t in self.service.snapshot()['turns'])
-                   and not any(c['state'] == 'Queued' for w in self.service.store.workloads() for c in w['calls']))
         def settled():
-            # Slot release and final workload reconciliation share this lock.
+            # Check runners, projections and pending handoffs in one snapshot: a
+            # finishing runner can enqueue a recipient before releasing its slot.
             with self.service._lock:
-                return not self.service._runners and not self.service.agencies.slots
+                return (not self.service._runners and not self.service.agencies.slots
+                        and not any(t['status'] in {'running','queued','output_pending'}
+                                    for t in self.service.snapshot()['turns'])
+                        and not any(c['state'] == 'Queued'
+                                    for w in self.service.store.workloads() for c in w['calls']))
         self.until(settled)
 
     def restart(self, start_worker=True):
         self.service.close()
-        self.service = Service(self.temp.name, factory_builder=self.provider.builder, pulse_clock=lambda: time.monotonic() * 20, start_worker=start_worker)
+        self.service = Service(self.temp.name, factory_builder=self.provider.builder, pulse_clock=count(step=.5).__next__, start_worker=start_worker)
 
     def chief_routes(self, target=None):
         self.provider.responses[self.chief, 'Assessing'] = answer('OutsideSpecialization')

@@ -1,14 +1,17 @@
 """Group contracts, durable routing and concurrent edits against real host runners."""
 import json
+import sys
 import threading
 import time
+import unittest
 from http.client import HTTPConnection
 
 from sapiens.corpora.host.server import Server
 from sapiens.corpora.host.service import APIError
 from sapiens.corpora.sapis.attachments import create_attachment
-from test_integration import IntegrationFixture
-from macos.updater import busy
+from test_integration import IntegrationFixture, TEST_TIMEOUT
+if sys.platform != 'win32':
+    from macos.updater import busy
 
 
 class GroupsTest(IntegrationFixture):
@@ -22,7 +25,7 @@ class GroupsTest(IntegrationFixture):
         return s, chief, lead, member, outsider, group
 
     def until(self, condition):
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + TEST_TIMEOUT
         while time.monotonic() < deadline:
             if condition():
                 return
@@ -258,7 +261,7 @@ class GroupsTest(IntegrationFixture):
         self.addCleanup(gate.set)
         task = s.groups.work.create(g['id'], dict(title='Original work', assignee=member), lead)
         running = s.groups.work.run(g['id'], task['id'], task['revision'], lead)
-        s.start(); self.assertTrue(self.factory.started.wait(2))
+        s.start(); self.assertTrue(self.factory.started.wait(TEST_TIMEOUT))
         deleted = s.groups.work.update(g['id'], task['id'], dict(revision=running['revision'], deleted=True), lead)
         gate.set()
         self.until(lambda: bool(s.groups.get(g['id'])['tasks'][0]['results']))
@@ -364,9 +367,12 @@ class GroupsTest(IntegrationFixture):
         gate = self.factory.gate = threading.Event()
         self.addCleanup(gate.set)
         s.groups.chat.submit(g['id'], dict(text='Already accepted by old Lead'))
-        s.start(); self.assertTrue(self.factory.started.wait(2))
-        group = s.groups.get(g['id'])
-        s.groups.update(g['id'], dict(revision=group['revision'], lead=member), chief)
+        s.start(); self.assertTrue(self.factory.started.wait(TEST_TIMEOUT))
+        # Keep the revision read and transfer together while the background
+        # dispatcher records that the gated call has started.
+        with s._lock:
+            group = s.groups.get(g['id'])
+            s.groups.update(g['id'], dict(revision=group['revision'], lead=member), chief)
         gate.set()
         self.until(lambda: len(s.groups.get(g['id'])['messages']) == 5)
         self.assertEqual(s.groups.get(g['id'])['messages'][-1]['author'], lead)
@@ -380,6 +386,7 @@ class GroupsTest(IntegrationFixture):
         self.assertEqual(s.groups.chat.mentions(g, '@Researcher.'), [member])
         self.assertEqual(s.groups.chat.mentions(g, '@Researcher.extra'), [])
 
+    @unittest.skipIf(sys.platform == 'win32', 'macOS updater')
     def test_desktop_update_waits_for_group_queue_without_a_projected_turn(self):
         self.assertTrue(busy(dict(turns=[], groups=[dict(requests=[dict(status='queued')])])))
         self.assertFalse(busy(dict(turns=[], groups=[dict(requests=[dict(status='done')])])) )

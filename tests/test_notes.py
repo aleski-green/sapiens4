@@ -68,7 +68,12 @@ class NotesTest(IntegrationFixture):
             notes.path.write_bytes(invalid)
             self.assertIn('error', notes.context())
         notes.path.unlink(); outside = service.root / 'private.txt'; outside.write_text('Not notes')
-        notes.path.symlink_to(outside)
+        try:
+            notes.path.symlink_to(outside)
+        except OSError as error:
+            if getattr(error, 'winerror', None) == 1314:
+                self.skipTest('Windows symlink creation privilege unavailable')
+            raise
         with self.assertRaises(APIError): notes.read()
         self.assertNotIn('Not notes', str(notes.context()))
         self.assertIn('error', notes.metadata())
@@ -94,7 +99,13 @@ class NotesTest(IntegrationFixture):
     def test_unsafe_legacy_files_and_images_never_escape_workspace(self):
         notes = Notes(Path(self.directory.name) / 'workspace'); notes.workspace.mkdir()
         outside = Path(self.directory.name) / 'private.md'; outside.write_text('Private data')
-        legacy = notes.workspace / 'Notes.md'; legacy.symlink_to(outside)
+        legacy = notes.workspace / 'Notes.md'
+        try:
+            legacy.symlink_to(outside)
+        except OSError as error:
+            if getattr(error, 'winerror', None) == 1314:
+                self.skipTest('Windows symlink creation privilege unavailable')
+            raise
         notes.ensure(); self.assertFalse(notes.path.exists()); self.assertIn('error', notes.context())
         legacy.unlink(); legacy.write_bytes(b'\xff')
         notes.ensure(); self.assertEqual(legacy.read_bytes(), b'\xff')

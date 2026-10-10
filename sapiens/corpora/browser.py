@@ -1,6 +1,7 @@
 """Per-Sapi browser tabs and bookmarks. Documents remain ordinary files."""
 from pathlib import Path
 from urllib.parse import urlsplit, unquote
+from urllib.request import url2pathname
 from uuid import uuid4
 
 from sapiens.files import atomic_bytes
@@ -58,7 +59,7 @@ class Workspace:
             if 'path' in data or parsed.scheme == 'file':
                 if 'path' not in data and parsed.netloc not in ('', 'localhost'):
                     raise ValueError()
-                path = Path(value if 'path' in data else unquote(parsed.path)).expanduser()
+                path = Path(value if 'path' in data else url2pathname(parsed.path)).expanduser()
                 if not path.is_absolute():
                     path = self.root(agent) / path
                 path = path.resolve()

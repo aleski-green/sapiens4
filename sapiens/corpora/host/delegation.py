@@ -124,7 +124,7 @@ class Delegation:
             path = self.service.root / 'decision-prompts' / (name + '.md')
             if not path.exists():
                 path = ROOT / 'prompts' / (name + '.md')
-            rows.append(dict(node=node, template=name + '.md', path=str(path), content=path.read_text()))
+            rows.append(dict(node=node, template=name + '.md', path=str(path), content=path.read_text(encoding='utf-8')))
         return rows
 
     def edit_template(self, node, data):
@@ -275,7 +275,7 @@ class Delegation:
                 d['decisionId'] == decision_id and d['callId'] == turn_id and d['node'] == 'Delegation'
                 for d in work['decisions']):
             raise APIError(409, 'Delegation requires this call\'s recorded Delegation decision')
-        record = json.loads(self.service._agent(agid).archive_path('decisions/' + decision_id).read_text())
+        record = json.loads(self.service._agent(agid).archive_path('decisions/' + decision_id).read_text(encoding='utf-8'))
         if record.get('error') or record.get('response', {}).get('event') != 'HandoffPrepared':
             raise APIError(409, 'Delegation decision has not produced a valid response')
         child = self.transfer(agid, {'id': turn_id}, record['response'], record, call['target'])
@@ -449,7 +449,7 @@ class Delegation:
                 if full:
                     for decision in item['decisions']:
                         path = self.service._agent(decision['agent']).archive_path('decisions/' + decision['decisionId'])
-                        decision.update(json.loads(path.read_text()))
+                        decision.update(json.loads(path.read_text(encoding='utf-8')))
                 items.append(item)
         return dict(tasks=items)
 

@@ -7,7 +7,8 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from macos import install
+if sys.platform != 'win32':
+    from macos import install
 from sapiens.runtime import settings as codex_config
 from sapiens import preflight
 
@@ -125,6 +126,7 @@ class VersionTest(unittest.TestCase):
             self.assertGreaterEqual(version, codex_config.MIN_CODEX_VERSION)
 
 
+@unittest.skipIf(sys.platform == 'win32', 'macOS installer')
 class InstallerPreflightTest(unittest.TestCase):
     def test_failed_check_does_not_create_or_modify_installation(self):
         with tempfile.TemporaryDirectory() as directory:

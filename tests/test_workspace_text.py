@@ -24,9 +24,9 @@ class WorkspaceTextTest(IntegrationFixture):
         def read(path=url,headers=None):
             connection.request('GET',path,headers=headers or {})
             response=connection.getresponse();return response.status,json.loads(response.read())
-        self.assertEqual(read(),(200,dict(content=file.read_text(),path=str(file))))
+        self.assertEqual(read(),(200,dict(content=file.read_bytes().decode('utf-8'),path=str(file))))
         file.write_text('Joke one\nJoke two')
-        self.assertEqual(read()[1]['content'],file.read_text())
+        self.assertEqual(read()[1]['content'],file.read_bytes().decode('utf-8'))
         self.assertEqual(read(url.replace(owner,other))[0],404)
         self.assertEqual(read(url.replace(tab['id'],'missing'))[0],404)
         self.assertEqual(read(headers={'Origin':'https://example.com'})[0],403)

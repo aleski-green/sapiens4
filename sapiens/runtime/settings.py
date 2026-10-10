@@ -1,5 +1,6 @@
 """Codex selection shared by the runtime and installation checks."""
 from functools import lru_cache
+from pathlib import Path
 import os
 import json
 import re
@@ -22,7 +23,8 @@ def model_defaults():
 
 def cli_version(binary):
     result = subprocess.run([binary, '--version'], capture_output=True, text=True,
-                            timeout=10, check=True)
+                            encoding='utf-8', timeout=10, check=True,
+                            **({'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}))
     match = re.search(r'codex-cli\s+(\d+)\.(\d+)\.(\d+)', result.stdout)
     if not match:
         raise RuntimeError('Could not read the Codex CLI version: ' + result.stdout.strip())
@@ -40,6 +42,14 @@ def codex_binary():
         candidates += [f'/Applications/{app}.app/Contents/Resources/{binary}'
                        for app in ('Codex', 'ChatGPT')
                        for binary in ('codex', 'codex-cli/bin/codex')]
+    elif sys.platform == 'win32':
+        local = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData/Local'))
+        roaming = Path(os.environ.get('APPDATA', Path.home() / 'AppData/Roaming'))
+        candidates += [str(p) for p in (local / 'OpenAI/Codex/bin').glob('*/codex.exe')]
+        candidates += [str(p) for p in (roaming / 'npm/node_modules/@openai').glob('codex*/vendor/*/codex/codex.exe')]
+        candidates += [str(p) for p in (roaming / 'npm/node_modules/@openai/codex/node_modules/@openai').glob('codex*/vendor/*/codex/codex.exe')]
+        # Prefer the native program, avoiding npm's cmd.exe quoting layer.
+        candidates = [p for p in candidates if p and Path(p).suffix.lower() == '.exe']
     versions = []
     for path in dict.fromkeys(p for p in candidates if p and os.access(p, os.X_OK)):
         try:
@@ -53,6 +63,6 @@ def execution_settings(root):
     path = root / 'run-settings.json'
     if not path.exists():
         path = root / 'execution.json'  # Preserve legacy reasoning mode; saved timeouts no longer apply.
-    saved = json.loads(path.read_text()) if path.exists() else {}
+    saved = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
     mode = 'deep' if saved.get('mode') == 'deep' else 'normal'
     return dict(mode=mode, timeout_seconds=RUN_TIMEOUT_SECONDS)

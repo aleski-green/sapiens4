@@ -1,5 +1,5 @@
 """Loopback-only CLI transport; never touches the database or starts a runner."""
-import json, os
+import json, os, sys
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
@@ -18,7 +18,10 @@ class Client:
         if not self.url:
             try:
                 config = Path.home() / 'Library/Application Support/Sapiens4/config.json'
-                port = json.loads(config.read_text()).get('port', 4174)
+                if sys.platform == 'win32':
+                    folder = os.environ.get('SAPIENS_DATA_DIR') or str(Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData/Local')) / 'Sapiens4')
+                    config = Path(folder) / 'config.json'
+                port = json.loads(config.read_text(encoding='utf-8')).get('port', 4174)
             except (OSError, ValueError, AttributeError):
                 port = 4174
             self.url = f'http://127.0.0.1:{port}'
