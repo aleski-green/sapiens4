@@ -607,6 +607,24 @@ class RemoteHTTPTest(unittest.TestCase):
             urlopen(Request(self.local_url+'/api/remote/revoke',data=b'{}',headers={'Content-Type':'application/json'}))
         self.assertEqual(caught.exception.code,403)
 
+    def test_home_screen_manifest_and_icons_are_public_without_credentials(self):
+        with urlopen(self.url + '/') as response:
+            self.assertIn("manifest-src 'self'", response.headers['Content-Security-Policy'])
+            self.assertIn(b'rel="apple-touch-icon"', response.read())
+        with urlopen(self.url + '/manifest.webmanifest') as response:
+            self.assertEqual(response.headers.get_content_type(), 'application/manifest+json')
+            manifest = json.load(response)
+        self.assertEqual(manifest['display'], 'standalone')
+        self.assertEqual(manifest['start_url'], '/')  # Never retain an invitation or device key.
+        self.assertEqual(manifest['id'], '/')
+        for size in (180, 192, 512):
+            with urlopen(self.url + f'/app-icon-{size}.png') as response:
+                self.assertEqual(response.headers.get_content_type(), 'image/png')
+                png = response.read()
+            self.assertEqual(png[:8], b'\x89PNG\r\n\x1a\n')
+            self.assertEqual(int.from_bytes(png[16:20], 'big'), size)
+            self.assertEqual(int.from_bytes(png[20:24], 'big'), size)
+
 
 @unittest.skipUnless(crypto.available(), 'Install remote-requirements.txt')
 class RemoteRuntimeTest(IntegrationFixture):

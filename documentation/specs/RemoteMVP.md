@@ -316,3 +316,24 @@ older desktop that returns no identity cannot open the workspace.
 
 This establishes workspace identity, not hosted account registration, recovery,
 multi-workspace switching, multi-host synchronization, or ownership transfer.
+
+### iPhone Home Screen app
+
+The relay serves a standalone web app manifest and 180/192/512-pixel icons derived
+from the existing workspace favicon in `web/shell/bootstrap.js`. The **Add to Home
+Screen** card opens a three-page, swipeable guide; it is also available in connected
+CORPORA. In Safari, use Share (inside the page menu in the compact layout), choose
+**Add to Home Screen**, leave **Open as Web App** on, and tap **Add**. The app opens
+in its own window, with safe-area spacing and no further installation prompt.
+
+Install before pairing for the shortest setup: open the Home Screen app, paste a
+desktop pairing code, and approve its fingerprint once. Safari and the installed
+app have separate IndexedDB storage; existing Safari approval does not transfer.
+The guide explains this when already connected. Pairing the app replaces the
+current phone connection under the MVP's one-device limit. Afterwards, the same
+trusted-device reconnect and revocation rules apply.
+
+This is an online web app, with no App Store distribution or offline workspace
+cache. The relay and desktop must be reachable. The manifest's start URL is always
+`/`; it never contains an invitation, private key, or bearer token. Credentials are
+not copied to cookies or other installation metadata.

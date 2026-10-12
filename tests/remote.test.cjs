@@ -79,6 +79,7 @@ function qrPixels(text) {
   };
   w.eval(fs.readFileSync(path.join(root,'web/features/remote-code.js'),'utf8'));
   w.eval(fs.readFileSync(path.join(root,'web/features/remote-session.js'),'utf8'));
+  w.eval(fs.readFileSync(path.join(root,'web/features/remote-install.js'),'utf8'));
   w.eval(fs.readFileSync(path.join(root,'web/features/remote.js'),'utf8'));
   }
   initialize();

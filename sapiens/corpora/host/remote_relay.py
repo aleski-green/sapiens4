@@ -30,6 +30,12 @@ ASSETS = {
     '/remote.js': ('features/remote.js', 'text/javascript'),
     '/remote-vendor.js': ('features/remote-vendor.js', 'text/javascript'),
     '/remote.css': ('theme/remote.css', 'text/css'),
+    '/remote-install.js': ('features/remote-install.js', 'text/javascript'),
+    '/remote-install.css': ('theme/remote-install.css', 'text/css'),
+    '/manifest.webmanifest': ('shell/remote.webmanifest', 'application/manifest+json'),
+    '/app-icon-180.png': ('shell/app-icon-180.png', 'image/png'),
+    '/app-icon-192.png': ('shell/app-icon-192.png', 'image/png'),
+    '/app-icon-512.png': ('shell/app-icon-512.png', 'image/png'),
 }
 
 
@@ -165,7 +171,7 @@ class RelayServer:
             'Content-Type': mime + '; charset=utf-8', 'Cache-Control': 'no-store',
             'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY',
             'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-                "connect-src 'self' " + ws_origin + "; img-src 'self' blob: data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                "connect-src 'self' " + ws_origin + "; img-src 'self' blob: data:; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
         })
 
     async def handle(self, req):

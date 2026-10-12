@@ -146,6 +146,7 @@
     const feedback=document.createElement('p');feedback.id='remote-feedback';feedback.setAttribute('role','status');
     feedback.hidden=true;document.body.append(feedback);
     Object.defineProperty(window,'sapiensRemote',{value:Object.freeze({fetch:apiRequest}),configurable:false});
+    RemoteInstall.mount(true);
     for(const src of scripts) {
       const script=document.createElement('script');script.src=src;script.async=false;document.body.append(script);
     }
