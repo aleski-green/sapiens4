@@ -96,6 +96,10 @@ function qrPixels(text) {
   if(process.argv.includes('--code')) {
     const code=w.RemoteCode.encode(invitation);
     await pasteCode('  '+code.slice(0,50)+'\n'+code.slice(50)+'  ');
+  } else if(process.argv.includes('--hash')) {
+    w.location.hash=w.RemoteCode.encode(invitation);
+    for(let i=0;i<20&&w.location.hash;i++)await sleep();
+    assert.equal(w.location.hash,'','Same-page invitations must be consumed and removed');
   } else if(process.argv.includes('--link')) {
     const link=w.RemoteCode.link(invitation);
     const linkPixels=qrPixels(link);

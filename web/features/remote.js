@@ -260,6 +260,14 @@
   const wake=()=>{if(!document.hidden){if(!socket){clearTimeout(reconnectTimer);connect();}tick();}};
   document.addEventListener('visibilitychange',wake);
   window.addEventListener('online',wake);
+  window.addEventListener('hashchange',async()=>{
+    const invitation=location.hash.slice(1);
+    if(!invitation) return;
+    history.replaceState(null,'',location.pathname);
+    if(session) {status('Forget the current device connection before pairing with another CORPORA.');return;}
+    try {await pair(RemoteCode.decode(invitation));}
+    catch(error) {status(error.message);}
+  });
   setInterval(tick,1000); // Local expiry/retry clock only; no idle network polling.
   async function start() {
     // Fragments never reach HTTP or referrer headers. Erase the one-use invitation
