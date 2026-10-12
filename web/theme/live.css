@@ -213,6 +213,8 @@
 }
 @media(max-width:450px) {
   :root body.sapi-workspace .app-header { height:72px;min-height:72px; }
+  :root body.sapi-workspace #autonomy-button { grid-column:2 / 4;min-width:0; }
+  :root body.sapi-workspace .app-header > :is(a[href="/remote/"],#remote-status) { grid-column:4;white-space:nowrap; }
 }
 :root[data-theme] body.sapi-workspace #profile-button:hover,
 :root[data-theme] body.sapi-workspace :is(.settings-tabs) button:not(:disabled):hover { color:var(--sapi-accent);background:var(--sapi-hover); }
