@@ -375,6 +375,19 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 .event-columns { display:grid; grid-template-columns:152px 70px minmax(130px,1fr) 112px 72px 12px; gap:6px; align-items:center; min-width:568px; font-size:11px; line-height:1.5; }
 .event-head { padding:6px 0 10px; color:var(--muted); border-bottom:1px solid var(--line); }
 .event-row { min-width:568px; }
+
+/* Phones show one portrait panel, or at most two full-height landscape panels. */
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .app { min-height:0; }
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .main-grid { display:flex!important;flex-direction:row;overflow:hidden; }
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .main-grid>.sidebar,
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .main-grid>.conversation,
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .main-grid>.workspace { flex:1 1 0;min-width:0;min-height:0;max-height:none;height:auto;border:0; }
+:root body.sapi-workspace[data-pane-limit="2"] .main-grid>:not([hidden])~:not([hidden]) { border-left:1px solid var(--line); }
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .agent-list { flex-direction:column; }
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .agent-list>.agent-entry { flex:0 0 auto;width:100%; }
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .agent-row { width:100%;min-width:0; }
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .workspace-content { overflow:auto; }
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .pane-toggle[aria-pressed=true] { background:var(--sapi-hover);color:var(--sapi-accent); }
 .event-row summary { padding:10px 0; list-style:none; cursor:pointer; }
 .event-row summary::-webkit-details-marker { display:none; }
 .event-row summary:hover { background:var(--sapi-purple-tint); }

@@ -27,7 +27,7 @@ function mention(id){
 function openChat(id){
   const a=state.agents.find(a=>a.id===id);if(!a)return;
   state.drafts ??= {};state.drafts[state.selected]=$('#message-input').value;
-  state.selected=id;state.panel='chat';chatView='conversation';closeActivityMenus();state.panes.chat=true;a.unread=false;
+  state.selected=id;state.panel='chat';chatView='conversation';closeActivityMenus();showPane('chat');a.unread=false;
   if(a.kind==='group') {state.groupView=a.id;state.scope='groups';}
   else {if(state.groupView||state.scope==='groups')state.scope='all';state.groupView=null;}
   search='';$('#agent-search').value='';$('#message-input').value=state.drafts[id]||'';
@@ -39,10 +39,31 @@ function toast(message){$('#toast').textContent=message;$('#toast').classList.ad
 function modal(title,content,eyebrow='SAPI WORKSPACE'){$('#modal-eyebrow').textContent=eyebrow;$('#modal-content').innerHTML=`<h2 id="modal-title">${esc(title)}</h2>${content}`;if(!$('#modal').open)$('#modal').showModal();}
 function closeModal(){$('#modal').close();}
 function render(){if($('#modal').open&&$('#modal-title')?.textContent==='Shared computer')computerDialog();renderPanes();renderSidebar();renderAgentHeader();renderConversation();renderTabs();renderWorkspace();renderGlobal();save();}
+let paneOrder=['chat','sidebar','workspace'];
+function paneLimit(){
+  const touch=window.matchMedia?.('(pointer: coarse)').matches;
+  if(!touch && window.innerWidth>600)return 3;
+  // The software keyboard changes viewport height, but not the phone's orientation.
+  const orientation=touch && window.screen.orientation?.type;
+  const portrait=orientation ? orientation.startsWith('portrait') : window.innerHeight>=window.innerWidth;
+  return portrait ? 1 : 2;
+}
+function showPane(pane){
+  state.panes[pane]=true;
+  paneOrder=[pane,...paneOrder.filter(name=>name!==pane)];
+}
 function renderPanes(){
   syncWorkspace();
   state.panes ??= {sidebar:true,chat:true,workspace:true};
   const p={...state.panes,workspace:!!state.panes.workspace && !!state.activeTab};
+  const limit=paneLimit();
+  if(limit<3){
+    const visible=paneOrder.filter(name=>p[name]).slice(0,limit);
+    if(!visible.length)visible.push('chat');
+    for(const name of paneOrder)p[name]=visible.includes(name);
+    state.panes={...p};
+  }
+  document.body.dataset.paneLimit=limit;
   const names={sidebar:'chat list',chat:'chat',workspace:'workspace'};
   const ids={sidebar:'#chat-list-panel',chat:'#chat-panel',workspace:'#workspace-panel'};
   for(const pane of Object.keys(ids)){
@@ -50,13 +71,15 @@ function renderPanes(){
     const button=$(`[data-toggle-pane="${pane}"]`);
     button.setAttribute('aria-pressed',String(p[pane]));
     button.setAttribute('aria-expanded',String(p[pane]));
-    const label=`${p[pane]?'Hide':'Show'} ${names[pane]}`;
+    const label=`${limit===1?'Show':p[pane]?'Hide':'Show'} ${names[pane]}`;
     button.setAttribute('aria-label',label);button.title=label;
   }
   const count=Object.values(p).filter(Boolean).length;
   $('.main-grid').dataset.visiblePanes=count;
   $('.main-grid').style.gridTemplateColumns=[p.sidebar?(count===1?'minmax(0,1fr)':'clamp(205px,18vw,250px)'):'0px',p.chat?'minmax(300px,1fr)':'0px',p.workspace?'minmax(350px,1.2fr)':'0px'].join(' ');
 }
+window.addEventListener('resize',()=>{renderPanes();});
+window.screen.orientation?.addEventListener('change',()=>{renderPanes();});
 
 function leaveGroup(scope) {
   state.groupView=null;
@@ -101,7 +124,10 @@ document.addEventListener('click',e=>{
 
   if(d.togglePane){
     if(d.togglePane==='workspace'&&!state.activeTab){openNewTab();return;}
-    state.panes[d.togglePane]=!state.panes[d.togglePane];renderPanes();save();return;
+    const count=Object.values(state.panes).filter(Boolean).length;
+    if(state.panes[d.togglePane] && (paneLimit()===3 || (paneLimit()===2 && count>1)))state.panes[d.togglePane]=false;
+    else showPane(d.togglePane);
+    renderPanes();save();return;
   }
   if(d.action){actions[d.action]?.();return;}
   if(d.mention){openChat(d.mention);return;}
@@ -137,6 +163,6 @@ $('#resource-button').addEventListener('click',()=>computerDialog());
 $('#agent-search').addEventListener('input',e=>{search=e.target.value;renderSidebar();});
 
 $('#message-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat(e.target.value);}});
-$('.wordmark').addEventListener('click',e=>{e.preventDefault();state.panes={sidebar:true,chat:true,workspace:true};renderPanes();save();});
+$('.wordmark').addEventListener('click',e=>{e.preventDefault();state.panes={sidebar:true,chat:true,workspace:true};showPane('chat');renderPanes();save();});
 
-document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&!$('#modal').open){e.preventDefault();state.panes.sidebar=true;renderPanes();save();$('#agent-search').focus();}});
+document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&!$('#modal').open){e.preventDefault();showPane('sidebar');renderPanes();save();$('#agent-search').focus();}});

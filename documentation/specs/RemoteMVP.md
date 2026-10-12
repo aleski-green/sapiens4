@@ -333,6 +333,13 @@ CORPORA. In Safari, use Share (inside the page menu in the compact layout), choo
 **Add to Home Screen**, leave **Open as Web App** on, and tap **Add**. The app opens
 in its own window, with safe-area spacing and no further installation prompt.
 
+On touch devices, portrait keeps exactly one panel selected; landscape allows up
+to two side by side. Opening a third replaces the least recently selected panel.
+Rotation retains the most recent visible selection, and opening a Sapi or browser
+tab follows the same limits. The software keyboard does not change the phone's
+orientation mode. Narrow non-touch windows also use the compact panel controls;
+ordinary desktop windows retain independent toggles for all three panels.
+
 Install before pairing for the shortest setup: open the Home Screen app, paste a
 desktop pairing code, and approve its fingerprint once. Safari and the installed
 app have separate IndexedDB storage; existing Safari approval does not transfer.

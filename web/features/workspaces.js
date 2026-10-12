@@ -15,7 +15,7 @@ async function browserAction(action, fields={}, owner=state.selected) {
     await api(`/api/${owner.startsWith('group_')?'groups':'agents'}/${owner}/control`, 'POST', {op:`workspace_${action}`,...fields});
     const snapshot=await api('/api/state');
     receiveWorkspaces(snapshot.preferences);
-    if (['open','focus','close','back','forward','reload'].includes(action)) {setBrowserMenu();state.panes.workspace=true;}
+    if (['open','focus','close','back','forward','reload'].includes(action)) {setBrowserMenu();showPane('workspace');}
     renderPanes();renderTabs();renderWorkspace();save();return true;
   } catch (error) {toast(error.message);}
 }
