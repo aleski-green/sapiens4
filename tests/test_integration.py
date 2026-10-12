@@ -90,6 +90,13 @@ class IntegrationFixture(unittest.TestCase):
 
 
 class IntegrationTest(IntegrationFixture):
+    def test_corpora_identity_survives_restart_and_names_the_workspace(self):
+        service = self.service()
+        identity = service.snapshot()['corpora']
+        self.assertEqual(identity['name'], 'CORPORA · SapiTheMain')
+        restarted = self.restart(service)
+        self.assertEqual(restarted.snapshot()['corpora'], identity)
+
     def test_chat_projects_reply_and_survives_restart(self):
         service = self.service()
         agid = service.store.agents()[0]["id"]

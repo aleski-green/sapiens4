@@ -31,6 +31,7 @@ from sapiens.runtime.turns import TurnRunner
 from sapiens.computer.focus import ForegroundReturn
 from sapiens.files import atomic_bytes, lock_file, unlock_file
 from sapiens.corpora.host.database import Store, now
+from sapiens.corpora.host.identity import corpora_id
 from sapiens.validation import APIError, sapi_name, text_field
 from sapiens.corpora.browser import Workspace
 
@@ -62,6 +63,7 @@ class Service:
             raise ValueError("max_parallel_agents must be between 1 and 32")
         self.root = Path(data_dir).resolve()
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.corpora_id = corpora_id(self.root)
         self._file_lock = (self.root / "host.lock").open("a")
         try:
             lock_file(self._file_lock, blocking=False)
@@ -334,6 +336,10 @@ class Service:
             self.delegation.reconcile(agid)
             return {"id": turn_id, "status": next(j["status"] for j in agent.state["turns"] if j["id"] == turn_id)}
 
+    def corpora_identity(self):
+        main = next((a for a in self.store.agents() if a['id'] == self.registry.main), {})
+        return dict(id=self.corpora_id, name='CORPORA · ' + main.get('name', 'My workspace'))
+
     def snapshot(self, agid=None):
         with self._lock:
             if agid:
@@ -342,6 +348,7 @@ class Service:
                 self._sync(agent)
             self.groups.chat.reconcile()
             snapshot = self.store.snapshot(agid)
+            snapshot['corpora'] = self.corpora_identity()
             snapshot["groups"] = self.groups.snapshot()
             snapshot["routines"] = self.store.routines()
             snapshot["creation_template"] = prompt("creation-request").strip()

@@ -383,3 +383,5 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 .event-row .event-chevron { display:flex; justify-content:center; }
 .event-row[open] .event-chevron { transform:rotate(90deg); }
 .event-row pre { margin:0 0 12px; padding:12px; background:var(--sapi-purple-tint); border-radius:6px; font:12px/1.5 ui-monospace,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+
+.corpora-identity { margin: -4px 0 12px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }

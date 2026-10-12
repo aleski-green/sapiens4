@@ -13,6 +13,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from sapiens.corpora.host.identity import corpora_id
 from sapiens.corpora.host import remote_pairing as crypto
 from sapiens.corpora.host.remote_bridge import RemoteBridge, request
 from sapiens.corpora.host.remote_relay import Mailboxes, RelayError, RelayServer
@@ -27,6 +28,9 @@ class FakeService:
         self.root, self.calls = Path(root), []
         self._lock = threading.RLock()
         self.orchestration = self
+
+    def corpora_identity(self):
+        return dict(id=corpora_id(self.root), name="CORPORA · Chief")
 
     def attach(self, url):
         pass
@@ -124,6 +128,41 @@ class RemoteTest(unittest.TestCase):
             self.bridge.approve(dict(peer=self.phone_public))
         self.assertIsNone(self.bridge.config['peer'])
         self.assertIsNotNone(self.bridge.config['pending'])
+
+    def test_workspace_identity_survives_restart_and_pairing_revocation(self):
+        identity = self.service.corpora_identity()['id']
+        self.pair()
+        result = self.decoded(self.bridge.process(self.message(op='resume')))
+        self.assertEqual(result['corpora']['id'], identity)
+        self.bridge.revoke()
+        self.assertEqual(FakeService(self.service.root).corpora_identity()['id'], identity)
+        with tempfile.TemporaryDirectory() as other:
+            self.assertNotEqual(FakeService(other).corpora_identity()['id'], identity)
+
+    def test_wrong_workspace_request_cannot_execute(self):
+        self.pair()
+        result = self.decoded(self.bridge.process(self.message(
+            op='chat', agent='chief', text='Wrong workspace', corpora_id='another-corpora')))
+        self.assertIn('different CORPORA', result['error'])
+        self.assertEqual(self.service.calls, [])
+
+    def test_saved_pairing_cannot_be_copied_to_another_workspace(self):
+        self.pair()
+        self.bridge.config['corpora_id'] = self.service.corpora_identity()['id']
+        self.bridge.save()
+        with tempfile.TemporaryDirectory() as other:
+            shutil.copy2(self.bridge.path, Path(other) / 'remote-device.json')
+            with patch.object(RemoteBridge, 'start'):
+                bridge = RemoteBridge(FakeService(other))
+            self.assertIsNone(bridge.config)
+            self.assertIn('invalid', bridge.error)
+
+    def test_corrupt_workspace_identity_is_not_silently_replaced(self):
+        self.service.corpora_identity()
+        path = self.service.root / 'corpora-identity.json'
+        path.write_text('{"version":1,"corpora_id":"broken"}')
+        with self.assertRaisesRegex(ValueError, 'Restore corpora-identity.json'):
+            self.service.corpora_identity()
 
     def test_successful_setup_is_reused_without_exposing_admin(self):
         self.bridge.config = None

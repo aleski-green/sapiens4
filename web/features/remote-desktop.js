@@ -16,6 +16,8 @@
   async function refresh() {
     try {
       const data = await api();
+      $('corpora-identity').textContent = data.corpora?.name || '';
+      $('corpora-identity').title = data.corpora?.id || '';
       $('setup').hidden = data.enabled;
       $('local-setup').hidden = !data.local_relay;
       $('saved-setup').hidden = !data.configured_relay;

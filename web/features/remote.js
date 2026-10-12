@@ -25,7 +25,7 @@
   const calls=new Map();
   const pending=new Map(), received=new Set();
   function frame(payload) {
-    const message={v:protocol,room:session.room,direction:'phone-to-desktop',...payload};
+    const message={v:protocol,room:session.room,direction:'phone-to-desktop',corpora_id:session.corpora?.id,...payload};
     const raw=encoder.encode(JSON.stringify(message));
     if(raw.length>16000000) throw new Error('Remote request exceeds the 16 MB limit.');
     const nonce=nacl.randomBytes(24);
@@ -135,6 +135,10 @@
     document.querySelector('link[href="/remote.css"]')?.remove();
     document.body.className=shell.body.className;
     document.body.replaceChildren(...[...shell.body.childNodes].map(node=>document.importNode(node,true)));
+    const identity=$('corpora-identity');
+    if(identity && session.corpora) {
+      identity.hidden=false;identity.textContent=session.corpora.name;identity.title=session.corpora.id;
+    }
     const connect=document.querySelector('a[href="/remote/"]');
     const remote=document.createElement('button');remote.type='button';remote.className='pill';remote.id='remote-status';
     remote.textContent='Remote · Connected';remote.setAttribute('aria-label','Forget this trusted device');
@@ -168,6 +172,15 @@
         if(received.size>1000) received.delete(received.values().next().value);
         if(message.result.error) { status(message.result.error);original.reject?.(new Error(message.result.error)); }
         else if(message.result.paired && (original.kind==='pair' || original.op==='resume')) {
+          const corpora=message.result.corpora;
+          if(!corpora || typeof corpora.id!=='string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(corpora.id) ||
+             typeof corpora.name!=='string' || corpora.name.length>200 ||
+             (session.corpora && session.corpora.id!==corpora.id)) {
+            session.identityRejected=true;
+            status('CORPORA identity changed or is unavailable. Forget this device and pair with the intended workspace.');
+            await relay('DELETE',null,item.id);continue;
+          }
+          session.corpora={id:corpora.id,name:corpora.name};
           paired=true;
           const approved=session;
           try { await RemoteSession.save(approved); } catch { storageWarning=true; }
@@ -196,7 +209,7 @@
           await relay('POST',item.frame);
         }
       }
-      if(session && !paired && session.restored && ![...pending.values()].some(item=>item.op==='resume'))
+      if(session && !paired && session.restored && !session.identityRejected && ![...pending.values()].some(item=>item.op==='resume'))
         await send({kind:'request',op:'resume'});
     } catch(error) {status(error.message);}
     finally {polling=false;}

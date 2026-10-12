@@ -98,6 +98,10 @@ function requestStatus(turn) {
 }
 
 function applySnapshot(snapshot) {
+  const identity=document.getElementById('corpora-identity');
+  if(identity && snapshot.corpora) {
+    identity.hidden=false;identity.textContent=snapshot.corpora.name;identity.title=snapshot.corpora.id;
+  }
   receiveWorkspaces(snapshot.preferences);
   live = snapshot;
   const old = new Map(state.agents.map(a => [a.id,a]));

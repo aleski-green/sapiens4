@@ -33,7 +33,7 @@ window.RemoteSession = (() => {
     read: () => transaction('readonly', store => store.get('trusted')),
     save: session => transaction('readwrite', store => store.put({
       version: 1, relay: session.relay, room: session.room, token: session.token,
-      desktop: session.desktop, keys: session.keys,
+      desktop: session.desktop, keys: session.keys, corpora: session.corpora,
     }, 'trusted')),
     clear: () => transaction('readwrite', store => store.delete('trusted')),
   };

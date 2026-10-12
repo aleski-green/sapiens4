@@ -54,6 +54,8 @@ class RemoteBridge:
         if self.path.exists():
             try:
                 config = json.loads(self.path.read_text())
+                if config.get('corpora_id', service.corpora_identity()['id']) != service.corpora_identity()['id']:
+                    raise ValueError('Pairing belongs to another CORPORA')
                 crypto.origin(config['relay'])
                 crypto.unb64(config['private'], 32)
                 crypto.unb64(config['public'], 32)
@@ -63,7 +65,10 @@ class RemoteBridge:
                         type(config['expires']) not in (int, float)):
                     raise ValueError('Invalid saved pairing')
                 self.config = config
+                config['corpora_id'] = service.corpora_identity()['id']
+                self.save()
             except (OSError, ValueError, TypeError, KeyError):
+                self.config = None
                 self.error = 'Saved remote pairing is invalid. Create a new pairing; local CORPORA is unaffected.'
         self.thread = None
         if self.config and crypto.available():
@@ -85,6 +90,7 @@ class RemoteBridge:
             config = self.config or {}
             pending = config.get('pending')
             return dict(available=crypto.available() and websocket is not None, enabled=bool(config),
+                        corpora=self.service.corpora_identity(),
                         local_relay=bool(local_connection()),
                         configured_relay=self.saved_relay().get('relay'),
                         paired=bool(config.get('peer')), relay=config.get('relay'),
@@ -128,6 +134,7 @@ class RemoteBridge:
             secret = crypto.token()
             expires = time.time() + 3600
             self.config = dict(relay=relay, room=room['room'], token=room['desktop'],
+                               corpora_id=self.service.corpora_identity()['id'],
                                private=private, public=public, secret=secret, expires=expires,
                                peer=None, pending=None)
             self.save()
@@ -148,7 +155,7 @@ class RemoteBridge:
             request(config['relay'], '/api/rooms/' + config['room'] + '/trust',
                     config['token'], 'POST', {})
             config['peer'] = pending['peer']
-            config['accept'] = self.response(pending['id'], dict(paired=True))
+            config['accept'] = self.response(pending['id'], dict(paired=True, corpora=self.service.corpora_identity()))
             config['pending'] = None
             config.pop('secret', None)
             self.save()
@@ -207,8 +214,10 @@ class RemoteBridge:
             return None
         if message.get('kind') != 'request' or message['expires'] > time.time() + 310:
             raise ValueError('Invalid request')
+        if message.get('corpora_id', self.service.corpora_identity()['id']) != self.service.corpora_identity()['id']:
+            return self.response(message['id'], dict(error='This device is connected to a different CORPORA. Pair again.'))
         if message.get('op') == 'resume':
-            return self.response(message['id'], dict(paired=True))
+            return self.response(message['id'], dict(paired=True, corpora=self.service.corpora_identity()))
         if message.get('op') == 'api' and message.get('method') == 'GET':
             # Reads are safe to repeat; do not retain a full desktop snapshot per poll.
             try:

@@ -296,3 +296,23 @@ reverse delivery, ciphertext-only relay persistence, tampering, expiry, bearer
 access, host/origin checks, revocation, and durable deduplication. Physical iPhone
 Safari testing and an external HTTPS deployment are still required before calling
 this ready for general use.
+
+### CORPORA identity
+
+Each data directory has a permanent UUID `corpora_id` in `corpora-identity.json`.
+It survives restarts, code updates, relay invitations and device revocation; include
+it in backups and migrations. Independent new data directories receive different
+IDs. Copying a complete backup preserves the identity; it does not create a new
+account or synchronize two concurrently running copies.
+
+The local snapshot and encrypted pair/resume response expose `corpora: {id, name}`.
+The UI identifies the workspace by its Chief. Approved browser credentials retain
+this ID, and subsequent requests include it inside the encrypted envelope. Both
+ends reject a mismatched identity. The ID is a public identifier, never a password
+or authorization credential; the approved device key remains the authority.
+Legacy saved device credentials bind to the first authenticated identity returned
+by their existing desktop key. Update the desktop before using this client; an
+older desktop that returns no identity cannot open the workspace.
+
+This establishes workspace identity, not hosted account registration, recovery,
+multi-workspace switching, multi-host synchronization, or ownership transfer.

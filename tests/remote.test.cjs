@@ -24,6 +24,7 @@ function qrPixels(text) {
   return {data,width:size,height:size};
 }
 (async()=>{
+  const corpora={id:'12345678-1234-4234-8234-123456789abc',name:'CORPORA · Chief'};
   const desktop=nacl.box.keyPair(),now=Date.now()/1000;
   const invitation={v:'sapiens-remote-box-v1',relay:'https://relay.example',room:'r'.repeat(43),
     token:'t'.repeat(43),secret:'s'.repeat(43),desktop:b64(desktop.publicKey),expires:now+3600};
@@ -117,7 +118,7 @@ function qrPixels(text) {
     activeSocket.deliver({type:'messages',messages:[{id:wireId,frame:{sender:invitation.desktop,nonce:b64(nonce),ciphertext:b64(nacl.box(
       Buffer.from(JSON.stringify(message)),nonce,phone,desktop.secretKey))}}]});
   }
-  reply(posted[0].message.id,{paired:true});
+  reply(posted[0].message.id,{paired:true,corpora});
   await intervals[0]();await sleep();
   for(let i=0;i<20&&!w.sapiensRemote;i++)await sleep();
   assert.ok(w.document.querySelector('.sapi-workspace .app'));
@@ -158,16 +159,18 @@ function qrPixels(text) {
   assert.equal(w.localStorage.length,0);assert.equal(w.sessionStorage.length,0);
   const stored=await w.RemoteSession.read();
   assert.equal(stored.room,invitation.room);
+  assert.equal(stored.corpora.id,corpora.id);
   assert.equal(stored.secret,undefined,'One-use invitation secret must not be remembered');
   assert.equal(b64(stored.keys.publicKey),b64(phone));
   const previousCount=posted.length;
   dom.window.close();offline=false;initialize();
   for(let i=0;i<30&&posted.length===previousCount;i++)await sleep();
   const resumed=posted.at(-1);
+  assert.equal(resumed.message.corpora_id,corpora.id);
   assert.equal(resumed.message.op,'resume','Reload must resume instead of re-pairing');
   assert.equal(resumed.frame.sender,b64(phone),'Reload must reuse the approved phone key');
   assert.equal(w.sapiensRemote,undefined,'Do not open the workspace before the desktop authenticates resume');
-  reply(resumed.message.id,{paired:true},5);
+  reply(resumed.message.id,{paired:true,corpora},5);
   for(let i=0;i<30&&!w.sapiensRemote;i++)await sleep();
   assert.ok(w.sapiensRemote,'Approved device reconnects without a new QR or approval');
   const beforeHandoff=connections;
@@ -192,6 +195,15 @@ function qrPixels(text) {
   for(let i=0;i<30&&(await w.RemoteSession.read());i++)await sleep();
   assert.equal(connections,beforeForgotten,'Corrupted saved keys must not authenticate');
   assert.equal(await w.RemoteSession.read(),undefined,'Corrupt device state must allow fresh pairing');
+  await w.RemoteSession.save(stored);
+  dom.window.close();
+  const beforeMismatch=posted.length;initialize();
+  for(let i=0;i<30&&posted.length===beforeMismatch;i++)await sleep();
+  reply(posted.at(-1).message.id,{paired:true,corpora:{...corpora,id:'87654321-1234-4234-8234-123456789abc'}},6);
+  for(let i=0;i<20;i++)await sleep();
+  assert.equal(w.sapiensRemote,undefined,'A different CORPORA must never open under existing device trust');
+  assert.match(w.document.getElementById('status').textContent,/CORPORA identity changed/);
+  assert.equal((await w.RemoteSession.read()).corpora.id,corpora.id,'Mismatch must not replace the saved identity');
   dom.window.close();
   console.log('Remote QR upload, shared CORPORA shell, encrypted API and image transport, trusted-device reload, and revocation passed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
