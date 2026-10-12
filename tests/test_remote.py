@@ -257,6 +257,38 @@ class RelaySetupTest(unittest.TestCase):
                 self.assertIsNone(remote_setup.local_connection())
 
 
+class DatabaseLifecycleTest(unittest.TestCase):
+    def test_connections_commit_and_close_without_garbage_collection(self):
+        with tempfile.TemporaryDirectory() as folder:
+            stores = [RemoteBridge(FakeService(folder)), Mailboxes(Path(folder) / 'relay.sqlite3')]
+            for store in stores:
+                with self.subTest(store=type(store).__name__):
+                    with store.connect() as db:
+                        db.execute('CREATE TABLE lifecycle (value TEXT)')
+                        db.execute("INSERT INTO lifecycle VALUES ('committed')")
+                    with self.assertRaises(sqlite3.ProgrammingError):
+                        db.execute('SELECT 1')
+                    with store.connect() as reopened:
+                        self.assertEqual(reopened.execute('SELECT value FROM lifecycle').fetchall(),
+                                         [('committed',)])
+
+    def test_connections_roll_back_and_close_on_failure(self):
+        with tempfile.TemporaryDirectory() as folder:
+            stores = [RemoteBridge(FakeService(folder)), Mailboxes(Path(folder) / 'relay.sqlite3')]
+            for store in stores:
+                with self.subTest(store=type(store).__name__):
+                    with store.connect() as db:
+                        db.execute('CREATE TABLE lifecycle (value TEXT)')
+                    with self.assertRaisesRegex(RuntimeError, 'interrupted'):
+                        with store.connect() as failed:
+                            failed.execute("INSERT INTO lifecycle VALUES ('uncommitted')")
+                            raise RuntimeError('interrupted')
+                    with self.assertRaises(sqlite3.ProgrammingError):
+                        failed.execute('SELECT 1')
+                    with store.connect() as reopened:
+                        self.assertEqual(reopened.execute('SELECT value FROM lifecycle').fetchall(), [])
+
+
 class MailboxTest(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)

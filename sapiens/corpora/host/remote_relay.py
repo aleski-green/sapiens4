@@ -56,8 +56,14 @@ class Mailboxes:
                 CREATE INDEX IF NOT EXISTS inbox ON messages(room, recipient, id);
             ''')
 
+    @contextlib.contextmanager
     def connect(self):
-        return sqlite3.connect(self.path, timeout=10)
+        db = sqlite3.connect(self.path, timeout=10)
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()  # Release file handles after both commit and rollback.
 
     def transact(self, method, parts, bearer, body, admin):
         with self.connect() as db:

@@ -1,4 +1,5 @@
 """Opt-in local authority: QR pairing, device approval, and the shared CORPORA API."""
+from contextlib import contextmanager
 import hashlib
 import hmac
 import json
@@ -153,14 +154,19 @@ class RemoteBridge:
         if self.thread:
             self.thread.join()
 
+    @contextmanager
     def connect(self):
         if not self.receipts.exists():
             fd = os.open(self.receipts, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             os.close(fd)
         db = sqlite3.connect(self.receipts)
-        db.execute('CREATE TABLE IF NOT EXISTS receipts (room TEXT, id TEXT, hash TEXT, reply TEXT, '
-                   'created REAL, PRIMARY KEY(room,id))')
-        return db
+        try:
+            with db:
+                db.execute('CREATE TABLE IF NOT EXISTS receipts (room TEXT, id TEXT, hash TEXT, reply TEXT, '
+                           'created REAL, PRIMARY KEY(room,id))')
+                yield db
+        finally:
+            db.close()  # SQLite's transaction context does not close the connection.
 
     def response(self, id_, value):
         config = self.config
