@@ -17,6 +17,8 @@
     if(label) { label.textContent=label.id==='status' ? text : text==='Remote · Connected' ?
       (storageWarning ? 'Remote · Not saved' : 'Remote · Forget device') : 'Remote · Waiting'; label.title=storageWarning ?
         'This browser could not remember the device. Keep this page open or pair again after closing it.' : text; }
+    const feedback=$('remote-feedback');
+    if(feedback) {feedback.textContent=text;feedback.hidden=text==='Remote · Connected';}
   };
   let session=null, paired=false, polling=false, socket=null, ready=false, reconnectTimer=null, reconnectDelay=1000, serial=0;
   let starting=true, storageWarning=false;
@@ -137,6 +139,8 @@
     const remote=document.createElement('button');remote.type='button';remote.className='pill';remote.id='remote-status';
     remote.textContent='Remote · Connected';remote.setAttribute('aria-label','Forget this trusted device');
     remote.addEventListener('click',disconnect);connect?.replaceWith(remote);
+    const feedback=document.createElement('p');feedback.id='remote-feedback';feedback.setAttribute('role','status');
+    feedback.hidden=true;document.body.append(feedback);
     Object.defineProperty(window,'sapiensRemote',{value:Object.freeze({fetch:apiRequest}),configurable:false});
     for(const src of scripts) {
       const script=document.createElement('script');script.src=src;script.async=false;document.body.append(script);

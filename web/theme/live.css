@@ -220,6 +220,7 @@
 :root[data-theme] body.sapi-workspace :is(.settings-tabs) button:not(:disabled):hover { color:var(--sapi-accent);background:var(--sapi-hover); }
 
 /* Keep connection text and its settings action; omit decorative glyphs. */
+#remote-feedback { position:fixed;bottom:20px;left:16px;right:16px;z-index:1000;margin:0;padding:12px 16px;border:1px solid var(--line);border-radius:8px;background:var(--sapi-bg);color:var(--ink);font:13px/1.5 system-ui,sans-serif;box-shadow:0 4px 20px #0002; }
 :root body.sapi-workspace #autonomy-button > span:not(#autonomy-label) { display:none; }
 /* The composer supplies the focus indicator for its text field. */
 :root[data-theme] body.sapi-workspace .composer textarea:is(:hover,:focus,:focus-visible) { outline:none;box-shadow:none; }
