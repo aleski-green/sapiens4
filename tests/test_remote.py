@@ -46,6 +46,21 @@ class FakeService:
 
 @unittest.skipUnless(crypto.available(), 'Install remote-requirements.txt')
 class RemoteTest(unittest.TestCase):
+    def test_socket_upload_does_not_inherit_idle_receive_timeout(self):
+        class SlowUpload:
+            timeout = .5
+            def settimeout(self, value):
+                self.timeout = value
+            def send(self, raw):
+                if self.timeout < 1:
+                    raise TimeoutError('Healthy snapshot upload needs more than the idle wakeup')
+                self.request = json.loads(raw)
+            def recv(self):
+                return json.dumps(dict(type='result', id=self.request['id'], result={'stored': True}))
+        client = SocketClient.__new__(SocketClient)
+        client.socket, client.serial = SlowUpload(), 0
+        self.assertEqual(client.call('send', frame={'ciphertext': 'x' * 700000}), {'stored': True})
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

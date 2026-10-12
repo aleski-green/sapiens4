@@ -54,8 +54,11 @@ class SocketClient:
     def call(self, kind, **body):
         self.serial += 1
         id_ = str(self.serial)
-        self.socket.send(json.dumps(dict(type=kind, id=id_, **body)))
         deadline = time.monotonic() + 10
+        # receive() uses a short idle wakeup. Reset it before writing: a real
+        # CORPORA snapshot can take longer than 0.5s to upload to the relay.
+        self.socket.settimeout(10)
+        self.socket.send(json.dumps(dict(type=kind, id=id_, **body)))
         while True:
             if time.monotonic() >= deadline:
                 raise TimeoutError('Relay did not confirm delivery')
