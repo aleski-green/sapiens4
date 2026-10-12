@@ -237,6 +237,10 @@ A connection has at most one bounded delivery batch awaiting acknowledgment. The
 relay limits live sockets to 128 overall and four per room, disables compression,
 and checks mailbox expiry/revocation on open connections. Reverse proxies must
 forward WebSocket upgrades and allow idle connections beyond the heartbeat period.
+Each mailbox has one active socket consumer. Opening another phone tab replaces
+the older socket with close code 4002 without forgetting device credentials; the
+old tab reconnects only when foregrounded or brought online, rather than competing
+for the same encrypted replies.
 The bundled Caddy reverse proxy configuration supports upgrades automatically.
 
 The shared CORPORA UI still requests a fresh encrypted snapshot two seconds after

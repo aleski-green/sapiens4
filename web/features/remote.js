@@ -72,6 +72,7 @@
       for(const call of calls.values()) {clearTimeout(call.timer);call.reject(new Error('Relay disconnected.'));}
       calls.clear();
       if(!session) return;
+      if(event.code===4002) {status('Connected in another tab. Return to this tab to reconnect.');return;}
       if(event.code===4001) {
         RemoteSession.clear().catch(()=>{});
         for(const item of pending.values()) item.reject?.(new Error('Device access was revoked.'));

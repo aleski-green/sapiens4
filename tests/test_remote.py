@@ -450,6 +450,22 @@ class RemoteHTTPTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             client.call('send', frame={'text':'private plaintext'})
 
+    def test_new_phone_tab_replaces_old_mailbox_consumer(self):
+        room = request(self.url, '/api/rooms', self.admin, 'POST', {})
+        config = dict(relay=self.url, room=room['room'], token=room['phone'])
+        old = SocketClient(config)
+        self.addCleanup(old.close)
+        current = SocketClient(config)
+        self.addCleanup(current.close)
+        opcode, data = old.socket.recv_data(control_frame=True)
+        self.assertEqual(opcode, websocket.ABNF.OPCODE_CLOSE)
+        self.assertEqual(int.from_bytes(data[:2], 'big'), 4002)
+        frame = dict(sender=crypto.b64(b'p'*32), nonce=crypto.b64(b'n'*24), ciphertext=crypto.b64(b'e'*64))
+        request(self.url, '/api/rooms/' + room['room'] + '/messages', room['desktop'], 'POST', frame)
+        item = current.receive()
+        self.assertEqual(item['frame'], frame)
+        current.call('ack', message=item['id'])
+
     def test_live_bridge_pairs_and_replies_over_socket(self):
         invitation = self.api('/api/remote/pair', dict(relay=self.url, token=self.admin))['qr']
         client = SocketClient(dict(relay=self.url, room=invitation['room'], token=invitation['token']))

@@ -149,6 +149,7 @@ class RelayServer:
         self.loop = None
         self.started, self.finished = threading.Event(), threading.Event()
         self.listeners, self.connections = {}, set()
+        self.peers = {}
 
     def transact(self, method, parts, bearer, body=None):
         result = self.mailboxes.transact(method, parts, bearer, body or {}, self.admin)
@@ -214,7 +215,7 @@ class RelayServer:
             raise RelayError(429, 'Connection limit reached')
         ws = web.WebSocketResponse(heartbeat=25, max_msg_size=MAX_FRAME + 4096, compress=False)
         self.connections.add(ws)
-        room, event, delivery = None, asyncio.Event(), None
+        room, event, delivery, peer_key = None, asyncio.Event(), None, None
         try:
             await ws.prepare(req)
             auth = await ws.receive_json(timeout=10)
@@ -225,6 +226,13 @@ class RelayServer:
             room, bearer = auth['room'], auth['token']
             path = ['api', 'rooms', room, 'messages']
             self.transact('GET', path, bearer)
+            # A remembered phone may reopen in another tab. Give each mailbox one
+            # consumer, so a stale tab cannot acknowledge the new tab's replies.
+            peer_key = (room, digest(bearer))
+            previous = self.peers.get(peer_key)
+            self.peers[peer_key] = ws
+            if previous:
+                asyncio.create_task(previous.close(code=4002, message=b'Connected in another tab'))
             if len(self.listeners.get(room, ())) >= 4:
                 raise RelayError(429, 'Mailbox connection limit reached')
             self.listeners.setdefault(room, set()).add(event)
@@ -237,6 +245,8 @@ class RelayServer:
                 while not ws.closed:
                     await event.wait()
                     event.clear()
+                    if self.peers.get(peer_key) is not ws:
+                        return
                     try:
                         result = self.transact('GET', path, bearer)
                         # Expired frames no longer block subsequent deliveries.
@@ -256,6 +266,8 @@ class RelayServer:
             delivery = asyncio.create_task(deliver())
             event.set()
             async for incoming in ws:
+                if self.peers.get(peer_key) is not ws:
+                    break
                 if incoming.type != WSMsgType.TEXT:
                     break
                 value = json.loads(incoming.data)
@@ -281,6 +293,8 @@ class RelayServer:
             if ws.prepared:
                 await ws.close(code=4001, message=b'Invalid or expired mailbox request')
         finally:
+            if peer_key and self.peers.get(peer_key) is ws:
+                self.peers.pop(peer_key, None)
             if delivery:
                 delivery.cancel()
                 with contextlib.suppress(asyncio.CancelledError):

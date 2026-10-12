@@ -170,6 +170,16 @@ function qrPixels(text) {
   reply(resumed.message.id,{paired:true},5);
   for(let i=0;i<30&&!w.sapiensRemote;i++)await sleep();
   assert.ok(w.sapiensRemote,'Approved device reconnects without a new QR or approval');
+  const beforeHandoff=connections;
+  activeSocket.onclose({code:4002});
+  await new Promise(resolve=>setTimeout(resolve,1600));
+  assert.equal(connections,beforeHandoff,'Replaced tabs must not fight for the socket');
+  assert.ok(await w.RemoteSession.read(),'Tab handoff must preserve trusted credentials');
+  Object.defineProperty(w.document,'hidden',{value:false,configurable:true});
+  w.dispatchEvent(new w.Event('online'));
+  for(let i=0;i<20&&connections===beforeHandoff;i++)await sleep();
+  assert.equal(connections,beforeHandoff+1,'The foreground tab can reconnect');
+  await sleep();await sleep();
   activeSocket.onclose({code:4001});
   for(let i=0;i<20&&(await w.RemoteSession.read());i++)await sleep();
   assert.equal(await w.RemoteSession.read(),undefined,'Revocation forgets persistent device credentials');
