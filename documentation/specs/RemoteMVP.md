@@ -319,6 +319,13 @@ multi-workspace switching, multi-host synchronization, or ownership transfer.
 
 ### iPhone Home Screen app
 
+Open `/ios` on the relay's HTTPS domain for the iPhone entry point. `/ios/` and
+the original `/` also serve the same app; assets and API routes remain rooted at
+the origin. A custom hostname needs Railway domain verification and DNS records,
+then `SAPIENS_RELAY_ORIGIN` set to that HTTPS origin (without `/ios`). Import the
+updated private relay connection file and pair again after changing hostnames;
+browser trust does not transfer across origins.
+
 The relay serves a standalone web app manifest and 180/192/512-pixel icons derived
 from the existing workspace favicon in `web/shell/bootstrap.js`. The **Add to Home
 Screen** card opens a three-page, swipeable guide; it is also available in connected
@@ -335,5 +342,5 @@ trusted-device reconnect and revocation rules apply.
 
 This is an online web app, with no App Store distribution or offline workspace
 cache. The relay and desktop must be reachable. The manifest's start URL is always
-`/`; it never contains an invitation, private key, or bearer token. Credentials are
+`/ios`; it never contains an invitation, private key, or bearer token. Credentials are
 not copied to cookies or other installation metadata.
