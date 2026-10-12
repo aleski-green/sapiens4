@@ -14,9 +14,12 @@
   };
   const status = text => {
     const label=$('status') || $('remote-status');
-    if(label) { label.textContent=label.id==='status' ? text : text==='Remote · Disconnect' ? text : 'Remote · Waiting'; label.title=text; }
+    if(label) { label.textContent=label.id==='status' ? text : text==='Remote · Connected' ?
+      (storageWarning ? 'Remote · Not saved' : 'Remote · Forget device') : 'Remote · Waiting'; label.title=storageWarning ?
+        'This browser could not remember the device. Keep this page open or pair again after closing it.' : text; }
   };
   let session=null, paired=false, polling=false, socket=null, ready=false, reconnectTimer=null, reconnectDelay=1000, serial=0;
+  let starting=true, storageWarning=false;
   const calls=new Map();
   const pending=new Map(), received=new Set();
   function frame(payload) {
@@ -69,7 +72,12 @@
       for(const call of calls.values()) {clearTimeout(call.timer);call.reject(new Error('Relay disconnected.'));}
       calls.clear();
       if(!session) return;
-      if(event.code===4001) {status('Pairing revoked or expired. Disconnect and pair again on desktop.');return;}
+      if(event.code===4001) {
+        RemoteSession.clear().catch(()=>{});
+        for(const item of pending.values()) item.reject?.(new Error('Device access was revoked.'));
+        pending.clear();paired=false;session.keys.secretKey.fill(0);session=null;
+        status('Device access was revoked or the invitation expired. Forget this device and scan a new QR on desktop.');return;
+      }
       status('Relay disconnected. Reconnecting…');
       reconnectTimer=setTimeout(connect,reconnectDelay+Math.random()*500);
       reconnectDelay=Math.min(30000,reconnectDelay*2);
@@ -126,14 +134,17 @@
     document.body.replaceChildren(...[...shell.body.childNodes].map(node=>document.importNode(node,true)));
     const connect=document.querySelector('a[href="/remote/"]');
     const remote=document.createElement('button');remote.type='button';remote.className='pill';remote.id='remote-status';
-    remote.textContent='Remote · Disconnect';remote.setAttribute('aria-label','Disconnect remote device');
+    remote.textContent='Remote · Connected';remote.setAttribute('aria-label','Forget this trusted device');
     remote.addEventListener('click',disconnect);connect?.replaceWith(remote);
     Object.defineProperty(window,'sapiensRemote',{value:Object.freeze({fetch:apiRequest}),configurable:false});
     for(const src of scripts) {
       const script=document.createElement('script');script.src=src;script.async=false;document.body.append(script);
     }
+    status('Remote · Connected');
   }
-  function disconnect() {
+  async function disconnect() {
+    try { await RemoteSession.clear(); }
+    catch { status('Could not forget this device. Close other remote tabs and try again.'); return; }
     clearTimeout(reconnectTimer);
     if(session) session.keys.secretKey.fill(0);
     for(const item of pending.values()) item.reject?.(new Error('Disconnected'));
@@ -151,10 +162,14 @@
         received.add(message.id);pending.delete(message.id);
         if(received.size>1000) received.delete(received.values().next().value);
         if(message.result.error) { status(message.result.error);original.reject?.(new Error(message.result.error)); }
-        else if(message.result.paired && original.kind==='pair') {
-          paired=true;status('Paired. Opening CORPORA…');openCorpora().catch(error=>status(error.message));
+        else if(message.result.paired && (original.kind==='pair' || original.op==='resume')) {
+          paired=true;
+          const approved=session;
+          try { await RemoteSession.save(approved); } catch { storageWarning=true; }
+          if(session!==approved || !paired) return;
+          status('Connected. Opening CORPORA…');openCorpora().catch(error=>status(error.message));
         } else if(original.op==='api') {
-          original.resolve(message.result);status('Remote · Disconnect');
+          original.resolve(message.result);status('Remote · Connected');
         }
       }
       await relay('DELETE',null,item.id);
@@ -169,12 +184,15 @@
           pending.delete(id);
           item.reject?.(new Error('Desktop did not confirm this request. Check desktop state before repeating an action.'));
           if(item.kind==='pair') status('Pairing timed out. Disconnect this page and create a new pairing code on desktop.');
+          if(item.op==='resume') status('Your desktop is offline. Reconnecting when it becomes available…');
         } else if(ready && Date.now()-item.lastSent>15000) {
           item.lastSent=Date.now();
           // Same ciphertext and ID on every retry; desktop durably deduplicates commands.
           await relay('POST',item.frame);
         }
       }
+      if(session && !paired && session.restored && ![...pending.values()].some(item=>item.op==='resume'))
+        await send({kind:'request',op:'resume'});
     } catch(error) {status(error.message);}
     finally {polling=false;}
   }
@@ -191,10 +209,11 @@
       const pixels=context.getImageData(0,0,canvas.width,canvas.height);
       const qr=jsQR(pixels.data,canvas.width,canvas.height);
       if(!qr || qr.data.length>4096) throw new Error('No supported QR found in this image.');
-      await pair(JSON.parse(qr.data));
+      await pair(qr.data.trim().startsWith('{') ? JSON.parse(qr.data) : RemoteCode.decode(qr.data));
     } finally { URL.revokeObjectURL(url); }
   }
   async function pair(data) {
+    if(starting) throw new Error('Checking saved device…');
     if (!window.isSecureContext) throw new Error('Open this app over HTTPS.');
     if (session) throw new Error('A pairing is already in progress.');
     if (!data || typeof data !== 'object') throw new Error('Invalid pairing invitation.');
@@ -220,6 +239,42 @@
   });
   $('qr-file').addEventListener('change',async event=>{try{await upload(event.target.files[0]);}catch(error){status(error.message);}});
   $('forget').addEventListener('click',disconnect);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(!socket){clearTimeout(reconnectTimer);connect();}tick();}});
+  const wake=()=>{if(!document.hidden){if(!socket){clearTimeout(reconnectTimer);connect();}tick();}};
+  document.addEventListener('visibilitychange',wake);
+  window.addEventListener('online',wake);
   setInterval(tick,1000); // Local expiry/retry clock only; no idle network polling.
+  async function start() {
+    // Fragments never reach HTTP or referrer headers. Erase the one-use invitation
+    // from this history entry before any asynchronous work or network connection.
+    const fragment=location.hash.slice(1);
+    if(fragment) history.replaceState(null,'',location.pathname);
+    $('connect-code').disabled=true;
+    let saved;
+    try { saved=await RemoteSession.read(); } catch { storageWarning=true; }
+    starting=false;$('connect-code').disabled=false;
+    if(saved) {
+      try {
+        if(saved.version!==1 || saved.relay!==location.origin ||
+          !['room','token'].every(k=>typeof saved[k]==='string' && /^[A-Za-z0-9_-]{32,64}$/.test(saved[k])))
+          throw new Error('Invalid saved device');
+        bytes(saved.desktop,32);
+        if(!(saved.keys?.secretKey instanceof Uint8Array) || saved.keys.secretKey.length!==32 ||
+          !(saved.keys.publicKey instanceof Uint8Array) || saved.keys.publicKey.length!==32 ||
+          b64(nacl.box.keyPair.fromSecretKey(saved.keys.secretKey).publicKey)!==b64(saved.keys.publicKey))
+          throw new Error('Invalid saved device key');
+        session={...saved,restored:true};
+        $('pair-panel').hidden=true;$('forget').hidden=false;
+        status('Reconnecting to your desktop…');connect();
+        await send({kind:'request',op:'resume'});return;
+      } catch {
+        session=null;await RemoteSession.clear().catch(()=>{});
+        status('Saved device could not be restored. Scan a new QR on desktop.');
+      }
+    }
+    if(fragment) {
+      try { await pair(RemoteCode.decode(fragment)); }
+      catch(error) { status(error.message); }
+    }
+  }
+  start();
 })();

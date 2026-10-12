@@ -3,6 +3,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   let pending = null;
+  let configuredRelay;
   const status = text => { $('status').textContent = text; };
   async function api(path = '', body) {
     const response = await fetch('/api/remote' + path, {method: body ? 'POST' : 'GET',
@@ -17,6 +18,12 @@
       const data = await api();
       $('setup').hidden = data.enabled;
       $('local-setup').hidden = !data.local_relay;
+      $('saved-setup').hidden = !data.configured_relay;
+      $('saved-relay').textContent = data.configured_relay || '';
+      if(configuredRelay !== data.configured_relay) {
+        $('relay-settings').open = !data.configured_relay;
+        configuredRelay = data.configured_relay;
+      }
       $('active').hidden = !data.enabled;
       $('approval').hidden = !data.pending;
       pending = data.pending;
@@ -27,7 +34,7 @@
       }
       status(!data.available ? 'Install the optional remote Python dependencies, then restart Sapiens4.' :
         data.error || (data.paired ? 'Your phone can now connect.' : data.enabled ?
-          (data.expires < Date.now()/1000 ? 'Invitation expired. Revoke and create a new pairing code.' : 'Invitation ready. Copy the pairing code to your phone.') : 'Remote access is off.'));
+          (data.expires < Date.now()/1000 ? 'Invitation expired. Revoke and create a new pairing code.' : 'Scan the QR with your phone’s camera, then approve it here.') : 'Ready to connect your phone.'));
     } catch (error) { status(error.message); }
   }
   async function createPairing(body, button) {
@@ -40,7 +47,7 @@
       $('create-pair').disabled = true;
       $('pairing-code').value = RemoteCode.encode(data.qr);
       $('copy-feedback').textContent = '';
-      await RemoteVendor.QRCode.toCanvas($('qr'), JSON.stringify(data.qr), {width:480, margin:3,errorCorrectionLevel:'M'});
+      await RemoteVendor.QRCode.toCanvas($('qr'), RemoteCode.link(data.qr), {width:480, margin:3,errorCorrectionLevel:'M'});
       $('download').href = $('qr').toDataURL('image/png');
       $('remote-link').href = data.qr.relay + '/'; $('remote-link').textContent = data.qr.relay;
       $('qr-panel').hidden = false;
@@ -59,6 +66,7 @@
     }
   });
   $('local-pair').addEventListener('click', () => createPairing({local:true}, $('local-pair')));
+  $('saved-pair').addEventListener('click', () => createPairing({saved:true}, $('saved-pair')));
   $('pair-form').addEventListener('submit', event => {
     event.preventDefault();
     createPairing({relay:$('relay').value.trim(), token:$('token').value}, $('create-pair'));

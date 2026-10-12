@@ -26,6 +26,7 @@ from sapiens.corpora.host.remote_setup import provision
 ASSETS = {
     '/': ('shell/remote.html', 'text/html'),
     '/remote-code.js': ('features/remote-code.js', 'text/javascript'),
+    '/remote-session.js': ('features/remote-session.js', 'text/javascript'),
     '/remote.js': ('features/remote.js', 'text/javascript'),
     '/remote-vendor.js': ('features/remote-vendor.js', 'text/javascript'),
     '/remote.css': ('theme/remote.css', 'text/css'),
@@ -90,6 +91,9 @@ class Mailboxes:
                     'phone' if row and hmac.compare_digest(key, row[1]) else None)
             if not role:
                 raise RelayError(401, 'Unknown or expired mailbox')
+            if len(parts) == 4 and parts[3] == 'trust' and method == 'POST' and role == 'desktop':
+                db.execute('UPDATE rooms SET expires=NULL WHERE id=?', (room,))
+                return dict(trusted=True)
             if len(parts) == 3 and method == 'DELETE' and role == 'desktop':
                 db.execute('DELETE FROM messages WHERE room=?', (room,))
                 db.execute('DELETE FROM rooms WHERE id=?', (room,))

@@ -4,6 +4,7 @@ const path=require('node:path');
 const {TextEncoder,TextDecoder}=require('node:util');
 const {webcrypto}=require('node:crypto');
 const {JSDOM}=require('jsdom');
+const {IDBFactory}=require('fake-indexeddb');
 const nacl=require('tweetnacl'), jsQR=require('jsqr'), QRCode=require('qrcode');
 const root=path.join(__dirname,'..');
 const b64=b=>Buffer.from(b).toString('base64');
@@ -28,10 +29,16 @@ function qrPixels(text) {
     token:'t'.repeat(43),secret:'s'.repeat(43),desktop:b64(desktop.publicKey),expires:now+3600};
   const pixels=qrPixels(JSON.stringify(invitation));
   assert.deepEqual(JSON.parse(jsQR(pixels.data,pixels.width,pixels.height).data),invitation);
-  const dom=new JSDOM(fs.readFileSync(path.join(root,'web/shell/remote.html'),'utf8'),
-    {url:invitation.relay,runScripts:'outside-only'});
-  const w=dom.window;
+  const deviceStorage=new IDBFactory();
+  let dom,w;
   const intervals=[],posted=[],inbox=[];let offline=false;
+  let activeSocket, connections=0;
+  function initialize(url=invitation.relay) {
+  intervals.length=0;
+  dom=new JSDOM(fs.readFileSync(path.join(root,'web/shell/remote.html'),'utf8'),
+    {url,runScripts:'outside-only'});
+  w=dom.window;
+  w.indexedDB=deviceStorage;
   w.Uint8Array=Uint8Array;w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;
   Object.defineProperty(w,'crypto',{value:webcrypto});Object.defineProperty(w,'isSecureContext',{value:true});
   w.RemoteVendor={nacl,jsQR,QRCode};w.Response=Response;
@@ -39,7 +46,6 @@ function qrPixels(text) {
   w.URL.createObjectURL=()=> 'blob:test';w.URL.revokeObjectURL=()=>{};
   w.Image=class {constructor(){this.naturalWidth=pixels.width;this.naturalHeight=pixels.height;}async decode(){}};
   w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},getImageData(){return pixels;}});
-  let activeSocket, connections=0;
   class FakeSocket {
     static OPEN=1;
     constructor(url) {
@@ -71,7 +77,11 @@ function qrPixels(text) {
     return {ok:true,text:async()=>fs.readFileSync(path.join(root,'web/shell/index.html'),'utf8')};
   };
   w.eval(fs.readFileSync(path.join(root,'web/features/remote-code.js'),'utf8'));
+  w.eval(fs.readFileSync(path.join(root,'web/features/remote-session.js'),'utf8'));
   w.eval(fs.readFileSync(path.join(root,'web/features/remote.js'),'utf8'));
+  }
+  initialize();
+  for(let i=0;i<20&&w.document.getElementById('connect-code').disabled;i++)await sleep();
   const codeInput=w.document.getElementById('pairing-code'),codeForm=w.document.getElementById('code-form');
   async function pasteCode(code) {
     codeInput.value=code;codeForm.dispatchEvent(new w.Event('submit',{cancelable:true}));await sleep();
@@ -85,6 +95,12 @@ function qrPixels(text) {
   if(process.argv.includes('--code')) {
     const code=w.RemoteCode.encode(invitation);
     await pasteCode('  '+code.slice(0,50)+'\n'+code.slice(50)+'  ');
+  } else if(process.argv.includes('--link')) {
+    const link=w.RemoteCode.link(invitation);
+    const linkPixels=qrPixels(link);
+    assert.equal(jsQR(linkPixels.data,linkPixels.width,linkPixels.height).data,link);
+    dom.window.close();initialize(link);
+    assert.equal(w.location.hash,'','Invitation must be removed before networking');
   } else file.dispatchEvent(new w.Event('change'));
   for(let i=0;i<20&&!posted.length;i++)await sleep();
   assert.ok(posted.length,w.document.getElementById('status').textContent);
@@ -94,6 +110,7 @@ function qrPixels(text) {
   assert.equal(w.document.getElementById('verify-panel').hidden,false);
   assert.equal(w.document.getElementById('chat-panel'),null);
   const phone=bytes(posted[0].frame.sender);
+  assert.equal(await w.RemoteSession.read(),undefined,'An unapproved phone must not be remembered');
   function reply(id,result,wireId=1) {
     const nonce=nacl.randomBytes(24),message={v:invitation.v,room:invitation.room,direction:'desktop-to-phone',
       id,kind:'response',expires:Date.now()/1000+120,result};
@@ -139,6 +156,32 @@ function qrPixels(text) {
   offline=true;const future=Date.now()+121000;w.Date.now=()=>future;
   await intervals[0]();await sleep();assert.match(await unanswered,/did not confirm/);
   assert.equal(w.localStorage.length,0);assert.equal(w.sessionStorage.length,0);
+  const stored=await w.RemoteSession.read();
+  assert.equal(stored.room,invitation.room);
+  assert.equal(stored.secret,undefined,'One-use invitation secret must not be remembered');
+  assert.equal(b64(stored.keys.publicKey),b64(phone));
+  const previousCount=posted.length;
+  dom.window.close();offline=false;initialize();
+  for(let i=0;i<30&&posted.length===previousCount;i++)await sleep();
+  const resumed=posted.at(-1);
+  assert.equal(resumed.message.op,'resume','Reload must resume instead of re-pairing');
+  assert.equal(resumed.frame.sender,b64(phone),'Reload must reuse the approved phone key');
+  assert.equal(w.sapiensRemote,undefined,'Do not open the workspace before the desktop authenticates resume');
+  reply(resumed.message.id,{paired:true},5);
+  for(let i=0;i<30&&!w.sapiensRemote;i++)await sleep();
+  assert.ok(w.sapiensRemote,'Approved device reconnects without a new QR or approval');
+  activeSocket.onclose({code:4001});
+  for(let i=0;i<20&&(await w.RemoteSession.read());i++)await sleep();
+  assert.equal(await w.RemoteSession.read(),undefined,'Revocation forgets persistent device credentials');
   dom.window.close();
-  console.log('Remote QR upload, shared CORPORA shell, encrypted API and image transport, and volatile secrets passed.');
+  const beforeForgotten=connections;initialize();
+  for(let i=0;i<20&&w.document.getElementById('connect-code').disabled;i++)await sleep();
+  assert.equal(connections,beforeForgotten,'A revoked device must not reconnect on reload');
+  await w.RemoteSession.save({...stored,keys:{publicKey:stored.keys.publicKey,secretKey:new Uint8Array(32)}});
+  dom.window.close();initialize();
+  for(let i=0;i<30&&(await w.RemoteSession.read());i++)await sleep();
+  assert.equal(connections,beforeForgotten,'Corrupted saved keys must not authenticate');
+  assert.equal(await w.RemoteSession.read(),undefined,'Corrupt device state must allow fresh pairing');
+  dom.window.close();
+  console.log('Remote QR upload, shared CORPORA shell, encrypted API and image transport, trusted-device reload, and revocation passed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -14,8 +14,7 @@ plaintext API fallback. Pairing grants full CORPORA admin access.
 
 The local PC owns state and performs actions. The relay serves public UI assets
 and stores encrypted envelopes only; it does not expose `/api/state` or other
-CORPORA data endpoints. Native desktop browser views, screen streaming, persistent
-phone login, and multiple phones are outside this MVP. Text file previews work
+CORPORA data endpoints. Native desktop browser views, screen streaming, multiple phones are outside this MVP. Text file previews work
 through the existing browser fallback. Remote control of existing workspace tabs
 still runs on the desktop.
 
@@ -49,7 +48,7 @@ location, never its contents. Subsequent launches reuse the token. An explicit
 custom destination. Keep that file private and transfer it securely to the desktop
 owner. It is never served over HTTP. Windows requires a private directory/ACL.
 The token authorizes mailbox creation; it is not an encryption key. Never give
-it to the phone or embed it in a URL. Desktop pairing does not persist it.
+it to the phone or embed it in a URL. Desktop saves it privately in `remote-relay.json` after successful setup, so subsequent invitations need only **Show pairing QR**. It is never returned by the status API or sent to the phone.
 
 1. In local CORPORA, open **Connect phone**, or visit
    `http://127.0.0.1:4174/remote/` in your desktop browser.
@@ -59,7 +58,8 @@ it to the phone or embed it in a URL. Desktop pairing does not persist it.
    HTTP origins. For a custom database/location or another server, select
    **Import relay connection file**, review the displayed address, then select
    **Create pairing code**. Manual address/token entry remains available.
-   Select **Copy pairing code**; the invitation expires after one hour.
+   This is a one-time setup on each desktop. Future connections use **Show pairing QR**.
+   Scan the displayed QR with the phone Camera app and open its link; the invitation expires after one hour. Copy-and-paste codes and QR image uploads remain fallbacks.
 3. For a same-computer browser test, open `http://127.0.0.1:4180/`, paste the
    code and select **Connect to desktop**. QR image upload is also available. For an actual iPhone, use the HTTPS deployment described below;
    `127.0.0.1` on the phone refers to the phone, not the PC.
@@ -69,6 +69,12 @@ it to the phone or embed it in a URL. Desktop pairing does not persist it.
    navigation, composer, Work, Notes and settings. Wait for desktop confirmation.
    Use **Revoke / disable remote access** to disconnect and delete the relay room.
 
+The QR encodes an HTTPS URL with the compact invitation in its fragment (`/#s4.…`).
+Fragments are not included in HTTP requests or referrer headers. The phone removes
+the fragment from its current history entry immediately, before asynchronous work.
+The full link remains a temporary pairing credential: do not share it. QR uploads
+accept both links and legacy JSON invitations, always validating the relay origin.
+
 The compact `s4.` code encodes the same invitation as the QR, omitting verbose
 field names. This is encoding, not encryption: a fixed shared key would provide
 no secrecy. The code contains a temporary invitation secret, never either
@@ -76,7 +82,15 @@ device’s private key or the relay provisioning token. Origin, expiry, phone
 fingerprint approval, and encrypted transport checks apply equally to both flows.
 Do not share the code publicly.
 
-QR decoding happens entirely in the phone browser; the uploaded image is never
+After approval, the phone stores its device identity and mailbox credential in
+origin-scoped IndexedDB. Reopening Safari authenticates an encrypted `resume`
+request with the same phone key before CORPORA opens. The invitation secret and
+application data are not saved. Closing a page does not revoke the trusted device;
+**Forget this device** removes browser credentials and desktop **Revoke** blocks
+access immediately. Clearing website data or browser storage eviction requires
+a new pairing. Private browsing may not retain the device.
+
+QR image decoding happens entirely in the phone browser; the uploaded image is never
 sent to a server. There is no camera permission or native QR-scanner dependency.
 The QR grants a one-time pairing opportunity, so treat its image as a temporary
 credential and delete it after use.
@@ -108,8 +122,8 @@ service configuration and rotate it when needed.
 
 Retrieve `relay.connection.json` from your server using your normal secure file
 transfer method. In desktop CORPORA, select **Import relay connection file** and
-create the pairing QR. Open the configured HTTPS origin on the iPhone and upload
-the QR PNG. The public relay site never displays the provisioning token. Hosted
+create the pairing QR. Scan it with the iPhone Camera app and open the link;
+approve the matching phone fingerprint on desktop once. The public relay site never displays the provisioning token. Hosted
 Sapiens sign-in/automatic account provisioning is not implemented. Desktop and phone both make outbound HTTP(S)
 requests, so there is no inbound port or router change on the desktop. Origin
 changes require new pairing; QR upload never navigates to an arbitrary encoded URL.
@@ -180,10 +194,11 @@ are reused. Inline CSS is allowed for the shared UI; inline scripts are blocked.
 - This is an application integration using established NaCl primitives, not an
   independently audited messaging protocol. **There is no forward secrecy or key
   ratchet**: a later stolen device private key can expose retained ciphertext.
-- Phone key is an in-memory JavaScript byte array, not a non-extractable hardware
-  key. No private key or chat data is written to browser storage. Reloading or an
-  iOS page discard loses the key: revoke on desktop and pair again. This MVP does
-  not claim persistent Safari login or Secure Enclave protection.
+- The approved phone key and mailbox credential are stored in origin-scoped
+  IndexedDB. They are accessible to same-origin JavaScript, not non-extractable
+  hardware keys or Secure Enclave credentials. This supports persistent Safari
+  login but does not protect against a compromised relay web host, browser profile,
+  or same-origin script. No chat data is persisted by the remote transport.
 - Desktop keeps its key and mailbox credential in `remote-device.json` under its
   existing data directory, created atomically with mode 0600 on POSIX. Windows
   needs a private per-user data directory/ACL. This is not an OS keychain-backed
@@ -207,8 +222,16 @@ available for compatibility.
 The server sends protocol pings every 25 seconds. Clients reconnect with delays
 up to 30 seconds (browser adds jitter); the browser keeps a local timer for request
 expiry and identical-ciphertext retries. A relay restart preserves paired mailboxes
-and queued data. Existing browser pages must reload once to load this transport;
-that loses their volatile key, so revoke and pair again.
+and queued data. Approved devices remain valid until revoked. Unapproved rooms
+expire after seven days; only the desktop bearer can promote a room through
+`POST /api/rooms/:id/trust`, immediately before local fingerprint approval.
+Existing pairings created by older clients need one final re-pair after upgrading
+both desktop and relay, because those clients did not save the phone key.
+
+A returning browser never replays application commands from an earlier page. It
+resumes its authenticated identity and loads a fresh snapshot. Outstanding work
+may still have reached the desktop before the previous page closed; check desktop
+history before manually repeating an unconfirmed action.
 
 A connection has at most one bounded delivery batch awaiting acknowledgment. The
 relay limits live sockets to 128 overall and four per room, disables compression,

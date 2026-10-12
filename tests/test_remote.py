@@ -47,6 +47,9 @@ class RemoteTest(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.service = FakeService(self.temp.name)
         self.bridge = RemoteBridge(self.service)
+        relay = patch('sapiens.corpora.host.remote_bridge.request', return_value={'trusted': True})
+        self.relay_request = relay.start()
+        self.addCleanup(relay.stop)
         self.addCleanup(self.bridge.close)
         private, public = crypto.keypair()
         self.phone_private, self.phone_public = crypto.keypair()
@@ -104,6 +107,36 @@ class RemoteTest(unittest.TestCase):
         self.bridge.config['expires'] = time.time()-1
         with self.assertRaises(ValueError):
             self.bridge.process(self.message('pair', secret=self.bridge.config['secret']))
+
+    def test_approved_phone_resumes_after_invitation_expiry(self):
+        self.pair()
+        self.bridge.config['expires'] = time.time() - 8 * 86400
+        result = self.decoded(self.bridge.process(self.message(op='resume')))
+        self.assertTrue(result['paired'])
+        self.assertEqual(self.service.calls, [])
+        self.relay_request.assert_called_with(self.bridge.config['relay'],
+            '/api/rooms/room-1/trust', 'unused', 'POST', {})
+
+    def test_failed_trust_does_not_approve_phone(self):
+        self.bridge.process(self.message('pair', secret=self.bridge.config['secret']))
+        self.relay_request.side_effect = ValueError('Relay unavailable')
+        with self.assertRaisesRegex(ValueError, 'Relay unavailable'):
+            self.bridge.approve(dict(peer=self.phone_public))
+        self.assertIsNone(self.bridge.config['peer'])
+        self.assertIsNotNone(self.bridge.config['pending'])
+
+    def test_successful_setup_is_reused_without_exposing_admin(self):
+        self.bridge.config = None
+        self.relay_request.return_value = dict(room='r'*43, desktop='d'*43, phone='p'*43)
+        with patch.object(self.bridge, 'start'):
+            self.bridge.create(dict(relay='https://relay.example', token='a'*43))
+            self.bridge.revoke()
+            self.bridge.create(dict(saved=True))
+        self.relay_request.assert_called_with('https://relay.example', '/api/rooms', 'a'*43, 'POST', {})
+        self.assertEqual(self.bridge.status()['configured_relay'], 'https://relay.example')
+        self.assertNotIn('a'*43, json.dumps(self.bridge.status()))
+        if os.name != 'nt':
+            self.assertEqual(self.bridge.relay_path.stat().st_mode & 0o777, 0o600)
 
     def test_both_directions_tampering_and_identity_substitution(self):
         self.pair()
@@ -327,6 +360,20 @@ class MailboxTest(unittest.TestCase):
         self.assertEqual(self.call('GET',self.path,self.room['desktop'])['messages'],[])
         for _ in range(100):self.call('POST',self.path,self.room['phone'],self.frame)
         with self.assertRaises(RelayError):self.call('POST',self.path,self.room['phone'],self.frame)
+
+    def test_only_desktop_can_keep_trusted_mailbox_until_revocation(self):
+        trust = self.path[:3] + ['trust']
+        with self.assertRaises(RelayError):
+            self.call('POST', trust, self.room['phone'])
+        self.call('POST', trust, self.room['desktop'])
+        invited = self.call('POST', ['api', 'rooms'], self.admin)
+        with patch('time.time', return_value=time.time() + 365 * 86400):
+            self.assertEqual(self.call('GET', self.path, self.room['phone']), {'messages': []})
+            with self.assertRaises(RelayError):
+                self.call('GET', ['api', 'rooms', invited['room'], 'messages'], invited['phone'])
+        self.call('DELETE', self.path[:3], self.room['desktop'])
+        with self.assertRaises(RelayError):
+            self.call('GET', self.path, self.room['phone'])
 
     def test_rejects_plaintext_and_invalid_frames(self):
         for body in [dict(text='private content'),dict(self.frame,sender='bad'),dict(self.frame,nonce='bad')]:

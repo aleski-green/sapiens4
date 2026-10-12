@@ -10,6 +10,13 @@ window.RemoteCode = (() => {
   }
   function decode(text) {
     if (typeof text !== 'string' || text.length > 4096) throw new Error('Paste a valid pairing code from desktop.');
+    if (/^https?:\/\//.test(text.trim())) {
+      const link = new URL(text.trim());
+      const invitation = decode(link.hash.slice(1));
+      if (link.origin !== invitation.relay || link.pathname !== '/' || link.search || link.username || link.password)
+        throw new Error('Invalid pairing link.');
+      return invitation;
+    }
     const parts = text.replace(/\s/g, '').split('.');
     if (parts.length !== 7 || parts[0] !== 's4' ||
         !parts.slice(1,6).every(value => /^[A-Za-z0-9_-]+$/.test(value)) ||
@@ -19,5 +26,6 @@ window.RemoteCode = (() => {
         secret:parts[4], desktop:base64(parts[5]), expires:parseInt(parts[6],36)};
     } catch { throw new Error('Paste a valid pairing code from desktop.'); }
   }
-  return {encode, decode};
+  const link = data => data.relay + '/#' + encode(data);
+  return {encode, decode, link};
 })();

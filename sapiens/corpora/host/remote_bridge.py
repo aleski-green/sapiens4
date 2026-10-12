@@ -15,7 +15,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from sapiens.corpora.host.corpora_api import dispatch
 from sapiens.files import atomic_json
 from sapiens.corpora.host import remote_pairing as crypto
-from sapiens.corpora.host.remote_setup import local_connection
+from sapiens.corpora.host.remote_setup import local_connection, read as read_connection, validate as validate_connection
 from sapiens.corpora.host.remote_socket import SocketClient, websocket
 from sapiens.validation import APIError
 
@@ -46,6 +46,7 @@ class RemoteBridge:
     def __init__(self, service):
         self.service = service
         self.path = service.root / 'remote-device.json'
+        self.relay_path = service.root / 'remote-relay.json'
         self.receipts = service.root / 'remote-receipts.sqlite3'
         self.lock, self.stopped = threading.RLock(), threading.Event()
         self.config = None
@@ -85,11 +86,18 @@ class RemoteBridge:
             pending = config.get('pending')
             return dict(available=crypto.available() and websocket is not None, enabled=bool(config),
                         local_relay=bool(local_connection()),
+                        configured_relay=self.saved_relay().get('relay'),
                         paired=bool(config.get('peer')), relay=config.get('relay'),
                         fingerprint=crypto.fingerprint(config['peer']) if config.get('peer') else None,
                         pending=dict(fingerprint=crypto.fingerprint(pending['peer']), peer=pending['peer'])
                         if pending and config['expires'] > time.time() else None,
                         expires=config.get('expires'), error=self.error, last_contact=self.last_contact)
+
+    def saved_relay(self):
+        try:
+            return read_connection(self.relay_path)
+        except (OSError, ValueError, TypeError):
+            return {}
 
     def create(self, data):
         if websocket is None:
@@ -98,10 +106,15 @@ class RemoteBridge:
             data = local_connection()
             if not data:
                 raise ValueError('Local test relay setup is missing. Start the relay or import its connection file.')
+        elif data.get('saved') is True:
+            data = self.saved_relay()
+            if not data:
+                raise ValueError('Configure your relay once before connecting a phone.')
         relay = crypto.origin(data.get('relay'))
         admin = data.get('token', '')
         if not isinstance(admin, str) or not 32 <= len(admin) <= 256 or not admin.isascii():
             raise ValueError('Enter the relay provisioning token (32–256 ASCII characters)')
+        connection = validate_connection(dict(format='sapiens-relay-connection-v1', relay=relay, token=admin))
         private, public = crypto.keypair()
         with self.lock:
             if self.config:
@@ -118,6 +131,7 @@ class RemoteBridge:
                                private=private, public=public, secret=secret, expires=expires,
                                peer=None, pending=None)
             self.save()
+            atomic_json(self.relay_path, connection)
             self.start()
             # The provisioning token and desktop private key are never placed in the QR.
             return dict(qr=dict(v=crypto.PROTOCOL, relay=relay, room=room['room'], token=room['phone'],
@@ -129,6 +143,10 @@ class RemoteBridge:
             pending = config.get('pending') if config else None
             if not pending or config['expires'] <= time.time() or data.get('peer') != pending['peer']:
                 raise ValueError('Pairing expired or phone changed; generate a new QR')
+            # Only the desktop can make an invited mailbox persistent. Phone access
+            # still requires the explicitly approved encryption key below.
+            request(config['relay'], '/api/rooms/' + config['room'] + '/trust',
+                    config['token'], 'POST', {})
             config['peer'] = pending['peer']
             config['accept'] = self.response(pending['id'], dict(paired=True))
             config['pending'] = None
@@ -189,6 +207,8 @@ class RemoteBridge:
             return None
         if message.get('kind') != 'request' or message['expires'] > time.time() + 310:
             raise ValueError('Invalid request')
+        if message.get('op') == 'resume':
+            return self.response(message['id'], dict(paired=True))
         if message.get('op') == 'api' and message.get('method') == 'GET':
             # Reads are safe to repeat; do not retain a full desktop snapshot per poll.
             try:

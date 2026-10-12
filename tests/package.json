@@ -3,6 +3,7 @@
   "description": "DOM regression tests for the Sapiens4 web UI",
   "devDependencies": {
     "esbuild": "0.25.12",
+    "fake-indexeddb": "6.2.5",
     "jsdom": "26.1.0",
     "jsqr": "1.4.0",
     "qrcode": "1.5.4",
