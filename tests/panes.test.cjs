@@ -8,6 +8,7 @@ function setup({touch=true,width=390,height=844,panes={sidebar:true,chat:true,wo
   const orientation=new window.EventTarget();orientation.type=height>=width?'portrait-primary':'landscape-primary';
   Object.defineProperty(window.screen,'orientation',{value:orientation});
   window.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
+  window.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
   window.webkit={messageHandlers:{browser:{postMessage(){}}}};
   const tab={id:'tab-test',url:'about:blank',title:'Test'};
   const state={selected:'sapi_test',agents:[{id:'sapi_test',name:'Test',kind:'sapi'}],panes:{...panes},
@@ -55,6 +56,31 @@ function setup({touch=true,width=390,height=844,panes={sidebar:true,chat:true,wo
   assert.deepEqual(phone.visible(),['chat'],'Closing the last workspace tab leaves a useful panel');
   phone.window.document.querySelector('.wordmark').click();
   assert.deepEqual(phone.visible(),['chat'],'Reset layout still obeys the mobile limit');
+  const doc=phone.window.document;
+  vm.runInContext('renderSidebar=()=>{}',phone.ctx);
+  assert.equal(doc.body.hasAttribute('data-mobile-ui'),true);
+  phone.state.mainSapiId='sapi_test';
+  doc.querySelector('[data-scope=sapis]').click();
+  assert.deepEqual(phone.visible(),['sidebar'],'Changing roster filters keeps the roster visible');
+  doc.querySelector('#search-toggle').click();
+  assert.equal(doc.activeElement.id,'agent-search');
+  assert.equal(doc.querySelector('#corpora-search').classList.contains('search-open'),true);
+  doc.querySelector('#agent-search').value='query';
+  doc.querySelector('#agent-search').dispatchEvent(new phone.window.KeyboardEvent('keydown',{key:'Escape'}));
+  assert.equal(doc.querySelector('#agent-search').value,'');
+  assert.equal(doc.querySelector('#search-toggle').getAttribute('aria-expanded'),'false');
+  const input=doc.querySelector('#message-input');let contentHeight=96;
+  input.getClientRects=()=>[{}];Object.defineProperty(input,'scrollHeight',{get:()=>contentHeight});
+  input.dispatchEvent(new phone.window.Event('input'));assert.equal(input.style.height,'96px');
+  contentHeight=220;input.dispatchEvent(new phone.window.Event('input'));assert.equal(input.style.height,'140px');
+  contentHeight=20;input.dispatchEvent(new phone.window.Event('input'));assert.equal(input.style.height,'44px');
+  vm.runInContext('appMenu()',phone.ctx);
+  assert.equal(doc.querySelector('#modal').open,true);
+  assert.ok(doc.querySelector('[data-menu-target="resource-button"]'));
+  assert.ok(doc.querySelector('#modal a[href="/remote/"]'));
+  let opened=0;vm.runInContext('computerDialog=()=>{}',phone.ctx);
+  doc.querySelector('#resource-button').addEventListener('click',()=>opened++);
+  doc.querySelector('[data-menu-target="resource-button"]').click();assert.equal(opened,1);
   phone.window.close();
 
   const landscape=setup({width:844,height:390});
@@ -67,6 +93,7 @@ function setup({touch=true,width=390,height=844,panes={sidebar:true,chat:true,wo
   assert.deepEqual(desktop.visible(),['sidebar','chat','workspace']);
   desktop.click('sidebar');assert.deepEqual(desktop.visible(),['chat','workspace']);
   desktop.click('sidebar');assert.deepEqual(desktop.visible(),['sidebar','chat','workspace']);
+  assert.equal(desktop.window.document.body.hasAttribute('data-mobile-ui'),false);
   desktop.window.close();
   const noTabs=setup({tabs:false,panes:{sidebar:false,chat:false,workspace:true}});
   assert.deepEqual(noTabs.visible(),['chat']);

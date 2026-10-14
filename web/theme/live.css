@@ -398,3 +398,87 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 .event-row pre { margin:0 0 12px; padding:12px; background:var(--sapi-purple-tint); border-radius:6px; font:12px/1.5 ui-monospace,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
 
 .corpora-identity { margin: -4px 0 12px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+
+/* The same CORPORA shell adapts on touch devices and narrow windows.
+   Display type is 90% of the mobile study; inputs stay at 16px to avoid iOS zoom. */
+.sidebar-actions { display:flex;align-items:center;gap:2px; }
+#search-toggle { display:none; }
+#search-toggle svg { width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round; }
+.app-menu-row { display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;min-height:50px;padding:12px 0;border-top:1px solid var(--line);text-decoration:none;text-align:left;font:inherit; }
+.app-menu-row small { max-width:55%;color:var(--muted);text-align:right;overflow-wrap:anywhere; }
+:root body.sapi-workspace[data-mobile-ui] { font-size:12.6px;overscroll-behavior:none;padding:0; }
+:root body.sapi-workspace[data-mobile-ui] .app { height:min(100dvh,var(--mobile-viewport-height,100dvh));min-height:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+:root body.sapi-workspace[data-mobile-ui] .app-header { display:grid;grid-template-columns:44px minmax(0,1fr) 44px;grid-template-rows:1fr;height:62px;min-height:62px;gap:8px;padding:5px 12px;border-bottom:1px solid var(--line); }
+:root body.sapi-workspace[data-mobile-ui] .app-header>:not(#app-menu):not(.pane-controls):not(.theme-toggle) { display:none; }
+:root body.sapi-workspace[data-mobile-ui] #app-menu { grid-column:1;grid-row:1;width:44px;height:44px; }
+:root body.sapi-workspace[data-mobile-ui] .pane-controls { grid-column:2;grid-row:1;justify-self:center;margin:0;display:flex;width:150px;max-width:100%;padding:3px;gap:1px;border-radius:15px;background:var(--sapi-surface); }
+:root body.sapi-workspace[data-mobile-ui] .pane-toggle { flex:1;width:44px;height:44px;border-radius:11px;opacity:1; }
+:root body.sapi-workspace[data-mobile-ui] .pane-toggle svg { width:20px;height:20px; }
+:root body.sapi-workspace[data-mobile-ui] .theme-toggle { grid-column:3;grid-row:1;width:44px;height:44px;font-size:22px; }
+:root body.sapi-workspace[data-mobile-ui] .icon-button { width:44px;height:44px;border-radius:12px; }
+:root body.sapi-workspace[data-mobile-ui] :is(.sidebar-bottom,.workspace-footer,#corpora-identity) { display:none; }
+:root body.sapi-workspace[data-mobile-ui] .sidebar { padding:8px 8px 0; }
+:root body.sapi-workspace[data-mobile-ui] .sidebar-heading { margin:0 8px 4px;min-height:44px; }
+:root body.sapi-workspace[data-mobile-ui] .sidebar-heading h1 { font-size:15.3px;letter-spacing:-.3px;color:var(--ink); }
+:root body.sapi-workspace[data-mobile-ui] .sidebar-heading h1 span { font-size:12.6px;font-weight:400; }
+:root body.sapi-workspace[data-mobile-ui] #search-toggle { display:inline-grid; }
+:root body.sapi-workspace[data-mobile-ui] .search-field { display:none;order:1;margin:0 8px 8px;height:44px;flex-shrink:0;padding:0 12px;border-radius:12px; }
+:root body.sapi-workspace[data-mobile-ui] .search-field.search-open { display:flex; }
+:root body.sapi-workspace[data-mobile-ui] .search-field input { font-size:16px; }
+:root body.sapi-workspace[data-mobile-ui] .search-field kbd { display:none; }
+:root body.sapi-workspace[data-mobile-ui] .scope-switch { order:2;position:static;width:auto;flex:none;justify-content:flex-start;gap:6px;margin:0 8px 8px;padding:0;background:transparent; }
+:root body.sapi-workspace[data-mobile-ui] .scope-switch button { flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:10px;font-size:11.7px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-list { order:3;flex:1;gap:2px;padding:4px 0 12px;overscroll-behavior:contain; }
+:root body.sapi-workspace[data-mobile-ui] .agent-row { min-height:72px;padding:12px 10px;gap:12px;border-radius:15px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-row-name { font-size:13.5px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-name { padding:3px 0; }
+:root body.sapi-workspace[data-mobile-ui] .agent-row-copy p { font-size:11.7px;margin-top:3px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-row-name small { font-size:9.9px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-row .avatar { width:43px;height:43px;font-size:12.6px; }
+:root body.sapi-workspace[data-mobile-ui] .avatar .presence { width:11px;height:11px;bottom:-1px;right:-1px;border:2px solid var(--sapi-bg);background:#86bd8c; }
+:root body.sapi-workspace[data-mobile-ui] .avatar .presence.busy { background:#bd8bea; }
+:root body.sapi-workspace[data-mobile-ui] .avatar .presence.idle { background:#aaa6ae; }
+:root body.sapi-workspace[data-mobile-ui] .main-sapi-row { margin-bottom:0; }
+:root body.sapi-workspace[data-mobile-ui] .main-sapi-row::after { display:none; }
+:root body.sapi-workspace[data-mobile-ui] .agent-heading { flex:none;height:auto;min-height:66px;padding:10px 16px;gap:12px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-heading .avatar { width:36px;height:36px;font-size:12.6px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-heading h2 { font-size:14.4px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-heading p { font-size:9.9px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-heading .group-labels { display:none; }
+:root body.sapi-workspace[data-mobile-ui] .conversation-tabs { padding:0 16px;gap:22px; }
+:root body.sapi-workspace[data-mobile-ui] .activity-tab>button { min-height:44px;font-size:11.7px;padding:8px 0; }
+:root body.sapi-workspace[data-mobile-ui] .activity-tab.active { border-color:var(--sapi-accent); }
+:root body.sapi-workspace[data-mobile-ui] .conversation-body { padding:18px 16px 8px;overscroll-behavior:contain; }
+:root body.sapi-workspace[data-mobile-ui] .message-bubble { font-size:13.5px;line-height:1.55; }
+:root body.sapi-workspace[data-mobile-ui] .user .message-bubble { font-size:12.6px;border-radius:17px 17px 4px 17px;padding:11px 14px; }
+:root body.sapi-workspace[data-mobile-ui] .message.user { margin-left:32px; }
+:root body.sapi-workspace[data-mobile-ui] .message-meta { font-size:9.9px; }
+:root body.sapi-workspace[data-mobile-ui] .day-divider { font-size:9px; }
+:root body.sapi-workspace[data-mobile-ui] .composer-area { padding:8px 12px 10px; }
+:root body.sapi-workspace[data-mobile-ui] .composer { display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:end;gap:2px;padding:5px;border-radius:22px;background:var(--sapi-surface); }
+:root body.sapi-workspace[data-mobile-ui] .composer textarea { grid-column:2;grid-row:1;width:100%;min-width:0;height:44px;min-height:44px;max-height:140px;padding:10px 4px;font-size:16px;line-height:24px;resize:none;overflow-y:auto; }
+:root body.sapi-workspace[data-mobile-ui] .composer-bottom { display:contents; }
+:root body.sapi-workspace[data-mobile-ui] #attach-button { grid-column:1;grid-row:1;border-radius:50%; }
+:root body.sapi-workspace[data-mobile-ui] .send-button { grid-column:3;grid-row:1;width:44px;height:44px;margin:0;font-size:24px; }
+:root body.sapi-workspace[data-mobile-ui] .browser-tabs-wrap { min-height:60px;padding:8px 10px;gap:3px;flex-shrink:0; }
+:root body.sapi-workspace[data-mobile-ui] .workspace-tab { min-width:0;max-width:none;flex:1;padding:0 10px;min-height:44px;border-radius:11px; }
+:root body.sapi-workspace[data-mobile-ui] #browser-tabs :is(.tab-star,.tab-close) { display:none; }
+:root body.sapi-workspace[data-mobile-ui] .workspace-tab .tab-select { font-size:11.7px;min-height:44px; }
+:root body.sapi-workspace[data-mobile-ui] :is(#browser-overflow,#add-tab) { min-width:44px;min-height:44px; }
+:root body.sapi-workspace[data-mobile-ui] .browser-menu { top:60px;max-height:calc(100% - 72px);border-radius:16px; }
+:root body.sapi-workspace[data-mobile-ui] .browser-menu button { min-height:44px; }
+:root body.sapi-workspace[data-mobile-ui] .browser-address-bar input { font-size:16px;min-height:44px;min-width:0; }
+:root body.sapi-workspace[data-mobile-ui] .workspace-content { padding:0;font-size:12.6px; }
+:root body.sapi-workspace[data-mobile-ui] .workspace-text { padding:20px 16px;font-size:12.6px; }
+:root body.sapi-workspace[data-mobile-ui] .notes-wiki { padding:18px 16px;font-size:12.6px; }
+:root body.sapi-workspace[data-mobile-ui] .notes-wiki h1 { font-size:23.4px; }
+:root body.sapi-workspace[data-mobile-ui] .notes-wiki h2 { font-size:17.1px; }
+:root body.sapi-workspace[data-mobile-ui] dialog { max-height:calc(var(--mobile-viewport-height,100dvh) - 24px);width:calc(100% - 24px);padding:18px;border-radius:20px; }
+:root body.sapi-workspace[data-mobile-ui] dialog.app-menu-sheet { inset:auto 0 0;margin:0;width:100%;max-width:none;border-radius:24px 24px 0 0;padding:12px 20px max(20px,env(safe-area-inset-bottom)); }
+:root body.sapi-workspace[data-mobile-ui] #modal-content h2 { font-size:18px; }
+:root body.sapi-workspace[data-mobile-ui] :is(.form-stack input,.form-stack textarea,.form-stack select,.settings-row select) { font-size:16px; }
+:root body.sapi-workspace[data-pane-limit="2"] .app-header { height:54px;min-height:54px; }
+:root body.sapi-workspace[data-pane-limit="2"] .agent-heading { min-height:54px;padding:4px 12px; }
+
+:root body.sapi-workspace[data-mobile-ui] #app-menu svg { width:22px;height:22px; }
+:root body.sapi-workspace[data-mobile-ui] .activity-tab>.activity-toggle { width:28px;min-height:44px; }

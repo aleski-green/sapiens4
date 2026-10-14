@@ -150,8 +150,10 @@ renderGlobal = function() {
 renderAgentHeader = function() {
   const a = selected();
   const turn = a.kind==='group'?null:live.turns.find(j => j.agent === a.id && blocksChat(j));
-  $('#agent-heading').innerHTML = `${avatar(a,isMainSapi(a)?'large main-sapi-avatar':'large')}<div><div class="agent-title"><h2>${esc(a.name)}</h2>${a.kind==='group'?'':groupLabels(a)}</div><p class="agent-role">${esc(a.kind==='group'?a.description:a.role)}</p></div><button class="icon-button" data-action="agent-settings" aria-label="Sapi settings">···</button>`;
-  $('#message-input').placeholder = `Message ${a.name}…`;
+  $('#agent-heading').innerHTML = `${avatar(a,isMainSapi(a)?'large main-sapi-avatar':'large',true)}<div><div class="agent-title"><h2>${esc(a.name)}</h2>${a.kind==='group'?'':groupLabels(a)}</div><p class="agent-role">${esc(a.kind==='group'?a.description:a.role)}</p></div><button class="icon-button" data-action="agent-settings" aria-label="Sapi settings">···</button>`;
+  $('#message-input').placeholder = paneLimit()<3 ? 'Message…' : `Message ${a.name}…`;
+  $('#message-input').setAttribute('aria-label',`Message ${a.name}`);
+  resizeComposer();
   renderActivityNavigation();
   $('#attach-button').hidden = Boolean(a.archived);
   $('.send-button').disabled = a.retired || a.archived || !online || submitting.has(a.id) || uploading > 0;
@@ -296,7 +298,7 @@ document.addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.id === 'profile-button' || b.id === 'app-menu') {
-    e.preventDefault(); e.stopImmediatePropagation(); autonomyDialog(); return;
+    e.preventDefault(); e.stopImmediatePropagation(); b.id === 'app-menu' ? appMenu() : autonomyDialog(); return;
   }
   if (!b.dataset.liveTurn) return;
   e.preventDefault(); e.stopImmediatePropagation(); b.disabled = true;

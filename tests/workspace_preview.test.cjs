@@ -6,7 +6,7 @@ const tab={id:'file1',path:'/tmp/jokes.txt',title:'jokes.txt',url:'file:///tmp/j
 const state={selected:'sapi_one',activeTab:'file1',tabs:[tab],panes:{workspace:true}};
 const ctx=vm.createContext({document:window.document,window,state,Date:{now:()=>now},workspaceOwner:'sapi_one',
  $:selector=>window.document.querySelector(selector),$$:selector=>window.document.querySelectorAll(selector),
- mention:()=>'',syncWorkspace:()=>{},syncNativeBrowser:()=>{},api:url=>new Promise((resolve,reject)=>requests.push({url,resolve,reject}))});
+ paneLimit:()=>3,mention:()=>'',syncWorkspace:()=>{},syncNativeBrowser:()=>{},api:url=>new Promise((resolve,reject)=>requests.push({url,resolve,reject}))});
 const source=fs.readFileSync('web/features/workspaces.js','utf8');
 vm.runInContext('let editingAddress=null;'+source.slice(source.indexOf('function renderWorkspace()'),source.indexOf('function syncNativeBrowser()')),ctx);
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
