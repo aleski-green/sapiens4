@@ -1,4 +1,3 @@
-/* Public address discovery, QR verification, and an app-local camera scanner. */
 'use strict';
 window.RemoteOnboarding = (() => {
   const pattern = /^sapi4_[a-z]{3}[0-9]{3}[a-z]{3}$/;

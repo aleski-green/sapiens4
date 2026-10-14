@@ -161,7 +161,6 @@ function presentMemo(root, profile, metadata, turnCount) {
   root.querySelectorAll('pre > code[data-language="yaml"]').forEach(code => {
     const facts = memoFacts(code); if (facts) code.parentElement.replaceWith(facts);
   });
-  // The about section is the article lead. Avoid repeating schema labels there.
   about.querySelectorAll('.memo-facts strong').forEach(node => node.remove());
   const named = new Map([...map.querySelectorAll('[data-note-anchor]')].map(a=>[a.dataset.noteAnchor,a.textContent]));
   for (const article of content.querySelectorAll(':scope > article')) {

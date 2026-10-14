@@ -1,4 +1,3 @@
-// Connect the workspace renderer to the local Sapiens4 API.
 let live = bootstrap;
 let online = true;
 let refreshing = null;

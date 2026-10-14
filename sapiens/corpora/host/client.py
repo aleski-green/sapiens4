@@ -1,4 +1,3 @@
-"""Small JSON command for Sapis to call their running local host."""
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen

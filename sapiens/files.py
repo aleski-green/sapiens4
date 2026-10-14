@@ -1,4 +1,3 @@
-"""Atomic JSON transactions and local process locks (Windows/macOS/Linux)."""
 from __future__ import annotations
 
 from contextlib import contextmanager

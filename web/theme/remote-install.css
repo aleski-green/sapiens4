@@ -30,6 +30,5 @@
 .s4-install .install-actions{display:flex;gap:10px}.s4-install .install-actions button{margin:0;border:0;border-radius:14px;padding:14px;min-height:49px;font-size:14px;font-weight:600}.s4-install .install-next{flex:1;color:#fff;background:#302737}.s4-install .install-back{background:#ece6f1;color:#6d597c}.s4-install .install-platform{text-align:center;font-size:10px;line-height:1.5;color:#9989a4;margin-top:13px}.s4-install [hidden]{display:none!important}
 @media(max-height:740px){.s4-install .install-art{height:205px;margin-bottom:7px}.s4-install .install-phone{transform:scale(.79) rotate(-8deg)}.s4-install .install-top{padding-top:12px}.s4-install .install-bottom{padding-top:13px;padding-bottom:16px}.s4-install .install-progress{margin-bottom:9px}.s4-install .install-copy{padding-top:0}.s4-install h2{font-size:28px}}
 @media(prefers-reduced-motion:reduce){.s4-install *{transition:none!important;scroll-behavior:auto!important}}
-/* Keep install guidance secondary to the shared CORPORA connection form. */
 .pairing-page #install-entry{margin:24px 0 0}
 .pairing-page #install-entry button{display:flex;justify-content:space-between;width:100%;margin:0;padding:13px 16px;border-radius:12px;background:transparent;color:var(--muted);font:600 13px/1.5 -apple-system,BlinkMacSystemFont,sans-serif}

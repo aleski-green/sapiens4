@@ -1,4 +1,3 @@
-/* Live workspace styles layered over web/theme/styles.css. */
 [hidden] { display: none !important; }
 .live-status { padding:12px 14px; border:1px solid var(--line); border-radius:10px; margin:14px 0; }
 .live-status p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
@@ -45,7 +44,6 @@
 .warning-details[hidden] { display:none; }
 .warning-badge:focus-visible { outline:2px solid #a97600; outline-offset:2px; }
 
-/* Workspace theme refinements. */
 
 :root body.sapi-workspace {
   --sapi-brand-gradient:linear-gradient(to bottom right,#ed3995 0%,#df2eea 35%,#783cf0 65%,#35c5e8 100%);
@@ -167,11 +165,9 @@
 :root body.sapi-workspace .icon-button { border-radius:6px; }
 :root body.sapi-workspace .icon-button:hover,:root body.sapi-workspace .theme-toggle:hover { background:var(--sapi-purple-tint); }
 :root body.sapi-workspace .toast { background:var(--ink);color:var(--sapi-white);border:0;border-radius:10px;font:12px/1.5 var(--sapi-font);box-shadow:0 6px 24px #0002; }
-/* Neutral control colors also win over legacy dark-theme button variants. */
 :root[data-theme] body.sapi-workspace .send-button { background:var(--ink);color:var(--sapi-white);border:0; }
 :root body.sapi-workspace .settings-row { border-color:var(--line); }
 
-/* Color belongs to Sapi identities and interaction, while the shell stays neutral. */
 :root body.sapi-workspace .avatar {
   background:radial-gradient(circle at 30% 25%,#ffffff66,transparent 65%),var(--avatar-color);
   border-color:color-mix(in srgb,var(--avatar-color) 72%,#343442);color:#272137;
@@ -191,7 +187,6 @@
   background:#d90068;color:#fff;border-color:#d90068;
 }
 
-/* Live-only controls use the same scale without moving or hiding navigation. */
 :root body.sapi-workspace #profile-button { min-width:60px;height:28px;padding:0 8px;border:0;border-radius:6px;background:transparent;font-size:11px;color:var(--muted); }
 :root body.sapi-workspace .conversation-tabs { gap:16px; }
 :root body.sapi-workspace .agent-row-name { display:grid;grid-template-columns:minmax(0,1fr) max-content;align-items:baseline;column-gap:6px;white-space:normal;overflow-wrap:anywhere; }
@@ -219,12 +214,9 @@
 :root[data-theme] body.sapi-workspace #profile-button:hover,
 :root[data-theme] body.sapi-workspace :is(.settings-tabs) button:not(:disabled):hover { color:var(--sapi-accent);background:var(--sapi-hover); }
 
-/* Keep connection text and its settings action; omit decorative glyphs. */
 #remote-feedback { position:fixed;bottom:20px;left:16px;right:16px;z-index:1000;margin:0;padding:12px 16px;border:1px solid var(--line);border-radius:8px;background:var(--sapi-bg);color:var(--ink);font:13px/1.5 system-ui,sans-serif;box-shadow:0 4px 20px #0002; }
 :root body.sapi-workspace #autonomy-button > span:not(#autonomy-label) { display:none; }
-/* The composer supplies the focus indicator for its text field. */
 :root[data-theme] body.sapi-workspace .composer textarea:is(:hover,:focus,:focus-visible) { outline:none;box-shadow:none; }
-/* Search uses a single focus indicator around the complete control. */
 :root[data-theme] body.sapi-workspace .search-field:focus-within { outline:none;box-shadow:inset 0 0 0 1px var(--sapi-accent); }
 :root[data-theme] body.sapi-workspace .search-field input:is(:hover,:focus,:focus-visible) { outline:none;box-shadow:none; }
 
@@ -311,7 +303,6 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 :root[data-theme] body.sapi-workspace summary.task-summary:hover { background:var(--panel);color:var(--ink); }
 
 .notes-wiki .citation{font-size:9px;vertical-align:super;white-space:nowrap;margin-left:2px}.notes-wiki .permalink{font-family:system-ui,sans-serif;font-size:10px;margin-left:7px;color:var(--muted);opacity:0}.notes-wiki h2:hover .permalink,.notes-wiki h3:hover .permalink,.notes-wiki .permalink:focus{opacity:1}.notes-wiki .references{font-size:10px;padding-left:19px}.notes-wiki .references li{margin:7px 0}.notes-wiki .references .origin{display:block;color:var(--muted);font-size:9px}.notes-wiki .backref{margin-right:4px}.notes-wiki .file-list{font-size:10px;line-height:1.9}.notes-wiki .draft-note{font-size:10px;color:var(--muted)}
-/* Groups retain stable label identities while their avatars reflect membership. */
 .agent-entry{min-width:0}.agent-entry>.agent-row{width:100%;cursor:pointer}
 .group-labels{display:inline-flex;gap:4px;flex-wrap:wrap;min-width:0}
 .group-chip{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:4px;background:color-mix(in srgb,var(--group-color,#888) 40%,var(--sapi-bg));color:var(--ink);font-size:10px;padding:3px 5px;cursor:pointer}
@@ -336,7 +327,6 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 
 :root[data-theme] body.sapi-workspace .scope-switch button:disabled{opacity:.4;cursor:default;background:transparent;color:var(--muted)}
 
-/* Persistent activity tabs with independent dropdown buttons. */
 :root body.sapi-workspace .conversation-tabs{min-height:42px;gap:24px;overflow:visible;position:relative;z-index:6;flex-shrink:0;white-space:nowrap}
 .activity-tab{position:relative;display:flex;align-items:center;gap:4px;align-self:stretch;border-bottom:1.5px solid transparent;margin-bottom:-1px}
 .activity-tab.active{border-color:var(--ink)}
@@ -358,7 +348,6 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 .work-nav-tools .activity-menu{left:auto;right:0}
 :root body.sapi-workspace .work-nav-tools [data-new-task]{padding:6px 0;font-size:12px;color:var(--muted);border:0;flex:none}
 :root body.sapi-workspace .group-task .task-summary{padding-left:0;padding-right:0}
-/* Keep submenus within the narrow conversation pane as well as mobile screens. */
 .activity-submenu{left:14px;top:calc(100% + 4px)}
 @media(min-width:1000px){.main-grid[data-visible-panes="2"] .activity-submenu,.main-grid[data-visible-panes="1"] .activity-submenu{left:calc(100% + 6px);top:-5px}}
 .activity-tab:last-child>.activity-menu{left:auto;right:0}
@@ -370,13 +359,11 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 
 .workspace-text{margin:0;padding:20px;width:100%;min-height:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--sapi-ink);font:13px/1.6 ui-monospace,monospace;user-select:text}
 
-/* Compact Updates journal; JSON shares the task row disclosure behavior. */
 .event-log { overflow-x:auto; }
 .event-columns { display:grid; grid-template-columns:152px 70px minmax(130px,1fr) 112px 72px 12px; gap:6px; align-items:center; min-width:568px; font-size:11px; line-height:1.5; }
 .event-head { padding:6px 0 10px; color:var(--muted); border-bottom:1px solid var(--line); }
 .event-row { min-width:568px; }
 
-/* Phones show one portrait panel, or at most two full-height landscape panels. */
 :root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .app { min-height:0; }
 :root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .main-grid { display:flex!important;flex-direction:row;overflow:hidden; }
 :root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .main-grid>.sidebar,

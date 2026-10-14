@@ -1,4 +1,3 @@
-"""CORPORA avatars, terminal-safe text, machine envelopes and waiting indicators."""
 from html.parser import HTMLParser
 import json, os, re, shutil, sys, textwrap, time
 try:

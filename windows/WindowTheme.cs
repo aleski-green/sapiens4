@@ -44,7 +44,6 @@ internal sealed class WindowTheme : IDisposable
             DwmSetWindowAttribute(window, 19, ref enabled, sizeof(int));
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
         {
-            // Windows 11 can match the app header exactly, independent of the OS theme.
             DwmSetWindowAttribute(window, 35, ref background, sizeof(int)); // DWMWA_CAPTION_COLOR
             DwmSetWindowAttribute(window, 36, ref foreground, sizeof(int)); // DWMWA_TEXT_COLOR
         }

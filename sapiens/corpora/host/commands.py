@@ -1,4 +1,3 @@
-"""Validated team and workspace operations for conversational Sapis."""
 import json
 import sys
 

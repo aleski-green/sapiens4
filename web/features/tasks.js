@@ -1,4 +1,3 @@
-// Task navigation is UI; each expanded task keeps its specification as YAML.
 const taskDocuments = new Map();
 const openTasks = new Set();
 const pastTaskStates = new Set(['Completed', 'Unresolved', 'Failed', 'Interrupted', 'Cancelled']);

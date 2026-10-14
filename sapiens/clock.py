@@ -1,4 +1,3 @@
-"""Shared UTC clock with no application dependencies."""
 from datetime import datetime, timezone
 
 

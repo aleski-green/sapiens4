@@ -1,5 +1,3 @@
-// Initialize the workspace from the local API.
-// Set tab branding before loading state, including when the backend is unavailable.
 document.title = 'Sapi4: Corpora';
 const favicon = document.createElement('link');
 favicon.rel = 'icon';

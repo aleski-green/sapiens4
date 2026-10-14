@@ -1,4 +1,3 @@
-"""Load repository-owned model instructions."""
 from .paths import ROOT
 
 

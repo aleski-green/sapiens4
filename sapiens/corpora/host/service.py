@@ -1,4 +1,3 @@
-"""One local host, parallel Sapi runners, and recoverable UI projections."""
 from pathlib import Path
 from uuid import uuid4
 from time import monotonic

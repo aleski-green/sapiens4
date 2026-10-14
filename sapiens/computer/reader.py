@@ -1,4 +1,3 @@
-"""Bounded, paginated reads over the unchanged Blindly CLI."""
 from pathlib import Path
 from uuid import uuid4
 import argparse
@@ -78,7 +77,6 @@ def read(argv, invoke, directory, limit):
         nodes = [r for r in flatten(data['tree']) if not args.path or r['path'] == args.path or r['path'].startswith(args.path+'.')]
         if not nodes:
             raise ValueError('Target missing from bounded tree; rediscover it. Coverage is incomplete.')
-        # Omit anonymous layout containers, retain target + semantic text/actions.
         nodes = [r for r in nodes if r['path'] == args.path or any(r.get(k) for k in ('title','description','value','identifier','actions'))]
         snapshot = dict(snapshot=uuid4().hex, observed_at=time.time(), pid=args.pid,
             path=args.path, nodes=nodes, truncated=data.get('truncated',False),

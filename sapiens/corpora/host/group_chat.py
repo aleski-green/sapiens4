@@ -218,7 +218,6 @@ class GroupChat:
                         message = self.message(request['target'], turn['output'])
                         message.update(turn=request['id'], stale=bool(stale))
                         group['messages'].append(message)
-                        # Reuse the Lead's mention routing for scheduled work as well.
                         for target in targets[:1] if routine else targets:
                             child = self.request(group, message, target, request['root'])
                             if routine:

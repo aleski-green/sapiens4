@@ -1,4 +1,3 @@
-"""Sapi registration and reporting relationships, with one hierarchy check."""
 import json
 
 from sapiens.files import atomic_json, file_lock

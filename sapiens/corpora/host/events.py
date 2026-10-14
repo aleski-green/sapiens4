@@ -1,4 +1,3 @@
-"""Small, bounded event journal shared by existing mutation paths."""
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone

@@ -1,4 +1,3 @@
-"""Opt-in local authority: QR pairing, device approval, and the shared CORPORA API."""
 from contextlib import contextmanager
 import hashlib
 import hmac

@@ -1,4 +1,3 @@
-"""Bounded local Codex processes and their public JSONL lifecycle events."""
 
 from __future__ import annotations
 
@@ -20,7 +19,6 @@ from sapiens.runtime.windows import ProcessJob
 
 @dataclass
 class CodexLLM:
-    """One resumable local ``codex exec`` thread."""
 
     spec: LLMSpec
     workdir: Path
