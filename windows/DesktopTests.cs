@@ -8,6 +8,9 @@ internal static class DesktopTests
     [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
     static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int size);
 
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    static extern int GetWindowText(IntPtr window, System.Text.StringBuilder text, int length);
+
     static bool TitleBarMatches(WebView2 shell, bool dark)
     {
         IntPtr window = shell.FindForm()!.Handle;
@@ -98,6 +101,13 @@ internal static class DesktopTests
         {
             var origin = new Uri("http://127.0.0.1:4174");
             void Check(bool value) { if (!value) throw new Exception($"Navigation test {tests + 1} failed"); tests++; }
+            // Verify the real Win32 boundary used by Blindly, without showing a
+            // window, starting a host, or taking foreground input.
+            using (var window = new MainWindow(Array.Empty<string>()))
+            {
+                var caption = new System.Text.StringBuilder(256);
+                Check(GetWindowText(window.Handle, caption, caption.Capacity) > 0 && caption.ToString() == "Sapiens4");
+            }
             Check(Navigation.Trusted("http://127.0.0.1:4174/workspace/", origin));
             foreach (string url in new[] { "http://127.0.0.1:4175/workspace/", "http://localhost:4174/workspace/", "http://127.0.0.1:4174/other", "https://example.com/workspace/", "file:///C:/workspace/", "http://user@127.0.0.1:4174/workspace/" }) Check(!Navigation.Trusted(url, origin));
             foreach (string url in new[] { "https://example.com", "http://example.com", "file:///C:/test%20file.html", "about:blank" }) Check(Navigation.Guest(url, origin));

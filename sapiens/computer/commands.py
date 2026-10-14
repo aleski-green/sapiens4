@@ -112,6 +112,11 @@ def main(argv):
 
 if __name__ == '__main__':
     try:
+        # Blindly emits UTF-8. Piped Python output on Windows otherwise defaults
+        # to the locale code page, which cannot represent many UI labels.
+        for stream in (sys.stdout, sys.stderr):
+            if hasattr(stream, 'reconfigure'):
+                stream.reconfigure(encoding='utf-8')
         sys.exit(main(sys.argv[1:]))
     except (ValueError, OSError, subprocess.TimeoutExpired) as error:
         print(json.dumps({'error': str(error)}))
