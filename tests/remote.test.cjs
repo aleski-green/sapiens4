@@ -27,7 +27,7 @@ function qrPixels(text) {
   const corpora={id:'12345678-1234-4234-8234-123456789abc',name:'CORPORA · Chief'};
   const desktop=nacl.box.keyPair(),now=Date.now()/1000;
   const invitation={v:'sapiens-remote-box-v1',relay:'https://relay.example',room:'r'.repeat(43),
-    token:'t'.repeat(43),secret:'s'.repeat(43),desktop:b64(desktop.publicKey),expires:now+3600};
+    token:'t'.repeat(43),secret:'s'.repeat(43),desktop:b64(desktop.publicKey),expires:now+259200,public_id:'sapi4_abc123qwe'};
   const pixels=qrPixels(JSON.stringify(invitation));
   assert.deepEqual(JSON.parse(jsQR(pixels.data,pixels.width,pixels.height).data),invitation);
   const deviceStorage=new IDBFactory();
@@ -74,30 +74,32 @@ function qrPixels(text) {
   }
   w.WebSocket=FakeSocket;
   w.fetch=async(url)=>{
+    if(url==='/api/corpora/'+invitation.public_id) return {ok:true,json:async()=>({public_id:invitation.public_id,desktop:invitation.desktop,expires:invitation.expires})};
     assert.equal(url,'/workspace/', 'Only static assets may use fetch');
     return {ok:true,text:async()=>fs.readFileSync(path.join(root,'web/shell/index.html'),'utf8')};
   };
   w.eval(fs.readFileSync(path.join(root,'web/features/remote-code.js'),'utf8'));
   w.eval(fs.readFileSync(path.join(root,'web/features/remote-session.js'),'utf8'));
   w.eval(fs.readFileSync(path.join(root,'web/features/remote-install.js'),'utf8'));
+  w.eval(fs.readFileSync(path.join(root,'web/features/remote-onboarding.js'),'utf8'));
   w.eval(fs.readFileSync(path.join(root,'web/features/remote.js'),'utf8'));
   }
   initialize();
-  for(let i=0;i<20&&w.document.getElementById('connect-code').disabled;i++)await sleep();
-  const codeInput=w.document.getElementById('pairing-code'),codeForm=w.document.getElementById('code-form');
-  async function pasteCode(code) {
-    codeInput.value=code;codeForm.dispatchEvent(new w.Event('submit',{cancelable:true}));await sleep();
-  }
-  for(const invalid of ['s4.invalid','x'.repeat(4097),w.RemoteCode.encode({...invitation,relay:'https://other.example'}),
-      w.RemoteCode.encode({...invitation,expires:now-1}),w.RemoteCode.encode({...invitation,expires:now+7200})]) {
-    await pasteCode(invalid);assert.equal(connections,0,'Invalid codes must not create a socket');
+  for(let i=0;i<20&&w.document.getElementById('find-corpora').disabled;i++)await sleep();
+  for(const invalid of ['s4.invalid','x'.repeat(4097)]) assert.throws(()=>w.RemoteCode.decode(invalid));
+  w.document.getElementById('corpora-address').value=invitation.public_id;
+  w.document.getElementById('corpora-form').dispatchEvent(new w.Event('submit',{cancelable:true}));
+  await sleep();assert.equal(w.document.getElementById('qr-step').hidden,false);
+  for(const invalid of [w.RemoteCode.encode({...invitation,expires:now-1}),
+      w.RemoteCode.encode({...invitation,expires:now+4*86400}),
+      w.RemoteCode.encode({...invitation,relay:'https://other.example'})]) {
+    w.location.hash=invalid;
+    for(let i=0;i<5;i++)await sleep();
+    assert.equal(connections,0,'Expired, overlong and cross-origin invitations must not connect');
   }
   const file=w.document.getElementById('qr-file');
   Object.defineProperty(file,'files',{value:[{size:1000}]});
-  if(process.argv.includes('--code')) {
-    const code=w.RemoteCode.encode(invitation);
-    await pasteCode('  '+code.slice(0,50)+'\n'+code.slice(50)+'  ');
-  } else if(process.argv.includes('--hash')) {
+  if(process.argv.includes('--hash')) {
     w.location.hash=w.RemoteCode.encode(invitation);
     for(let i=0;i<20&&w.location.hash;i++)await sleep();
     assert.equal(w.location.hash,'','Same-page invitations must be consumed and removed');
@@ -112,7 +114,7 @@ function qrPixels(text) {
   assert.ok(posted.length,w.document.getElementById('status').textContent);
   assert.equal(posted[0].message.secret,invitation.secret);
   assert.equal(posted[0].message.kind,'pair');
-  assert.ok(posted[0].message.expires > now+3590, 'Pairing request must remain valid with the one-hour code');
+  assert.ok(posted[0].message.expires > now+259190, 'Pairing request must remain valid for three days');
   assert.equal(w.document.getElementById('verify-panel').hidden,false);
   assert.equal(w.document.getElementById('chat-panel'),null);
   const phone=bytes(posted[0].frame.sender);
@@ -193,7 +195,7 @@ function qrPixels(text) {
   assert.equal(await w.RemoteSession.read(),undefined,'Revocation forgets persistent device credentials');
   dom.window.close();
   const beforeForgotten=connections;initialize();
-  for(let i=0;i<20&&w.document.getElementById('connect-code').disabled;i++)await sleep();
+  for(let i=0;i<20&&w.document.getElementById('find-corpora').disabled;i++)await sleep();
   assert.equal(connections,beforeForgotten,'A revoked device must not reconnect on reload');
   await w.RemoteSession.save({...stored,keys:{publicKey:stored.keys.publicKey,secretKey:new Uint8Array(32)}});
   dom.window.close();initialize();

@@ -48,7 +48,7 @@ location, never its contents. Subsequent launches reuse the token. An explicit
 custom destination. Keep that file private and transfer it securely to the desktop
 owner. It is never served over HTTP. Windows requires a private directory/ACL.
 The token authorizes mailbox creation; it is not an encryption key. Never give
-it to the phone or embed it in a URL. Desktop saves it privately in `remote-relay.json` after successful setup, so subsequent invitations need only **Show pairing QR**. It is never returned by the status API or sent to the phone.
+it to the phone or embed it in a URL. Desktop saves it privately in `remote-relay.json` after successful setup, so subsequent invitations need only **Show QR**. It is never returned by the status API or sent to the phone.
 
 1. In local CORPORA, open **Connect phone**, or visit
    `http://127.0.0.1:4174/remote/` in your desktop browser.
@@ -57,17 +57,16 @@ it to the phone or embed it in a URL. Desktop saves it privately in `remote-rela
    the token is never returned to the browser. This shortcut only accepts loopback
    HTTP origins. For a custom database/location or another server, select
    **Import relay connection file**, review the displayed address, then select
-   **Create pairing code**. Manual address/token entry remains available.
-   This is a one-time setup on each desktop. Future connections use **Show pairing QR**.
-   Scan the displayed QR with the phone Camera app and open its link; the invitation expires after one hour. Copy-and-paste codes and QR image uploads remain fallbacks.
-3. For a same-computer browser test, open `http://127.0.0.1:4180/`, paste the
-   code and select **Connect to desktop**. QR image upload is also available. For an actual iPhone, use the HTTPS deployment described below;
+   **Show QR**. Manual address/token entry remains available.
+   This is a one-time setup on each desktop. Future connections use **Show QR**.
+   The QR remains available on this local page until approved, revoked, or expired (three days).
+3. Open the installed app, enter the desktop’s public CORPORA ID (`sapi4_` plus nine lowercase letters/digits), then scan or upload its QR. For a same-computer browser test use `http://127.0.0.1:4180/`. For an actual iPhone, use the HTTPS deployment described below;
    `127.0.0.1` on the phone refers to the phone, not the PC.
-4. Compare the phone fingerprint on both screens and select **Approve phone** on
+4. Compare the phone fingerprint on both screens and select **Approve device** on
    desktop. This binds approval to that exact phone key.
 5. CORPORA opens automatically in the paired page. Use its normal Sapi/Group
    navigation, composer, Work, Notes and settings. Wait for desktop confirmation.
-   Use **Revoke / disable remote access** to disconnect and delete the relay room.
+   Use **Revoke connection** to disconnect and delete the relay room.
 
 The QR encodes an HTTPS URL with the compact invitation in its fragment (`/#s4.…`).
 Fragments are not included in HTTP requests or referrer headers. The phone removes
@@ -340,8 +339,8 @@ tab follows the same limits. The software keyboard does not change the phone's
 orientation mode. Narrow non-touch windows also use the compact panel controls;
 ordinary desktop windows retain independent toggles for all three panels.
 
-Install before pairing for the shortest setup: open the Home Screen app, paste a
-desktop pairing code, and approve its fingerprint once. Safari and the installed
+Install before pairing for the shortest setup: open the Home Screen app, enter its
+CORPORA ID, scan or upload the desktop QR, and approve its fingerprint once. Safari and the installed
 app have separate IndexedDB storage; existing Safari approval does not transfer.
 The guide explains this when already connected. Pairing the app replaces the
 current phone connection under the MVP's one-device limit. Afterwards, the same
@@ -351,3 +350,21 @@ This is an online web app, with no App Store distribution or offline workspace
 cache. The relay and desktop must be reachable. The manifest's start URL is always
 `/ios`; it never contains an invitation, private key, or bearer token. Credentials are
 not copied to cookies or other installation metadata.
+
+### Public CORPORA addresses and QR pairing
+
+The stable public address is `sapi4_` plus nine base-36 characters derived from the
+existing immutable UUID. It is an address, not a login secret. The relay registers
+it only through authenticated provisioning, rejects collisions with another UUID,
+and keeps the reservation across revocation. `/api/corpora/<address>` exposes only
+the address, invited desktop public key and QR expiry while an invitation is active.
+It never returns mailbox credentials, the QR secret, workspace names or content.
+The app verifies the scanned/uploaded QR against the selected address and desktop
+key, then requires the existing explicit desktop approval. Legacy QR links remain
+readable. New invitations expire in 72 hours; approved device trust does not.
+
+The unapproved invitation is retained only in the desktop’s private mode-0600
+configuration so reopening Connect phone can redraw its QR. Approval removes that
+invitation and closes public discovery. Camera images are decoded locally; streams
+stop on cancellation, successful decoding, backgrounding and page exit. Pairing
+loads the same CORPORA theme files and preference handler as the workspace.

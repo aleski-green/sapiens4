@@ -22,6 +22,8 @@ from sapiens.corpora.host.remote_pairing import MAX_FRAME, origin, unb64
 from sapiens.paths import ROOT
 from sapiens.corpora.host.assets import asset
 from sapiens.corpora.host.remote_setup import provision
+from sapiens.corpora.host.identity import public_id
+from sapiens.corpora.host.remote_pairing import PAIRING_TTL
 
 ASSETS = {
     '/': ('shell/remote.html', 'text/html'),
@@ -30,6 +32,7 @@ ASSETS = {
     '/remote-code.js': ('features/remote-code.js', 'text/javascript'),
     '/remote-session.js': ('features/remote-session.js', 'text/javascript'),
     '/remote.js': ('features/remote.js', 'text/javascript'),
+    '/remote-onboarding.js': ('features/remote-onboarding.js', 'text/javascript'),
     '/remote-vendor.js': ('features/remote-vendor.js', 'text/javascript'),
     '/remote.css': ('theme/remote.css', 'text/css'),
     '/remote-install.js': ('features/remote-install.js', 'text/javascript'),
@@ -63,6 +66,9 @@ class Mailboxes:
                 (id INTEGER PRIMARY KEY AUTOINCREMENT, room TEXT, recipient TEXT,
                  body TEXT, expires REAL);
                 CREATE INDEX IF NOT EXISTS inbox ON messages(room, recipient, id);
+                CREATE TABLE IF NOT EXISTS corpora
+                (address TEXT PRIMARY KEY, identity TEXT NOT NULL, room TEXT NOT NULL,
+                 public_key TEXT NOT NULL, expires REAL NOT NULL);
             ''')
 
     @contextlib.contextmanager
@@ -86,9 +92,20 @@ class Mailboxes:
                     raise RelayError(401, 'Unauthorized')
                 if db.execute('SELECT count(*) FROM rooms').fetchone()[0] >= 100:
                     raise RelayError(429, 'Room limit reached')
+                address = body.get('public_id')
+                if address is not None:
+                    if not isinstance(address, str) or address != public_id(body.get('corpora_id')):
+                        raise RelayError(400, 'Invalid CORPORA ID')
+                    unb64(body.get('public_key'), 32)
+                    existing = db.execute('SELECT identity FROM corpora WHERE address=?', (address,)).fetchone()
+                    if existing and existing[0] != body['corpora_id']:
+                        raise RelayError(409, 'CORPORA ID collision')
                 room, desktop, phone = [secrets.token_urlsafe(32) for _ in range(3)]
                 db.execute('INSERT INTO rooms VALUES (?, ?, ?, ?)',
                            (room, digest(desktop), digest(phone), now + 7 * 86400))
+                if address is not None:
+                    db.execute('INSERT OR REPLACE INTO corpora VALUES (?,?,?,?,?)',
+                               (address, body['corpora_id'], room, body['public_key'], now + PAIRING_TTL))
                 return dict(room=room, desktop=desktop, phone=phone)
             if len(parts) < 3 or parts[:2] != ['api', 'rooms']:
                 raise RelayError(404, 'Not found')
@@ -101,10 +118,12 @@ class Mailboxes:
                 raise RelayError(401, 'Unknown or expired mailbox')
             if len(parts) == 4 and parts[3] == 'trust' and method == 'POST' and role == 'desktop':
                 db.execute('UPDATE rooms SET expires=NULL WHERE id=?', (room,))
+                db.execute('UPDATE corpora SET expires=0 WHERE room=?', (room,))
                 return dict(trusted=True)
             if len(parts) == 3 and method == 'DELETE' and role == 'desktop':
                 db.execute('DELETE FROM messages WHERE room=?', (room,))
                 db.execute('DELETE FROM rooms WHERE id=?', (room,))
+                db.execute('UPDATE corpora SET expires=0 WHERE room=?', (room,))
                 return dict(deleted=True)
             if len(parts) == 4 and parts[3] == 'messages':
                 if method == 'GET':
@@ -142,6 +161,18 @@ class Mailboxes:
             raise RelayError(404, 'Not found')
 
 
+    def lookup(self, address):
+        if not re.fullmatch(r'sapi4_[a-z0-9]{9}', address):
+            raise RelayError(400, 'Use an ID like sapi4_abc123qwe.')
+        with self.connect() as db:
+            row = db.execute('SELECT c.public_key,c.expires FROM corpora c JOIN rooms r ON r.id=c.room '
+                             'WHERE c.address=? AND c.expires>?', (address, time.time())).fetchone()
+        if not row:
+            raise RelayError(404, 'No active QR. Open Connect phone on your desktop.')
+        # Discovery never returns credentials, invitation secrets, or workspace data.
+        return dict(public_id=address, desktop=row[0], expires=row[1])
+
+
 class RelayServer:
     """One HTTP/WebSocket listener; ciphertext is committed before delivery."""
     def __init__(self, address, path, admin, public_origin):
@@ -173,7 +204,7 @@ class RelayServer:
             'Content-Type': mime + '; charset=utf-8', 'Cache-Control': 'no-store',
             'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY',
             'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-                "connect-src 'self' " + ws_origin + "; img-src 'self' blob: data:; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                "connect-src 'self' " + ws_origin + "; img-src 'self' blob: data:; media-src 'self' blob:; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
         })
 
     async def handle(self, req):
@@ -188,6 +219,8 @@ class RelayServer:
             if request_origin and request_origin != self.public_origin:
                 raise RelayError(403, 'Unexpected origin')
             path = req.path
+            if req.method == 'GET' and path.startswith('/api/corpora/'):
+                return self.response(200, self.mailboxes.lookup(path.removeprefix('/api/corpora/')))
             if req.method == 'GET' and path == '/api/socket':
                 if req.query_string or request_origin != self.public_origin:
                     raise RelayError(403, 'WebSocket requires the relay origin and no query credentials')

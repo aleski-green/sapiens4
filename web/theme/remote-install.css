@@ -36,3 +36,6 @@ body.remote-standalone{padding:env(safe-area-inset-top) env(safe-area-inset-righ
 :root body.remote-standalone.sapi-workspace .app{height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:0}
 @media(max-height:740px){.s4-install .install-art{height:205px;margin-bottom:7px}.s4-install .install-phone{transform:scale(.79) rotate(-8deg)}.s4-install .install-top{padding-top:12px}.s4-install .install-bottom{padding-top:13px;padding-bottom:16px}.s4-install .install-progress{margin-bottom:9px}.s4-install .install-copy{padding-top:0}.s4-install h2{font-size:28px}}
 @media(prefers-reduced-motion:reduce){.s4-install *{transition:none!important;scroll-behavior:auto!important}}
+/* Keep install guidance secondary to the shared CORPORA connection form. */
+.pairing-page #install-entry{background:none;border:0;border-radius:0;box-shadow:none;padding:0;margin:24px 0 0}
+.pairing-page #install-entry button{width:100%;margin:0;background:transparent;color:var(--muted);font-size:13px}

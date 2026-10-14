@@ -1,8 +1,19 @@
 """Permanent CORPORA identity, independent of processes and relay invitations."""
 import json
+import hashlib
 from uuid import UUID, uuid4
 
 from sapiens.files import atomic_json, file_lock
+
+
+def public_id(identity):
+    """Stable, non-secret address; the relay rejects address collisions."""
+    value = int.from_bytes(hashlib.sha256(UUID(identity).bytes).digest()[:8], 'big') % (36 ** 9)
+    suffix = ''
+    for _ in range(9):
+        value, digit = divmod(value, 36)
+        suffix = 'abcdefghijklmnopqrstuvwxyz0123456789'[digit] + suffix
+    return 'sapi4_' + suffix
 
 
 def corpora_id(root):

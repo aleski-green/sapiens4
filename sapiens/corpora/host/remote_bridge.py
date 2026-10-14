@@ -14,6 +14,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from sapiens.corpora.host.corpora_api import dispatch
 from sapiens.files import atomic_json
+from sapiens.corpora.host.identity import public_id
 from sapiens.corpora.host import remote_pairing as crypto
 from sapiens.corpora.host.remote_setup import local_connection, read as read_connection, validate as validate_connection
 from sapiens.corpora.host.remote_socket import SocketClient, websocket
@@ -91,6 +92,8 @@ class RemoteBridge:
             pending = config.get('pending')
             return dict(available=crypto.available() and websocket is not None, enabled=bool(config),
                         corpora=self.service.corpora_identity(),
+                        public_id=public_id(self.service.corpora_identity()['id']),
+                        invitation=config.get('invitation') if not config.get('peer') and config.get('expires', 0) > time.time() else None,
                         local_relay=bool(local_connection()),
                         configured_relay=self.saved_relay().get('relay'),
                         paired=bool(config.get('peer')), relay=config.get('relay'),
@@ -125,24 +128,27 @@ class RemoteBridge:
         with self.lock:
             if self.config:
                 raise ValueError('Revoke the existing pairing before creating another')
-            room = request(relay, '/api/rooms', admin, 'POST', {})
+            address = public_id(self.service.corpora_identity()['id'])
+            room = request(relay, '/api/rooms', admin, 'POST', dict(
+                public_id=address, corpora_id=self.service.corpora_identity()['id'], public_key=public))
             if any(not isinstance(room.get(k), str) or not 32 <= len(room[k]) <= 64 or
                    any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_' for c in room[k])
                    for k in ('room', 'desktop', 'phone')):
                 raise ValueError('Invalid relay mailbox')
             self.error = ''
             secret = crypto.token()
-            expires = time.time() + 3600
+            expires = time.time() + crypto.PAIRING_TTL
+            invitation = dict(v=crypto.PROTOCOL, relay=relay, room=room['room'], token=room['phone'],
+                              desktop=public, secret=secret, expires=expires, public_id=address)
             self.config = dict(relay=relay, room=room['room'], token=room['desktop'],
                                corpora_id=self.service.corpora_identity()['id'],
                                private=private, public=public, secret=secret, expires=expires,
-                               peer=None, pending=None)
+                               peer=None, pending=None, invitation=invitation)
             self.save()
             atomic_json(self.relay_path, connection)
             self.start()
             # The provisioning token and desktop private key are never placed in the QR.
-            return dict(qr=dict(v=crypto.PROTOCOL, relay=relay, room=room['room'], token=room['phone'],
-                                desktop=public, secret=secret, expires=expires))
+            return dict(qr=invitation)
 
     def approve(self, data):
         with self.lock:
@@ -158,6 +164,7 @@ class RemoteBridge:
             config['accept'] = self.response(pending['id'], dict(paired=True, corpora=self.service.corpora_identity()))
             config['pending'] = None
             config.pop('secret', None)
+            config.pop('invitation', None)
             self.save()
             return dict(approved=True)
 

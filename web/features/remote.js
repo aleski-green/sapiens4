@@ -21,7 +21,7 @@
     if(feedback) {feedback.textContent=text;feedback.hidden=text==='Remote · Connected';}
   };
   let session=null, paired=false, polling=false, socket=null, ready=false, reconnectTimer=null, reconnectDelay=1000, serial=0;
-  let starting=true, storageWarning=false;
+  let starting=true, storageWarning=false, pairing=false;
   const calls=new Map();
   const pending=new Map(), received=new Set();
   function frame(payload) {
@@ -134,6 +134,7 @@
     }
     document.querySelector('link[href="/remote.css"]')?.remove();
     document.body.className=shell.body.className;
+    onboarding.stop();
     document.body.replaceChildren(...[...shell.body.childNodes].map(node=>document.importNode(node,true)));
     const identity=$('corpora-identity');
     if(identity && session.corpora) {
@@ -148,6 +149,7 @@
     Object.defineProperty(window,'sapiensRemote',{value:Object.freeze({fetch:apiRequest}),configurable:false});
     RemoteInstall.mount(true);
     for(const src of scripts) {
+      if(src==='/assets/sapi-theme.js') { window.SapiTheme?.refresh(); continue; }
       const script=document.createElement('script');script.src=src;script.async=false;document.body.append(script);
     }
     status('Remote · Connected');
@@ -202,7 +204,7 @@
         if(item.expires<=Date.now()/1000) {
           pending.delete(id);
           item.reject?.(new Error('Desktop did not confirm this request. Check desktop state before repeating an action.'));
-          if(item.kind==='pair') status('Pairing timed out. Disconnect this page and create a new pairing code on desktop.');
+          if(item.kind==='pair') status('QR expired. Cancel and show a new QR on desktop.');
           if(item.op==='resume') status('Your desktop is offline. Reconnecting when it becomes available…');
         } else if(ready && Date.now()-item.lastSent>15000) {
           item.lastSent=Date.now();
@@ -232,31 +234,33 @@
     } finally { URL.revokeObjectURL(url); }
   }
   async function pair(data) {
+    if(pairing) throw new Error('Connection already in progress.');
+    pairing=true;
+    try { await beginPair(data); } finally { pairing=false; }
+  }
+  async function beginPair(data) {
     if(starting) throw new Error('Checking saved device…');
     if (!window.isSecureContext) throw new Error('Open this app over HTTPS.');
     if (session) throw new Error('A pairing is already in progress.');
     if (!data || typeof data !== 'object') throw new Error('Invalid pairing invitation.');
     if(data.v!==protocol || data.relay!==location.origin || typeof data.expires!=='number' ||
-       data.expires<=Date.now()/1000 || data.expires>Date.now()/1000+3660 ||
+       data.expires<=Date.now()/1000 || data.expires>Date.now()/1000+259260 ||
        !['room','token','secret'].every(k=>typeof data[k]==='string' && /^[A-Za-z0-9_-]{32,64}$/.test(data[k])))
-      throw new Error('Pairing code or QR expired or belongs to a different relay. Open the address shown on desktop.');
+      throw new Error('QR expired or belongs to another server. Use the latest QR from your desktop.');
     bytes(data.desktop,32);
+    await onboarding.validate(data);
+    onboarding.stop();
     session={...data,keys:nacl.box.keyPair()};
     const hash=await crypto.subtle.digest('SHA-256',session.keys.publicKey);
     $('fingerprint').textContent=Array.from(new Uint8Array(hash)).map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,32);
     $('pair-panel').hidden=true;$('verify-panel').hidden=false;$('forget').hidden=false;
     connect();
     await send({kind:'pair',secret:data.secret});delete session.secret;
-    $('qr-file').value='';$('pairing-code').value='';status('Compare the fingerprint and approve this phone on desktop.');
+    $('qr-file').value='';status('Waiting for desktop approval…');
     await tick();
   }
-  $('code-form').addEventListener('submit', async event => {
-    event.preventDefault(); $('connect-code').disabled = true;
-    try { await pair(RemoteCode.decode($('pairing-code').value)); }
-    catch (error) { status(error.message); }
-    finally { $('connect-code').disabled = false; }
-  });
-  $('qr-file').addEventListener('change',async event=>{try{await upload(event.target.files[0]);}catch(error){status(error.message);}});
+  const onboarding = RemoteOnboarding.mount(pair, status);
+  $('qr-file').addEventListener('change',async event=>{try{await upload(event.target.files[0]);}catch(error){status(error.message);}finally{event.target.value='';}});
   $('forget').addEventListener('click',disconnect);
   const wake=()=>{if(!document.hidden){if(!socket){clearTimeout(reconnectTimer);connect();}tick();}};
   document.addEventListener('visibilitychange',wake);
@@ -275,10 +279,10 @@
     // from this history entry before any asynchronous work or network connection.
     const fragment=location.hash.slice(1);
     if(fragment) history.replaceState(null,'',location.pathname);
-    $('connect-code').disabled=true;
+    $('find-corpora').disabled=true;
     let saved;
     try { saved=await RemoteSession.read(); } catch { storageWarning=true; }
-    starting=false;$('connect-code').disabled=false;
+    starting=false;$('find-corpora').disabled=false;
     if(saved) {
       try {
         if(saved.version!==1 || saved.relay!==location.origin ||

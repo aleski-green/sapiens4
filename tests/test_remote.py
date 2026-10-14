@@ -13,7 +13,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from sapiens.corpora.host.identity import corpora_id
+from sapiens.corpora.host.identity import corpora_id, public_id
 from sapiens.corpora.host import remote_pairing as crypto
 from sapiens.corpora.host.remote_bridge import RemoteBridge, request
 from sapiens.corpora.host.remote_relay import Mailboxes, RelayError, RelayServer
@@ -102,19 +102,19 @@ class RemoteTest(unittest.TestCase):
         self.assertNotIn('secret', self.bridge.config)
         self.assertTrue(self.decoded(self.bridge.config['accept'])['paired'])
 
-    def test_pairing_invitation_lasts_one_hour(self):
+    def test_pairing_invitation_lasts_three_days(self):
         now = time.time()
         room = dict(room='r'*43, desktop='d'*43, phone='p'*43)
-        for delay in (3540, 3601):
+        for delay in (60, 86401, 259199, 259201):
             with self.subTest(delay=delay), patch('sapiens.corpora.host.remote_bridge.request', return_value=room), \
                     patch.object(self.bridge, 'start'), patch('time.time', return_value=now):
                 self.bridge.config = None
                 invitation = self.bridge.create(dict(relay='https://relay.example', token='a'*43))['qr']
-                self.assertEqual(invitation['expires'], now+3600)
+                self.assertEqual(invitation['expires'], now+259200)
                 frame = crypto.pack(self.phone_private, invitation['desktop'], room['room'], 'phone-to-desktop',
-                    dict(id='hour-pair', kind='pair', secret=invitation['secret'], expires=now+3600))
+                    dict(id='hour-pair', kind='pair', secret=invitation['secret'], expires=now+259200))
                 with patch('time.time', return_value=now+delay):
-                    if delay < 3600:
+                    if delay < 259200:
                         self.bridge.process(frame)
                         self.bridge.approve(dict(peer=self.phone_public))
                         self.assertEqual(self.bridge.config['peer'], self.phone_public)
@@ -186,7 +186,8 @@ class RemoteTest(unittest.TestCase):
             self.bridge.create(dict(relay='https://relay.example', token='a'*43))
             self.bridge.revoke()
             self.bridge.create(dict(saved=True))
-        self.relay_request.assert_called_with('https://relay.example', '/api/rooms', 'a'*43, 'POST', {})
+        self.assertEqual(self.relay_request.call_args.args[:4], ('https://relay.example', '/api/rooms', 'a'*43, 'POST'))
+        self.assertEqual(self.relay_request.call_args.args[4]['public_id'], public_id(self.service.corpora_identity()['id']))
         self.assertEqual(self.bridge.status()['configured_relay'], 'https://relay.example')
         self.assertNotIn('a'*43, json.dumps(self.bridge.status()))
         if os.name != 'nt':
@@ -388,6 +389,34 @@ class MailboxTest(unittest.TestCase):
     def call(self,method,path,token,body=None):
         return self.boxes.transact(method,path,token,body or {},self.admin)
 
+    def test_public_address_discovery_lifecycle_and_no_credentials(self):
+        identity = '12345678-1234-4234-8234-123456789abc'
+        address = public_id(identity)
+        self.assertRegex(address, r'^sapi4_[a-z0-9]{9}$')
+        body = dict(public_id=address, corpora_id=identity, public_key=crypto.b64(b'k'*32))
+        with self.assertRaises(RelayError):
+            self.call('POST', ['api','rooms'], 'wrong', body)
+        room = self.call('POST', ['api','rooms'], self.admin, body)
+        found = Mailboxes(self.boxes.path).lookup(address)
+        self.assertEqual(set(found), {'public_id','desktop','expires'})
+        self.assertEqual(found['desktop'], body['public_key'])
+        self.assertAlmostEqual(found['expires']-time.time(), 3*86400, delta=2)
+        for private in (room['phone'],room['desktop'],room['room'],identity):
+            self.assertNotIn(private,json.dumps(found))
+        with patch('time.time', return_value=found['expires']+1), self.assertRaises(RelayError):
+            self.boxes.lookup(address)
+        self.call('POST',['api','rooms',room['room'],'trust'],room['desktop'])
+        with self.assertRaises(RelayError): self.boxes.lookup(address)
+        self.call('DELETE',['api','rooms',room['room']],room['desktop'])
+        replacement=self.call('POST',['api','rooms'],self.admin,body)
+        self.assertEqual(self.boxes.lookup(address)['public_id'],address)
+        self.call('DELETE',['api','rooms',replacement['room']],replacement['desktop'])
+        with self.assertRaises(RelayError): self.boxes.lookup(address)
+        with self.boxes.connect() as db:
+            db.execute('UPDATE corpora SET identity=? WHERE address=?',('other-workspace',address))
+        with self.assertRaisesRegex(RelayError,'collision'):
+            self.call('POST',['api','rooms'],self.admin,body)
+
     def test_direction_acknowledgment_and_persistence(self):
         item=self.call('POST',self.path,self.room['phone'],self.frame)
         self.assertEqual(self.call('GET',self.path,self.room['phone'])['messages'],[])
@@ -460,6 +489,18 @@ class RemoteHTTPTest(unittest.TestCase):
         req=Request(self.local_url+path,data=json.dumps(body).encode() if body is not None else None,
                     headers={'Content-Type':'application/json','X-Sapiens-Local':'1'})
         with urlopen(req,timeout=10) as response:return json.load(response)
+
+    def test_public_discovery_and_restorable_private_desktop_qr(self):
+        invitation=self.api('/api/remote/pair',dict(relay=self.url,token=self.admin))['qr']
+        with urlopen(self.url+'/api/corpora/'+invitation['public_id']) as response:
+            found=json.load(response)
+        self.assertEqual(found['desktop'],invitation['desktop'])
+        self.assertEqual(set(found),{'public_id','desktop','expires'})
+        self.assertEqual(self.api('/api/remote')['invitation'],invitation)
+        self.api('/api/remote/revoke',{})
+        with self.assertRaises(HTTPError) as error:
+            urlopen(self.url+'/api/corpora/'+invitation['public_id'])
+        self.assertEqual(error.exception.code,404)
 
     def test_healthcheck_allows_platform_host_but_application_does_not(self):
         req = Request(self.url+'/healthz', headers={'Host':'healthcheck.railway.app'})

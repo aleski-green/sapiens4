@@ -14,6 +14,7 @@ except ImportError:  # Local CORPORA does not require the optional remote depend
 MAX_FRAME = 22_000_000
 MAX_PLAINTEXT = 16_000_000
 PROTOCOL = 'sapiens-remote-box-v1'
+PAIRING_TTL = 3 * 86400
 
 
 def available():
@@ -85,6 +86,6 @@ def unpack(secret, peer, room, direction, frame):
         raise ValueError('Wrong message context')
     if (not isinstance(body.get('id'), str) or not 1 <= len(body['id']) <= 80 or
             type(body.get('expires')) not in (int, float) or
-            not time.time() < body['expires'] <= time.time() + 86400):
+            not time.time() < body['expires'] <= time.time() + (PAIRING_TTL if body.get('kind') == 'pair' else 86400)):
         raise ValueError('Expired or invalid message')
     return body

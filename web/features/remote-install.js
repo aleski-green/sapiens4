@@ -28,7 +28,7 @@ window.RemoteInstall = (() => {
         </article>
         <article class="install-slide" role="group" aria-roledescription="slide" aria-label="3 of 3">
           <div class="install-art install-connect" aria-hidden="true"><div class="install-app-large">${icon}<span>Sapiens4</span></div><div class="install-connection"><i></i><i></i><i></i></div><div class="install-desktop"><div><span>CORPORA</span><strong>Your Sapis, together.</strong><span class="install-trust">✓ Trusted device</span></div></div></div>
-          <div class="install-copy"><span class="install-kicker">03 / CONNECT ONCE</span><h2>Open. Approve.<br>You’re home.</h2><p>${paired ? 'On desktop, open <strong>Connect phone</strong>, revoke the Safari connection, and create a new pairing code. Open the Home Screen app, paste the code, and approve it.' : 'Open Sapiens4 from your Home Screen. Paste a pairing code from <strong>Connect phone</strong> on your desktop, then approve the app there.'}</p><p class="install-hint">${paired ? 'Already connected in Safari? The Home Screen app needs its own one-time approval. ' : ''}After approval, the app remembers your CORPORA until you revoke it. Your desktop needs to be online.</p></div>
+          <div class="install-copy"><span class="install-kicker">03 / CONNECT ONCE</span><h2>Open. Approve.<br>You’re home.</h2><p>${paired ? 'On desktop, open <strong>Connect phone</strong>, revoke the Safari connection, and show a new QR. Open the Home Screen app, enter your CORPORA ID, scan or upload the QR, and approve it.' : 'Open Sapiens4 from your Home Screen. Enter your CORPORA ID and scan or upload the QR from <strong>Connect phone</strong> on desktop. Approve once.'}</p><p class="install-hint">${paired ? 'Already connected in Safari? The Home Screen app needs its own one-time approval. ' : ''}After approval, the app remembers your CORPORA until you revoke it. Your desktop needs to be online.</p></div>
         </article>
       </div>
       <div class="install-bottom"><div class="install-progress"><div class="install-dots" aria-label="Guide pages"><button type="button" aria-label="Page 1" aria-current="step"></button><button type="button" aria-label="Page 2"></button><button type="button" aria-label="Page 3"></button></div><span class="install-counter" aria-live="polite">1 / 3</span></div><div class="install-actions"><button type="button" class="install-back" hidden>Back</button><button type="button" class="install-next">Show me how <span aria-hidden="true">→</span></button></div><p class="install-platform">${ios ? 'Swipe through · No App Store download needed' : 'On your iPhone, open this page in Safari to follow along.'}</p></div>`;
@@ -69,10 +69,6 @@ window.RemoteInstall = (() => {
     document.body.classList.toggle('remote-standalone', installed());
     if (installed()) {
       document.getElementById('install-guide')?.close();
-      const intro = document.querySelector('#pair-panel > p');
-      if (intro) intro.innerHTML = 'On desktop, open <strong>Connect phone</strong> and copy the pairing code. Paste it below, then approve this app once on desktop.';
-      const status = document.getElementById('status');
-      if (status && !paired) status.textContent = 'Paste the pairing code from desktop Sapiens4 to connect.';
       return;
     }
     const entry = document.createElement('div');
@@ -82,7 +78,7 @@ window.RemoteInstall = (() => {
       `<div class="install-card-heading">${icon}<div><span>YOUR IPHONE, YOUR SAPIENS4</span><h2>One tap away.</h2></div></div><p>Give your CORPORA a place on your Home Screen.</p><button type="button">Add to Home Screen <span aria-hidden="true">↗</span></button>`;
     entry.querySelector('button').addEventListener('click', () => show(paired));
     if (paired) document.querySelector('.sidebar-bottom')?.prepend(entry);
-    else document.getElementById('pair-panel')?.before(entry);
+    else { entry.innerHTML='<button type="button">Add to Home Screen</button>'; entry.querySelector('button').addEventListener('click',()=>show(paired)); document.querySelector('main')?.append(entry); }
   }
   display?.addEventListener('change', () => mount(!!window.sapiensRemote));
   return {mount};
