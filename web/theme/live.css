@@ -406,7 +406,7 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 #search-toggle svg { width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round; }
 .app-menu-row { display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;min-height:50px;padding:12px 0;border-top:1px solid var(--line);text-decoration:none;text-align:left;font:inherit; }
 .app-menu-row small { max-width:55%;color:var(--muted);text-align:right;overflow-wrap:anywhere; }
-:root body.sapi-workspace[data-mobile-ui] { font-size:12.6px;overscroll-behavior:none;padding:0; }
+:root body.sapi-workspace[data-mobile-ui] { font-size:12.6px;overscroll-behavior:none;padding:0;position:fixed;inset:0;overflow:hidden; }
 :root body.sapi-workspace[data-mobile-ui] .app { height:min(100dvh,var(--mobile-viewport-height,100dvh));min-height:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 :root body.sapi-workspace[data-mobile-ui] .app-header { display:grid;grid-template-columns:44px minmax(0,1fr) 44px;grid-template-rows:1fr;height:62px;min-height:62px;gap:8px;padding:5px 12px;border-bottom:1px solid var(--line); }
 :root body.sapi-workspace[data-mobile-ui] .app-header>:not(#app-menu):not(.pane-controls):not(.theme-toggle) { display:none; }
