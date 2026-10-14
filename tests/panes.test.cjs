@@ -81,6 +81,12 @@ function setup({touch=true,width=390,height=844,panes={sidebar:true,chat:true,wo
   let opened=0;vm.runInContext('computerDialog=()=>{}',phone.ctx);
   doc.querySelector('#resource-button').addEventListener('click',()=>opened++);
   doc.querySelector('[data-menu-target="resource-button"]').click();assert.equal(opened,1);
+  phone.state.workspaces.sapi_test={tabs:[{id:'one',title:'One',url:'about:blank'},{id:'two',title:'Two',url:'about:blank'}],activeTab:'two'};
+  vm.runInContext('syncWorkspace();renderTabs()',phone.ctx);
+  assert.equal(doc.querySelector('#browser-overflow').hidden,false);
+  assert.equal(doc.querySelector('#browser-tabs .active .tab-select').textContent,'Two');
+  assert.equal(doc.querySelector('#browser-tabs .workspace-tab:not(.active)').hidden,true);
+  assert.equal(doc.querySelectorAll('#browser-all-tabs .tab-close').length,2,'Tab management remains accessible from the picker');
   phone.window.close();
 
   const landscape=setup({width:844,height:390});

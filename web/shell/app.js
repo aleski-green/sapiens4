@@ -68,7 +68,6 @@ function renderPanes(){
   syncMobileViewport();
   const input=$('#message-input');
   if(input.placeholder.startsWith('Message'))input.placeholder=limit<3?'Message…':`Message ${selected().name}…`;
-  resizeComposer();
   const names={sidebar:'chat list',chat:'chat',workspace:'workspace'};
   const ids={sidebar:'#chat-list-panel',chat:'#chat-panel',workspace:'#workspace-panel'};
   for(const pane of Object.keys(ids)){
@@ -82,6 +81,7 @@ function renderPanes(){
   const count=Object.values(p).filter(Boolean).length;
   $('.main-grid').dataset.visiblePanes=count;
   $('.main-grid').style.gridTemplateColumns=[p.sidebar?(count===1?'minmax(0,1fr)':'clamp(205px,18vw,250px)'):'0px',p.chat?'minmax(300px,1fr)':'0px',p.workspace?'minmax(350px,1.2fr)':'0px'].join(' ');
+  resizeComposer();
 }
 window.addEventListener('resize',()=>{renderPanes();});
 window.screen.orientation?.addEventListener('change',()=>{renderPanes();});
