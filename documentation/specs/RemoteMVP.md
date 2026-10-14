@@ -278,12 +278,11 @@ reporting remain desktop-only.
 ## Development and validation
 
 ```sh
-python3 -m pip install -r tests/requirements.txt
-npm ci --prefix tests
+bundle install
+python3 -m pip install -r spec/requirements.txt
+npm ci --prefix tests --ignore-scripts
 node tests/build_remote.cjs
-python3 -m unittest discover -s tests -p test_remote.py -v
-node tests/remote.test.cjs
-node tests/remote-desktop.test.cjs
+bundle exec rspec spec/remote_spec.rb spec/platform_spec.rb
 ```
 
 The vendor bundle is checked in so users do not need Node to run the relay. Rebuild
