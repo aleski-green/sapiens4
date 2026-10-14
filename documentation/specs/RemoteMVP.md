@@ -215,8 +215,9 @@ parameters. Host and Origin checks apply before upgrade; authentication must fin
 within ten seconds. The relay commits ciphertext to SQLite before confirming a
 send, then pushes it to the recipient. Acknowledgments delete delivered frames;
 unacknowledged frames replay on reconnect. No idle mailbox polling is used by the
-new clients. HTTP room creation/revocation and legacy mailbox endpoints remain
-available for compatibility.
+clients. HTTP room creation/revocation and mailbox endpoints remain available.
+Desktop delivery uses only the socket loop. Application requests use the shared
+CORPORA API; the earlier chat-only `state` and `chat` operations are removed.
 
 The server sends protocol pings every 25 seconds. Clients reconnect with delays
 up to 30 seconds (browser adds jitter); the browser keeps a local timer for request
@@ -258,7 +259,7 @@ repeated safely and do not write snapshots into the replay ledger.
 
 The receiver acknowledges each fetched relay message. Ciphertext expires after
 24 hours, with an automatic sweep at least every minute while the relay runs.
-Mailbox credentials expire after seven days; re-pair afterwards. Limits are 100
+Unapproved mailboxes expire after seven days; approved mailboxes remain until revoked. Limits are 100
 rooms per relay, 100 queued messages / 48 MB per room, 22 MB per incoming frame, and 16 MB
 per decrypted message. This accommodates the normal 10 MB attachment limit;
 responses exceeding the envelope limit return an explicit error. Fetches contain
@@ -268,7 +269,7 @@ Deployments serving more users need operational review of limits and abuse contr
 Local revocation removes the desktop credential immediately and attempts to delete
 the mailbox, even if the relay is unavailable. Offline relay cleanup may wait for
 expiry. Already received plaintext cannot be recalled. Disconnecting the phone
-page clears its volatile key but does not remotely revoke desktop authorization.
+page clears its remembered and in-memory key but does not remotely revoke desktop authorization.
 Existing desktop HTTP remains loopback-only with its original Host/Origin guards;
 remote requests dispatch to the same explicit service operations instead of
 proxying arbitrary URLs. Pairing/revocation endpoints and native browser event

@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import json
 import os
-import secrets
 import sqlite3
 import threading
 import time
@@ -16,7 +15,7 @@ from sapiens.corpora.host.corpora_api import dispatch
 from sapiens.files import atomic_json
 from sapiens.corpora.host.identity import public_id
 from sapiens.corpora.host import remote_pairing as crypto
-from sapiens.corpora.host.remote_setup import local_connection, read as read_connection, validate as validate_connection
+from sapiens.corpora.host.remote_setup import FORMAT, local_connection, read as read_connection, validate as validate_connection
 from sapiens.corpora.host.remote_socket import SocketClient, websocket
 from sapiens.validation import APIError
 
@@ -55,7 +54,10 @@ class RemoteBridge:
         if self.path.exists():
             try:
                 config = json.loads(self.path.read_text())
-                if config.get('corpora_id', service.corpora_identity()['id']) != service.corpora_identity()['id']:
+                identity = service.corpora_identity()['id']
+                if not isinstance(config, dict):
+                    raise ValueError('Invalid saved pairing')
+                if config.get('corpora_id', identity) != identity:
                     raise ValueError('Pairing belongs to another CORPORA')
                 crypto.origin(config['relay'])
                 crypto.unb64(config['private'], 32)
@@ -66,7 +68,7 @@ class RemoteBridge:
                         type(config['expires']) not in (int, float)):
                     raise ValueError('Invalid saved pairing')
                 self.config = config
-                config['corpora_id'] = service.corpora_identity()['id']
+                config['corpora_id'] = identity
                 self.save()
             except (OSError, ValueError, TypeError, KeyError):
                 self.config = None
@@ -90,9 +92,9 @@ class RemoteBridge:
         with self.lock:
             config = self.config or {}
             pending = config.get('pending')
+            corpora = self.service.corpora_identity()
             return dict(available=crypto.available() and websocket is not None, enabled=bool(config),
-                        corpora=self.service.corpora_identity(),
-                        public_id=public_id(self.service.corpora_identity()['id']),
+                        corpora=corpora, public_id=public_id(corpora['id']),
                         invitation=config.get('invitation') if not config.get('peer') and config.get('expires', 0) > time.time() else None,
                         local_relay=bool(local_connection()),
                         configured_relay=self.saved_relay().get('relay'),
@@ -120,18 +122,16 @@ class RemoteBridge:
             data = self.saved_relay()
             if not data:
                 raise ValueError('Configure your relay once before connecting a phone.')
-        relay = crypto.origin(data.get('relay'))
-        admin = data.get('token', '')
-        if not isinstance(admin, str) or not 32 <= len(admin) <= 256 or not admin.isascii():
-            raise ValueError('Enter the relay provisioning token (32–256 ASCII characters)')
-        connection = validate_connection(dict(format='sapiens-relay-connection-v1', relay=relay, token=admin))
+        connection = validate_connection(dict(format=FORMAT, relay=data.get('relay'), token=data.get('token')))
+        relay, admin = connection['relay'], connection['token']
         private, public = crypto.keypair()
         with self.lock:
             if self.config:
                 raise ValueError('Revoke the existing pairing before creating another')
-            address = public_id(self.service.corpora_identity()['id'])
+            identity = self.service.corpora_identity()['id']
+            address = public_id(identity)
             room = request(relay, '/api/rooms', admin, 'POST', dict(
-                public_id=address, corpora_id=self.service.corpora_identity()['id'], public_key=public))
+                public_id=address, corpora_id=identity, public_key=public))
             if any(not isinstance(room.get(k), str) or not 32 <= len(room[k]) <= 64 or
                    any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_' for c in room[k])
                    for k in ('room', 'desktop', 'phone')):
@@ -142,7 +142,7 @@ class RemoteBridge:
             invitation = dict(v=crypto.PROTOCOL, relay=relay, room=room['room'], token=room['phone'],
                               desktop=public, secret=secret, expires=expires, public_id=address)
             self.config = dict(relay=relay, room=room['room'], token=room['desktop'],
-                               corpora_id=self.service.corpora_identity()['id'],
+                               corpora_id=identity,
                                private=private, public=public, secret=secret, expires=expires,
                                peer=None, pending=None, invitation=invitation)
             self.save()
@@ -222,18 +222,14 @@ class RemoteBridge:
             return None
         if message.get('kind') != 'request' or message['expires'] > time.time() + 310:
             raise ValueError('Invalid request')
-        if message.get('corpora_id', self.service.corpora_identity()['id']) != self.service.corpora_identity()['id']:
+        corpora = self.service.corpora_identity()
+        if message.get('corpora_id', corpora['id']) != corpora['id']:
             return self.response(message['id'], dict(error='This device is connected to a different CORPORA. Pair again.'))
         if message.get('op') == 'resume':
-            return self.response(message['id'], dict(paired=True, corpora=self.service.corpora_identity()))
+            return self.response(message['id'], dict(paired=True, corpora=corpora))
         if message.get('op') == 'api' and message.get('method') == 'GET':
             # Reads are safe to repeat; do not retain a full desktop snapshot per poll.
-            try:
-                return self.response(message['id'], self.execute(message))
-            except (ValueError, APIError) as error:
-                return self.response(message['id'], dict(error=str(error)))
-            except Exception:
-                return self.response(message['id'], dict(error='Local operation failed; check desktop'))
+            return self.execute_response(message)
         hash_ = hashlib.sha256(json.dumps(message, sort_keys=True).encode()).hexdigest()
         with self.connect() as db:
             db.execute('DELETE FROM receipts WHERE created < ?', (time.time() - 86400,))
@@ -247,6 +243,13 @@ class RemoteBridge:
             db.execute('INSERT INTO receipts VALUES (?, ?, ?, NULL, ?)',
                        (config['room'], message['id'], hash_, time.time()))
         # Durable intent before side effects. Never repeat an interrupted command automatically.
+        reply = self.execute_response(message)
+        with self.connect() as db:
+            db.execute('UPDATE receipts SET reply=? WHERE room=? AND id=?',
+                       (json.dumps(reply), config['room'], message['id']))
+        return reply
+
+    def execute_response(self, message):
         try:
             value = self.execute(message)
         except (ValueError, APIError) as error:
@@ -254,81 +257,31 @@ class RemoteBridge:
         except Exception:
             value = dict(error='Local operation failed; check desktop before sending again')
         try:
-            reply = self.response(message['id'], value)
+            return self.response(message['id'], value)
         except ValueError:
-            reply = self.response(message['id'], dict(error='Response too large; inspect on desktop'))
-        with self.connect() as db:
-            db.execute('UPDATE receipts SET reply=? WHERE room=? AND id=?',
-                       (json.dumps(reply), config['room'], message['id']))
-        return reply
+            return self.response(message['id'], dict(error='Response too large; inspect on desktop'))
 
     def execute(self, message):
-        op = message.get('op')
-        if op == 'api':
-            method, target = message.get('method'), message.get('path')
-            if method not in {'GET', 'POST', 'PUT'} or not isinstance(target, str) or len(target) > 8192:
-                raise ValueError('Unsupported remote API request')
-            url = urlsplit(target)
-            parts = url.path.strip('/').split('/')
-            if (url.scheme or url.netloc or url.fragment or not target.startswith('/api/') or
-                    '%' in url.path or '..' in parts or '\\' in target or
-                    parts[:2] == ['api', 'remote'] or
-                    (method != 'GET' and len(parts) == 4 and parts[3] == 'browser')):
-                raise ValueError('Remote API route is not allowed')
-            try:
-                status, value, mime = dispatch(self.service, method, target, message.get('data'))
-            except APIError as error:
-                status, value, mime = error.status, dict(error=str(error)), 'application/json'
-            except ValueError as error:
-                status, value, mime = 409, dict(error=str(error)), 'application/json'
-            binary = isinstance(value, bytes)
-            return dict(status=status, body=crypto.b64(value) if binary else value, mime=mime, binary=binary)
-        if op == 'state':
-            snapshot = self.service.snapshot()
-            agents = [dict(id=a['id'], name=a.get('name', a['id']), role=a.get('role', ''))
-                      for a in snapshot['agents'] if not a.get('retired')]
-            selected = message.get('agent') or next((a['id'] for a in agents), '')
-            if selected and selected not in {a['id'] for a in agents}:
-                raise ValueError('Unknown Sapi')
-            turns = [dict(id=t['id'], input=str(t.get('input', ''))[:16000],
-                          output=str(t.get('output') or '')[-16000:], status=t.get('status', ''))
-                     for t in snapshot['turns'] if t.get('agent') == selected][-8:]
-            return dict(agents=agents, agent=selected, turns=turns, updated=time.time())
-        if op == 'chat':
-            text, agent = message.get('text'), message.get('agent')
-            if not isinstance(text, str) or not text.strip() or len(text) > 16000 or not isinstance(agent, str):
-                raise ValueError('Select a Sapi and enter a message (up to 16000 characters)')
-            return dict(submitted=self.service.submit(agent, {'text': text, 'flow': 'chat'}))
-        raise ValueError('Remote operation not allowed')
-
-    def step(self):
-        with self.lock:
-            config = self.config
-            if not config:
-                return
-            path = '/api/rooms/' + config['room'] + '/messages'
-            if config.get('accept'):
-                request(config['relay'], path, config['token'], 'POST', config['accept'])
-                config.pop('accept')
-                self.save()
-            result = request(config['relay'], path, config['token'])
-            messages = result.get('messages')
-            if not isinstance(messages, list) or len(messages) > 20:
-                raise ValueError('Invalid relay response')
-            for item in messages:
-                if self.stopped.is_set():
-                    return
-                if not isinstance(item, dict) or type(item.get('id')) is not int or item['id'] <= 0:
-                    raise ValueError('Invalid relay message')
-                try:
-                    reply = self.process(item.get('frame', {}))
-                except Exception:
-                    # Invalid ciphertext is untrusted input, never an application command.
-                    reply = None
-                if reply:
-                    request(config['relay'], path, config['token'], 'POST', reply)
-                request(config['relay'], path + '/' + str(item['id']), config['token'], 'DELETE')
-            self.last_contact, self.error = time.time(), ''
+        if message.get('op') != 'api':
+            raise ValueError('Remote operation not allowed')
+        method, target = message.get('method'), message.get('path')
+        if method not in {'GET', 'POST', 'PUT'} or not isinstance(target, str) or len(target) > 8192:
+            raise ValueError('Unsupported remote API request')
+        url = urlsplit(target)
+        parts = url.path.strip('/').split('/')
+        if (url.scheme or url.netloc or url.fragment or not target.startswith('/api/') or
+                '%' in url.path or '..' in parts or '\\' in target or
+                parts[:2] == ['api', 'remote'] or
+                (method != 'GET' and len(parts) == 4 and parts[3] == 'browser')):
+            raise ValueError('Remote API route is not allowed')
+        try:
+            status, value, mime = dispatch(self.service, method, target, message.get('data'))
+        except APIError as error:
+            status, value, mime = error.status, dict(error=str(error)), 'application/json'
+        except ValueError as error:
+            status, value, mime = 409, dict(error=str(error)), 'application/json'
+        binary = isinstance(value, bytes)
+        return dict(status=status, body=crypto.b64(value) if binary else value, mime=mime, binary=binary)
 
     def run(self):
         delay = 1

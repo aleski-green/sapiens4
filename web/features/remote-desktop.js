@@ -23,7 +23,6 @@
       $('setup').hidden = data.enabled;
       $('local-setup').hidden = !data.local_relay;
       $('saved-setup').hidden = !data.configured_relay;
-      $('saved-relay').textContent = data.configured_relay || '';
       if(configuredRelay !== data.configured_relay) {
         $('relay-settings').open = !data.configured_relay;
         configuredRelay = data.configured_relay;
@@ -58,13 +57,13 @@
     finally { button.disabled = button.id === 'create-pair' && !$('token').value; }
   }
   async function showInvitation(invitation) {
-    const code=RemoteCode.encode(invitation);
-    if(renderedInvitation!==code) {
-      await RemoteVendor.QRCode.toCanvas($('qr'),RemoteCode.link(invitation),{width:480,margin:3,errorCorrectionLevel:'M'});
+    const link=RemoteCode.link(invitation);
+    if(renderedInvitation!==link) {
+      await RemoteVendor.QRCode.toCanvas($('qr'),link,{width:480,margin:3,errorCorrectionLevel:'M'});
       $('download').href=$('qr').toDataURL('image/png');
       $('remote-link').href=invitation.relay+'/ios';
       $('qr-expiry').textContent='Expires '+new Date(invitation.expires*1000).toLocaleString();
-      renderedInvitation=code;
+      renderedInvitation=link;
     }
     $('qr-panel').hidden=false;
   }

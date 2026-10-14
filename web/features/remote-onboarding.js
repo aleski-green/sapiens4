@@ -4,6 +4,7 @@ window.RemoteOnboarding = (() => {
   const pattern = /^sapi4_[a-z]{3}[0-9]{3}[a-z]{3}$/;
   function mount(pair, status) {
     const $ = id => document.getElementById(id);
+    const canvas = document.createElement('canvas');
     let selected = null, stream = null, timer = null, generation = 0, looking = false;
     async function lookup(address) {
       if(!pattern.test(address)) throw new Error('Use an ID like sapi4_abc123qwe.');
@@ -29,6 +30,30 @@ window.RemoteOnboarding = (() => {
         throw new Error('QR replaced. Use the latest QR on desktop.');
       selected=found;
     }
+    function readQR(image, width, height, limit) {
+      const scale=Math.min(1,limit/Math.max(width,height));
+      canvas.width=Math.round(width*scale);canvas.height=Math.round(height*scale);
+      const context=canvas.getContext('2d',{willReadFrequently:true});
+      context.drawImage(image,0,0,canvas.width,canvas.height);
+      return RemoteVendor.jsQR(context.getImageData(0,0,canvas.width,canvas.height).data,canvas.width,canvas.height);
+    }
+    async function upload(file) {
+      if(!window.isSecureContext) throw new Error('Open this app over HTTPS.');
+      if(!file || file.size>10*1024*1024) throw new Error('Choose a QR image smaller than 10 MB.');
+      const url=URL.createObjectURL(file), image=new Image();
+      try {
+        image.src=url;await image.decode();
+        if(image.naturalWidth*image.naturalHeight>20000000) throw new Error('Image dimensions are too large.');
+        const qr=readQR(image,image.naturalWidth,image.naturalHeight,1600);
+        if(!qr) throw new Error('No supported QR found in this image.');
+        await pair(RemoteCode.decode(qr.data));
+      } finally { URL.revokeObjectURL(url); }
+    }
+    $('qr-file').addEventListener('change',async event=>{
+      try {await upload(event.target.files[0]);}
+      catch(error) {status(error.message);}
+      finally {event.target.value='';}
+    });
     $('corpora-form').addEventListener('submit',async event=>{
       event.preventDefault();if(looking)return;looking=true;$('find-corpora').disabled=true;status('Finding CORPORA…');
       try {
@@ -49,15 +74,12 @@ window.RemoteOnboarding = (() => {
         const camera=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
         if(current!==generation){camera.getTracks().forEach(track=>track.stop());return;}
         stream=camera;const video=$('qr-camera');video.srcObject=stream;$('scanner').hidden=false;await video.play();
-        const canvas=document.createElement('canvas'),context=canvas.getContext('2d',{willReadFrequently:true});
         async function scan() {
           if(current!==generation)return;
           try {
             if(video.readyState>=2 && video.videoWidth) {
-              const scale=Math.min(1,1000/video.videoWidth);canvas.width=Math.round(video.videoWidth*scale);canvas.height=Math.round(video.videoHeight*scale);
-              context.drawImage(video,0,0,canvas.width,canvas.height);const pixels=context.getImageData(0,0,canvas.width,canvas.height);
-              const qr=RemoteVendor.jsQR(pixels.data,canvas.width,canvas.height);
-              if(qr){stop();await pair(qr.data.trim().startsWith('{')?JSON.parse(qr.data):RemoteCode.decode(qr.data));return;}
+              const qr=readQR(video,video.videoWidth,video.videoHeight,1000);
+              if(qr){stop();await pair(RemoteCode.decode(qr.data));return;}
             }
             timer=setTimeout(scan,200);
           } catch(error){stop();status(error.message);}

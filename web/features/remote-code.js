@@ -10,6 +10,7 @@ window.RemoteCode = (() => {
   }
   function decode(text) {
     if (typeof text !== 'string' || text.length > 4096) throw new Error('Use the QR from desktop Connect phone.');
+    if (text.trim().startsWith('{')) return JSON.parse(text);
     if (/^https?:\/\//.test(text.trim())) {
       const link = new URL(text.trim());
       const invitation = decode(link.hash.slice(1));

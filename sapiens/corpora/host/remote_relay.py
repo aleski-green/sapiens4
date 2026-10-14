@@ -18,12 +18,11 @@ from urllib.parse import urlsplit
 
 from aiohttp import web, WSMsgType
 
-from sapiens.corpora.host.remote_pairing import MAX_FRAME, origin, unb64
+from sapiens.corpora.host.remote_pairing import MAX_FRAME, PAIRING_TTL, origin, unb64
 from sapiens.paths import ROOT
 from sapiens.corpora.host.assets import asset
 from sapiens.corpora.host.remote_setup import provision
 from sapiens.corpora.host.identity import public_id
-from sapiens.corpora.host.remote_pairing import PAIRING_TTL
 
 ASSETS = {
     '/': ('shell/remote.html', 'text/html'),
@@ -84,9 +83,7 @@ class Mailboxes:
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             now = time.time()
-            db.execute('DELETE FROM messages WHERE expires <= ? OR room IN '
-                       '(SELECT id FROM rooms WHERE expires <= ?)', (now, now))
-            db.execute('DELETE FROM rooms WHERE expires <= ?', (now,))
+            self.expire(db, now)
             if parts == ['api', 'rooms'] and method == 'POST':
                 if not hmac.compare_digest(bearer, admin):
                     raise RelayError(401, 'Unauthorized')
@@ -160,6 +157,12 @@ class Mailboxes:
                 return dict(deleted=True)
             raise RelayError(404, 'Not found')
 
+
+    @staticmethod
+    def expire(db, now):
+        db.execute('DELETE FROM messages WHERE expires <= ? OR room IN '
+                   '(SELECT id FROM rooms WHERE expires <= ?)', (now, now))
+        db.execute('DELETE FROM rooms WHERE expires <= ?', (now,))
 
     def lookup(self, address):
         if not re.fullmatch(r'sapi4_[a-z]{3}[0-9]{3}[a-z]{3}', address):
@@ -353,10 +356,7 @@ class RelayServer:
         while True:
             await asyncio.sleep(60)
             with self.mailboxes.connect() as db:
-                now = time.time()
-                db.execute('DELETE FROM messages WHERE expires <= ? OR room IN '
-                           '(SELECT id FROM rooms WHERE expires <= ?)', (now, now))
-                db.execute('DELETE FROM rooms WHERE expires <= ?', (now,))
+                self.mailboxes.expire(db, time.time())
             for events in self.listeners.values():
                 for event in events:
                     event.set()  # Recheck expiry for already-open sockets too.

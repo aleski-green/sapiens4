@@ -88,6 +88,10 @@ class RemoteTest(unittest.TestCase):
         return crypto.pack(self.phone_private, self.bridge.config['public'], 'room-1', 'phone-to-desktop',
                            dict(id=id_, kind=kind, expires=time.time()+120, **kwargs))
 
+    def chat(self, text, **kwargs):
+        return self.message(op='api', method='POST', path='/api/agents/chief/messages',
+                            data={'text': text, 'flow': 'chat'}, **kwargs)
+
     def pair(self):
         self.bridge.process(self.message('pair', id_='pair-1', secret=self.bridge.config['secret']))
         self.bridge.approve(dict(peer=self.phone_public))
@@ -99,7 +103,7 @@ class RemoteTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.bridge.process(self.message('pair', secret='wrong'))
         with self.assertRaises(ValueError):
-            self.bridge.process(self.message(op='chat', agent='chief', text='attack'))
+            self.bridge.process(self.chat('attack'))
         self.assertEqual(self.service.calls, [])
         self.bridge.process(self.message('pair', secret=self.bridge.config['secret']))
         self.assertIsNone(self.bridge.config['peer'])
@@ -166,8 +170,7 @@ class RemoteTest(unittest.TestCase):
 
     def test_wrong_workspace_request_cannot_execute(self):
         self.pair()
-        result = self.decoded(self.bridge.process(self.message(
-            op='chat', agent='chief', text='Wrong workspace', corpora_id='another-corpora')))
+        result = self.decoded(self.bridge.process(self.chat('Wrong workspace', corpora_id='another-corpora')))
         self.assertIn('different CORPORA', result['error'])
         self.assertEqual(self.service.calls, [])
 
@@ -205,8 +208,8 @@ class RemoteTest(unittest.TestCase):
 
     def test_both_directions_tampering_and_identity_substitution(self):
         self.pair()
-        reply = self.bridge.process(self.message(op='state'))
-        self.assertIn('Desktop-only private content', self.decoded(reply)['turns'][0]['input'])
+        reply = self.bridge.process(self.message(op='api', method='GET', path='/api/state'))
+        self.assertIn('Desktop-only private content', self.decoded(reply)['body']['turns'][0]['input'])
         self.assertNotIn('Desktop-only', json.dumps(reply))
         broken = dict(reply, ciphertext=crypto.b64(b'x'*64))
         with self.assertRaises(Exception):
@@ -220,7 +223,7 @@ class RemoteTest(unittest.TestCase):
 
     def test_exact_retry_executes_once_across_restart(self):
         self.pair()
-        frame = self.message(op='chat', agent='chief', text='Execute once')
+        frame = self.chat('Execute once')
         first = self.bridge.process(frame)
         self.assertEqual(first, self.bridge.process(frame))
         self.bridge.save()
@@ -230,14 +233,14 @@ class RemoteTest(unittest.TestCase):
         self.assertEqual(first, restarted.process(frame))
         self.assertEqual(len(self.service.calls), 1)
         with self.assertRaises(ValueError):
-            restarted.process(self.message(op='chat', agent='chief', text='Different command'))
+            restarted.process(self.chat('Different command'))
         if os.name != 'nt':
             self.assertEqual(self.bridge.path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(self.bridge.receipts.stat().st_mode & 0o777, 0o600)
 
     def test_uncertain_interruption_is_not_reexecuted(self):
         self.pair()
-        frame=self.message(op='chat',agent='chief',text='One action')
+        frame=self.chat('One action')
         self.bridge.process(frame)
         with self.bridge.connect() as db:
             db.execute('UPDATE receipts SET reply=NULL')
@@ -250,7 +253,8 @@ class RemoteTest(unittest.TestCase):
         reply = self.bridge.process(self.message(op='shell', text='bad'))
         self.assertIn('not allowed', self.decoded(reply)['error'])
         frame = crypto.pack(self.phone_private,self.bridge.config['public'],'room-1','phone-to-desktop',
-                            dict(id='expired',kind='request',op='chat',expires=time.time()-1,text='bad',agent='chief'))
+                            dict(id='expired',kind='request',op='api',method='POST',path='/api/agents/chief/messages',
+                                 expires=time.time()-1,data={'text':'bad'}))
         with self.assertRaises(ValueError): self.bridge.process(frame)
         self.assertEqual(self.service.calls,[])
 
@@ -296,11 +300,29 @@ class RemoteTest(unittest.TestCase):
         self.assertFalse(self.bridge.path.exists())
 
     def test_corrupt_remote_state_does_not_block_local_startup(self):
-        self.bridge.path.write_text('{broken')
-        restarted = RemoteBridge(self.service)
-        self.addCleanup(restarted.close)
-        self.assertFalse(restarted.status()['enabled'])
-        self.assertIn('invalid', restarted.status()['error'])
+        for raw in ('{broken', 'null', '[]', '1', '"invalid"'):
+            with self.subTest(raw=raw):
+                self.bridge.path.write_text(raw)
+                restarted = RemoteBridge(self.service)
+                self.addCleanup(restarted.close)
+                self.assertFalse(restarted.status()['enabled'])
+                self.assertIn('invalid', restarted.status()['error'])
+
+    def test_read_and_write_failures_have_bounded_encrypted_responses(self):
+        self.pair()
+        for method in ('GET', 'POST'):
+            for value in ('oversize', 'failure'):
+                with self.subTest(method=method, value=value):
+                    options = (dict(return_value={'body': 'x' * crypto.MAX_PLAINTEXT}) if value == 'oversize'
+                               else dict(side_effect=RuntimeError('private failure details')))
+                    frame = self.message(id_=crypto.token(), op='api', method=method, path='/api/state')
+                    with patch.object(self.bridge, 'execute', **options):
+                        reply = self.bridge.process(frame)
+                    error = self.decoded(reply)['error']
+                    self.assertIn('too large' if value == 'oversize' else 'Local operation failed', error)
+                    self.assertNotIn('private failure details', error)
+                    if method == 'POST':
+                        self.assertEqual(self.bridge.process(frame), reply)
 
     def test_no_secrets_in_status(self):
         self.pair()
@@ -321,12 +343,12 @@ const nonce=nacl.randomBytes(24),key=nacl.box.keyPair.fromSecretKey(b(d.secret))
 console.log(JSON.stringify({decoded:JSON.parse(Buffer.from(m).toString()),frame:{sender:Buffer.from(key.publicKey).toString('base64'),nonce:Buffer.from(nonce).toString('base64'),ciphertext:Buffer.from(nacl.box(Buffer.from(JSON.stringify(d.request)),nonce,b(d.desktop),key.secretKey)).toString('base64')}}));'''
         payload=dict(secret=self.phone_private,desktop=self.bridge.config['public'],
                      frame=self.bridge.config['accept'],request=dict(v=crypto.PROTOCOL,room='room-1',
-                     direction='phone-to-desktop',id='node-request',kind='request',op='state',expires=time.time()+120))
+                     direction='phone-to-desktop',id='node-request',kind='request',op='api',method='GET',path='/api/state',expires=time.time()+120))
         result=subprocess.run([node,'-e',code],input=json.dumps(payload),capture_output=True,text=True,
                               cwd=Path(__file__).parent,check=True)
         value=json.loads(result.stdout)
         self.assertTrue(value['decoded']['result']['paired'])
-        self.assertEqual(self.decoded(self.bridge.process(value['frame']))['agent'],'chief')
+        self.assertEqual(self.decoded(self.bridge.process(value['frame']))['body']['agents'][0]['id'],'chief')
 
 
 class RelaySetupTest(unittest.TestCase):
@@ -575,7 +597,7 @@ class RemoteHTTPTest(unittest.TestCase):
         self.assertEqual(item['frame'], frame)
         current.call('ack', message=item['id'])
 
-    def test_live_bridge_pairs_and_replies_over_socket(self):
+    def test_live_bridge_pairs_delivers_ciphertext_and_revokes_over_socket(self):
         invitation = self.api('/api/remote/pair', dict(relay=self.url, token=self.admin))['qr']
         client = SocketClient(dict(relay=self.url, room=invitation['room'], token=invitation['token']))
         self.addCleanup(client.close)
@@ -594,13 +616,22 @@ class RemoteHTTPTest(unittest.TestCase):
             while item is None and time.time()<deadline:
                 item = client.receive()
             self.assertIsNotNone(item)
+            with self.relay.mailboxes.connect() as db:
+                rows = str(db.execute('SELECT body FROM messages').fetchall())
+                self.assertIn(item['frame']['ciphertext'], rows)
+                self.assertNotIn('Socket chat', rows)
+                self.assertNotIn(invitation['secret'], rows)
             result = crypto.unpack(private, invitation['desktop'], invitation['room'], 'desktop-to-phone', item['frame'])
             client.call('ack', message=item['id'])
             return result['result']
         self.assertTrue(receive()['paired'])
+        self.assertIsNone(self.api('/api/remote')['invitation'])
         send('chat', kind='request', op='api', method='POST', path='/api/agents/chief/messages', data={'text':'Socket chat'})
         self.assertEqual(receive()['status'], 202)
         self.assertEqual(len(self.service.calls), 1)
+        self.api('/api/remote/revoke', {})
+        with self.assertRaises(ValueError):
+            request(self.url, '/api/rooms/' + invitation['room'] + '/messages', invitation['token'])
 
     def test_local_setup_creates_invitation_without_exposing_admin(self):
         path = Path(self.temp.name) / 'relay.connection.json'
@@ -615,33 +646,6 @@ class RemoteHTTPTest(unittest.TestCase):
             self.assertNotIn(self.admin, self.local.remote.path.read_text())
             with self.assertRaises(HTTPError):
                 urlopen(self.url + '/relay.connection.json')
-
-    def test_full_pair_approve_chat_ciphertext_and_revoke(self):
-        with patch.object(RemoteBridge,'start'):
-            invitation=self.api('/api/remote/pair',dict(relay=self.url,token=self.admin))['qr']
-        private,public=crypto.keypair();room=invitation['room']
-        path='/api/rooms/'+room+'/messages'
-        def send(payload):
-            frame=crypto.pack(private,invitation['desktop'],room,'phone-to-desktop',
-                              dict(expires=time.time()+120,**payload))
-            return request(self.url,path,invitation['token'],'POST',frame)
-        send(dict(id='pair',kind='pair',secret=invitation['secret']))
-        self.local.remote.step()
-        self.assertFalse(self.api('/api/remote')['paired'])
-        self.api('/api/remote/approve',dict(peer=public))
-        self.local.remote.step()
-        send(dict(id='chat',kind='request',op='chat',agent='chief',text='SECRET command from phone'))
-        self.local.remote.step()
-        result=request(self.url,path,invitation['token'])
-        decoded=[crypto.unpack(private,invitation['desktop'],room,'desktop-to-phone',m['frame']) for m in result['messages']]
-        self.assertEqual(decoded[-1]['result']['submitted']['id'],'turn-1')
-        self.assertEqual(len(self.service.calls),1)
-        with self.relay.mailboxes.connect() as db:
-            rows=str(db.execute('SELECT * FROM messages').fetchall())
-            self.assertNotIn('SECRET command',rows)
-            self.assertNotIn(invitation['secret'],rows)
-        self.api('/api/remote/revoke',{})
-        with self.assertRaises(ValueError):request(self.url,path,invitation['token'])
 
     def test_relay_serves_shared_code_but_never_plaintext_state(self):
         for path, marker in [('/workspace/', b'CORPORA'), ('/workspace/app.js', b'sapiensRemote'),

@@ -1,9 +1,5 @@
 /* Kept separate from the pairing stylesheet so the guide survives CORPORA mounting. */
-.install-card,.s4-install{font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#28252f;color-scheme:light}
-.install-card{padding:22px;border-radius:20px;border:1px solid #e2dce9;background:linear-gradient(125deg,#fff9fd,#f0ecff 65%,#eaf8f9);margin-bottom:20px}
-.install-card-heading{display:flex;align-items:center;gap:16px}.install-card-heading img{width:54px;height:54px;border-radius:14px;box-shadow:0 5px 16px #54385912}
-.install-card-heading span{font-size:9px;font-weight:700;letter-spacing:.12em;color:#776981}.install-card h2{font:650 25px/1.2 -apple-system,BlinkMacSystemFont,sans-serif;letter-spacing:-.8px;margin:3px 0 0}.install-card p{font-size:14px;color:#6f6675;margin:13px 0 0}
-.install-card button{display:flex;width:100%;justify-content:space-between;background:#29252f;color:#fff;border-radius:12px;border:0;padding:13px 16px;margin:17px 0 0;font:600 14px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;cursor:pointer}
+.s4-install{font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#28252f;color-scheme:light}
 .install-workspace button{display:flex;align-items:center;gap:7px;color:var(--muted);font:inherit;font-size:11px;padding:8px 3px;border:0;background:none;cursor:pointer;text-align:left}.install-workspace svg{width:16px;height:16px;flex:none}
 #install-guide.s4-install{padding:0;border:1px solid #e8e1ee;border-radius:28px;background:#faf8fd;width:calc(100% - 24px);max-width:430px;max-height:calc(100dvh - 32px);margin:auto;overflow-y:auto;box-shadow:0 24px 100px #24103840}
 #install-guide.s4-install::backdrop{background:#20182980;backdrop-filter:blur(7px)}
@@ -35,5 +31,5 @@
 @media(max-height:740px){.s4-install .install-art{height:205px;margin-bottom:7px}.s4-install .install-phone{transform:scale(.79) rotate(-8deg)}.s4-install .install-top{padding-top:12px}.s4-install .install-bottom{padding-top:13px;padding-bottom:16px}.s4-install .install-progress{margin-bottom:9px}.s4-install .install-copy{padding-top:0}.s4-install h2{font-size:28px}}
 @media(prefers-reduced-motion:reduce){.s4-install *{transition:none!important;scroll-behavior:auto!important}}
 /* Keep install guidance secondary to the shared CORPORA connection form. */
-.pairing-page #install-entry{background:none;border:0;border-radius:0;box-shadow:none;padding:0;margin:24px 0 0}
-.pairing-page #install-entry button{width:100%;margin:0;background:transparent;color:var(--muted);font-size:13px}
+.pairing-page #install-entry{margin:24px 0 0}
+.pairing-page #install-entry button{display:flex;justify-content:space-between;width:100%;margin:0;padding:13px 16px;border-radius:12px;background:transparent;color:var(--muted);font:600 13px/1.5 -apple-system,BlinkMacSystemFont,sans-serif}

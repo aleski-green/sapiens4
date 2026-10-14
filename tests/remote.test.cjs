@@ -32,7 +32,7 @@ function qrPixels(text) {
   assert.deepEqual(JSON.parse(jsQR(pixels.data,pixels.width,pixels.height).data),invitation);
   const deviceStorage=new IDBFactory();
   let dom,w;
-  const intervals=[],posted=[],inbox=[];let offline=false;
+  const intervals=[],posted=[];let offline=false;
   let activeSocket, connections=0;
   function initialize(url=invitation.relay) {
   intervals.length=0;
@@ -142,6 +142,11 @@ function qrPixels(text) {
   assert.ok(w.document.querySelector('button[data-scope="groups"]'));
   assert.equal(w.document.querySelector('a[href="/remote/"]'),null);
   assert.ok(w.document.querySelector('script[src="/workspace/app.js"]'));
+  const styles=[...w.document.querySelectorAll('link[rel="stylesheet"]')].map(link=>link.href);
+  assert.equal(styles.length,new Set(styles).size,'Mounting must reuse the shared stylesheets');
+  reply(posted[0].message.id,{paired:true,corpora});await sleep();await sleep();
+  assert.equal(w.document.querySelectorAll('script[src="/workspace/app.js"]').length,1,
+    'Replayed approval must not mount the workspace twice');
   const reading=w.sapiensRemote.fetch('/api/state');
   await sleep();
   const state=posted.find(p=>p.message.path==='/api/state');assert.ok(state);
@@ -160,6 +165,11 @@ function qrPixels(text) {
   const imageRequest=posted.at(-1);
   reply(imageRequest.message.id,{status:200,mime:'image/png',body:b64(Buffer.from([1,2,3])),binary:true},4);
   await intervals[0]();await sleep();assert.deepEqual(new Uint8Array(await (await image).arrayBuffer()),new Uint8Array([1,2,3]));
+  for(const result of [{status:200,mime:'image/png',body:'!',binary:true},{status:999,body:{}}]) {
+    const invalid=w.sapiensRemote.fetch('/api/state');
+    const rejected=assert.rejects(invalid);
+    await sleep();reply(posted.at(-1).message.id,result,5);await rejected;await sleep();
+  }
   assert.equal(connections,1);
   const count=posted.length;await intervals[0]();await sleep();assert.equal(posted.length,count,'Idle timer must not poll');
   const unanswered=w.sapiensRemote.fetch('/api/state').catch(error=>error.message);await sleep();

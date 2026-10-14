@@ -81,8 +81,9 @@ def pack(secret, peer, room, direction, payload):
     raw = json.dumps(body, separators=(',', ':'), allow_nan=False).encode()
     if len(raw) > MAX_PLAINTEXT:
         raise ValueError('Remote response is too large')
-    message = Box(PrivateKey(unb64(secret, 32)), PublicKey(unb64(peer, 32))).encrypt(raw)
-    return dict(sender=b64(PrivateKey(unb64(secret, 32)).public_key),
+    key = PrivateKey(unb64(secret, 32))
+    message = Box(key, PublicKey(unb64(peer, 32))).encrypt(raw)
+    return dict(sender=b64(key.public_key),
                 nonce=b64(message.nonce), ciphertext=b64(message.ciphertext))
 
 

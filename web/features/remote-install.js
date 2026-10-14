@@ -66,19 +66,18 @@ window.RemoteInstall = (() => {
 
   function mount(paired = false) {
     document.getElementById('install-entry')?.remove();
-    document.body.classList.toggle('remote-standalone', installed());
     if (installed()) {
       document.getElementById('install-guide')?.close();
       return;
     }
     const entry = document.createElement('div');
     entry.id = 'install-entry';
-    entry.className = paired ? 'install-workspace' : 'install-card';
+    if (paired) entry.className = 'install-workspace';
     entry.innerHTML = paired ? `<button type="button">${plus}<span>Add to Home Screen</span></button>` :
-      `<div class="install-card-heading">${icon}<div><span>YOUR IPHONE, YOUR SAPIENS4</span><h2>One tap away.</h2></div></div><p>Give your CORPORA a place on your Home Screen.</p><button type="button">Add to Home Screen <span aria-hidden="true">↗</span></button>`;
+      '<button type="button">Add to Home Screen</button>';
     entry.querySelector('button').addEventListener('click', () => show(paired));
     if (paired) document.querySelector('.sidebar-bottom')?.prepend(entry);
-    else { entry.innerHTML='<button type="button">Add to Home Screen</button>'; entry.querySelector('button').addEventListener('click',()=>show(paired)); document.querySelector('main')?.append(entry); }
+    else document.querySelector('main')?.append(entry);
   }
   display?.addEventListener('change', () => mount(!!window.sapiensRemote));
   return {mount};

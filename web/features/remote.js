@@ -1,7 +1,7 @@
 /* QR image stays on the phone. NaCl authenticates encrypted application messages. */
 'use strict';
 (() => {
-  const {nacl, jsQR} = RemoteVendor;
+  const {nacl} = RemoteVendor;
   const $ = id => document.getElementById(id);
   const protocol = 'sapiens-remote-box-v1';
   const encoder = new TextEncoder(), decoder = new TextDecoder();
@@ -23,7 +23,7 @@
   let session=null, paired=false, polling=false, socket=null, ready=false, reconnectTimer=null, reconnectDelay=1000, serial=0;
   let starting=true, storageWarning=false, pairing=false;
   const calls=new Map();
-  const pending=new Map(), received=new Set();
+  const pending=new Map();
   function frame(payload) {
     const message={v:protocol,room:session.room,direction:'phone-to-desktop',corpora_id:session.corpora?.id,...payload};
     const raw=encoder.encode(JSON.stringify(message));
@@ -87,39 +87,33 @@
     };
     ws.onerror=()=>status('Relay connection unavailable. Retrying…');
   }
-  function relay(method='POST', body, message) {
+  function relay(type, body) {
     if(!ready || !socket || socket.readyState!==WebSocket.OPEN) return Promise.reject(new Error('Relay reconnecting.'));
     if(calls.size>=128 || socket.bufferedAmount>24000000) return Promise.reject(new Error('Relay is busy. Retrying.'));
     const id=String(++serial);
     return new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>{calls.delete(id);reject(new Error('Relay did not confirm delivery.'));socket?.close();},10000);
       calls.set(id,{resolve,reject,timer});
-      try {socket.send(JSON.stringify(method==='DELETE' ? {type:'ack',id,message} : {type:'send',id,frame:body}));}
+      try {socket.send(JSON.stringify({type,id,...body}));}
       catch(error) {clearTimeout(timer);calls.delete(id);reject(error);}
     });
   }
   async function send(payload, callbacks={}) {
     const id=b64(nacl.randomBytes(18)), expires=payload.kind==='pair' ? session.expires : Date.now()/1000+120;
     const encrypted=frame({id,expires,...payload});
-    pending.set(id,{...payload,...callbacks,expires,frame:encrypted,lastSent:0});
-    try { await relay('POST',encrypted); if(pending.has(id)) pending.get(id).lastSent=Date.now(); }
+    pending.set(id,{kind:payload.kind,op:payload.op,...callbacks,expires,frame:encrypted,lastSent:0});
+    try { await relay('send',{frame:encrypted}); if(pending.has(id)) pending.get(id).lastSent=Date.now(); }
     catch(error) { status(error.message+(payload.kind==='pair' ? ' Pairing remains pending until the code expires.' : ' Message remains pending until its two-minute expiry.')); }
-    return id;
   }
-  function apiRequest(path, options={}) {
-    if(!paired) return Promise.reject(new Error('Pair this device first.'));
-    return new Promise((resolve,reject)=>{
-      let data;
-      try { data=options.body===undefined ? undefined : JSON.parse(options.body); }
-      catch(error) { reject(error); return; }
-      send({kind:'request',op:'api',method:options.method || 'GET',path,data},{
-        resolve(result) {
-          if(!Number.isInteger(result.status)) { reject(new Error('Invalid desktop response')); return; }
-          const body=result.binary ? bytes(result.body) : JSON.stringify(result.body);
-          resolve(new Response(body,{status:result.status,headers:{'Content-Type':result.mime}}));
-        },reject
-      }).catch(reject);
+  async function apiRequest(path, options={}) {
+    if(!paired) throw new Error('Pair this device first.');
+    const data=options.body===undefined ? undefined : JSON.parse(options.body);
+    const result=await new Promise((resolve,reject)=>{
+      send({kind:'request',op:'api',method:options.method || 'GET',path,data},{resolve,reject}).catch(reject);
     });
+    if(!Number.isInteger(result.status)) throw new Error('Invalid desktop response');
+    const body=result.binary ? bytes(result.body) : JSON.stringify(result.body);
+    return new Response(body,{status:result.status,headers:{'Content-Type':result.mime}});
   }
   async function openCorpora() {
     // Fetch only the static shell here. All application requests use the paired transport.
@@ -130,7 +124,8 @@
     shell.querySelectorAll('script').forEach(node=>node.remove());
     for(const link of shell.querySelectorAll('link[rel="stylesheet"]')) {
       link.href=new URL(link.getAttribute('href'),location.origin+'/workspace/').pathname;
-      document.head.append(document.importNode(link,true));
+      if(![...document.querySelectorAll('link[rel="stylesheet"]')].some(existing=>existing.href===link.href))
+        document.head.append(document.importNode(link,true));
     }
     document.querySelector('link[href="/remote.css"]')?.remove();
     document.body.className=shell.body.className;
@@ -168,11 +163,10 @@
     for(const item of data.messages) {
       if(!Number.isSafeInteger(item.id) || item.id<=0) throw new Error('Invalid relay message');
       let message;
-      try { message=decode(item.frame); } catch { await relay('DELETE',null,item.id); continue; }
-      if(!received.has(message.id) && pending.has(message.id)) {
+      try { message=decode(item.frame); } catch { await relay('ack',{message:item.id}); continue; }
+      if(pending.has(message.id)) {
         const original=pending.get(message.id);
-        received.add(message.id);pending.delete(message.id);
-        if(received.size>1000) received.delete(received.values().next().value);
+        pending.delete(message.id);
         if(message.result.error) { status(message.result.error);original.reject?.(new Error(message.result.error)); }
         else if(message.result.paired && (original.kind==='pair' || original.op==='resume')) {
           const corpora=message.result.corpora;
@@ -181,7 +175,7 @@
              (session.corpora && session.corpora.id!==corpora.id)) {
             session.identityRejected=true;
             status('CORPORA identity changed or is unavailable. Forget this device and pair with the intended workspace.');
-            await relay('DELETE',null,item.id);continue;
+            await relay('ack',{message:item.id});continue;
           }
           session.corpora={id:corpora.id,name:corpora.name};
           paired=true;
@@ -193,7 +187,7 @@
           original.resolve(message.result);status('Remote · Connected');
         }
       }
-      await relay('DELETE',null,item.id);
+      await relay('ack',{message:item.id});
     }
   }
   async function tick() {
@@ -209,29 +203,13 @@
         } else if(ready && Date.now()-item.lastSent>15000) {
           item.lastSent=Date.now();
           // Same ciphertext and ID on every retry; desktop durably deduplicates commands.
-          await relay('POST',item.frame);
+          await relay('send',{frame:item.frame});
         }
       }
       if(session && !paired && session.restored && !session.identityRejected && ![...pending.values()].some(item=>item.op==='resume'))
         await send({kind:'request',op:'resume'});
     } catch(error) {status(error.message);}
     finally {polling=false;}
-  }
-  async function upload(file) {
-    if(!window.isSecureContext) throw new Error('Open this app over HTTPS.');
-    if(!file || file.size>10*1024*1024) throw new Error('Choose a QR image smaller than 10 MB.');
-    const url=URL.createObjectURL(file), image=new Image();
-    try {
-      image.src=url;await image.decode();
-      if(image.naturalWidth*image.naturalHeight>20000000) throw new Error('Image dimensions are too large.');
-      const scale=Math.min(1,1600/Math.max(image.naturalWidth,image.naturalHeight));
-      const canvas=document.createElement('canvas');canvas.width=Math.round(image.naturalWidth*scale);canvas.height=Math.round(image.naturalHeight*scale);
-      const context=canvas.getContext('2d',{willReadFrequently:true});context.drawImage(image,0,0,canvas.width,canvas.height);
-      const pixels=context.getImageData(0,0,canvas.width,canvas.height);
-      const qr=jsQR(pixels.data,canvas.width,canvas.height);
-      if(!qr || qr.data.length>4096) throw new Error('No supported QR found in this image.');
-      await pair(qr.data.trim().startsWith('{') ? JSON.parse(qr.data) : RemoteCode.decode(qr.data));
-    } finally { URL.revokeObjectURL(url); }
   }
   async function pair(data) {
     if(pairing) throw new Error('Connection already in progress.');
@@ -259,7 +237,6 @@
     await tick();
   }
   const onboarding = RemoteOnboarding.mount(pair, status);
-  $('qr-file').addEventListener('change',async event=>{try{await upload(event.target.files[0]);}catch(error){status(error.message);}finally{event.target.value='';}});
   $('forget').addEventListener('click',disconnect);
   const wake=()=>{if(!document.hidden){if(!socket){clearTimeout(reconnectTimer);connect();}tick();}};
   document.addEventListener('visibilitychange',wake);
