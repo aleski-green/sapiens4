@@ -60,7 +60,7 @@ it to the phone or embed it in a URL. Desktop saves it privately in `remote-rela
    **Show QR**. Manual address/token entry remains available.
    This is a one-time setup on each desktop. Future connections use **Show QR**.
    The QR remains available on this local page until approved, revoked, or expired (three days).
-3. Open the installed app, enter the desktop’s public CORPORA ID (`sapi4_` plus nine lowercase letters/digits), then scan or upload its QR. For a same-computer browser test use `http://127.0.0.1:4180/`. For an actual iPhone, use the HTTPS deployment described below;
+3. Open the installed app, enter the desktop’s public CORPORA ID (`sapi4_` plus three lowercase letters, three digits and three lowercase letters), then scan or upload its QR. For a same-computer browser test use `http://127.0.0.1:4180/`. For an actual iPhone, use the HTTPS deployment described below;
    `127.0.0.1` on the phone refers to the phone, not the PC.
 4. Compare the phone fingerprint on both screens and select **Approve device** on
    desktop. This binds approval to that exact phone key.
@@ -353,7 +353,7 @@ not copied to cookies or other installation metadata.
 
 ### Public CORPORA addresses and QR pairing
 
-The stable public address is `sapi4_` plus nine base-36 characters derived from the
+The stable public address is `sapi4_` plus three lowercase letters, three digits and three lowercase letters derived from the
 existing immutable UUID. It is an address, not a login secret. The relay registers
 it only through authenticated provisioning, rejects collisions with another UUID,
 and keeps the reservation across revocation. `/api/corpora/<address>` exposes only

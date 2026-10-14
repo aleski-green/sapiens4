@@ -19,6 +19,7 @@ window.RemoteCode = (() => {
     }
     const parts = text.replace(/\s/g, '').split('.');
     if (![7,8].includes(parts.length) || parts[0] !== 's4' ||
+        // Accept the original mixed-character suffix in existing QR invitations.
         (parts.length===8 && !/^sapi4_[a-z0-9]{9}$/.test(parts[7])) ||
         !parts.slice(1,6).every(value => /^[A-Za-z0-9_-]+$/.test(value)) ||
         !/^[0-9a-z]{1,10}$/.test(parts[6])) throw new Error('Use the QR from desktop Connect phone.');

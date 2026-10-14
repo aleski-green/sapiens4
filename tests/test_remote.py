@@ -392,7 +392,11 @@ class MailboxTest(unittest.TestCase):
     def test_public_address_discovery_lifecycle_and_no_credentials(self):
         identity = '12345678-1234-4234-8234-123456789abc'
         address = public_id(identity)
-        self.assertRegex(address, r'^sapi4_[a-z0-9]{9}$')
+        self.assertRegex(address, r'^sapi4_[a-z]{3}[0-9]{3}[a-z]{3}$')
+        self.assertEqual(address, public_id(identity))
+        for invalid in ('sapi4_5ioqgcj8q', 'sapi4_123abc456', 'sapi4_ab123qw'):
+            with self.assertRaisesRegex(RelayError, 'Use an ID'):
+                self.boxes.lookup(invalid)
         body = dict(public_id=address, corpora_id=identity, public_key=crypto.b64(b'k'*32))
         with self.assertRaises(RelayError):
             self.call('POST', ['api','rooms'], 'wrong', body)

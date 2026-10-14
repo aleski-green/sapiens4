@@ -162,7 +162,7 @@ class Mailboxes:
 
 
     def lookup(self, address):
-        if not re.fullmatch(r'sapi4_[a-z0-9]{9}', address):
+        if not re.fullmatch(r'sapi4_[a-z]{3}[0-9]{3}[a-z]{3}', address):
             raise RelayError(400, 'Use an ID like sapi4_abc123qwe.')
         with self.connect() as db:
             row = db.execute('SELECT c.public_key,c.expires FROM corpora c JOIN rooms r ON r.id=c.room '

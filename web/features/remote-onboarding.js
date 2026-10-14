@@ -1,7 +1,7 @@
 /* Public address discovery, QR verification, and an app-local camera scanner. */
 'use strict';
 window.RemoteOnboarding = (() => {
-  const pattern = /^sapi4_[a-z0-9]{9}$/;
+  const pattern = /^sapi4_[a-z]{3}[0-9]{3}[a-z]{3}$/;
   function mount(pair, status) {
     const $ = id => document.getElementById(id);
     let selected = null, stream = null, timer = null, generation = 0, looking = false;

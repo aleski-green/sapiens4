@@ -13,6 +13,9 @@ const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
  const flow=w.RemoteOnboarding.mount(async()=>{paired++;},text=>message=text);
  const submit=async(value)=>{$('corpora-address').value=value;$('corpora-form').dispatchEvent(new w.Event('submit',{cancelable:true}));await settle();};
  await submit('wrong');assert.equal(requests.length,0);assert.match(message,/sapi4_/);
+ for(const invalid of ['sapi4_5ioqgcj8q','sapi4_123abc456','sapi4_ab123qw','sapi4_abcd123qw']) {
+  await submit(invalid);assert.equal(requests.length,0);assert.equal($('corpora-address').checkValidity(),false);
+ }
  fail=true;await submit(invitation.public_id);assert.equal($('qr-step').hidden,true);assert.match(message,/No active/);
  fail=false;await submit(invitation.public_id);assert.equal($('qr-step').hidden,false);assert.equal(paired,0,'ID alone never pairs');
  assert.equal($('selected-address').textContent,invitation.public_id);

@@ -8,11 +8,12 @@ from sapiens.files import atomic_json, file_lock
 
 def public_id(identity):
     """Stable, non-secret address; the relay rejects address collisions."""
-    value = int.from_bytes(hashlib.sha256(UUID(identity).bytes).digest()[:8], 'big') % (36 ** 9)
+    value = int.from_bytes(hashlib.sha256(UUID(identity).bytes).digest(), 'big') % (26 ** 6 * 1000)
     suffix = ''
-    for _ in range(9):
-        value, digit = divmod(value, 36)
-        suffix = 'abcdefghijklmnopqrstuvwxyz0123456789'[digit] + suffix
+    for index in reversed(range(9)):
+        alphabet = '0123456789' if 3 <= index < 6 else 'abcdefghijklmnopqrstuvwxyz'
+        value, digit = divmod(value, len(alphabet))
+        suffix = alphabet[digit] + suffix
     return 'sapi4_' + suffix
 
 
