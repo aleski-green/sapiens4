@@ -9,7 +9,7 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 0));
     {url: 'http://127.0.0.1:4174/remote/', runScripts: 'outside-only'});
   const w = dom.window, $ = id => w.document.getElementById(id), calls = [], intervals = [];
   let fail = false, enabled = false, copied = '', qrText = '';
-  let configured = null;
+  let configured = null, pending = null;
   Object.defineProperty(w.navigator, 'clipboard', {value:{writeText: async text => {copied = text;}}});
   const invitation = {v:'sapiens-remote-box-v1',relay:'http://127.0.0.1:4180',room:'r'.repeat(43),
     token:'t'.repeat(43),secret:'s'.repeat(43),desktop:Buffer.alloc(32,7).toString('base64'),expires:Math.floor(Date.now()/1000)+259200,public_id:'sapi4_abc123qwe'};
@@ -21,7 +21,7 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 0));
     calls.push({url, body: opts.body && JSON.parse(opts.body)});
     if (url.endsWith('/pair')) { enabled = !fail; return {ok: !fail, json: async () => fail ?
       {error: 'Relay unavailable'} : {qr: invitation}}; }
-    return {ok: true, json: async () => ({available: true, enabled, local_relay: true, configured_relay: configured, public_id:invitation.public_id, invitation:enabled?invitation:null, expires: invitation.expires})};
+    return {ok: true, json: async () => ({available: true, enabled, pending, local_relay: true, configured_relay: configured, public_id:invitation.public_id, invitation:enabled?invitation:null, expires: invitation.expires})};
   };
   w.eval(fs.readFileSync(path.join(root, 'web/features/remote-desktop.js'), 'utf8'));
   await settle();
@@ -67,6 +67,16 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.deepEqual(calls.at(-2).body,{saved:true});
   enabled = false; await intervals[0]();
   assert.equal($('qr-panel').hidden, true, 'Disabled invitation must not remain visible');
+  pending = {peer:'full-public-key',fingerprint:'old-long-fingerprint',confirmation_code:'CwnX · eCGC'};
+  await intervals[0]();
+  assert.equal($('confirmation-code').textContent,'CwnX · eCGC');
+  assert.equal($('qr-panel').hidden,true,'Focus the approval step once the QR was scanned');
+  assert.equal($('approve').textContent,'Confirm');
+  assert.equal($('approve').disabled,false);
+  $('approve').click();await settle();
+  assert.deepEqual(calls.find(c=>c.url.endsWith('/approve')).body,{peer:'full-public-key'});
+  delete pending.confirmation_code;await intervals[0]();
+  assert.equal($('approve').disabled,true,'Never approve without a displayed comparison code');
   dom.window.close();
   console.log('Remote desktop setup: import, invalid origins, local pairing, and persistent errors passed');
 })().catch(error => {console.error(error); process.exitCode = 1;});

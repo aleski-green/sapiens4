@@ -49,6 +49,19 @@ def fingerprint(public):
     return hashlib.sha256(unb64(public, 32)).hexdigest()[:32]
 
 
+def confirmation_code(desktop, phone, room):
+    """Human comparison only; approval still binds the full phone public key."""
+    alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz'
+    context = b'sapiens-confirm-v1\0' + room.encode('utf-8') + b'\0'
+    digest = hashlib.sha256(context + unb64(desktop, 32) + unb64(phone, 32)).digest()
+    value = int.from_bytes(digest[:6], 'big') % len(alphabet) ** 8
+    code = ''
+    for _ in range(8):
+        value, digit = divmod(value, len(alphabet))
+        code = alphabet[digit] + code
+    return code[:4] + ' · ' + code[4:]
+
+
 def origin(value):
     if not isinstance(value, str):
         raise ValueError('Relay must be an HTTPS origin')

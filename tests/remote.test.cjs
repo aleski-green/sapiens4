@@ -118,6 +118,13 @@ function qrPixels(text) {
   assert.equal(w.document.getElementById('verify-panel').hidden,false);
   assert.equal(w.document.getElementById('chat-panel'),null);
   const phone=bytes(posted[0].frame.sender);
+  assert.equal(await w.RemoteCode.confirmation(b64(Uint8Array.from({length:32},(_,i)=>i)),
+    b64(Uint8Array.from({length:32},(_,i)=>i+32)), 'room-test'), 'CwnX · eCGC');
+  const verification=w.document.getElementById('confirmation-code').textContent;
+  assert.equal(verification,await w.RemoteCode.confirmation(invitation.desktop,b64(phone),invitation.room));
+  assert.match(verification,/^[A-HJKMNP-Za-hjkmnp-z]{4} · [A-HJKMNP-Za-hjkmnp-z]{4}$/);
+  assert.notEqual(verification,await w.RemoteCode.confirmation(invitation.desktop,b64(phone),'other-room'));
+
   assert.equal(await w.RemoteSession.read(),undefined,'An unapproved phone must not be remembered');
   function reply(id,result,wireId=1) {
     const nonce=nacl.randomBytes(24),message={v:invitation.v,room:invitation.room,direction:'desktop-to-phone',

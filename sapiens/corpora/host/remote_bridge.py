@@ -98,7 +98,8 @@ class RemoteBridge:
                         configured_relay=self.saved_relay().get('relay'),
                         paired=bool(config.get('peer')), relay=config.get('relay'),
                         fingerprint=crypto.fingerprint(config['peer']) if config.get('peer') else None,
-                        pending=dict(fingerprint=crypto.fingerprint(pending['peer']), peer=pending['peer'])
+                        pending=dict(fingerprint=crypto.fingerprint(pending['peer']), peer=pending['peer'],
+                                     confirmation_code=crypto.confirmation_code(config['public'], pending['peer'], config['room']))
                         if pending and config['expires'] > time.time() else None,
                         expires=config.get('expires'), error=self.error, last_contact=self.last_contact)
 

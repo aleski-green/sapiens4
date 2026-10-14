@@ -28,6 +28,22 @@ window.RemoteCode = (() => {
         secret:parts[4], desktop:base64(parts[5]), expires:parseInt(parts[6],36), ...(parts[7] ? {public_id:parts[7]} : {})};
     } catch { throw new Error('Use the QR from desktop Connect phone.'); }
   }
+  async function confirmation(desktop, phone, room) {
+    const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz';
+    const context = new TextEncoder().encode('sapiens-confirm-v1\0' + room + '\0');
+    const keys = [desktop, phone].map(key => Uint8Array.from(atob(key), c => c.charCodeAt(0)));
+    if (keys.some(key => key.length !== 32)) throw new Error('Invalid device key.');
+    const input = new Uint8Array(context.length + 64);
+    input.set(context); input.set(keys[0], context.length); input.set(keys[1], context.length + 32);
+    const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', input));
+    let value = Array.from(hash.slice(0, 6)).reduce((n, byte) => n * 256 + byte, 0) % alphabet.length ** 8;
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+      code = alphabet[value % alphabet.length] + code;
+      value = Math.floor(value / alphabet.length);
+    }
+    return code.slice(0, 4) + ' · ' + code.slice(4);
+  }
   const link = data => data.relay + '/#' + encode(data);
-  return {encode, decode, link};
+  return {encode, decode, link, confirmation};
 })();

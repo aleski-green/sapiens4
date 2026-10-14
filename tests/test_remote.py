@@ -46,6 +46,14 @@ class FakeService:
 
 @unittest.skipUnless(crypto.available(), 'Install remote-requirements.txt')
 class RemoteTest(unittest.TestCase):
+    def test_confirmation_code_matches_browser_vector_and_binds_context(self):
+        desktop, phone = crypto.b64(bytes(range(32))), crypto.b64(bytes(range(32, 64)))
+        code = crypto.confirmation_code(desktop, phone, 'room-test')
+        self.assertEqual(code, 'CwnX · eCGC')
+        self.assertNotEqual(code, crypto.confirmation_code(phone, desktop, 'room-test'))
+        self.assertNotEqual(code, crypto.confirmation_code(desktop, phone, 'other-room'))
+
+
     def test_socket_upload_does_not_inherit_idle_receive_timeout(self):
         class SlowUpload:
             timeout = .5
@@ -96,6 +104,8 @@ class RemoteTest(unittest.TestCase):
         self.bridge.process(self.message('pair', secret=self.bridge.config['secret']))
         self.assertIsNone(self.bridge.config['peer'])
         self.assertEqual(self.bridge.status()['pending']['fingerprint'], crypto.fingerprint(self.phone_public))
+        self.assertEqual(self.bridge.status()['pending']['confirmation_code'],
+                         crypto.confirmation_code(self.bridge.config['public'], self.phone_public, 'room-1'))
         with self.assertRaises(ValueError):
             self.bridge.approve(dict(peer='substituted'))
         self.bridge.approve(dict(peer=self.phone_public))

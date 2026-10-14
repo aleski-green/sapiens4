@@ -31,7 +31,9 @@
       $('active').hidden = !data.enabled;
       $('approval').hidden = !data.pending;
       pending = data.pending;
-      if (pending) $('fingerprint').textContent = pending.fingerprint;
+      $('confirmation-code').textContent = pending?.confirmation_code || '';
+      $('approve').disabled = !pending?.confirmation_code;
+      if (pending) $('qr-panel').hidden = true;
       $('device').textContent = data.paired ? 'Device connected' : 'Waiting for device.';
       if (data.paired || !data.enabled || data.expires < Date.now()/1000) {
         $('qr-panel').hidden = true; renderedInvitation=null;
@@ -101,11 +103,11 @@
     } finally { $('connection-file').value = ''; }
   });
   $('approve').addEventListener('click', async () => {
-    if (!pending) return;
+    if (!pending?.confirmation_code) return;
     $('approve').disabled = true;
     try { await api('/approve', {peer:pending.peer}); await refresh(); }
     catch (error) { status(error.message); }
-    finally { $('approve').disabled = false; }
+    finally { $('approve').disabled = !pending?.confirmation_code; }
   });
   $('revoke').addEventListener('click', async () => {
     try {

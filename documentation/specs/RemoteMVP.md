@@ -62,7 +62,7 @@ it to the phone or embed it in a URL. Desktop saves it privately in `remote-rela
    The QR remains available on this local page until approved, revoked, or expired (three days).
 3. Open the installed app, enter the desktop’s public CORPORA ID (`sapi4_` plus three lowercase letters, three digits and three lowercase letters), then scan or upload its QR. For a same-computer browser test use `http://127.0.0.1:4180/`. For an actual iPhone, use the HTTPS deployment described below;
    `127.0.0.1` on the phone refers to the phone, not the PC.
-4. Compare the phone fingerprint on both screens and select **Approve device** on
+4. Compare the eight-letter confirmation code on both screens and select **Confirm** on
    desktop. This binds approval to that exact phone key.
 5. CORPORA opens automatically in the paired page. Use its normal Sapi/Group
    navigation, composer, Work, Notes and settings. Wait for desktop confirmation.
@@ -78,7 +78,7 @@ The compact `s4.` code encodes the same invitation as the QR, omitting verbose
 field names. This is encoding, not encryption: a fixed shared key would provide
 no secrecy. The code contains a temporary invitation secret, never either
 device’s private key or the relay provisioning token. Origin, expiry, phone
-fingerprint approval, and encrypted transport checks apply equally to both flows.
+confirmation-code approval, and encrypted transport checks apply equally to both flows.
 Do not share the code publicly.
 
 After approval, the phone stores its device identity and mailbox credential in
@@ -122,7 +122,7 @@ service configuration and rotate it when needed.
 Retrieve `relay.connection.json` from your server using your normal secure file
 transfer method. In desktop CORPORA, select **Import relay connection file** and
 create the pairing QR. Scan it with the iPhone Camera app and open the link;
-approve the matching phone fingerprint on desktop once. The public relay site never displays the provisioning token. Hosted
+confirm the matching code on desktop once. The public relay site never displays the provisioning token. Hosted
 Sapiens sign-in/automatic account provisioning is not implemented. Desktop and phone both make outbound HTTP(S)
 requests, so there is no inbound port or router change on the desktop. Origin
 changes require new pairing; QR upload never navigates to an arbitrary encoded URL.
@@ -176,7 +176,7 @@ wrong room/direction, and expired messages are rejected before any operation run
 The QR carries the desktop public key, a random invitation secret, mailbox
 address/access token, and expiry. Phone generates a private key locally and sends
 its public key with an encrypted pairing proof. Desktop verifies the secret and
-requires fingerprint approval before accepting commands. Private keys never
+requires confirmation-code approval before accepting commands. Private keys never
 appear in the QR or travel to the relay. The invitation is consumed on approval.
 
 The relay stores public sender keys, nonces, ciphertext, routing IDs and expiry.
@@ -223,7 +223,7 @@ up to 30 seconds (browser adds jitter); the browser keeps a local timer for requ
 expiry and identical-ciphertext retries. A relay restart preserves paired mailboxes
 and queued data. Approved devices remain valid until revoked. Unapproved rooms
 expire after seven days; only the desktop bearer can promote a room through
-`POST /api/rooms/:id/trust`, immediately before local fingerprint approval.
+`POST /api/rooms/:id/trust`, immediately before local confirmation-code approval.
 Existing pairings created by older clients need one final re-pair after upgrading
 both desktop and relay, because those clients did not save the phone key.
 
@@ -340,7 +340,7 @@ orientation mode. Narrow non-touch windows also use the compact panel controls;
 ordinary desktop windows retain independent toggles for all three panels.
 
 Install before pairing for the shortest setup: open the Home Screen app, enter its
-CORPORA ID, scan or upload the desktop QR, and approve its fingerprint once. Safari and the installed
+CORPORA ID, scan or upload the desktop QR, and confirm its matching code once. Safari and the installed
 app have separate IndexedDB storage; existing Safari approval does not transfer.
 The guide explains this when already connected. Pairing the app replaces the
 current phone connection under the MVP's one-device limit. Afterwards, the same
@@ -368,3 +368,10 @@ configuration so reopening Connect phone can redraw its QR. Approval removes tha
 invitation and closes public discovery. Camera images are decoded locally; streams
 stop on cancellation, successful decoding, backgrounding and page exit. Pairing
 loads the same CORPORA theme files and preference handler as the workspace.
+
+The comparison code uses eight mixed-case letters in two groups of four, excluding
+ambiguous `I`, `L`, `O`, `i`, `l`, and `o`. Both endpoints derive it from a
+domain-separated SHA-256 hash of the invitation room and the ordered desktop/phone
+public keys. It is a short human comparison (about 44 bits), not an authentication
+credential or replacement encryption key. Approval still submits and checks the
+full phone public key; existing approved connections are unchanged.

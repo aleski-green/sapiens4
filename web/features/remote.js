@@ -251,8 +251,7 @@
     await onboarding.validate(data);
     onboarding.stop();
     session={...data,keys:nacl.box.keyPair()};
-    const hash=await crypto.subtle.digest('SHA-256',session.keys.publicKey);
-    $('fingerprint').textContent=Array.from(new Uint8Array(hash)).map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,32);
+    $('confirmation-code').textContent=await RemoteCode.confirmation(data.desktop,b64(session.keys.publicKey),data.room);
     $('pair-panel').hidden=true;$('verify-panel').hidden=false;$('forget').hidden=false;
     connect();
     await send({kind:'pair',secret:data.secret});delete session.secret;
