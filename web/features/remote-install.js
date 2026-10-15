@@ -15,7 +15,7 @@ window.RemoteInstall = (() => {
   const action = mobile ? 'Add to Home Screen' : 'Install Sapiens4';
   const steps = {
     ios: '<li>In Safari, tap <strong>Share</strong>. It may be inside the <strong>•••</strong> menu.</li><li>Choose <strong>Add to Home Screen</strong>, keep <strong>Open as Web App</strong> on, then tap <strong>Add</strong>.</li>',
-    android: '<li>In Chrome, open the <strong>⋮</strong> menu and choose <strong>Add to Home screen</strong>.</li><li>Choose <strong>Install</strong>, then open Sapiens4 from its icon.</li>',
+    android: '<li>In Chrome, open the <strong>⋮</strong> menu and choose <strong>Install and create shortcut</strong> or <strong>Add to Home screen</strong>.</li><li>Choose <strong>Install</strong>, confirm, then open Sapiens4 from its icon.</li>',
     mac: '<li>In Safari, choose <strong>File → Add to Dock</strong>, then <strong>Add</strong>.</li><li>In Chrome, use the <strong>Install</strong> icon in the address bar. Open Sapiens4 from its app icon.</li>',
     windows: '<li>In Chrome or Edge, use the <strong>Install</strong> icon in the address bar and confirm installation.</li><li>Open Sapiens4 from the <strong>Start menu</strong>.</li>',
     desktop: '<li>In Chrome or Edge, use the <strong>Install</strong> icon in the address bar and confirm installation.</li><li>You can also keep using Sapiens4 in this browser.</li>',

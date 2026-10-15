@@ -324,7 +324,7 @@ HTTPS domain with the entry point for your device:
 | Device | Entry point | Installation |
 | --- | --- | --- |
 | iPhone / iPad | `/ios` | Safari → Share → Add to Home Screen |
-| Android | `/android` | Chrome → menu → Add to Home screen → Install |
+| Android | `/android` | Chrome → menu → Install and create shortcut (or Add to Home screen) → Install |
 | macOS | `/mac` | Safari → File → Add to Dock, or Chrome's Install icon |
 | Windows | `/windows` | Chrome or Edge's Install icon |
 
