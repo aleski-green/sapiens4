@@ -316,11 +316,26 @@ older desktop that returns no identity cannot open the workspace.
 This establishes workspace identity, not hosted account registration, recovery,
 multi-workspace switching, multi-host synchronization, or ownership transfer.
 
-### iPhone Home Screen app
+### Installed remote web apps
 
-Open `/ios` on the relay's HTTPS domain for the iPhone entry point. `/ios/` and
-the original `/` also serve the same app; assets and API routes remain rooted at
-the origin. A custom hostname needs Railway domain verification and DNS records,
+The shared web app works in browsers and installed app windows. Use the relay's
+HTTPS domain with the entry point for your device:
+
+| Device | Entry point | Installation |
+| --- | --- | --- |
+| iPhone / iPad | `/ios` | Safari → Share → Add to Home Screen |
+| Android | `/android` | Chrome → menu → Add to Home screen → Install |
+| macOS | `/mac` | Safari → File → Add to Dock, or Chrome's Install icon |
+| Windows | `/windows` | Chrome or Edge's Install icon |
+
+Trailing slashes are supported; `/` detects the device for installation guidance.
+Each platform page links to a manifest whose start URL preserves that entry point.
+An HTTPS redirect can forward these paths to the relay's existing HTTPS hostname.
+The browser and installed app then use the destination origin; the redirect does
+not require adding a custom domain to Railway or transferring existing trust.
+
+Assets and API routes remain rooted at the origin. Hosting the app itself on a
+custom hostname needs Railway domain verification and DNS records,
 then `SAPIENS_RELAY_ORIGIN` set to that HTTPS origin (without `/ios`). Import the
 updated private relay connection file and pair again after changing hostnames;
 browser trust does not transfer across origins.
@@ -347,9 +362,11 @@ current phone connection under the MVP's one-device limit. Afterwards, the same
 trusted-device reconnect and revocation rules apply.
 
 This is an online web app, with no App Store distribution or offline workspace
-cache. The relay and desktop must be reachable. The manifest's start URL is always
-`/ios`; it never contains an invitation, private key, or bearer token. Credentials are
-not copied to cookies or other installation metadata.
+cache. The relay and desktop must be reachable. The manifest's start URL matches
+the entry point (`/`, `/ios`, `/android`, `/mac`, or `/windows`); it never contains
+an invitation, private key, or bearer token. All manifests retain the same app ID
+and scope, so these are entry points to one app, not separate installations.
+Credentials are not copied to cookies or other installation metadata.
 
 ### Public CORPORA addresses and QR pairing
 

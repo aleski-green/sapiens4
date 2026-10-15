@@ -5,7 +5,7 @@ const {JSDOM} = require('jsdom');
 const root = path.join(__dirname, '..');
 function client(standalone = false) {
   const dom = new JSDOM(fs.readFileSync(path.join(root, 'web/shell/remote.html'), 'utf8'),
-    {url:'https://relay.example', runScripts:'outside-only'});
+    {url:'https://relay.example/ios', runScripts:'outside-only'});
   const w = dom.window;
   Object.defineProperty(w.navigator, 'standalone', {value:standalone});
   w.HTMLDialogElement.prototype.showModal = function() { this.open = true; };

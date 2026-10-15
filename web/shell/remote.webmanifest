@@ -3,7 +3,7 @@
   "name": "Sapiens4",
   "short_name": "Sapiens4",
   "description": "Your CORPORA, one tap away. Connect to Sapiens4 on your desktop.",
-  "start_url": "/ios",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f4f1e9",

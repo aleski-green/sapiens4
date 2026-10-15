@@ -28,6 +28,12 @@ ASSETS = {
     '/': ('shell/remote.html', 'text/html'),
     '/ios': ('shell/remote.html', 'text/html'),
     '/ios/': ('shell/remote.html', 'text/html'),
+    '/android': ('shell/remote.html', 'text/html'),
+    '/android/': ('shell/remote.html', 'text/html'),
+    '/mac': ('shell/remote.html', 'text/html'),
+    '/mac/': ('shell/remote.html', 'text/html'),
+    '/windows': ('shell/remote.html', 'text/html'),
+    '/windows/': ('shell/remote.html', 'text/html'),
     '/remote-code.js': ('features/remote-code.js', 'text/javascript'),
     '/remote-session.js': ('features/remote-session.js', 'text/javascript'),
     '/remote.js': ('features/remote.js', 'text/javascript'),
@@ -230,7 +236,14 @@ class RelayServer:
                 return await self.websocket(req)
             if req.method == 'GET' and path in ASSETS:
                 name, mime = ASSETS[path]
-                return self.response(200, (ROOT / 'web' / name).read_bytes(), mime)
+                content = (ROOT / 'web' / name).read_bytes()
+                platform = path.strip('/')
+                if platform in {'ios', 'android', 'mac', 'windows'}:
+                    content = content.replace(b'href="/manifest.webmanifest"',
+                                              f'href="/manifest.webmanifest?platform={platform}"'.encode())
+                elif path == '/manifest.webmanifest' and req.query.get('platform') in {'ios', 'android', 'mac', 'windows'}:
+                    return self.response(200, dict(json.loads(content), start_url='/' + req.query['platform']), mime)
+                return self.response(200, content, mime)
             if req.method == 'GET' and path in {'/workspace/', '/workspace/app.js',
                     '/workspace/styles.css', '/live.css', '/assets/sapi-theme.css', '/assets/sapi-theme.js'}:
                 found = asset(path)

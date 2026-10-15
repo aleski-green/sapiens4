@@ -292,11 +292,26 @@ RSpec.describe 'Encrypted remote service contracts' do
       expect(@relay.request('GET', path).first).to eq(404)
     end
     manifest = @relay.request('GET', '/manifest.webmanifest')[1]
-    expect(manifest).to include('display' => 'standalone', 'start_url' => '/ios', 'id' => '/')
+    expect(manifest).to include('display' => 'standalone', 'start_url' => '/', 'id' => '/')
     [180, 192, 512].each do |size|
       status, png = @relay.request('GET', "/app-icon-#{size}.png")
       expect(status).to eq(200)
       expect(png.byteslice(16, 8).unpack('NN')).to eq([size, size])
+    end
+  end
+
+  %w[ios android mac windows].each do |platform|
+    it "serves the #{platform} app with its own launch URL and the shared app identity" do
+      manifest = @relay.request('GET', '/manifest.webmanifest')[1]
+      path = "/manifest.webmanifest?platform=#{platform}"
+      status, platform_manifest = @relay.request('GET', path)
+      expect(status).to eq(200)
+      expect(platform_manifest).to eq(manifest.merge('start_url' => "/#{platform}"))
+      ["/#{platform}", "/#{platform}/"].each do |entry|
+        status, html = @relay.request('GET', entry)
+        expect(status).to eq(200)
+        expect(html).to include(%(href="#{path}"))
+      end
     end
   end
 end
