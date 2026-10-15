@@ -15,7 +15,7 @@ async function browserAction(action, fields={}, owner=state.selected) {
     await api(`/api/${owner.startsWith('group_')?'groups':'agents'}/${owner}/control`, 'POST', {op:`workspace_${action}`,...fields});
     const snapshot=await api('/api/state');
     receiveWorkspaces(snapshot.preferences);
-    if (['open','focus','close','back','forward','reload'].includes(action)) {setBrowserMenu();state.panes.workspace=true;}
+    if (['open','focus','close','back','forward','reload'].includes(action)) {setBrowserMenu();showPane('workspace');}
     renderPanes();renderTabs();renderWorkspace();save();return true;
   } catch (error) {toast(error.message);}
 }
@@ -28,6 +28,13 @@ function starButton(t) {
 function layoutTabs() {
   const host=$('#browser-tabs'), overflow=$('#browser-overflow');
   const rows=[...host.children];rows.forEach(row=>row.hidden=false);host.scrollLeft=0;
+  if(paneLimit()<3){
+    rows.forEach(row=>row.hidden=!row.classList.contains('active'));
+    overflow.hidden=state.tabs.length<2;
+    overflow.textContent=`⌄ ${state.tabs.length}`;
+    overflow.setAttribute('aria-label',`All ${state.tabs.length} open tabs`);
+    return;
+  }
   overflow.hidden=true;overflow.hidden=host.scrollWidth<=host.clientWidth+1;
   overflow.textContent=`› ${state.tabs.length}`;overflow.setAttribute('aria-label',`All ${state.tabs.length} open tabs`);
   const visible=rows.slice(0,Math.max(1,Math.floor((host.clientWidth+3)/134))), active=host.querySelector('.active');
@@ -74,7 +81,7 @@ async function refreshWorkspacePreview() {
   }
   if(!tab?.path||!state.panes.workspace)return;
   const pre=host.querySelector('.workspace-text'),current=workspacePreview;
-  pre.style.fontSize=`${13*(tab.zoom||1)}px`;
+  pre.style.fontSize=`${(paneLimit()<3?12.6:13)*(tab.zoom||1)}px`;
   $('#browser-status').textContent='';
   if(current.pending||Date.now()-current.checked<2000)return;
   current.pending=true;current.checked=Date.now();

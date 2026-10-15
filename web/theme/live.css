@@ -1,4 +1,3 @@
-/* Live workspace styles layered over web/theme/styles.css. */
 [hidden] { display: none !important; }
 .live-status { padding:12px 14px; border:1px solid var(--line); border-radius:10px; margin:14px 0; }
 .live-status p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
@@ -45,7 +44,6 @@
 .warning-details[hidden] { display:none; }
 .warning-badge:focus-visible { outline:2px solid #a97600; outline-offset:2px; }
 
-/* Workspace theme refinements. */
 
 :root body.sapi-workspace {
   --sapi-brand-gradient:linear-gradient(to bottom right,#ed3995 0%,#df2eea 35%,#783cf0 65%,#35c5e8 100%);
@@ -167,11 +165,9 @@
 :root body.sapi-workspace .icon-button { border-radius:6px; }
 :root body.sapi-workspace .icon-button:hover,:root body.sapi-workspace .theme-toggle:hover { background:var(--sapi-purple-tint); }
 :root body.sapi-workspace .toast { background:var(--ink);color:var(--sapi-white);border:0;border-radius:10px;font:12px/1.5 var(--sapi-font);box-shadow:0 6px 24px #0002; }
-/* Neutral control colors also win over legacy dark-theme button variants. */
 :root[data-theme] body.sapi-workspace .send-button { background:var(--ink);color:var(--sapi-white);border:0; }
 :root body.sapi-workspace .settings-row { border-color:var(--line); }
 
-/* Color belongs to Sapi identities and interaction, while the shell stays neutral. */
 :root body.sapi-workspace .avatar {
   background:radial-gradient(circle at 30% 25%,#ffffff66,transparent 65%),var(--avatar-color);
   border-color:color-mix(in srgb,var(--avatar-color) 72%,#343442);color:#272137;
@@ -191,7 +187,6 @@
   background:#d90068;color:#fff;border-color:#d90068;
 }
 
-/* Live-only controls use the same scale without moving or hiding navigation. */
 :root body.sapi-workspace #profile-button { min-width:60px;height:28px;padding:0 8px;border:0;border-radius:6px;background:transparent;font-size:11px;color:var(--muted); }
 :root body.sapi-workspace .conversation-tabs { gap:16px; }
 :root body.sapi-workspace .agent-row-name { display:grid;grid-template-columns:minmax(0,1fr) max-content;align-items:baseline;column-gap:6px;white-space:normal;overflow-wrap:anywhere; }
@@ -213,15 +208,15 @@
 }
 @media(max-width:450px) {
   :root body.sapi-workspace .app-header { height:72px;min-height:72px; }
+  :root body.sapi-workspace #autonomy-button { grid-column:2 / 4;min-width:0; }
+  :root body.sapi-workspace .app-header > :is(a[href="/remote/"],#remote-status) { grid-column:4;white-space:nowrap; }
 }
 :root[data-theme] body.sapi-workspace #profile-button:hover,
 :root[data-theme] body.sapi-workspace :is(.settings-tabs) button:not(:disabled):hover { color:var(--sapi-accent);background:var(--sapi-hover); }
 
-/* Keep connection text and its settings action; omit decorative glyphs. */
+#remote-feedback { position:fixed;bottom:20px;left:16px;right:16px;z-index:1000;margin:0;padding:12px 16px;border:1px solid var(--line);border-radius:8px;background:var(--sapi-bg);color:var(--ink);font:13px/1.5 system-ui,sans-serif;box-shadow:0 4px 20px #0002; }
 :root body.sapi-workspace #autonomy-button > span:not(#autonomy-label) { display:none; }
-/* The composer supplies the focus indicator for its text field. */
 :root[data-theme] body.sapi-workspace .composer textarea:is(:hover,:focus,:focus-visible) { outline:none;box-shadow:none; }
-/* Search uses a single focus indicator around the complete control. */
 :root[data-theme] body.sapi-workspace .search-field:focus-within { outline:none;box-shadow:inset 0 0 0 1px var(--sapi-accent); }
 :root[data-theme] body.sapi-workspace .search-field input:is(:hover,:focus,:focus-visible) { outline:none;box-shadow:none; }
 
@@ -308,7 +303,6 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 :root[data-theme] body.sapi-workspace summary.task-summary:hover { background:var(--panel);color:var(--ink); }
 
 .notes-wiki .citation{font-size:9px;vertical-align:super;white-space:nowrap;margin-left:2px}.notes-wiki .permalink{font-family:system-ui,sans-serif;font-size:10px;margin-left:7px;color:var(--muted);opacity:0}.notes-wiki h2:hover .permalink,.notes-wiki h3:hover .permalink,.notes-wiki .permalink:focus{opacity:1}.notes-wiki .references{font-size:10px;padding-left:19px}.notes-wiki .references li{margin:7px 0}.notes-wiki .references .origin{display:block;color:var(--muted);font-size:9px}.notes-wiki .backref{margin-right:4px}.notes-wiki .file-list{font-size:10px;line-height:1.9}.notes-wiki .draft-note{font-size:10px;color:var(--muted)}
-/* Groups retain stable label identities while their avatars reflect membership. */
 .agent-entry{min-width:0}.agent-entry>.agent-row{width:100%;cursor:pointer}
 .group-labels{display:inline-flex;gap:4px;flex-wrap:wrap;min-width:0}
 .group-chip{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:4px;background:color-mix(in srgb,var(--group-color,#888) 40%,var(--sapi-bg));color:var(--ink);font-size:10px;padding:3px 5px;cursor:pointer}
@@ -333,7 +327,6 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 
 :root[data-theme] body.sapi-workspace .scope-switch button:disabled{opacity:.4;cursor:default;background:transparent;color:var(--muted)}
 
-/* Persistent activity tabs with independent dropdown buttons. */
 :root body.sapi-workspace .conversation-tabs{min-height:42px;gap:24px;overflow:visible;position:relative;z-index:6;flex-shrink:0;white-space:nowrap}
 .activity-tab{position:relative;display:flex;align-items:center;gap:4px;align-self:stretch;border-bottom:1.5px solid transparent;margin-bottom:-1px}
 .activity-tab.active{border-color:var(--ink)}
@@ -355,7 +348,6 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 .work-nav-tools .activity-menu{left:auto;right:0}
 :root body.sapi-workspace .work-nav-tools [data-new-task]{padding:6px 0;font-size:12px;color:var(--muted);border:0;flex:none}
 :root body.sapi-workspace .group-task .task-summary{padding-left:0;padding-right:0}
-/* Keep submenus within the narrow conversation pane as well as mobile screens. */
 .activity-submenu{left:14px;top:calc(100% + 4px)}
 @media(min-width:1000px){.main-grid[data-visible-panes="2"] .activity-submenu,.main-grid[data-visible-panes="1"] .activity-submenu{left:calc(100% + 6px);top:-5px}}
 .activity-tab:last-child>.activity-menu{left:auto;right:0}
@@ -367,11 +359,22 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 
 .workspace-text{margin:0;padding:20px;width:100%;min-height:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--sapi-ink);font:13px/1.6 ui-monospace,monospace;user-select:text}
 
-/* Compact Updates journal; JSON shares the task row disclosure behavior. */
 .event-log { overflow-x:auto; }
 .event-columns { display:grid; grid-template-columns:152px 70px minmax(130px,1fr) 112px 72px 12px; gap:6px; align-items:center; min-width:568px; font-size:11px; line-height:1.5; }
 .event-head { padding:6px 0 10px; color:var(--muted); border-bottom:1px solid var(--line); }
 .event-row { min-width:568px; }
+
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .app { min-height:0; }
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .main-grid { display:flex!important;flex-direction:row;overflow:hidden; }
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .main-grid>.sidebar,
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .main-grid>.conversation,
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .main-grid>.workspace { flex:1 1 0;min-width:0;min-height:0;max-height:none;height:auto;border:0; }
+:root body.sapi-workspace[data-pane-limit="2"] .main-grid>:not([hidden])~:not([hidden]) { border-left:1px solid var(--line); }
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .agent-list { flex-direction:column; }
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .agent-list>.agent-entry { flex:0 0 auto;width:100%; }
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .agent-row { width:100%;min-width:0; }
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .workspace-content { overflow:auto; }
+:root body.sapi-workspace:is([data-pane-limit="1"],[data-pane-limit="2"]) .pane-toggle[aria-pressed=true] { background:var(--sapi-hover);color:var(--sapi-accent); }
 .event-row summary { padding:10px 0; list-style:none; cursor:pointer; }
 .event-row summary::-webkit-details-marker { display:none; }
 .event-row summary:hover { background:var(--sapi-purple-tint); }
@@ -380,3 +383,89 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 .event-row .event-chevron { display:flex; justify-content:center; }
 .event-row[open] .event-chevron { transform:rotate(90deg); }
 .event-row pre { margin:0 0 12px; padding:12px; background:var(--sapi-purple-tint); border-radius:6px; font:12px/1.5 ui-monospace,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+
+.corpora-identity { margin: -4px 0 12px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+
+/* The same CORPORA shell adapts on touch devices and narrow windows.
+   Display type is 90% of the mobile study; inputs stay at 16px to avoid iOS zoom. */
+.sidebar-actions { display:flex;align-items:center;gap:2px; }
+#search-toggle { display:none; }
+#search-toggle svg { width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round; }
+.app-menu-row { display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;min-height:50px;padding:12px 0;border-top:1px solid var(--line);text-decoration:none;text-align:left;font:inherit; }
+.app-menu-row small { max-width:55%;color:var(--muted);text-align:right;overflow-wrap:anywhere; }
+:root body.sapi-workspace[data-mobile-ui] { font-size:12.6px;overscroll-behavior:none;padding:0;position:fixed;inset:0;overflow:hidden; }
+:root body.sapi-workspace[data-mobile-ui] .app { height:min(100dvh,var(--mobile-viewport-height,100dvh));min-height:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+:root body.sapi-workspace[data-mobile-ui] .app-header { display:grid;grid-template-columns:44px minmax(0,1fr) 44px;grid-template-rows:1fr;height:62px;min-height:62px;gap:8px;padding:5px 12px;border-bottom:1px solid var(--line); }
+:root body.sapi-workspace[data-mobile-ui] .app-header>:not(#app-menu):not(.pane-controls):not(.theme-toggle) { display:none; }
+:root body.sapi-workspace[data-mobile-ui] #app-menu { grid-column:1;grid-row:1;width:44px;height:44px; }
+:root body.sapi-workspace[data-mobile-ui] .pane-controls { grid-column:2;grid-row:1;justify-self:center;margin:0;display:flex;width:150px;max-width:100%;padding:3px;gap:1px;border-radius:15px;background:var(--sapi-surface); }
+:root body.sapi-workspace[data-mobile-ui] .pane-toggle { flex:1;width:44px;height:44px;border-radius:11px;opacity:1; }
+:root body.sapi-workspace[data-mobile-ui] .pane-toggle svg { width:20px;height:20px; }
+:root body.sapi-workspace[data-mobile-ui] .theme-toggle { grid-column:3;grid-row:1;width:44px;height:44px;font-size:22px; }
+:root body.sapi-workspace[data-mobile-ui] .icon-button { width:44px;height:44px;border-radius:12px; }
+:root body.sapi-workspace[data-mobile-ui] :is(.sidebar-bottom,.workspace-footer,#corpora-identity) { display:none; }
+:root body.sapi-workspace[data-mobile-ui] .sidebar { padding:8px 8px 0; }
+:root body.sapi-workspace[data-mobile-ui] .sidebar-heading { margin:0 8px 4px;min-height:44px; }
+:root body.sapi-workspace[data-mobile-ui] .sidebar-heading h1 { font-size:15.3px;letter-spacing:-.3px;color:var(--ink); }
+:root body.sapi-workspace[data-mobile-ui] .sidebar-heading h1 span { font-size:12.6px;font-weight:400; }
+:root body.sapi-workspace[data-mobile-ui] #search-toggle { display:inline-grid; }
+:root body.sapi-workspace[data-mobile-ui] .search-field { display:none;order:1;margin:0 8px 8px;height:44px;flex-shrink:0;padding:0 12px;border-radius:12px; }
+:root body.sapi-workspace[data-mobile-ui] .search-field.search-open { display:flex; }
+:root body.sapi-workspace[data-mobile-ui] .search-field input { font-size:16px; }
+:root body.sapi-workspace[data-mobile-ui] .search-field kbd { display:none; }
+:root body.sapi-workspace[data-mobile-ui] .scope-switch { order:2;position:static;width:auto;flex:none;justify-content:flex-start;gap:6px;margin:0 8px 8px;padding:0;background:transparent; }
+:root body.sapi-workspace[data-mobile-ui] .scope-switch button { flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:10px;font-size:11.7px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-list { order:3;flex:1;gap:2px;padding:4px 0 12px;overscroll-behavior:contain; }
+:root body.sapi-workspace[data-mobile-ui] .agent-row { min-height:72px;padding:12px 10px;gap:12px;border-radius:15px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-row-name { font-size:13.5px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-name { padding:3px 0; }
+:root body.sapi-workspace[data-mobile-ui] .agent-row-copy p { font-size:11.7px;margin-top:3px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-row-name small { font-size:9.9px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-row .avatar { width:43px;height:43px;font-size:12.6px; }
+:root body.sapi-workspace[data-mobile-ui] .avatar .presence { width:11px;height:11px;bottom:-1px;right:-1px;border:2px solid var(--sapi-bg);background:#86bd8c; }
+:root body.sapi-workspace[data-mobile-ui] .avatar .presence.busy { background:#bd8bea; }
+:root body.sapi-workspace[data-mobile-ui] .avatar .presence.idle { background:#aaa6ae; }
+:root body.sapi-workspace[data-mobile-ui] .main-sapi-row { margin-bottom:0; }
+:root body.sapi-workspace[data-mobile-ui] .main-sapi-row::after { display:none; }
+:root body.sapi-workspace[data-mobile-ui] .agent-heading { flex:none;height:auto;min-height:66px;padding:10px 16px;gap:12px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-heading .avatar { width:36px;height:36px;font-size:12.6px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-heading h2 { font-size:14.4px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-heading p { font-size:9.9px; }
+:root body.sapi-workspace[data-mobile-ui] .agent-heading .group-labels { display:none; }
+:root body.sapi-workspace[data-mobile-ui] .conversation-tabs { padding:0 16px;gap:22px; }
+:root body.sapi-workspace[data-mobile-ui] .activity-tab>button { min-height:44px;font-size:11.7px;padding:8px 0; }
+:root body.sapi-workspace[data-mobile-ui] .activity-tab.active { border-color:var(--sapi-accent); }
+:root body.sapi-workspace[data-mobile-ui] .conversation-body { padding:18px 16px 8px;overscroll-behavior:contain; }
+:root body.sapi-workspace[data-mobile-ui] .message-bubble { font-size:13.5px;line-height:1.55; }
+:root body.sapi-workspace[data-mobile-ui] .user .message-bubble { font-size:12.6px;border-radius:17px 17px 4px 17px;padding:11px 14px; }
+:root body.sapi-workspace[data-mobile-ui] .message.user { margin-left:32px; }
+:root body.sapi-workspace[data-mobile-ui] .message-meta { font-size:9.9px; }
+:root body.sapi-workspace[data-mobile-ui] .day-divider { font-size:9px; }
+:root body.sapi-workspace[data-mobile-ui] .composer-area { padding:8px 12px 10px; }
+:root body.sapi-workspace[data-mobile-ui] .composer { display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:end;gap:2px;padding:5px;border-radius:22px;background:var(--sapi-surface); }
+:root body.sapi-workspace[data-mobile-ui] .composer textarea { grid-column:2;grid-row:1;width:100%;min-width:0;height:44px;min-height:44px;max-height:140px;padding:10px 4px;font-size:16px;line-height:24px;resize:none;overflow-y:auto; }
+:root body.sapi-workspace[data-mobile-ui] .composer-bottom { display:contents; }
+:root body.sapi-workspace[data-mobile-ui] #attach-button { grid-column:1;grid-row:1;border-radius:50%; }
+:root body.sapi-workspace[data-mobile-ui] .send-button { grid-column:3;grid-row:1;width:44px;height:44px;margin:0;font-size:24px; }
+:root body.sapi-workspace[data-mobile-ui] .browser-tabs-wrap { min-height:60px;padding:8px 10px;gap:3px;flex-shrink:0; }
+:root body.sapi-workspace[data-mobile-ui] .workspace-tab { min-width:0;max-width:none;flex:1;padding:0 10px;min-height:44px;border-radius:11px; }
+:root body.sapi-workspace[data-mobile-ui] #browser-tabs :is(.tab-star,.tab-close) { display:none; }
+:root body.sapi-workspace[data-mobile-ui] .workspace-tab .tab-select { font-size:11.7px;min-height:44px; }
+:root body.sapi-workspace[data-mobile-ui] :is(#browser-overflow,#add-tab) { min-width:44px;min-height:44px; }
+:root body.sapi-workspace[data-mobile-ui] .browser-menu { top:60px;max-height:calc(100% - 72px);border-radius:16px; }
+:root body.sapi-workspace[data-mobile-ui] .browser-menu button { min-height:44px; }
+:root body.sapi-workspace[data-mobile-ui] .browser-address-bar input { font-size:16px;min-height:44px;min-width:0; }
+:root body.sapi-workspace[data-mobile-ui] .workspace-content { padding:0;font-size:12.6px; }
+:root body.sapi-workspace[data-mobile-ui] .workspace-text { padding:20px 16px;font-size:12.6px; }
+:root body.sapi-workspace[data-mobile-ui] .notes-wiki { padding:18px 16px;font-size:12.6px; }
+:root body.sapi-workspace[data-mobile-ui] .notes-wiki h1 { font-size:23.4px; }
+:root body.sapi-workspace[data-mobile-ui] .notes-wiki h2 { font-size:17.1px; }
+:root body.sapi-workspace[data-mobile-ui] dialog { max-height:calc(var(--mobile-viewport-height,100dvh) - 24px);width:calc(100% - 24px);padding:18px;border-radius:20px; }
+:root body.sapi-workspace[data-mobile-ui] dialog.app-menu-sheet { inset:auto 0 0;margin:0;width:100%;max-width:none;border-radius:24px 24px 0 0;padding:12px 20px max(20px,env(safe-area-inset-bottom)); }
+:root body.sapi-workspace[data-mobile-ui] #modal-content h2 { font-size:18px; }
+:root body.sapi-workspace[data-mobile-ui] :is(.form-stack input,.form-stack textarea,.form-stack select,.settings-row select) { font-size:16px; }
+:root body.sapi-workspace[data-pane-limit="2"] .app-header { height:54px;min-height:54px; }
+:root body.sapi-workspace[data-pane-limit="2"] .agent-heading { min-height:54px;padding:4px 12px; }
+
+:root body.sapi-workspace[data-mobile-ui] #app-menu svg { width:22px;height:22px; }
+:root body.sapi-workspace[data-mobile-ui] .activity-tab>.activity-toggle { width:28px;min-height:44px; }

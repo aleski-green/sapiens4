@@ -4,8 +4,9 @@
 
 Requires Python 3.9+, Git and authenticated Codex CLI 0.156.1 or newer. Blindly4
 requires macOS 13+, Swift 6 and Accessibility permission. The runtime has no
-third-party Python dependencies. The optional independent YAML parser test uses
-`python3 -m pip install -r tests/requirements.txt`. The only Git submodule is `blindly4`.
+third-party Python dependencies for the core host. Terminal and remote features
+have optional dependencies. Tests use RSpec and Ruby's independent YAML parser;
+see [Testing](testing.md). The only Git submodule is `blindly4`.
 
 ```sh
 git submodule update --init --recursive
@@ -241,20 +242,17 @@ A supplied Origin must match the loopback Host. Unknown routes return 404.
 ## Tests
 
 ```sh
-python3 -m unittest discover -s tests -p 'test_*.py'
-node tests/chat_links.test.cjs
-node tests/workspace_merge.test.cjs
-# DOM tests require Node.js 18 or newer.
-npm install --prefix tests
-node tests/notes.dom.test.cjs
-xcrun swiftc -framework Cocoa -framework WebKit macos/Browser.swift macos/BrowserTests.swift -o /tmp/sapiens-browser-tests
-/tmp/sapiens-browser-tests
+bundle install
+python3 -m pip install -r spec/requirements.txt
+npm ci --prefix tests --ignore-scripts
+SAPIENS_PYTHON=python3 bundle exec rspec
 ```
 
-Tests use temporary data and deterministic providers. Coverage includes chat
+RSpec contracts use temporary data and external provider fixtures. Coverage includes chat
 recovery, parallel runners, notes isolation/model edits, legacy migration without
 resuming removed flows, rejection of removed routes/commands, computer
-ownership, browser persistence/migration, source-only distribution and managed updater rollback.
+ownership, browser persistence, source-only distribution and managed updater rollback.
+See [the migration map and coverage limits](testing.md).
 
 The Memo tab renders one scrolling wiki article with a Sapi infobox, contents and
 linked topics. Older YAML facts and collapsed topic trees remain readable without

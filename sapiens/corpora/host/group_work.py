@@ -1,4 +1,3 @@
-"""Shared, revisioned tasks owned by the Group, with attributable member execution."""
 from copy import deepcopy
 from uuid import uuid4
 

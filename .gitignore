@@ -30,3 +30,10 @@ node_modules/
 # Windows build output
 windows/bin/
 windows/obj/
+
+# Local RSpec results and Ruby dependencies
+tmp/
+.bundle/
+vendor/bundle/
+spec/support/windows/bin/
+spec/support/windows/obj/

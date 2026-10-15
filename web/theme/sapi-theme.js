@@ -1,5 +1,6 @@
 /* Shared shell preference. Guest pages retain control over their own styles. */
 (() => {
+  if(window.SapiTheme) { window.SapiTheme.refresh(); return; }
   const key='sapi-color-theme';
   let preference;
   try { preference=localStorage.getItem(key); } catch {}
@@ -14,6 +15,7 @@
       button.setAttribute('aria-pressed',String(theme==='dark'));
     });
   }
+  window.SapiTheme={refresh:()=>apply(document.documentElement.dataset.theme || 'light')};
   apply(preference==='dark'||preference==='light'?preference:system.matches?'dark':'light');
   document.addEventListener('click',event=>{
     if(!event.target.closest('[data-theme-toggle]'))return;

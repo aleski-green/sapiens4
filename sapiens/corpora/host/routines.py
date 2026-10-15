@@ -1,4 +1,3 @@
-"""Chat-authored scheduled prompts, admitted by the existing minute Pulse."""
 from datetime import datetime, timedelta
 import re
 from uuid import uuid4, uuid5, NAMESPACE_URL
@@ -52,7 +51,6 @@ class ScheduledRoutines:
                          previous_minutes=None if creating else int(fields[1]))
 
     def save(self, owner, minutes, execution, *, routine_id=None, previous_minutes=None, source_call=None):
-        """One persistence path for Admin templates and Sapi host-control calls."""
         execution = text_field(dict(prompt=execution), 'prompt', 16000)
         if type(minutes) is not int or not 1 <= minutes <= 525600 or execution in {'PROMPT', 'TODO'}:
             raise APIError(400, 'Choose 1–525600 minutes and replace PROMPT with the work to execute')

@@ -1,0 +1,2 @@
+-r ../requirements-cli.txt
+-r ../sapiens/corpora/host/remote-requirements.txt

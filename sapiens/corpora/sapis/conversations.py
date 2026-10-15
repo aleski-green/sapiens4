@@ -1,4 +1,3 @@
-"""Per-Sapi state, history, archives and prepared model context."""
 from contextlib import contextmanager
 import json
 from pathlib import Path

@@ -1,4 +1,3 @@
-"""Verify Codex compatibility and a real model call before installing code."""
 from dataclasses import dataclass
 import json
 from pathlib import Path

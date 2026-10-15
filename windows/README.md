@@ -40,15 +40,18 @@ The build downloads CPython 3.13.9 from python.org and verifies a pinned SHA-256
 
 ```powershell
 $env:PYTHONUTF8 = '1'
-python -m pip install -r tests/requirements.txt
-python -m unittest discover -s tests -v
-dotnet build windows/Sapiens4.csproj -c Release
-.\windows\bin\Release\net10.0-windows\Sapiens4.exe --self-test navigation-results.json
+bundle install
+python -m pip install -r spec/requirements.txt
+npm ci --prefix tests --ignore-scripts
+dotnet build spec/support/windows/CodexFixture.csproj -o tmp/codex-fixture
+$env:SAPIENS_TEST_CODEX = (Resolve-Path tmp/codex-fixture/CodexFixture.exe).Path
+$env:SAPIENS_PYTHON = 'python'
+bundle exec rspec --tag '~windows'
 ```
 
 The executable also accepts `--smoke-report PATH --data-dir TEMP_DIRECTORY` to launch a real WebView2 window, verify the rendered app, save a JSON result and PNG, then close. Use an empty test data directory. The Blindly4 repository documents its permission-free and interactive integration suites.
 
-macOS-only tests remain in macOS/Linux CI. Symlink tests report a skip if Windows denies symlink creation; no system security settings are changed to run tests.
+The full CI run builds the portable desktop package, sets `SAPIENS_TEST_WINDOWS_PACKAGE`, and includes its native RSpec contract. See [Testing](../documentation/testing.md). macOS and POSIX-only cases are explicitly skipped on Windows; no security settings are changed to run tests.
 
 ## Desktop access
 

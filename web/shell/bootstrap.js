@@ -1,5 +1,3 @@
-// Initialize the workspace from the local API.
-// Set tab branding before loading state, including when the backend is unavailable.
 document.title = 'Sapi4: Corpora';
 const favicon = document.createElement('link');
 favicon.rel = 'icon';
@@ -14,8 +12,11 @@ function syncBrandIcon() {
 syncBrandIcon();
 new MutationObserver(syncBrandIcon).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
 
+function apiFetch(path, options) {
+  return window.sapiensRemote ? window.sapiensRemote.fetch(path, options) : fetch(path, options);
+}
 async function api(path, method = 'GET', data) {
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     method,
     headers: {'Content-Type': 'application/json', 'X-Sapiens-Local': '1'},
     ...(data === undefined ? {} : {body: JSON.stringify(data)}),

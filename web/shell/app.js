@@ -27,7 +27,7 @@ function mention(id){
 function openChat(id){
   const a=state.agents.find(a=>a.id===id);if(!a)return;
   state.drafts ??= {};state.drafts[state.selected]=$('#message-input').value;
-  state.selected=id;state.panel='chat';chatView='conversation';closeActivityMenus();state.panes.chat=true;a.unread=false;
+  state.selected=id;state.panel='chat';chatView='conversation';closeActivityMenus();showPane('chat');a.unread=false;
   if(a.kind==='group') {state.groupView=a.id;state.scope='groups';}
   else {if(state.groupView||state.scope==='groups')state.scope='all';state.groupView=null;}
   search='';$('#agent-search').value='';$('#message-input').value=state.drafts[id]||'';
@@ -36,13 +36,38 @@ function openChat(id){
 
 function toast(message){$('#toast').textContent=message;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),3200);}
 
-function modal(title,content,eyebrow='SAPI WORKSPACE'){$('#modal-eyebrow').textContent=eyebrow;$('#modal-content').innerHTML=`<h2 id="modal-title">${esc(title)}</h2>${content}`;if(!$('#modal').open)$('#modal').showModal();}
+function modal(title,content,eyebrow='SAPI WORKSPACE'){$('#modal').classList.remove('app-menu-sheet');$('#modal-eyebrow').textContent=eyebrow;$('#modal-content').innerHTML=`<h2 id="modal-title">${esc(title)}</h2>${content}`;if(!$('#modal').open)$('#modal').showModal();}
 function closeModal(){$('#modal').close();}
 function render(){if($('#modal').open&&$('#modal-title')?.textContent==='Shared computer')computerDialog();renderPanes();renderSidebar();renderAgentHeader();renderConversation();renderTabs();renderWorkspace();renderGlobal();save();}
+let paneOrder=['chat','sidebar','workspace'];
+function paneLimit(){
+  const touch=window.matchMedia?.('(pointer: coarse)').matches;
+  if(!touch && window.innerWidth>600)return 3;
+  // The software keyboard changes viewport height, but not the phone's orientation.
+  const orientation=touch && window.screen.orientation?.type;
+  const portrait=orientation ? orientation.startsWith('portrait') : window.innerHeight>=window.innerWidth;
+  return portrait ? 1 : 2;
+}
+function showPane(pane){
+  state.panes[pane]=true;
+  paneOrder=[pane,...paneOrder.filter(name=>name!==pane)];
+}
 function renderPanes(){
   syncWorkspace();
   state.panes ??= {sidebar:true,chat:true,workspace:true};
   const p={...state.panes,workspace:!!state.panes.workspace && !!state.activeTab};
+  const limit=paneLimit();
+  if(limit<3){
+    const visible=paneOrder.filter(name=>p[name]).slice(0,limit);
+    if(!visible.length)visible.push('chat');
+    for(const name of paneOrder)p[name]=visible.includes(name);
+    state.panes={...p};
+  }
+  document.body.dataset.paneLimit=limit;
+  document.body.toggleAttribute('data-mobile-ui',limit<3);
+  syncMobileViewport();
+  const input=$('#message-input');
+  if(input.placeholder.startsWith('Message'))input.placeholder=limit<3?'Message…':`Message ${selected().name}…`;
   const names={sidebar:'chat list',chat:'chat',workspace:'workspace'};
   const ids={sidebar:'#chat-list-panel',chat:'#chat-panel',workspace:'#workspace-panel'};
   for(const pane of Object.keys(ids)){
@@ -50,18 +75,54 @@ function renderPanes(){
     const button=$(`[data-toggle-pane="${pane}"]`);
     button.setAttribute('aria-pressed',String(p[pane]));
     button.setAttribute('aria-expanded',String(p[pane]));
-    const label=`${p[pane]?'Hide':'Show'} ${names[pane]}`;
+    const label=`${limit===1?'Show':p[pane]?'Hide':'Show'} ${names[pane]}`;
     button.setAttribute('aria-label',label);button.title=label;
   }
   const count=Object.values(p).filter(Boolean).length;
   $('.main-grid').dataset.visiblePanes=count;
   $('.main-grid').style.gridTemplateColumns=[p.sidebar?(count===1?'minmax(0,1fr)':'clamp(205px,18vw,250px)'):'0px',p.chat?'minmax(300px,1fr)':'0px',p.workspace?'minmax(350px,1.2fr)':'0px'].join(' ');
+  resizeComposer();
 }
+window.addEventListener('resize',()=>{renderPanes();});
+window.screen.orientation?.addEventListener('change',()=>{renderPanes();});
+function syncMobileViewport(){
+  const viewport=window.visualViewport;
+  if(viewport && Math.abs(viewport.scale-1)<0.01)
+    document.documentElement.style.setProperty('--mobile-viewport-height',`${viewport.height}px`);
+}
+window.visualViewport?.addEventListener('resize',syncMobileViewport);
+function resizeComposer(){
+  const input=$('#message-input');
+  if(paneLimit()===3){input.style.height='';return;}
+  if(!input.getClientRects().length)return;
+  input.style.height='44px';
+  input.style.height=Math.min(140,Math.max(44,input.scrollHeight))+'px';
+}
+$('#message-input').addEventListener('input',resizeComposer);
+function setSearchOpen(open){
+  $('#search-toggle').setAttribute('aria-expanded',String(open));
+  $('#corpora-search').classList.toggle('search-open',open);
+  if(open)$('#agent-search').focus();
+  else{search='';$('#agent-search').value='';renderSidebar();}
+}
+$('#search-toggle').addEventListener('click',()=>setSearchOpen($('#search-toggle').getAttribute('aria-expanded')!=='true'));
+$('#agent-search').addEventListener('keydown',e=>{
+  if(e.key==='Escape' && paneLimit()<3){e.preventDefault();setSearchOpen(false);$('#search-toggle').focus();}
+});
+function appMenu(){
+  const identity=$('#corpora-identity')?.textContent || 'CORPORA';
+  const remote=$('#remote-status');
+  const row=(label,target,detail='')=>`<button class="app-menu-row" data-menu-target="${target}"><span>${esc(label)}</span><small>${esc(detail)}</small></button>`;
+  modal(identity,`<nav aria-label="Corpora menu">${row('Workspace & settings','autonomy-button',$('#autonomy-label').textContent)}${row('Shared computer','resource-button',$('#resource-owner').textContent)}${remote?row('Device connection','remote-connection',remote.title||'Connected'):'<a class="app-menu-row" href="/remote/" target="_blank" rel="noopener">Connect phone <span aria-hidden="true">↗</span></a>'}${$('#install-entry button')?row('Add to Home Screen','install'):''}</nav>`,'MENU');
+  $('#modal').classList.add('app-menu-sheet');
+}
+
 
 function leaveGroup(scope) {
   state.groupView=null;
   openChat(state.mainSapiId);
   state.scope=scope;
+  if(paneLimit()<3){showPane('sidebar');renderPanes();}
   renderSidebar();save();
 }
 function renderSidebar(){
@@ -99,9 +160,21 @@ const actions = {'new-tab':openNewTab};
 document.addEventListener('click',e=>{
   const b=e.target.closest('button,[data-agent]');if(!b)return;const d=b.dataset;
 
+  if(d.menuTarget){
+    closeModal();
+    if(d.menuTarget==='remote-connection'){
+      modal('Device connection',`<p>${esc($('#remote-status')?.title || 'Connected')}</p><button class="button" data-menu-target="forget-device">Forget this device</button>`,'CORPORA');
+    }else if(d.menuTarget==='forget-device')$('#remote-status')?.click();
+    else if(d.menuTarget==='install')$('#install-entry button')?.click();
+    else document.getElementById(d.menuTarget)?.click();
+    return;
+  }
   if(d.togglePane){
     if(d.togglePane==='workspace'&&!state.activeTab){openNewTab();return;}
-    state.panes[d.togglePane]=!state.panes[d.togglePane];renderPanes();save();return;
+    const count=Object.values(state.panes).filter(Boolean).length;
+    if(state.panes[d.togglePane] && (paneLimit()===3 || (paneLimit()===2 && count>1)))state.panes[d.togglePane]=false;
+    else showPane(d.togglePane);
+    renderPanes();save();return;
   }
   if(d.action){actions[d.action]?.();return;}
   if(d.mention){openChat(d.mention);return;}
@@ -137,6 +210,6 @@ $('#resource-button').addEventListener('click',()=>computerDialog());
 $('#agent-search').addEventListener('input',e=>{search=e.target.value;renderSidebar();});
 
 $('#message-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat(e.target.value);}});
-$('.wordmark').addEventListener('click',e=>{e.preventDefault();state.panes={sidebar:true,chat:true,workspace:true};renderPanes();save();});
+$('.wordmark').addEventListener('click',e=>{e.preventDefault();state.panes={sidebar:true,chat:true,workspace:true};showPane('chat');renderPanes();save();});
 
-document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&!$('#modal').open){e.preventDefault();state.panes.sidebar=true;renderPanes();save();$('#agent-search').focus();}});
+document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&!$('#modal').open){e.preventDefault();showPane('sidebar');renderPanes();save();setSearchOpen(true);}});

@@ -1,4 +1,3 @@
-"""Global Corpora clock, batch admission policy, and durable pulse identities."""
 from dataclasses import dataclass
 from enum import Enum
 from time import monotonic

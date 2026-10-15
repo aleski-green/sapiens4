@@ -1,4 +1,3 @@
-"""Shared request validation, independent of the application service."""
 import re
 
 

@@ -8,7 +8,7 @@ const ctx=vm.createContext({document:window.document,Date,console,esc,$:s=>windo
  live:{events:{a:[event,{...event,id:2,agency:'chatOutput'}],b:[{...event,id:3}]},turns:[{id:'busy',agent:'a',status:'running',input:'PRIVATE MESSAGE CONTENT'}],activity:{}},
  activityChevron:()=>'<svg></svg>',
  selected:()=>({id:'a',name:'Alpha',role:'Tester'}),avatar:()=>'',isMainSapi:()=>false,groupLabels:()=>'',renderActivityNavigation:()=>{},
- online:true,submitting:new Set(),uploading:0,blocksChat:t=>['running','queued'].includes(t.status)});
+ paneLimit:()=>3,resizeComposer:()=>{},online:true,submitting:new Set(),uploading:0,blocksChat:t=>['running','queued'].includes(t.status)});
 const groups=fs.readFileSync('web/features/groups.js','utf8');
 vm.runInContext(groups.slice(groups.indexOf('function eventTimestamp('),groups.indexOf('function renderWork(')),ctx);
 const host=window.document.querySelector('#updates');

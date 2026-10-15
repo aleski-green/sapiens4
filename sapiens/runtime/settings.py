@@ -1,4 +1,3 @@
-"""Codex selection shared by the runtime and installation checks."""
 from functools import lru_cache
 from pathlib import Path
 import os

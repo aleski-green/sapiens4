@@ -1,4 +1,3 @@
-// Group identity, shared activity, and revisioned work use the host's durable records.
 const groupColor = value => /^#[a-f0-9]{6}$/i.test(value) ? value : '#74b9ed';
 function groupAvatar(group, size='') {
   const colors=(group.stripes?.length?group.stripes:[group.color]).map(groupColor);
@@ -109,7 +108,6 @@ const workNavigation=[
       {id:'composer-workflow',label:'Workflow'},{id:'composer-routine',label:'Routine'},{id:'composer-call',label:'Call'}]}
   ]}
 ];
-// Index labels and paths once; rendering and selection share the same data.
 const workPaths={};
 function indexWorkNavigation(nodes,path=[]) {
   for(const node of nodes) {
