@@ -6,8 +6,8 @@ truth**: agents, chat history, execution and authorization remain local. A relay
 stores encrypted messages until the receiver acknowledges them or they expire.
 It does not run agents or hold application decryption keys.
 
-After pairing approval, the phone mounts the same CORPORA HTML, JavaScript, and styles
-used by the local app. Sapis, Groups, chat, Work, Notes, settings, attachments and
+The phone opens the same workspace shell used by the local app, with installation
+and connection flows before its first CORPORA opens. Sapis, Groups, chat, Work, Notes, settings, attachments and
 workspace controls use a shared API dispatcher on the desktop. The browser's API
 adapter encrypts requests and decrypts replies, including note images, without a
 plaintext API fallback. Pairing grants full CORPORA admin access.
@@ -50,9 +50,11 @@ owner. It is never served over HTTP. Windows requires a private directory/ACL.
 The token authorizes mailbox creation; it is not an encryption key. Never give
 it to the phone or embed it in a URL. Desktop saves it privately in `remote-relay.json` after successful setup, so subsequent invitations need only **Show QR**. It is never returned by the status API or sent to the phone.
 
-1. In local CORPORA, open **Connect phone**, or visit
-   `http://127.0.0.1:4174/remote/` in your desktop browser.
-2. Select **Use local test relay**. CORPORA reads the default connection file
+1. In local CORPORA, open the hamburger menu's **Remote control**. Enter the relay
+   address and provisioning token once, then select **Show QR**. Saved relay settings
+   are reused for later invitations. Each corpora trusts one remote device.
+2. For file-based setup, the legacy host setup page remains available at
+   `http://127.0.0.1:4174/remote/`. Its **Use local test relay** option reads the connection file
    from this checkout's `.sapiens4/relay.connection.json` on the server side;
    the token is never returned to the browser. This shortcut only accepts loopback
    HTTP origins. For a custom database/location or another server, select
@@ -60,13 +62,16 @@ it to the phone or embed it in a URL. Desktop saves it privately in `remote-rela
    **Show QR**. Manual address/token entry remains available.
    This is a one-time setup on each desktop. Future connections use **Show QR**.
    The QR remains available on this local page until approved, revoked, or expired (three days).
-3. Open the installed app, enter the desktop’s public CORPORA ID (`sapi4_` plus three lowercase letters, three digits and three lowercase letters), then scan or upload its QR. For a same-computer browser test use `http://127.0.0.1:4180/`. For an actual iPhone, use the HTTPS deployment described below;
+3. On mobile, add the app to the Home Screen and launch its icon before pairing.
+   Choose **Connect remote corpora**, then scan/upload the host QR or paste its
+   invitation. No CORPORA ID entry is required. For a same-computer browser test use
+   `http://127.0.0.1:4180/`. For an actual iPhone, use the HTTPS deployment described below;
    `127.0.0.1` on the phone refers to the phone, not the PC.
-4. Compare the eight-letter confirmation code on both screens and select **Confirm** on
+4. Compare the eight-letter confirmation code on both screens and select **Approve device** on
    desktop. This binds approval to that exact phone key.
 5. CORPORA opens automatically in the paired page. Use its normal Sapi/Group
    navigation, composer, Work, Notes and settings. Wait for desktop confirmation.
-   Use **Revoke connection** to disconnect and delete the relay room.
+   Use host **Revoke access** to disconnect and delete the relay room.
 
 The QR encodes an HTTPS URL with the compact invitation in its fragment (`/#s4.…`).
 Fragments are not included in HTTP requests or referrer headers. The phone removes
@@ -82,15 +87,18 @@ confirmation-code approval, and encrypted transport checks apply equally to both
 Do not share the code publicly.
 
 After approval, the phone stores its device identity and mailbox credential in
-origin-scoped IndexedDB. Reopening Safari authenticates an encrypted `resume`
-request with the same phone key before CORPORA opens. The invitation secret and
-application data are not saved. Closing a page does not revoke the trusted device;
-**Forget this device** removes browser credentials and desktop **Revoke** blocks
-access immediately. Clearing website data or browser storage eviction requires
+origin-scoped IndexedDB, separately for each corpora. Reopening the installed app
+restores the last workspace snapshot, draft and layout with **Connecting…** while
+authenticating an encrypted `resume` request. The invitation secret is discarded;
+the bounded snapshot and device preferences are stored locally. Public shell assets
+are cached for offline launch; API responses and credentials never enter that cache.
+Closing or backgrounding a page neither pauses execution nor revokes trust. Host
+**Revoke access** blocks access immediately. Clearing website data or storage eviction requires
 a new pairing. Private browsing may not retain the device.
 
 QR image decoding happens entirely in the phone browser; the uploaded image is never
-sent to a server. There is no camera permission or native QR-scanner dependency.
+sent to a server. Camera access is requested only when **Scan QR** is selected;
+upload and paste remain available without camera permission.
 The QR grants a one-time pairing opportunity, so treat its image as a temporary
 credential and delete it after use.
 
@@ -304,8 +312,8 @@ it in backups and migrations. Independent new data directories receive different
 IDs. Copying a complete backup preserves the identity; it does not create a new
 account or synchronize two concurrently running copies.
 
-The local snapshot and encrypted pair/resume response expose `corpora: {id, name}`.
-The UI identifies the workspace by its Chief. Approved browser credentials retain
+The local snapshot and encrypted pair/resume response expose the corpora ID, name,
+device, scope, execution status, revision and ChiefSapi ID. Approved browser credentials retain
 this ID, and subsequent requests include it inside the encrypted envelope. Both
 ends reject a mismatched identity. The ID is a public identifier, never a password
 or authorization credential; the approved device key remains the authority.
@@ -313,8 +321,14 @@ Legacy saved device credentials bind to the first authenticated identity returne
 by their existing desktop key. Update the desktop before using this client; an
 older desktop that returns no identity cannot open the workspace.
 
-This establishes workspace identity, not hosted account registration, recovery,
-multi-workspace switching, multi-host synchronization, or ownership transfer.
+The corpora menu switches between remembered connections and remains open while
+the selected workspace comes forward. Switching pauses the previous corpora before
+activating the target. An unreachable host preserves the previous selection;
+uncertain lifecycle writes are reconciled without replaying them. Archived corpora
+are paused and hidden by default. Editing opens a prefilled message to its ChiefSapi.
+Mobile and Linux offer remote corpora only; native macOS/Windows also create local
+corpora with separate data directories. Hosted account recovery, multi-host
+synchronization and ownership transfer remain outside this implementation.
 
 ### Installed remote web apps
 
@@ -342,8 +356,8 @@ browser trust does not transfer across origins.
 
 The relay serves a standalone web app manifest and 180/192/512-pixel icons derived
 from the existing workspace favicon in `web/shell/bootstrap.js`. The **Add to Home
-Screen** card opens a three-page, swipeable guide; it is also available in connected
-CORPORA. In Safari, use Share (inside the page menu in the compact layout), choose
+Screen** card opens the browser's installation prompt when available, otherwise a
+three-page guide. In Safari, use Share (inside the page menu in the compact layout), choose
 **Add to Home Screen**, leave **Open as Web App** on, and tap **Add**. The app opens
 in its own window, with safe-area spacing and no further installation prompt.
 
@@ -354,15 +368,16 @@ tab follows the same limits. The software keyboard does not change the phone's
 orientation mode. Narrow non-touch windows also use the compact panel controls;
 ordinary desktop windows retain independent toggles for all three panels.
 
-Install before pairing for the shortest setup: open the Home Screen app, enter its
-CORPORA ID, scan or upload the desktop QR, and confirm its matching code once. Safari and the installed
+Mobile pairing requires installation first: open the Home Screen app, choose
+**Connect remote corpora**, scan/upload the host QR or paste its invitation, and
+approve the matching code once. Safari and the installed
 app have separate IndexedDB storage; existing Safari approval does not transfer.
-The guide explains this when already connected. Pairing the app replaces the
-current phone connection under the MVP's one-device limit. Afterwards, the same
+Use host **Replace device** to replace an existing browser approval under the
+one-device-per-corpora limit. Afterwards, the same
 trusted-device reconnect and revocation rules apply.
 
-This is an online web app, with no App Store distribution or offline workspace
-cache. The relay and desktop must be reachable. The manifest's start URL matches
+The saved workspace can be viewed while reconnecting, but live actions require
+the relay and host to be reachable. There is no App Store distribution. The manifest's start URL matches
 the entry point (`/`, `/ios`, `/android`, `/mac`, or `/windows`); it never contains
 an invitation, private key, or bearer token. All manifests retain the same app ID
 and scope, so these are entry points to one app, not separate installations.
@@ -376,7 +391,7 @@ it only through authenticated provisioning, rejects collisions with another UUID
 and keeps the reservation across revocation. `/api/corpora/<address>` exposes only
 the address, invited desktop public key and QR expiry while an invitation is active.
 It never returns mailbox credentials, the QR secret, workspace names or content.
-The app verifies the scanned/uploaded QR against the selected address and desktop
+The app verifies the scanned/uploaded QR against its public address and desktop
 key, then requires the existing explicit desktop approval. Legacy QR links remain
 readable. New invitations expire in 72 hours; approved device trust does not.
 
