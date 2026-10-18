@@ -1,6 +1,22 @@
 require_relative 'support/relay'
 
 RSpec.describe 'Installed app encrypted connection', :host do
+  it 'keeps the replaced window disconnected instead of reclaiming the other window’s session' do
+    relay = Relay.new
+    peer = RemotePeer.new(script: 'app-remote-peer.cjs')
+    invitation = host.api('POST', '/api/remote/pair', {relay: relay.url, token: relay.token}, status: 201)['qr']
+    peer.call('pair', invitation: invitation)
+    pending = Contract.wait { host.api('GET', '/api/remote')['pending'] }
+    host.api('POST', '/api/remote/approve', {peer: pending['peer']})
+    Contract.wait { peer.call('status')['state'] == 'approved' }
+    peer.call('open-window')
+    2.times { expect(peer.call('request', path: '/api/state')['error']).to include('another window') }
+    expect(peer.call('other-request', path: '/api/state')['status']).to eq(200)
+  ensure
+    peer.close if peer
+    relay.close if relay
+  end
+
   it 'pairs through host approval, restores trust, edits via ChiefSapi and controls lifecycle' do
     relay = Relay.new
     peer = RemotePeer.new(script: 'app-remote-peer.cjs')

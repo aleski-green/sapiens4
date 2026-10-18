@@ -12,6 +12,7 @@ window.RemoteTransport = class {
     return new this({...data,keys:RemoteVendor.nacl.box.keyPair()});
   }
   connect(){
+    if(this.blocked)return Promise.reject(this.blocked);
     if(this.ready)return this.ready;
     const generation=this.generation;
     this.ready=new Promise((resolve,reject)=>{
@@ -35,6 +36,7 @@ window.RemoteTransport = class {
       ws.onclose=event=>{
         clearTimeout(timer);if(this.socket!==ws)return;this.socket=null;this.ready=null;
         const error=new Error(event.code===4001?'Access revoked. Connect this corpora again.':event.code===4002?'This connection is open in another window.':'This device is unreachable. Try again later.');error.revoked=event.code===4001;
+        if(event.code===4001||event.code===4002)this.blocked=error;
         reject(error);for(const p of this.pending.values())p.reject(error);this.pending.clear();
       };
       ws.onerror=()=>ws.close();

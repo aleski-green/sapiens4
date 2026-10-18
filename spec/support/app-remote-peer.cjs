@@ -5,7 +5,7 @@ const nacl=require('../../tests/node_modules/tweetnacl');
 const WebSocket=require('../../tests/node_modules/ws');
 const {webcrypto}=require('node:crypto');
 const fs=require('node:fs'),path=require('node:path'),readline=require('node:readline');
-let dom,w,client,progress;
+let dom,w,client,otherClient,progress;
 async function run(data){
  if(data.op==='pair'){
   dom=new JSDOM('',{url:data.invitation.relay,runScripts:'outside-only'});w=dom.window;
@@ -20,16 +20,19 @@ async function run(data){
   return progress;
  }
  if(data.op==='status')return progress;
- if(data.op==='request'){
-  try{const response=await client.fetch(data.path,{method:data.method||'GET',...(data.body?{body:JSON.stringify(data.body)}:{})});return {status:response.status,body:await response.json()};}
+ if(data.op==='request'||data.op==='other-request'){
+  try{const response=await (data.op==='request'?client:otherClient).fetch(data.path,{method:data.method||'GET',...(data.body?{body:JSON.stringify(data.body)}:{})});return {status:response.status,body:await response.json()};}
   catch(error){return {error:error.message,revoked:!!error.revoked};}
  }
  if(data.op==='restore'){
   client.close();const sessions=await w.RemoteSession.list();client=new w.RemoteTransport(sessions[0]);return client.authenticate();
+ }
+ if(data.op==='open-window'){
+  const sessions=await w.RemoteSession.list();otherClient=new w.RemoteTransport(sessions[0]);return otherClient.authenticate();
  }
  if(data.op==='close'){client?.close();return true;}
  throw new Error('Unknown operation');
 }
 const input=readline.createInterface({input:process.stdin});let chain=Promise.resolve();
 input.on('line',line=>{chain=chain.then(async()=>{try{console.log(JSON.stringify({value:await run(JSON.parse(line))}));}catch(error){console.log(JSON.stringify({error:error.message}));}});});
-input.on('close',()=>{client?.close();dom?.window.close();});
+input.on('close',()=>{client?.close();otherClient?.close();dom?.window.close();});
