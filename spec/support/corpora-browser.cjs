@@ -35,7 +35,7 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
    if(url==='/api/host')return {ok:true,json:async()=>({local_available:true,corpora:[a,b]})};
    const record=String(url).includes(a.id)?a:b;
    if(fail&&record===b)throw new Error('This device is unreachable. Try again later.');
-   if(String(url).endsWith('/api/corpora/lifecycle')){const data=JSON.parse(options.body);operations.set(data.operation,data);record.status=data.action==='pause'?'paused':'active';record.revision++;return {ok:true,json:async()=>({...record})};}
+   if(String(url).endsWith('/api/corpora/lifecycle')){if(scenario==='edit-activation-failed')return {ok:false,json:async()=>({error:'This device is unreachable. Try again later.'})};const data=JSON.parse(options.body);operations.set(data.operation,data);record.status=data.action==='pause'?'paused':'active';record.revision++;return {ok:true,json:async()=>({...record})};}
    if(String(url).endsWith('/api/state'))return {ok:true,json:async()=>snapshot(record)};
    if(String(url).includes('/api/agents/'))return {ok:true,json:async()=>({id:'message'})};
    return {ok:true,json:async()=>({...record})};
@@ -52,11 +52,14 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
  if(scenario==='switch'||scenario==='unreachable'){
    fail=scenario==='unreachable';click('#corpora-picker');click('[data-enter="'+b.id+'"]');for(let i=0;i<15;i++)await sleep();
    console.log(JSON.stringify({active:w.SapiensConnections.active.name,menuOpen:!d.querySelector('#corpora-menu').hidden,status:d.querySelector('#connection-label').textContent,commands:calls.filter(c=>c.url.endsWith('/lifecycle')).map(c=>({target:c.url.includes(a.id)?'Home':'Studio',action:c.data.action})),notice:d.querySelector('#corpora-notice').open?d.querySelector('#corpora-notice-text').textContent:null}));
- }else if(scenario==='edit'){
-   b.status='active';click('#corpora-picker');click('[data-edit="'+b.id+'"]');
+ }else if(scenario.startsWith('edit')){
+   const target=scenario==='edit-paused-local'?a:b;
+   target.status=scenario==='edit'?'active':scenario==='edit-archived'?'archived':'paused';
+   click('#corpora-picker');if(scenario==='edit-archived'){d.querySelector('#corpora-archived').checked=true;d.querySelector('#corpora-archived').dispatchEvent(new w.Event('change'));}click('[data-edit="'+target.id+'"]');
    const message=d.querySelector('#chief-settings-form textarea').value;
-   d.querySelector('#chief-settings-form').dispatchEvent(new w.Event('submit',{cancelable:true}));for(let i=0;i<8;i++)await sleep();
-   console.log(JSON.stringify({message,target:calls.find(c=>c.url.includes('/messages'))?.url,selected:w.SapiensConnections.active.name}));
+   const form=d.querySelector('#chief-settings-form');form.dispatchEvent(new w.Event('submit',{cancelable:true}));form.dispatchEvent(new w.Event('submit',{cancelable:true}));for(let i=0;i<15;i++)await sleep();
+   const writes=calls.filter(c=>['POST','PUT'].includes(c.method));
+   console.log(JSON.stringify({message,target:calls.find(c=>c.url.includes('/messages'))?.url,selected:w.SapiensConnections.active.name,status:target.status,actions:writes.map(c=>c.data.action||'send'),writeTargets:writes.map(c=>c.url.includes(a.id)?'Home':'Studio'),sent:writes.find(c=>c.url.includes('/messages'))?.data.text,dialogOpen:d.querySelector('#corpora-dialog').open,draft:form.elements.message.value,feedback:form.querySelector('[role=status]').textContent}));
  }else if(scenario==='restore'){
    const restored=await w.SapiensConnections.initial;
    console.log(JSON.stringify({status:d.querySelector('#connection-label').textContent,preferences:restored.preferences,selected:w.SapiensConnections.active.name}));

@@ -132,7 +132,21 @@ window.SapiensConnections=(()=>{
   function edit(record){
     show('Message to ChiefSapi',`<form id="chief-settings-form"><textarea name="message" aria-label="Message to ChiefSapi" rows="8" required></textarea><p class="corpora-feedback" role="status"></p><button type="submit">Send to ChiefSapi ↑</button></form>`);
     const form=$('chief-settings-form');form.elements.message.value=(record.settings_template||lastSnapshot?.corpora?.settings_template||'').replace(/\{(name|device|scope)\}/g,(_,field)=>record[field]||'');
-    form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('button');button.disabled=true;try{const info=await request(record,'/api/corpora');if(info.status!=='active')throw new Error('Activate this corpora before sending. Your draft is kept here.');await request(record,'/api/agents/'+info.chief_id+'/messages','POST',{text:form.elements.message.value});closeForm();}catch(e){form.querySelector('[role=status]').textContent=e.message;}finally{button.disabled=false;}};
+    form.onsubmit=async event=>{
+      event.preventDefault();if(busy)return;
+      const button=form.querySelector('button'),feedback=form.querySelector('[role=status]');
+      button.disabled=true;busy=true;generation++;renderStatus();renderRows();
+      try{
+        await reconcile();
+        let info=await request(record,'/api/corpora');metadata(record,info);
+        if(info.status==='archived')throw new Error('Restore this archived corpora before sending. Your draft is kept here.');
+        if(info.status==='paused'){feedback.textContent='Activating corpora…';info=await lifecycle(record,'activate');}
+        feedback.textContent='Sending to ChiefSapi…';
+        await request(record,'/api/agents/'+info.chief_id+'/messages','POST',{text:form.elements.message.value});
+        closeForm();
+      }catch(e){feedback.textContent=e.message;}
+      finally{button.disabled=false;busy=false;renderRows();renderStatus();}
+    };
     form.elements.message.focus();
   }
   $('create-local-corpora').onclick=()=>{

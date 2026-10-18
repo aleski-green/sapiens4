@@ -36,6 +36,31 @@ RSpec.describe 'Corpora workspace browser flows' do
     expect(result['message']).to include('New name: Studio', 'Device name: Mac mini', 'Scope of operations: Studio tasks')
     expect(result['target']).to end_with('/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/api/agents/chief-b/messages')
     expect(result['selected']).to eq('Home')
+    expect(result['actions']).to eq(['send'])
+  end
+
+  {'local' => ['Home', 'chief-a'], 'remote' => ['Studio', 'chief-b']}.each do |location, (name, chief)|
+    it "activates a paused #{location} corpora before sending its settings message exactly once" do
+      result = probe("edit-paused-#{location}")
+      expect(result).to include('status' => 'active', 'actions' => %w[activate send],
+        'writeTargets' => [name, name], 'selected' => 'Home', 'dialogOpen' => false)
+      expect(result['target']).to end_with("/api/agents/#{chief}/messages")
+      expect(result['sent']).to eq(result['message'])
+    end
+  end
+
+  it 'keeps the settings draft and does not send when activation fails' do
+    result = probe('edit-activation-failed')
+    expect(result).to include('status' => 'paused', 'actions' => ['activate'], 'dialogOpen' => true,
+      'feedback' => 'This device is unreachable. Try again later.')
+    expect(result['draft']).to eq(result['message'])
+  end
+
+  it 'does not restore or activate an archived corpora when sending settings' do
+    result = probe('edit-archived')
+    expect(result).to include('status' => 'archived', 'actions' => [], 'dialogOpen' => true)
+    expect(result['feedback']).to include('Restore this archived corpora')
+    expect(result['draft']).to eq(result['message'])
   end
 
   it 'migrates existing trust and retains other corpora when a connection is forgotten' do

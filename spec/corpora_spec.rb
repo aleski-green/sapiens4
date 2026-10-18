@@ -16,6 +16,8 @@ RSpec.describe 'Corpora lifecycle and device registry', :host do
     expect(host.state['pulse']['running']).to eq(false)
     expect(transition('activate')).to include('status' => 'active')
     expect(host.state['pulse']['running']).to eq(true)
+    turn = host.submit(chief, 'Update the corpora settings.')
+    expect(host.turn(turn)['output']).to eq('Contract test reply')
   end
 
   it 'deduplicates lifecycle commands and exposes their outcome without repeating them' do
