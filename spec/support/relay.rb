@@ -42,8 +42,8 @@ class Relay
 end
 
 class RemotePeer
-  def initialize
-    @input, @output, @error, @process = Open3.popen3('node', File.join(__dir__, 'remote_peer.cjs'))
+  def initialize(script: 'remote_peer.cjs')
+    @input, @output, @error, @process = Open3.popen3('node', File.join(__dir__, script))
     @errors = Thread.new { @error.read }
   end
   def call(op, **fields)

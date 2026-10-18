@@ -20,11 +20,15 @@ from aiohttp import web, WSMsgType
 
 from sapiens.corpora.host.remote_pairing import MAX_FRAME, PAIRING_TTL, origin, unb64
 from sapiens.paths import ROOT
-from sapiens.corpora.host.assets import asset
+from sapiens.corpora.host.assets import asset, index, javascript
 from sapiens.corpora.host.remote_setup import provision
 from sapiens.corpora.host.identity import public_id
 
 ASSETS = {
+    '/corpora.js': ('features/corpora.js', 'text/javascript'),
+    '/remote-transport.js': ('features/remote-transport.js', 'text/javascript'),
+    '/corpora.css': ('theme/corpora.css', 'text/css'),
+    '/sw.js': ('shell/sw.js', 'text/javascript'),
     '/': ('shell/remote.html', 'text/html'),
     '/ios': ('shell/remote.html', 'text/html'),
     '/ios/': ('shell/remote.html', 'text/html'),
@@ -213,7 +217,7 @@ class RelayServer:
             'Content-Type': mime + '; charset=utf-8', 'Cache-Control': 'no-store',
             'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY',
             'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-                "connect-src 'self' " + ws_origin + "; img-src 'self' blob: data:; media-src 'self' blob:; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                "connect-src 'self' " + ws_origin + "; img-src 'self' blob: data:; media-src 'self' blob:; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
         })
 
     async def handle(self, req):
@@ -236,7 +240,11 @@ class RelayServer:
                 return await self.websocket(req)
             if req.method == 'GET' and path in ASSETS:
                 name, mime = ASSETS[path]
-                content = (ROOT / 'web' / name).read_bytes()
+                content = (index().replace('<body class=', '<body data-remote class=').encode() if name == 'shell/remote.html' else (ROOT / 'web' / name).read_bytes())
+                if path == '/sw.js':
+                    sources = index().encode() + javascript().encode() + b''.join((ROOT / 'web' / item[0]).read_bytes() for item in ASSETS.values())
+                    version = hashlib.sha256(sources).hexdigest()[:16]
+                    content = content.replace(b'sapiens-shell-v1', ('sapiens-shell-' + version).encode())
                 platform = path.strip('/')
                 if platform in {'ios', 'android', 'mac', 'windows'}:
                     content = content.replace(b'href="/manifest.webmanifest"',
@@ -247,6 +255,8 @@ class RelayServer:
             if req.method == 'GET' and path in {'/workspace/', '/workspace/app.js',
                     '/workspace/styles.css', '/live.css', '/assets/sapi-theme.css', '/assets/sapi-theme.js'}:
                 found = asset(path)
+                if path == '/workspace/':
+                    found = (found[0], found[1].replace(b'<body class=', b'<body data-remote class='))
                 return self.response(200, found[1], found[0].split(';')[0])
             body = {}
             if req.method == 'POST':

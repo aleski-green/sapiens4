@@ -270,7 +270,7 @@ class RemoteBridge:
         parts = url.path.strip('/').split('/')
         if (url.scheme or url.netloc or url.fragment or not target.startswith('/api/') or
                 '%' in url.path or '..' in parts or '\\' in target or
-                parts[:2] == ['api', 'remote'] or
+                parts[:2] in (['api', 'remote'], ['api', 'host']) or
                 (method != 'GET' and len(parts) == 4 and parts[3] == 'browser')):
             raise ValueError('Remote API route is not allowed')
         try:

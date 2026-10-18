@@ -13,14 +13,18 @@ from sapiens.validation import APIError
 class Server(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, port, service):
+    def __init__(self, port, service, managed=False):
         self.service = service
         super().__init__(("127.0.0.1", port), Handler)
         with service._lock:
             service.orchestration.attach(f"http://127.0.0.1:{self.server_port}")
         self.remote = RemoteBridge(service)
+        from sapiens.corpora.host.host_registry import HostRegistry
+        self.registry = None if managed else HostRegistry(self)
 
     def server_close(self):
+        if getattr(self, "registry", None):
+            self.registry.close()
         if hasattr(self, "remote"):
             self.remote.close()
         super().server_close()
@@ -78,7 +82,30 @@ class Handler(BaseHTTPRequestHandler):
         write = self.command in {"POST", "PUT"}
         self._origin(write)
         path = urlsplit(self.path).path
+        if path.startswith('/api/host') and self.server.registry:
+            registry = self.server.registry
+            data = self._body() if write else None
+            if path == '/api/host' and self.command == 'GET':
+                return self._send(200, registry.records())
+            if write and self.server.service._stopping.is_set():
+                raise APIError(503, 'Host is shutting down')
+            if path == '/api/host/local' and self.command == 'POST':
+                return self._send(201, registry.create(data))
+            if path == '/api/host/pair' and self.command == 'POST':
+                return self._send(202, registry.begin_pair(data))
+            if path.startswith('/api/host/pair/') and self.command in {'GET', 'POST'}:
+                return self._send(200, registry.pairing(path.split('/')[-1], cancel=write))
+            parts = path.split('/')
+            if len(parts) >= 6 and parts[3] == 'corpora':
+                target = '/' + '/'.join(parts[5:])
+                query = urlsplit(self.path).query
+                return self._send(*registry.route(parts[4], self.command, target + ('?' + query if query else ''), data))
+            raise APIError(404, 'Not found')
         if self.command == 'GET':
+            if path == '/api/state' and self.server.registry:
+                snapshot = self.server.service.snapshot()
+                snapshot['host_busy'] = self.server.registry.busy(snapshot)
+                return self._send(200, snapshot)
             if path == '/api/remote':
                 return self._send(200, self.server.remote.status())
             if path == '/':

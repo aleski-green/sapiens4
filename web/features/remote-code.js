@@ -9,7 +9,7 @@ window.RemoteCode = (() => {
       url64(data.desktop), Math.floor(data.expires).toString(36), ...(data.public_id ? [data.public_id] : [])].join('.');
   }
   function decode(text) {
-    if (typeof text !== 'string' || text.length > 4096) throw new Error('Use the QR from desktop Connect phone.');
+    if (typeof text !== 'string' || text.length > 4096) throw new Error('Use the QR from desktop Remote control.');
     if (text.trim().startsWith('{')) return JSON.parse(text);
     if (/^https?:\/\//.test(text.trim())) {
       const link = new URL(text.trim());
@@ -23,11 +23,11 @@ window.RemoteCode = (() => {
         // Accept the original mixed-character suffix in existing QR invitations.
         (parts.length===8 && !/^sapi4_[a-z0-9]{9}$/.test(parts[7])) ||
         !parts.slice(1,6).every(value => /^[A-Za-z0-9_-]+$/.test(value)) ||
-        !/^[0-9a-z]{1,10}$/.test(parts[6])) throw new Error('Use the QR from desktop Connect phone.');
+        !/^[0-9a-z]{1,10}$/.test(parts[6])) throw new Error('Use the QR from desktop Remote control.');
     try {
       return {v:protocol, relay:atob(base64(parts[1])), room:parts[2], token:parts[3],
         secret:parts[4], desktop:base64(parts[5]), expires:parseInt(parts[6],36), ...(parts[7] ? {public_id:parts[7]} : {})};
-    } catch { throw new Error('Use the QR from desktop Connect phone.'); }
+    } catch { throw new Error('Use the QR from desktop Remote control.'); }
   }
   async function confirmation(desktop, phone, room) {
     const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz';

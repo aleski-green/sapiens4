@@ -31,6 +31,7 @@ from sapiens.computer.focus import ForegroundReturn
 from sapiens.files import atomic_bytes, lock_file, unlock_file
 from sapiens.corpora.host.database import Store, now
 from sapiens.corpora.host.identity import corpora_id
+from sapiens.corpora.host.corpora_settings import CorporaSettings
 from sapiens.validation import APIError, sapi_name, text_field
 from sapiens.corpora.browser import Workspace
 
@@ -93,6 +94,7 @@ class Service:
         self.orchestration = Orchestration(self)
         self.lifecycle = Lifecycle(self)
         self.registry = Registry(self)
+        self.corpora_settings = CorporaSettings(self)
         self.worker = None
         self.delegation = Delegation(self)
         self.groups = Groups(self)
@@ -119,7 +121,8 @@ class Service:
             self.start()
 
     def start(self):
-        self.pulse.start()
+        if self.corpora_settings.value['status'] == 'active':
+            self.pulse.start()
         if self.worker is None:
             self.worker = threading.Thread(target=self._work, name="sapiens-runner", daemon=True)
             self.worker.start()
@@ -152,6 +155,7 @@ class Service:
         return self._agents[agid]
 
     def _manifests(self, agent, row):
+        agent.set_manifest('corpora-scope', self.corpora_settings.value['scope'])
         agent.set_manifest("identity", prompt('identity', name=row['name'], role=row['role'], face=row['face']))
         agent.set_manifest("computer-use", computer_manifest(self.binary))
 
@@ -336,8 +340,7 @@ class Service:
             return {"id": turn_id, "status": next(j["status"] for j in agent.state["turns"] if j["id"] == turn_id)}
 
     def corpora_identity(self):
-        main = next((a for a in self.store.agents() if a['id'] == self.registry.main), {})
-        return dict(id=self.corpora_id, name='CORPORA · ' + main.get('name', 'My workspace'))
+        return self.corpora_settings.identity()
 
     def snapshot(self, agid=None):
         with self._lock:

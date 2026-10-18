@@ -24,7 +24,10 @@ window.RemoteInstall = (() => {
   const plus = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 7v10M7 12h10"/></svg>';
   const icon = '<img src="/app-icon-180.png" alt="" width="72" height="72">';
 
+  let installPrompt=null;
+  window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event;});
   function show(paired) {
+    if(installPrompt){const pending=installPrompt;installPrompt=null;pending.prompt();return;}
     if (installed() || document.getElementById('install-guide')) return;
     const dialog = document.createElement('dialog');
     dialog.id = 'install-guide';
@@ -39,11 +42,11 @@ window.RemoteInstall = (() => {
         </article>
         <article class="install-slide" role="group" aria-roledescription="slide" aria-label="2 of 3">
           <div class="install-art install-share" aria-hidden="true"><div class="install-share-sheet"><div class="install-share-heading">${icon}<div><strong>Sapiens4</strong><span>Your CORPORA, on ${label}</span></div></div><div class="install-share-row">${plus}<strong>${action}</strong><span>›</span></div>${ios ? '<div class="install-toggle-row">Open as Web App <i></i></div>' : ''}</div><div class="install-safari-bar"><span>‹</span><span class="install-address">Sapiens4</span><span class="install-share-highlight">${ios ? share : plus}</span><span>•••</span></div></div>
-          <div class="install-copy"><span class="install-kicker">02 / ${action.toUpperCase()}</span><h2>A little shortcut.<br>A lot closer.</h2><ol>${steps}</ol><p class="install-hint">${ios ? 'Can’t see the option? Scroll down the Share menu, or enable it in Edit Actions.' : 'Installation is optional. You can also connect from your browser.'}</p></div>
+          <div class="install-copy"><span class="install-kicker">02 / ${action.toUpperCase()}</span><h2>A little shortcut.<br>A lot closer.</h2><ol>${steps}</ol><p class="install-hint">${ios ? 'Can’t see the option? Scroll down the Share menu, or enable it in Edit Actions.' : mobile ? 'Open Sapiens4 from its Home Screen icon before connecting.' : 'Installation is optional on desktop.'}</p></div>
         </article>
         <article class="install-slide" role="group" aria-roledescription="slide" aria-label="3 of 3">
           <div class="install-art install-connect" aria-hidden="true"><div class="install-app-large">${icon}<span>Sapiens4</span></div><div class="install-connection"><i></i><i></i><i></i></div><div class="install-desktop"><div><span>CORPORA</span><strong>Your Sapis, together.</strong><span class="install-trust">✓ Trusted device</span></div></div></div>
-          <div class="install-copy"><span class="install-kicker">03 / CONNECT ONCE</span><h2>Open. Approve.<br>You’re home.</h2><p>Open Sapiens4 from its app icon. Enter your CORPORA ID and scan or upload the QR from <strong>Connect phone</strong> on the host computer. Approve the matching code there.</p><p class="install-hint">${paired ? (ios ? 'Already connected in Safari? The Home Screen app needs its own one-time approval. ' : 'If the installed app asks to connect again, approve it on your host computer. ') : ''}After approval, the app remembers your CORPORA until you revoke it. Your host computer needs to be online. Only one remote device can be connected at a time.</p></div>
+          <div class="install-copy"><span class="install-kicker">03 / CONNECT ONCE</span><h2>Open. Approve.<br>You’re home.</h2><p>Open Sapiens4 from its app icon. Scan or upload the QR from <strong>Remote control</strong> on the host computer. Approve the matching code there.</p><p class="install-hint">${paired ? (ios ? 'Already connected in Safari? The Home Screen app needs its own one-time approval. ' : 'If the installed app asks to connect again, approve it on your host computer. ') : ''}After approval, the app remembers your CORPORA until you revoke it. Your host computer needs to be online. Only one remote device can be connected at a time.</p></div>
         </article>
       </div>
       <div class="install-bottom"><div class="install-progress"><div class="install-dots" aria-label="Guide pages"><button type="button" aria-label="Page 1" aria-current="step"></button><button type="button" aria-label="Page 2"></button><button type="button" aria-label="Page 3"></button></div><span class="install-counter" aria-live="polite">1 / 3</span></div><div class="install-actions"><button type="button" class="install-back" hidden>Back</button><button type="button" class="install-next">Show me how <span aria-hidden="true">→</span></button></div><p class="install-platform">${mobile ? 'Swipe through · No app store download needed' : 'Connect from your browser or install the web app'}</p></div>`;
@@ -94,6 +97,6 @@ window.RemoteInstall = (() => {
     else document.querySelector('main')?.append(entry);
   }
   display?.addEventListener('change', () => mount(!!window.sapiensRemote));
-  return {mount};
+  return {mount, show, installed, mobile:appleMobile || /Android/.test(navigator.userAgent)};
 })();
-RemoteInstall.mount();
+if(document.body.classList.contains('pairing-page'))RemoteInstall.mount();

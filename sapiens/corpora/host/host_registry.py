@@ -1,0 +1,165 @@
+"""A device's local corpora and trusted remote connections. Never relay-exposed."""
+import json
+import sys
+import threading
+from uuid import uuid4
+
+from sapiens.corpora.host.corpora_api import dispatch
+from sapiens.corpora.host.remote_client import RemoteClient
+from sapiens.corpora.host.remote_pairing import confirmation_code
+from sapiens.files import atomic_json
+from sapiens.validation import APIError
+
+
+class HostRegistry:
+    def __init__(self, server):
+        self.server = server
+        self.root = server.service.root
+        self.path = self.root / 'host-corpora.json'
+        self.saved = json.loads(self.path.read_text()) if self.path.exists() else {'locals': [], 'remotes': {}}
+        self.local_available = sys.platform in {'darwin', 'win32'}
+        self.services = {server.service.corpora_id: server.service}
+        self.children, self.clients, self.pending = {}, {}, {}
+        self.lock = threading.RLock()
+        self.closed = False
+
+    def save(self):
+        atomic_json(self.path, self.saved)
+
+    def local(self, identity):
+        if identity in self.services:
+            return self.services[identity]
+        if identity not in self.saved['locals']:
+            raise APIError(404, 'Unknown corpora')
+        from sapiens.corpora.host.service import Service
+        from sapiens.corpora.host.server import Server
+        folder = self.root / 'corporas' / identity
+        if not (folder / 'corpora-identity.json').exists():
+            raise APIError(409, 'Corpora files are unavailable. Restore them before opening.')
+        service = Service(folder, start_worker=False)
+        server = Server(0, service, managed=True)
+        if not server.remote.saved_relay() and self.server.remote.saved_relay():
+            atomic_json(server.remote.relay_path, self.server.remote.saved_relay())
+        self.services[identity], self.children[identity] = service, server
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        service.start()
+        return service
+
+    def records(self):
+        with self.lock:
+            local = []
+            if self.local_available:
+                for identity in [self.server.service.corpora_id, *self.saved['locals']]:
+                    local.append(dict(self.local(identity).corpora_identity(), location='Local'))
+            remote = [dict(item['corpora'], location='Remote') for item in self.saved['remotes'].values()]
+            return dict(local_available=self.local_available, corpora=local + remote)
+
+    def route(self, identity, method, path, data):
+        with self.lock:
+            if identity in self.saved['remotes']:
+                client = self.clients.setdefault(identity, RemoteClient(self.saved['remotes'][identity]))
+                service = None
+            else:
+                service = self.local(identity) if self.local_available else None
+                if service is None:
+                    raise APIError(404, 'Local corpora are unavailable on this device')
+        # Credentials and other host corpora never cross a remote connection.
+        if not path.startswith('/api/') or path.startswith('/api/host') or '%' in path.split('?')[0] or '..' in path or '\\' in path:
+            raise APIError(400, 'Invalid corpora API path')
+        if path.startswith('/api/remote'):
+            if service is None:
+                raise APIError(403, 'Pairing approval is available on the host only')
+            remote = self.server.remote if service is self.server.service else self.children[identity].remote
+            if path == '/api/remote' and method == 'GET':
+                return 200, remote.status(), 'application/json'
+            actions = {'/api/remote/pair': remote.create, '/api/remote/approve': remote.approve,
+                       '/api/remote/revoke': lambda _: remote.revoke()}
+            if method == 'POST' and path in actions:
+                return 200, actions[path](data), 'application/json'
+            raise APIError(404, 'Not found')
+        result = dispatch(service, method, path, data) if service else client.request(method, path, data)
+        if service is None and result[0] == 200:
+            metadata = result[1].get('corpora') if path == '/api/state' else result[1] if path in {'/api/corpora', '/api/corpora/lifecycle'} else None
+            if metadata and metadata.get('id') == identity:
+                with self.lock:
+                    self.saved['remotes'][identity]['corpora'] = metadata
+                    self.save()
+        return result
+
+    def create(self, data):
+        if not self.local_available:
+            raise APIError(403, 'Local corpora are unavailable on this device')
+        if set(data) - {'name', 'scope'} or not isinstance(data.get('name'), str) or not data['name'].strip() or len(data['name']) > 200 or not isinstance(data.get('scope', ''), str) or len(data.get('scope', '')) > 16000:
+            raise APIError(400, 'Provide a corpora name and scope of work')
+        from sapiens.corpora.host.service import Service
+        identity = str(uuid4())
+        folder = self.root / 'corporas' / identity
+        folder.mkdir(parents=True, mode=0o700)
+        atomic_json(folder / 'corpora-identity.json', {'version': 1, 'corpora_id': identity})
+        atomic_json(folder / 'corpora-settings.json', dict(name=data['name'].strip(), scope=data.get('scope', '').strip(),
+                    device=self.server.service.corpora_identity()['device'], status='paused', revision=1, operations={}))
+        with self.lock:
+            self.saved['locals'].append(identity)
+            self.save()
+            service = self.local(identity)
+            service.update_agent(service.registry.main, {'name': 'ChiefSapi', 'role': 'Head of Corpora'})
+            return dict(service.corpora_identity(), location='Local')
+
+    def begin_pair(self, data):
+        client = RemoteClient.invitation(data)
+        identity = uuid4().hex
+        item = dict(id=identity, state='waiting', code=confirmation_code(data['desktop'], client.config['public'], data['room']))
+        with self.lock:
+            if any(p['state'] == 'waiting' for p in self.pending.values()):
+                raise APIError(409, 'A connection is already waiting for approval')
+            self.pending = {identity: item}
+        def pair():
+            try:
+                corpora = client.pair(data)
+                with self.lock:
+                    if self.closed or item['state'] == 'cancelled':
+                        return
+                    if corpora['id'] in self.services or corpora['id'] in self.saved['locals']:
+                        raise APIError(409, 'This corpora is already available locally')
+                    self.saved['remotes'][corpora['id']] = client.config
+                    self.save()
+                    item.update(state='approved', corpora=dict(corpora, location='Remote'))
+            except Exception as error:
+                item.update(state='failed', error=str(error))
+            finally:
+                client.close()
+        threading.Thread(target=pair, daemon=True).start()
+        return item.copy()
+
+    def pairing(self, identity, cancel=False):
+        with self.lock:
+            if identity not in self.pending:
+                raise APIError(404, 'Unknown pairing')
+            if cancel:
+                self.pending[identity]['state'] = 'cancelled'
+            return self.pending[identity].copy()
+
+    def busy(self, primary):
+        with self.lock:
+            for service in self.services.values():
+                snapshot = primary if service is self.server.service else service.snapshot()
+                statuses = {'queued', 'running', 'output_pending'} if snapshot['corpora']['status'] == 'active' else {'running'}
+                if (snapshot['computer']['owner'] or any(turn['status'] in statuses for turn in snapshot['turns']) or
+                    any(request['status'] in statuses for group in snapshot['groups'] for request in group['requests'])):
+                    return True
+            return False
+
+    def prepare_stop(self):
+        with self.lock:
+            for service in self.services.values():
+                service._stopping.set()
+                service._queue.put(None)
+
+    def close(self):
+        self.closed = True
+        for client in self.clients.values():
+            client.close()
+        for identity, server in self.children.items():
+            server.shutdown()
+            server.server_close()
+            self.services[identity].close()

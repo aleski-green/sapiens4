@@ -85,6 +85,7 @@ RSpec.describe 'Desktop updater process contracts', :macos do
     _, error, code = update.finish(40)
     expect(code).to eq(0), error
     expect(installation.current['sha']).to eq(installation.revision)
+    Contract.wait { Contract.http(installation.url + '/api/health', 'GET')[1]['desktop_active'] }
     result = Contract.http(installation.url + '/api/state', 'GET')[1]['turns'].find { |t| t['id'] == turn['id'] }
     expect(result).to include('status' => 'done', 'output' => 'Contract test reply')
   ensure

@@ -1,5 +1,5 @@
 let live = bootstrap;
-let online = true;
+let online = window.SapiensConnections ? SapiensConnections.connected : true;
 let refreshing = null;
 let saveTimer;
 let saving = false;
@@ -23,16 +23,17 @@ function preferences() {
     attachment_drafts:Object.fromEntries(Object.entries(attachmentDrafts).map(([id, items]) => [id, items.map(a => a.id)]))};
 }
 save = function() {
+  window.SapiensConnections?.save({...preferences(),workspaces:state.workspaces,scroll:$('#conversation-body').scrollTop});
   clearTimeout(saveTimer);
   saveTimer = setTimeout(flushPreferences, 300);
 };
 async function flushPreferences() {
-  if (saving) return;
+  if (saving || !online || window.SapiensConnections?.busy) return;
   const value = JSON.stringify(preferences());
   if (value === savedPreferences) return;
   saving = true;
   try {
-    const sent = JSON.parse(value);
+    const sent = window.SapiensConnections ? {attachment_drafts:JSON.parse(value).attachment_drafts} : JSON.parse(value);
     const response = await api('/api/preferences', 'PUT', sent);
     receiveWorkspaces(response.preferences);
     savedPreferences = value;
@@ -138,20 +139,19 @@ function applySnapshot(snapshot) {
 }
 
 renderGlobal = function() {
-  const remote = $('#remote-status');
-  const connected = online && (!remote || remote.dataset.connected === 'true');
-  const connection = $('#connection-status');
-  $('#connection-label').textContent = `${remote ? 'Remote' : 'Local'} · ${connected ? 'Online' : remote ? 'Offline' : 'Reconnecting…'}`;
-  connection.dataset.online = String(connected);
-  connection.title = remote ? (connected ? 'Encrypted connection to your CORPORA host.' : remote.title) :
-    (connected ? 'This app can reach the workspace service on this computer.' : 'The workspace service on this computer is unavailable. Retrying…');
+  if(!window.SapiensConnections) {
+    const remote = $('#remote-status');
+    const connected = online && (!remote || remote.dataset.connected === 'true');
+    $('#connection-label').textContent = `${remote ? 'Remote' : 'Local'} · ${connected ? 'Online' : 'Reconnecting…'}`;
+    $('#connection-status').dataset.online = String(connected);
+  }
   const owner = live.computer.owner;
   $('#resource-owner').textContent = owner ? `In use · ${agent(owner).name}` : live.computer.built ? 'Blindly4 · Available' : 'Blindly4 · Build required';
   $('#resource-status').classList.toggle('idle', !owner);
   $('#resource-status').classList.remove('paused');
 };
 
-window.addEventListener('sapiens-connection-change', () => renderGlobal());
+window.addEventListener('sapiens-connection-change', () => {if(window.SapiensConnections)online=SapiensConnections.connected&&!SapiensConnections.busy;renderGlobal();renderAgentHeader();});
 
 renderAgentHeader = function() {
   const a = selected();
@@ -162,7 +162,7 @@ renderAgentHeader = function() {
   resizeComposer();
   renderActivityNavigation();
   $('#attach-button').hidden = Boolean(a.archived);
-  $('.send-button').disabled = a.retired || a.archived || !online || submitting.has(a.id) || uploading > 0;
+  $('.send-button').disabled = a.retired || a.archived || live.corpora?.status==='paused' || live.corpora?.status==='archived' || !online || submitting.has(a.id) || uploading > 0;
 };
 
 let renderedConversation = '';
@@ -277,7 +277,7 @@ computerDialog = function() {
   modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : `Build required: run ${windows ? '.\\start.ps1' : './start.sh'}`}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Sapis share one computer. ${windows ? 'Windows UI Automation works with accessible apps on your desktop. Elevated apps and secure system dialogs cannot be controlled.' : 'macOS Accessibility access is required for desktop interaction; permission failures appear in chat.'}</p>`, 'BLINDLY4');
 };
 autonomyDialog = function() {
-  modal('Workspace & settings', '<p>Talk to your Sapis in chat, manage their notes, and save documents in their workspaces. Sapis can delegate requests through Chief.</p><p>The header status shows whether this app can reach your CORPORA workspace service. It does not indicate model availability or whether a phone is paired.</p><button type="button" class="button" id="edit-decision-prompts">Edit decision prompts</button>', 'SAPIENS4');
+  modal('Workspace & settings', '<p>Talk to your Sapis in chat, manage their notes, and save documents in their workspaces. Sapis can delegate requests through ChiefSapi.</p><p>Use the corpora menu to switch workspaces. Active and Paused describe execution on the host; Connecting means this device is restoring its connection.</p><button type="button" class="button" id="edit-decision-prompts">Edit decision prompts</button>', 'SAPIENS4');
   $('#edit-decision-prompts').addEventListener('click', editDecisionPrompts);
 };
 
@@ -398,10 +398,13 @@ $('#message-input').addEventListener('input', () => {state.drafts[state.selected
 
 async function refresh() {
   if (refreshing) return refreshing;
+  const connectionGeneration=window.SapiensConnections?.generation;
   refreshing = (async () => {
     try {
       const snapshot = await api('/api/state');
-      const changed = ['agents','groups','turns','computer','orchestration','activity','run_activity','workloads','pulses','routines','events'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k]));
+      if(connectionGeneration!==window.SapiensConnections?.generation)return;
+      window.SapiensConnections?.snapshot(snapshot);
+      const changed = ['corpora','agents','groups','turns','computer','orchestration','activity','run_activity','workloads','pulses','routines','events'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k]));
       const reconnected = !online;
       online = true;
       const tabsChanged = (snapshot.preferences.workspace_revision || 0) > workspaceRevision;
@@ -413,7 +416,8 @@ async function refresh() {
         if ($('#modal').open && $('#modal-title')?.textContent === 'Shared computer') computerDialog();
       }
     } catch (error) {
-      online = false; renderGlobal(); renderAgentHeader();
+      if(connectionGeneration!==window.SapiensConnections?.generation)return;
+      online = false; window.SapiensConnections?.offline(error); renderGlobal(); renderAgentHeader();
     } finally { refreshing = null; }
   })();
   return refreshing;
@@ -424,6 +428,23 @@ render();
 async function poll() {
   await refresh();
   updateProgress();
-  setTimeout(poll, window.sapiensRemote ? 2000 : online ? 750 : 2000);
+  setTimeout(poll, (window.sapiensRemote||window.SapiensConnections?.remote) ? 2000 : online ? 750 : 2000);
 }
 setTimeout(poll, 750);
+
+window.sapiensWorkspace = {save:()=>{
+  state.drafts[state.selected]=$('#message-input').value;
+  window.SapiensConnections?.save({...preferences(),workspaces:state.workspaces,scroll:$('#conversation-body').scrollTop});
+}};
+window.addEventListener('pagehide',()=>window.sapiensWorkspace.save());
+document.addEventListener('visibilitychange',()=>{if(document.hidden)window.sapiensWorkspace.save();else refresh();});
+window.SapiensConnections?.subscribe(snapshot=>{
+  clearTimeout(saveTimer);
+  state=makeInitialState(snapshot);live=snapshot;online=SapiensConnections.connected;
+  workspaceRevision=snapshot.preferences.workspace_revision||0;
+  workspaceOwner=state.selected;renderedConversation='';search='';$('#agent-search').value='';
+  Object.keys(attachmentDrafts).forEach(key=>delete attachmentDrafts[key]);Object.assign(attachmentDrafts,snapshot.attachment_drafts||{});
+  $('#message-input').value=state.drafts[state.selected]||'';
+  applySnapshot(snapshot);savedPreferences=JSON.stringify(preferences());render();
+  $('#conversation-body').scrollTop=snapshot.preferences.scroll||0;
+});

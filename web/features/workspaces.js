@@ -63,13 +63,14 @@ function renderWorkspace() {
   $('#browser-zoom').textContent=`${Math.round((t?.zoom || 1)*100)}%`;
   $('#browser-status').textContent=t?.error || (t?.loading?'Loading…':'');
   $$('[data-browser-action]').forEach(b=>b.disabled=!t || (b.dataset.browserAction==='back'&&!t.can_back) || (b.dataset.browserAction==='forward'&&!t.can_forward));
-  if(window.webkit?.messageHandlers?.browser)$('#workspace-content').textContent=t?'':'Open a URL or file to get started.';
+  if(nativeWorkspaceAvailable())$('#workspace-content').textContent=t?'':'Open a URL or file to get started.';
   else refreshWorkspacePreview();
   syncNativeBrowser();
 }
+function nativeWorkspaceAvailable(){return Boolean(window.webkit?.messageHandlers?.browser)&&window.SapiensConnections?.active?.location!=='Remote';}
 let workspacePreview = null;
 async function refreshWorkspacePreview() {
-  if(window.webkit?.messageHandlers?.browser)return;
+  if(nativeWorkspaceAvailable())return;
   const host=$('#workspace-content'),tab=state.tabs.find(t=>t.id===state.activeTab);
   const key=JSON.stringify([state.selected,tab?.id,tab?.path,tab?.command?.seq]);
   if(workspacePreview?.key!==key){
@@ -95,10 +96,11 @@ async function refreshWorkspacePreview() {
 function syncNativeBrowser() {
   const bridge=window.webkit?.messageHandlers?.browser;
   if (!bridge) return;
+  if(!nativeWorkspaceAvailable()){bridge.postMessage({workspaces:{},owner:'',active:null,visible:false});return;}
   const rect=$('#workspace-content').getBoundingClientRect();
   const palette=getComputedStyle($('.workspace'));
   bridge.postMessage({workspaces:state.workspaces,owner:state.selected,active:state.activeTab,
-    visible:!$('#workspace-panel').hidden && !$('#modal').open && $('#browser-menu').hidden, dark:document.documentElement.dataset.theme==='dark',
+    visible:!$('#workspace-panel').hidden && !$('#modal').open && $('#browser-menu').hidden && !document.getElementById('corpora-dialog')?.open && !document.getElementById('corpora-notice')?.open && document.getElementById('corpora-menu')?.hidden!==false && document.getElementById('corpora-status-menu')?.hidden!==false, dark:document.documentElement.dataset.theme==='dark',
     background:palette.getPropertyValue('--sapi-white').trim(),foreground:palette.getPropertyValue('--sapi-ink').trim(),
     captionBackground:palette.getPropertyValue('--sapi-bg').trim(),
     rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height}});
@@ -106,7 +108,10 @@ function syncNativeBrowser() {
 // Only the trusted app webview owns this callback; guest browser views have no bridge.
 let browserReports=Promise.resolve();
 window.sapiensBrowserEvent = data => {
+  if(!nativeWorkspaceAvailable()||window.SapiensConnections?.busy||!state.agents.some(a=>a.id===data.owner))return;
+  const generation=window.SapiensConnections?.generation;
   browserReports=browserReports.then(async()=>{
+    if(generation!==window.SapiensConnections?.generation)return;
     if (data.open) return browserAction('open',{url:data.open},data.owner);
     if (data.file) return browserAction('open',{path:data.file},data.owner);
     if (data.action) return browserAction(data.action,data.fields || {},data.owner);
@@ -129,7 +134,7 @@ $('#add-tab').addEventListener('click',openNewTab);
 $('#open-file').addEventListener('click',()=>{
   const bridge=window.webkit?.messageHandlers?.browser, directory=selected().kind==='group'?selected().workspace:live.orchestration[state.selected].notes.path.replace(/[\\/][^\\/]+$/, '');
   setBrowserMenu();
-  if(bridge)bridge.postMessage({pickFile:true,owner:state.selected,directory});else {editingAddress=state.activeTab;renderWorkspace();$('#browser-address').value=directory+'/';$('#browser-address').focus();}
+  if(nativeWorkspaceAvailable())bridge.postMessage({pickFile:true,owner:state.selected,directory});else {editingAddress=state.activeTab;renderWorkspace();$('#browser-address').value=directory+'/';$('#browser-address').focus();}
 });
 document.addEventListener('click',e=>{
   if(!e.target.closest('.browser-menu,.browser-tabs-wrap'))setBrowserMenu();
@@ -154,3 +159,8 @@ new MutationObserver(syncNativeBrowser).observe($('#modal'),{attributes:true,att
 window.addEventListener('resize',syncNativeBrowser);
 
 window.addEventListener('scroll',syncNativeBrowser,true);
+
+for(const id of ['corpora-menu','corpora-status-menu','corpora-dialog','corpora-notice']) {
+  const overlay=document.getElementById(id);
+  if(overlay)new MutationObserver(syncNativeBrowser).observe(overlay,{attributes:true,attributeFilter:['hidden','open']});
+}

@@ -18,6 +18,18 @@ def dispatch(service, method, target, data=None):
     write = method in {"POST", "PUT"}
     if write and not isinstance(data, dict):
         raise APIError(400, "Expected a JSON object")
+    if path == '/api/corpora':
+        if method == 'GET':
+            return reply(200, service.corpora_identity())
+    if path.startswith('/api/corpora/operations/') and method == 'GET':
+        with service._lock:
+            operation = service.corpora_settings.value['operations'].get(parts[-1])
+            return reply(200, dict(applied=operation is not None, corpora=service.corpora_identity()))
+    if path == '/api/corpora/lifecycle' and method == 'PUT':
+        return reply(200, service.corpora_settings.lifecycle(data))
+    if write and service.corpora_settings.value['status'] != 'active' and (
+            path.endswith('/messages') or path.endswith('/run') or '/turns/' in path):
+        raise APIError(409, 'Activate this corpora before starting work')
     if method == "GET":
         if len(parts) == 6 and parts[0] == 'api' and parts[1] in {'agents', 'groups'} and parts[3] == 'browser' and parts[5] == 'content':
             with service._lock:
