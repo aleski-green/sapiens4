@@ -31,6 +31,7 @@ window.SapiensConnections=(()=>{
     $('connection-label').textContent=busy?'Connecting…':!active?'Not connected':!connected?'Connecting…':active.stopping?'Pausing…':({active:'Active',paused:'Paused',archived:'Archived'}[active.status]||'Active');
     $('connection-status').dataset.online=String(connected&&!busy&&active?.status==='active');
     $('connection-status').disabled=!active||!connected||busy;
+    $('connection-status').setAttribute('aria-expanded',String(!statusMenu.hidden));
     statusMenu.innerHTML=active?.status==='archived'?'<span>Archived</span>':`<button type="button" data-lifecycle="pause" ${active?.status==='paused'?'disabled':''}>${active?.status==='paused'?'Paused ✓':'Pause'}</button><button type="button" data-lifecycle="activate" ${active?.status==='active'?'disabled':''}>${active?.status==='active'?'Active ✓':'Activate'}</button>`;
     notify();
   }
@@ -40,12 +41,13 @@ window.SapiensConnections=(()=>{
     $('create-local-corpora').hidden=!localAvailable;
     $('corpora-picker').title=active?.name||'Corpora';
     $('corpora-picker').setAttribute('aria-expanded',String(!menu.hidden));
+    $('connection-status').setAttribute('aria-expanded',String(!statusMenu.hidden));
   }
   function error(message){$('corpora-notice-text').textContent=message;$('corpora-notice').showModal();}
   function show(title,html){formCleanup();formCleanup=()=>{};$('corpora-dialog-title').textContent=title;$('corpora-dialog-body').innerHTML=html;if(!dialog.open){dialog.showModal();history.pushState({sapiensDialog:true},'');}}
   function closeForm(){formCleanup();formCleanup=()=>{};dialog.close();if(history.state?.sapiensDialog){suppressDialogPop=true;history.back();}}
   $('corpora-dialog-close').onclick=closeForm;dialog.addEventListener('cancel',event=>{event.preventDefault();closeForm();});
-  window.addEventListener('popstate',()=>{if(suppressDialogPop){suppressDialogPop=false;return;}if(dialog.open&&!history.state?.sapiensDialog){formCleanup();formCleanup=()=>{};dialog.close();}menu.hidden=true;statusMenu.hidden=true;});
+  window.addEventListener('popstate',()=>{if(suppressDialogPop){suppressDialogPop=false;return;}if(dialog.open&&!history.state?.sapiensDialog){formCleanup();formCleanup=()=>{};dialog.close();}menu.hidden=true;statusMenu.hidden=true;renderRows();});
   $('corpora-notice-close').onclick=()=>$('corpora-notice').close();
   $('corpora-picker').onclick=()=>{menu.hidden=!menu.hidden;statusMenu.hidden=true;renderRows();};
   $('connection-status').onclick=()=>{statusMenu.hidden=!statusMenu.hidden;menu.hidden=true;renderRows();};

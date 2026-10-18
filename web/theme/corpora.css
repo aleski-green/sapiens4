@@ -2,6 +2,7 @@
 [hidden]{display:none!important}
 .app-header{position:relative}
 .connection-button{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;min-height:44px;color:var(--muted);font:inherit;border:0;background:transparent;cursor:pointer}
+:root body.sapi-workspace .app-header .connection-button{font:400 12px/1.5 var(--sapi-font);letter-spacing:normal}
 .corpora-popover{position:absolute;z-index:35;right:14px;top:calc(100% + 4px);width:min(620px,calc(100vw - 28px));max-height:70dvh;overflow:auto;padding:16px;background:var(--sapi-bg);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 36px #0003}
 .corpora-menu-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
 .corpora-menu-heading button{min-width:44px;min-height:44px;background:transparent;border:0;color:var(--muted);font-size:23px}
