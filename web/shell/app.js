@@ -113,7 +113,7 @@ function appMenu(){
   const identity=$('#corpora-identity')?.textContent || 'CORPORA';
   const remote=$('#remote-status');
   const row=(label,target,detail='')=>`<button class="app-menu-row" data-menu-target="${target}"><span>${esc(label)}</span><small>${esc(detail)}</small></button>`;
-  modal(identity,`<nav aria-label="Corpora menu">${row('Workspace & settings','autonomy-button',$('#autonomy-label').textContent)}${row('Shared computer','resource-button',$('#resource-owner').textContent)}${remote?row('Device connection','remote-connection',remote.title||'Connected'):'<a class="app-menu-row" href="/remote/" target="_blank" rel="noopener">Connect phone <span aria-hidden="true">↗</span></a>'}${$('#install-entry button')?row('Add to Home Screen','install'):''}</nav>`,'MENU');
+  modal(identity,`<nav aria-label="Corpora menu">${row('Workspace & settings','workspace-settings',$('#connection-label').textContent)}${row('Shared computer','resource-button',$('#resource-owner').textContent)}${remote?row('Device connection','remote-connection',remote.title||'Connected'):'<a class="app-menu-row" href="/remote/" target="_blank" rel="noopener">Connect phone <span aria-hidden="true">↗</span></a>'}${$('#install-entry button')?row('Add to Home Screen','install'):''}</nav>`,'MENU');
   $('#modal').classList.add('app-menu-sheet');
 }
 
@@ -164,7 +164,8 @@ document.addEventListener('click',e=>{
     closeModal();
     if(d.menuTarget==='remote-connection'){
       modal('Device connection',`<p>${esc($('#remote-status')?.title || 'Connected')}</p><button class="button" data-menu-target="forget-device">Forget this device</button>`,'CORPORA');
-    }else if(d.menuTarget==='forget-device')$('#remote-status')?.click();
+    }else if(d.menuTarget==='workspace-settings')autonomyDialog();
+    else if(d.menuTarget==='forget-device')$('#remote-status')?.click();
     else if(d.menuTarget==='install')$('#install-entry button')?.click();
     else document.getElementById(d.menuTarget)?.click();
     return;
@@ -203,7 +204,6 @@ $('#close-modal').addEventListener('click',closeModal);
 $('#modal').addEventListener('click',e=>{if(e.target===$('#modal')){const r=$('#modal').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeModal();}});
 
 $('#add-agent').addEventListener('click',()=>addAgent());
-$('#autonomy-button').addEventListener('click',()=>autonomyDialog());
 $('#resource-button').addEventListener('click',()=>computerDialog());
 
 

@@ -138,13 +138,20 @@ function applySnapshot(snapshot) {
 }
 
 renderGlobal = function() {
-  $('#autonomy-label').textContent = online ? 'Connected' : 'Reconnecting…';
-  $('#autonomy-button').classList.toggle('live-disconnected', !online);
+  const remote = $('#remote-status');
+  const connected = online && (!remote || remote.dataset.connected === 'true');
+  const connection = $('#connection-status');
+  $('#connection-label').textContent = `${remote ? 'Remote' : 'Local'} · ${connected ? 'Online' : remote ? 'Offline' : 'Reconnecting…'}`;
+  connection.dataset.online = String(connected);
+  connection.title = remote ? (connected ? 'Encrypted connection to your CORPORA host.' : remote.title) :
+    (connected ? 'This app can reach the workspace service on this computer.' : 'The workspace service on this computer is unavailable. Retrying…');
   const owner = live.computer.owner;
   $('#resource-owner').textContent = owner ? `In use · ${agent(owner).name}` : live.computer.built ? 'Blindly4 · Available' : 'Blindly4 · Build required';
   $('#resource-status').classList.toggle('idle', !owner);
   $('#resource-status').classList.remove('paused');
 };
+
+window.addEventListener('sapiens-connection-change', () => renderGlobal());
 
 renderAgentHeader = function() {
   const a = selected();
@@ -270,7 +277,7 @@ computerDialog = function() {
   modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : `Build required: run ${windows ? '.\\start.ps1' : './start.sh'}`}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Sapis share one computer. ${windows ? 'Windows UI Automation works with accessible apps on your desktop. Elevated apps and secure system dialogs cannot be controlled.' : 'macOS Accessibility access is required for desktop interaction; permission failures appear in chat.'}</p>`, 'BLINDLY4');
 };
 autonomyDialog = function() {
-  modal('Local workspace', '<p>Connected to your local Codex CLI. Talk to your Sapis in chat, manage their notes, and save documents in their workspaces.</p><p>Sapis can delegate explicit requests through Chief. Tasks shows specifications and results. Jobs and recurring work are inactive.</p><button type="button" class="button" id="edit-decision-prompts">Edit decision prompts</button>', 'SAPIENS4');
+  modal('Workspace & settings', '<p>Talk to your Sapis in chat, manage their notes, and save documents in their workspaces. Sapis can delegate requests through Chief.</p><p>The header status shows whether this app can reach your CORPORA workspace service. It does not indicate model availability or whether a phone is paired.</p><button type="button" class="button" id="edit-decision-prompts">Edit decision prompts</button>', 'SAPIENS4');
   $('#edit-decision-prompts').addEventListener('click', editDecisionPrompts);
 };
 
@@ -296,8 +303,8 @@ document.addEventListener('submit', async e => {
 document.addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.id === 'profile-button' || b.id === 'app-menu') {
-    e.preventDefault(); e.stopImmediatePropagation(); b.id === 'app-menu' ? appMenu() : autonomyDialog(); return;
+  if (b.id === 'app-menu') {
+    e.preventDefault(); e.stopImmediatePropagation(); appMenu(); return;
   }
   if (!b.dataset.liveTurn) return;
   e.preventDefault(); e.stopImmediatePropagation(); b.disabled = true;
