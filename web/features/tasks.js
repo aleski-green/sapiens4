@@ -139,6 +139,7 @@ function taskCallControls(host) {
     if (work.state !== 'WaitingForAdmin' || ![work.owner,work.origin.agent].includes(state.selected)) continue;
     const button = document.createElement('button');
     button.type = 'button'; button.className = 'button';
+    button.dataset.chatKey = 'clarify:' + work.id;
     button.textContent = 'Answer Chief';
     button.addEventListener('click', () => {
       openChat(work.owner); clarificationWorkload = work;

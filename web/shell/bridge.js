@@ -165,22 +165,55 @@ renderAgentHeader = function() {
   $('.send-button').disabled = a.retired || a.archived || live.corpora?.status==='paused' || live.corpora?.status==='archived' || !online || submitting.has(a.id) || uploading > 0;
 };
 
+// Keep existing messages mounted: clearing the scroll container interrupts iOS
+// momentum scrolling, even when scrollTop is restored in the same JavaScript turn.
+function commitChat(viewport, content, changedView, bottom, scroll, anchor) {
+  const key = (node, index) => node.dataset.chatKey || node.className + ':' + index;
+  const existing = new Map([...viewport.children].map((node, index) => [key(node, index), node]));
+  const keep = new Set();
+  let cursor = viewport.firstElementChild;
+  [...content.children].forEach((fresh, index) => {
+    const old = changedView ? null : existing.get(key(fresh, index));
+    const node = old?.isEqualNode(fresh) ? old : fresh;
+    if (old && node !== old) {
+      if (cursor === old) cursor = fresh;
+      old.replaceWith(fresh);
+    }
+    if (node !== cursor) viewport.insertBefore(node, cursor);
+    cursor = node.nextElementSibling;
+    keep.add(node);
+  });
+  [...viewport.children].forEach(node => { if (!keep.has(node)) node.remove(); });
+  let target = scroll;
+  if (bottom) target = viewport.scrollHeight - viewport.clientHeight;
+  else if (anchor?.node.isConnected) {
+    target = viewport.scrollTop + anchor.node.getBoundingClientRect().top - anchor.top;
+  }
+  // Writing scrollTop during every poll also cancels momentum in WebKit.
+  if (Math.abs(viewport.scrollTop - target) > 1) viewport.scrollTop = target;
+}
+
 let renderedConversation = '';
 renderConversation = function() {
-  const host = $('#conversation-body');
+  const viewport = $('#conversation-body');
   if(['tasks','notes'].includes(state.panel)){workView=state.panel==='notes'?'memo':'tasks';state.panel='work';}
-  host.classList.toggle('notes-view', state.panel === 'notes');
+  viewport.classList.toggle('notes-view', state.panel === 'notes');
   const turns = live.turns.filter(j => j.agent === state.selected);
   const key = state.selected + ':' + state.panel + ':'+(state.panel==='work'?workView:state.panel==='chat'?chatView:updatesView);
   const changedView = renderedConversation !== key;
   renderedConversation = key;
-  const scroll = changedView ? 0 : host.scrollTop;
-  const bottom = state.panel === 'chat' && (changedView || host.scrollHeight - host.scrollTop - host.clientHeight < 80);
+  const scroll = changedView ? 0 : viewport.scrollTop;
+  const bottom = state.panel === 'chat' && (changedView || viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80);
+  const firstVisible = !changedView && !bottom && [...viewport.children].find(node => node.getBoundingClientRect().bottom > viewport.getBoundingClientRect().top);
+  const anchor = firstVisible ? {node:firstVisible,top:firstVisible.getBoundingClientRect().top} : null;
+  const chat = state.panel === 'chat' && chatView === 'conversation';
+  const host = chat ? document.createElement('div') : viewport;
+  const finish = () => { if (chat) commitChat(viewport, host, changedView, bottom, scroll, anchor); };
   if(renderChatCollection(host)){renderAgentHeader();renderGlobal();return;}
-  if(selected().kind==='group') {renderGroupPanel(host);renderAgentHeader();renderGlobal();host.scrollTop=bottom?host.scrollHeight:scroll;return;}
+  if(selected().kind==='group') {renderGroupPanel(host);renderAgentHeader();renderGlobal();if(chat)finish();else if(changedView)viewport.scrollTop=0;return;}
   if(state.panel==='work' || state.panel==='updates') {renderWork(host);renderAgentHeader();renderGlobal();if(changedView)host.scrollTop=0;return;}
   if (state.panel === 'chat') {
-    originalConversation();
+    originalConversation(host);
     host.querySelectorAll('.message').forEach((node,i) => {
       const message=getMessages(state.selected)[i];
       if (message?.author) node.querySelector('.message-meta strong').textContent = agent(message.author).name;
@@ -208,7 +241,7 @@ renderConversation = function() {
     if (!getMessages(state.selected).length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
     const activeTurns = turns.filter(j => blocksChat(j) && (!j.batch_id || j.batch_id===j.id));
     for (const turn of activeTurns) {
-      host.insertAdjacentHTML('beforeend', `<section class="live-status"><div data-turn-progress="${esc(turn.id)}">${turnProgress(turn)}</div>${turnActions(turn)}</section>`);
+      host.insertAdjacentHTML('beforeend', `<section data-chat-key="progress:${esc(turn.id)}" class="live-status"><div data-turn-progress="${esc(turn.id)}">${turnProgress(turn)}</div>${turnActions(turn)}</section>`);
     }
   } else if (state.panel === 'tasks') {
     $('#composer-area').hidden = true;
@@ -218,7 +251,7 @@ renderConversation = function() {
     renderNotes(host);
   }
   renderAgentHeader(); renderGlobal();
-  host.scrollTop = bottom ? host.scrollHeight : scroll;
+  finish();
 };
 
 sendChat = async function(value) {
@@ -425,6 +458,10 @@ async function refresh() {
 applySnapshot(bootstrap);
 savedPreferences = JSON.stringify(preferences());
 render();
+if (Number.isFinite(bootstrap.preferences.scroll)) {
+  $('#conversation-body').scrollTop = bootstrap.preferences.scroll;
+  save();
+}
 async function poll() {
   await refresh();
   updateProgress();
@@ -440,11 +477,19 @@ window.addEventListener('pagehide',()=>window.sapiensWorkspace.save());
 document.addEventListener('visibilitychange',()=>{if(document.hidden)window.sapiensWorkspace.save();else refresh();});
 window.SapiensConnections?.subscribe(snapshot=>{
   clearTimeout(saveTimer);
+  if (snapshot.corpora?.id === live.corpora?.id) {
+    // A cached workspace becoming live is a refresh, not navigation. Keep the
+    // chat, draft and reading position the user chose while reconnecting.
+    online=SapiensConnections.connected;
+    applySnapshot(snapshot);renderSidebar();renderConversation();renderTabs();renderWorkspace();renderGlobal();
+    return;
+  }
   state=makeInitialState(snapshot);live=snapshot;online=SapiensConnections.connected;
   workspaceRevision=snapshot.preferences.workspace_revision||0;
   workspaceOwner=state.selected;renderedConversation='';search='';$('#agent-search').value='';
   Object.keys(attachmentDrafts).forEach(key=>delete attachmentDrafts[key]);Object.assign(attachmentDrafts,snapshot.attachment_drafts||{});
   $('#message-input').value=state.drafts[state.selected]||'';
   applySnapshot(snapshot);savedPreferences=JSON.stringify(preferences());render();
-  $('#conversation-body').scrollTop=snapshot.preferences.scroll||0;
+  if(Number.isFinite(snapshot.preferences.scroll))$('#conversation-body').scrollTop=snapshot.preferences.scroll;
+  save();
 });

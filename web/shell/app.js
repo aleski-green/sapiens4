@@ -146,11 +146,11 @@ function renderSidebar(){
 // Live modules assign these before the first render.
 let save, getMessages, formatText, renderGlobal, renderAgentHeader, sendChat;
 let addAgent, agentSettings, computerDialog, autonomyDialog, renderAttachment;
-function renderConversation() {
-  const host = $('#conversation-body'), a = selected();
+function renderConversation(host = $('#conversation-body')) {
+  const a = selected();
   $('#composer-area').hidden = state.panel !== 'chat';
   host.innerHTML = '<div class="day-divider">CONVERSATION</div>' + getMessages(a.id).map(m =>
-    `<div class="message ${m.role==='user'?'user':''}"><div class="message-meta">${m.role==='assistant'?avatar(a,'mini'):'<span>↗</span>'}<strong>${m.role==='user'?'You':mention(a.id)}</strong><time>${esc(m.time)}</time></div><div class="message-bubble">${formatText(m.text).split('\n\n').map(p=>`<p>${p.replace(/\n/g,'<br>')}</p>`).join('')}</div></div>`).join('');
+    `<div data-chat-key="${esc(m.delegation ? 'delegation:'+m.delegation.id : m.role+':'+(m.requestTurn?.id || m.turnId))}" class="message ${m.role==='user'?'user':''}"><div class="message-meta">${m.role==='assistant'?avatar(a,'mini'):'<span>↗</span>'}<strong>${m.role==='user'?'You':mention(a.id)}</strong><time>${esc(m.time)}</time></div><div class="message-bubble">${formatText(m.text).split('\n\n').map(p=>`<p>${p.replace(/\n/g,'<br>')}</p>`).join('')}</div></div>`).join('');
   renderAttachment();
 }
 
