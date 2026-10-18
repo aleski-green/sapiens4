@@ -203,6 +203,7 @@ window.SapiensConnections=(()=>{
     }catch(e){$('corpora-startup-feedback').textContent=e.message;renderStatus();if(!started)setTimeout(restore,3000);}
   }
   function start(){
+    if(remote&&'serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
     if(remote&&RemoteInstall.mobile&&!RemoteInstall.installed()){
       installRequired=true;$('mobile-install-gate').hidden=false;$('corpora-empty').hidden=true;
       $('mobile-install-action').onclick=()=>RemoteInstall.show(false);return;
@@ -210,7 +211,6 @@ window.SapiensConnections=(()=>{
     installRequired=false;$('mobile-install-gate').hidden=true;
     records=read('s4.records',[]);active=records.find(r=>r.key===read('s4.active',null))||null;
     if(active){const cached=read('s4.snapshot.'+active.key,null);if(cached)deliver(cached);}renderRows();renderStatus();restore();
-    if(remote&&'serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
   }
   const fragment=location.hash.slice(1);if(remote&&fragment)history.replaceState(null,'',location.pathname);
   window.matchMedia?.('(display-mode: standalone)').addEventListener('change',()=>{if(installRequired&&RemoteInstall.installed())start();});

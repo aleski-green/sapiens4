@@ -1,4 +1,21 @@
+require_relative 'support/relay'
+
 RSpec.describe 'Remote app installation guidance' do
+  it 'serves every public shell asset advertised for offline installation with a versioned cache' do
+    relay = Relay.new
+    status, script = relay.request('GET', '/sw.js')
+    expect(status).to eq(200)
+    expect(script).to match(/sapiens-shell-[0-9a-f]{16}/)
+    paths = script.match(/const ASSETS=\[([^\]]+)\]/)[1].scan(/'([^']+)'/).flatten
+    expect(paths).to include('/', '/workspace/app.js', '/corpora.js', '/corpora.css')
+    paths.each do |path|
+      expect(path).not_to start_with('/api/')
+      expect(relay.request('GET', path).first).to eq(200), "Missing installation asset: #{path}"
+    end
+  ensure
+    relay.close if relay
+  end
+
   {
     'ios' => ['IPHONE & IPAD', 'Add to Home Screen', 'Safari', 'Open as Web App'],
     'android' => ['ANDROID', 'Add to Home Screen', 'Chrome', 'Install'],

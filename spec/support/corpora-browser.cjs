@@ -11,7 +11,7 @@ const b={id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',name:'Studio',device:'Mac min
 const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],turns:[]});
 (async()=>{
  const dom=new JSDOM(fs.readFileSync(path.join(root,'web/shell/index.html'),'utf8'),{url:'https://relay.example/workspace/',runScripts:'outside-only',pretendToBeVisual:true});
- const w=dom.window,d=w.document,calls=[],operations=new Map();let fail=false;
+ const w=dom.window,d=w.document,calls=[],operations=new Map(),workers=[];let fail=false,credentialReads=0;
  Object.defineProperty(w,'crypto',{value:webcrypto});w.AbortSignal=AbortSignal;w.Response=Response;
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
  w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
@@ -27,7 +27,8 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
  if(scenario==='mobile'||scenario==='linux'){
    d.body.setAttribute('data-remote','');
    Object.defineProperty(w.navigator,'userAgent',{value:scenario==='mobile'?'Mozilla/5.0 (iPhone)':'Mozilla/5.0 (X11; Linux x86_64)'});
-   w.RemoteSession={list:async()=>[]};
+   w.RemoteSession={list:async()=>{credentialReads++;return [];}};
+   Object.defineProperty(w.navigator,'serviceWorker',{value:{register:async path=>{workers.push(path);}}});
  }
  w.fetch=async(url,options={})=>{
    calls.push({url,method:options.method||'GET',data:options.body&&JSON.parse(options.body)});
@@ -60,7 +61,7 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
    const restored=await w.SapiensConnections.initial;
    console.log(JSON.stringify({status:d.querySelector('#connection-label').textContent,preferences:restored.preferences,selected:w.SapiensConnections.active.name}));
  }else{
-   console.log(JSON.stringify({gate:!d.querySelector('#mobile-install-gate').hidden,localVisible:!d.querySelector('#create-local-corpora').hidden,empty:!d.querySelector('#corpora-empty').hidden,networkCalls:calls.length}));
+   console.log(JSON.stringify({gate:!d.querySelector('#mobile-install-gate').hidden,localVisible:!d.querySelector('#create-local-corpora').hidden,empty:!d.querySelector('#corpora-empty').hidden,networkCalls:calls.length,credentialReads,workers}));
  }
  dom.window.close();
 })().catch(error=>{console.error(error);process.exitCode=1;});

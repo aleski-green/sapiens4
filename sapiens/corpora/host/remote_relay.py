@@ -51,6 +51,8 @@ ASSETS = {
     '/app-icon-192.png': ('shell/app-icon-192.png', 'image/png'),
     '/app-icon-512.png': ('shell/app-icon-512.png', 'image/png'),
 }
+WORKSPACE_ASSETS = ('/workspace/', '/workspace/app.js', '/workspace/styles.css',
+                    '/live.css', '/assets/sapi-theme.css', '/assets/sapi-theme.js')
 
 
 def digest(value):
@@ -242,7 +244,7 @@ class RelayServer:
                 name, mime = ASSETS[path]
                 content = (index().replace('<body class=', '<body data-remote class=').encode() if name == 'shell/remote.html' else (ROOT / 'web' / name).read_bytes())
                 if path == '/sw.js':
-                    sources = index().encode() + javascript().encode() + b''.join((ROOT / 'web' / item[0]).read_bytes() for item in ASSETS.values())
+                    sources = b''.join(asset(path)[1] for path in WORKSPACE_ASSETS) + b''.join((ROOT / 'web' / item[0]).read_bytes() for item in ASSETS.values())
                     version = hashlib.sha256(sources).hexdigest()[:16]
                     content = content.replace(b'sapiens-shell-v1', ('sapiens-shell-' + version).encode())
                 platform = path.strip('/')
@@ -252,8 +254,7 @@ class RelayServer:
                 elif path == '/manifest.webmanifest' and req.query.get('platform') in {'ios', 'android', 'mac', 'windows'}:
                     return self.response(200, dict(json.loads(content), start_url='/' + req.query['platform']), mime)
                 return self.response(200, content, mime)
-            if req.method == 'GET' and path in {'/workspace/', '/workspace/app.js',
-                    '/workspace/styles.css', '/live.css', '/assets/sapi-theme.css', '/assets/sapi-theme.js'}:
+            if req.method == 'GET' and path in WORKSPACE_ASSETS:
                 found = asset(path)
                 if path == '/workspace/':
                     found = (found[0], found[1].replace(b'<body class=', b'<body data-remote class='))

@@ -23,7 +23,8 @@ RSpec.describe 'Corpora workspace browser flows' do
   end
 
   it 'requires installation on a phone before accessing saved connections or pairing' do
-    expect(probe('mobile')).to include('gate' => true, 'localVisible' => false, 'networkCalls' => 0)
+    expect(probe('mobile')).to include('gate' => true, 'localVisible' => false, 'networkCalls' => 0,
+      'credentialReads' => 0, 'workers' => ['/sw.js'])
   end
 
   it 'offers only remote corpora on Linux without requiring desktop installation' do
