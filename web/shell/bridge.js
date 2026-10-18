@@ -171,21 +171,23 @@ function commitChat(viewport, content, changedView, bottom, scroll, anchor) {
   const key = (node, index) => node.dataset.chatKey || node.className + ':' + index;
   const existing = new Map([...viewport.children].map((node, index) => [key(node, index), node]));
   const keep = new Set();
+  let changed = changedView;
   let cursor = viewport.firstElementChild;
   [...content.children].forEach((fresh, index) => {
     const old = changedView ? null : existing.get(key(fresh, index));
     const node = old?.isEqualNode(fresh) ? old : fresh;
     if (old && node !== old) {
+      changed = true;
       if (cursor === old) cursor = fresh;
       old.replaceWith(fresh);
     }
-    if (node !== cursor) viewport.insertBefore(node, cursor);
+    if (node !== cursor) {viewport.insertBefore(node, cursor);changed = true;}
     cursor = node.nextElementSibling;
     keep.add(node);
   });
-  [...viewport.children].forEach(node => { if (!keep.has(node)) node.remove(); });
+  [...viewport.children].forEach(node => { if (!keep.has(node)) {node.remove();changed = true;} });
   let target = scroll;
-  if (bottom) target = viewport.scrollHeight - viewport.clientHeight;
+  if (bottom && changed) target = viewport.scrollHeight - viewport.clientHeight;
   else if (anchor?.node.isConnected) {
     target = viewport.scrollTop + anchor.node.getBoundingClientRect().top - anchor.top;
   }

@@ -10,6 +10,15 @@ RSpec.describe 'Chat position during live workspace updates' do
     expect(@result['errors']).to be_empty
   end
 
+  it 'does not snap back when the reader starts scrolling up near the bottom' do
+    expect(@result['nearBottom']['writes']).to eq(0)
+    expect(@result['nearBottom']['after']).to eq(@result['nearBottom']['before'])
+  end
+
+  it 'routes clarification to the current assignee after a live update' do
+    expect(@result['clarify']['heading']).to eq('Other')
+  end
+
   it 'adds replies without interrupting someone reading earlier messages' do
     expect(@result['append']).to include('retained' => true, 'writes' => 0, 'scroll' => 220, 'messages' => 8)
   end
