@@ -76,9 +76,9 @@
 :root body.sapi-workspace .pill { border:0;background:transparent;color:var(--muted);font-size:11px;min-height:28px;padding:4px 5px;border-radius:6px; }
 :root body.sapi-workspace .user-avatar { height:26px;width:26px;border:0;background:var(--sapi-pink-tint);color:var(--ink);font-size:10px;font-weight:500; }
 :root body.sapi-workspace .sidebar { background:var(--sapi-bg);padding:14px 10px 0;border-color:var(--line); }
-:root body.sapi-workspace .sidebar-heading { margin:0 7px 12px;min-height:24px; }
-:root body.sapi-workspace .sidebar-heading h1 { font:600 12px var(--sapi-font);letter-spacing:0;color:var(--muted); }
-:root body.sapi-workspace .sidebar-heading h1 span { font:400 10px var(--sapi-font);color:var(--muted);margin-left:6px; }
+:root body.sapi-workspace .sidebar-heading { margin:0 7px 12px;min-height:24px;gap:8px; }
+:root body.sapi-workspace .sidebar-heading h1 { flex:1;min-width:0;margin:0;font:600 12px var(--sapi-font);letter-spacing:0;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+:root body.sapi-workspace .sidebar-heading #agent-count { flex:none;font:400 10px var(--sapi-font);color:var(--muted); }
 :root body.sapi-workspace .scope-switch { background:transparent;padding:0;gap:3px;margin-bottom:12px; }
 :root body.sapi-workspace .scope-switch button { border-radius:6px;padding:4px 0;font-size:11px; }
 :root body.sapi-workspace .scope-switch button.active { background:var(--sapi-pink-tint);color:var(--ink);box-shadow:none; }
@@ -377,11 +377,10 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 .event-row[open] .event-chevron { transform:rotate(90deg); }
 .event-row pre { margin:0 0 12px; padding:12px; background:var(--sapi-purple-tint); border-radius:6px; font:12px/1.5 ui-monospace,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
 
-.corpora-identity { margin: -4px 0 12px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 
 /* The same CORPORA shell adapts on touch devices and narrow windows.
    Display type is 90% of the mobile study; inputs stay at 16px to avoid iOS zoom. */
-.sidebar-actions { display:flex;align-items:center;gap:2px; }
+.sidebar-actions { display:flex;flex:none;align-items:center;gap:2px; }
 #search-toggle { display:none; }
 #search-toggle svg { width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round; }
 .app-menu-row { display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;min-height:50px;padding:12px 0;border-top:1px solid var(--line);text-decoration:none;text-align:left;font:inherit; }
@@ -401,7 +400,7 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 :root body.sapi-workspace[data-mobile-ui] .sidebar { padding:8px 8px 0; }
 :root body.sapi-workspace[data-mobile-ui] .sidebar-heading { margin:0 8px 4px;min-height:44px; }
 :root body.sapi-workspace[data-mobile-ui] .sidebar-heading h1 { font-size:15.3px;letter-spacing:-.3px;color:var(--ink); }
-:root body.sapi-workspace[data-mobile-ui] .sidebar-heading h1 span { font-size:12.6px;font-weight:400; }
+:root body.sapi-workspace[data-mobile-ui] .sidebar-heading #agent-count { font-size:12.6px;font-weight:400; }
 :root body.sapi-workspace[data-mobile-ui] #search-toggle { display:inline-grid; }
 :root body.sapi-workspace[data-mobile-ui] .search-field { display:none;order:1;margin:0 8px 8px;height:44px;flex-shrink:0;padding:0 12px;border-radius:12px; }
 :root body.sapi-workspace[data-mobile-ui] .search-field.search-open { display:flex; }
