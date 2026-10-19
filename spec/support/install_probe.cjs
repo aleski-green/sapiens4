@@ -12,7 +12,13 @@ w.matchMedia=()=>({matches:mode==='standalone'});
 let network=0,prompts=0;
 w.fetch=()=>{network++;throw new Error('Unexpected request');};
 w.eval(fs.readFileSync(path.join(root,'web/features/remote-install.js'),'utf8'));
-w.RemoteInstall.mount();
+let legacyGuideOpened=false;
+if(mode==='legacy'){
+ // The previous cached workspace expects this control in the network HTML.
+ d.querySelector('#mobile-install-gate').hidden=false;
+ d.querySelector('#mobile-install-action').onclick=()=>legacyGuideOpened=true;
+ d.querySelector('#mobile-install-action').click();
+}else w.RemoteInstall.mount();
 (async()=>{
  if(mode==='prompt'){
    const event=new w.Event('beforeinstallprompt',{cancelable:true});event.prompt=async()=>{prompts++;};w.dispatchEvent(event);
@@ -20,7 +26,7 @@ w.RemoteInstall.mount();
    console.log(JSON.stringify({offered,prompts,hiddenAfter:button.hidden,gate:!d.querySelector('#mobile-install-gate').hidden,prevented:event.defaultPrevented}));
  }else{
    const gate=d.querySelector('#mobile-install-gate'),help=gate.querySelector('a');
-   console.log(JSON.stringify({gate:!gate.hidden,title:gate.querySelector('h1')?.textContent,instructions:gate.querySelector('ol')?.textContent,help:help&&{href:help.href,target:help.target,rel:help.rel},words:gate.textContent.trim().split(/\s+/).length,network,storage:w.localStorage.length+w.sessionStorage.length,cookie:d.cookie}));
+   console.log(JSON.stringify({legacyGuideOpened,gate:!gate.hidden,title:gate.querySelector('h1')?.textContent,instructions:gate.querySelector('ol')?.textContent,help:help&&{href:help.href,target:help.target,rel:help.rel},words:gate.textContent.trim().split(/\s+/).length,network,storage:w.localStorage.length+w.sessionStorage.length,cookie:d.cookie}));
  }
  dom.window.close();
 })();

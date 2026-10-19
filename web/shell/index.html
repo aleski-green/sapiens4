@@ -33,7 +33,8 @@
     </header>
     <section id="corpora-empty" class="corpora-empty" hidden><h1>Your corpora</h1><p>Connect to your Sapis on another computer.</p><button id="empty-connect-corpora">Connect remote corpora</button><button id="empty-create-corpora" hidden>Create local corpora</button></section>
     <p id="corpora-startup-feedback" role="status"></p>
-    <section id="mobile-install-gate" aria-label="Install Sapiens4" hidden></section>
+    <!-- Previous cached clients bind this button; the current installer replaces the fallback. -->
+    <section id="mobile-install-gate" aria-label="Install Sapiens4" hidden><div class="install-card"><span class="install-brand">Sapiens4</span><h1>Add to Home Screen</h1><p>Install to connect your corpora.</p><button id="mobile-install-action" type="button">Show me how</button><a href="https://sapiens4.ai/help?q=add2homescreen" target="_blank" rel="noopener noreferrer">Need help? ↗</a></div></section>
     <div class="main-grid">
       <aside class="sidebar" id="chat-list-panel" aria-label="Chat list">
         <div class="sidebar-heading"><h1 id="corpora-identity" class="corpora-identity">Connecting…</h1><span id="agent-count" aria-label="Sapi count">0</span><div class="sidebar-actions"><button class="icon-button" id="search-toggle" aria-label="Search Corpora" aria-controls="corpora-search" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button><button class="icon-button" id="add-agent" aria-label="Create through Chief">＋</button></div></div>

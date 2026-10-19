@@ -8,6 +8,8 @@ RSpec.describe 'Remote app installation guidance' do
     expect(result['success']['events']).to eq(%w[download complete activate-ready])
     expect(result['success'].values_at('asset', 'offlinePage')).to eq(['new shell', 'new shell'])
     expect(result['failure']['events']).to eq(%w[download failed])
+    expect(result['online'].values_at('asset', 'offlinePage')).to eq(['new shell', 'new shell'])
+    expect(result['online']['events']).not_to include('network-newer-shell')
   end
 
   it 'serves every public shell asset advertised for offline installation with a versioned cache' do
@@ -49,6 +51,10 @@ RSpec.describe 'Remote app installation guidance' do
       expect(result['help']).to eq('href' => 'https://sapiens4.ai/help?q=add2homescreen', 'target' => '_blank', 'rel' => 'noopener noreferrer')
       expect(install_probe(platform, 'standalone')['gate']).to eq(false)
     end
+  end
+
+  it 'keeps the first update readable for an older cached mobile client' do
+    expect(install_probe('ios', 'legacy')).to include('gate' => true, 'title' => 'Add to Home Screen', 'legacyGuideOpened' => true)
   end
 
   it 'offers the native Android prompt without unlocking connections in the browser' do
