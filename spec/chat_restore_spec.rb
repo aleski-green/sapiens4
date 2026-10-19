@@ -41,4 +41,8 @@ RSpec.describe 'Reopening a chat from its offline cache' do
   it 'ignores app-switcher reflow scroll events that arrive before iOS reports the page hidden' do
     expect(@result['beforeHidden']['after']).to eq(@result['beforeHidden']['before'])
   end
+
+  it 'remembers a new reading position chosen with the scrollbar after resizing' do
+    expect(@result['resizedGesture']['after']).to eq(@result['resizedGesture']['before'])
+  end
 end

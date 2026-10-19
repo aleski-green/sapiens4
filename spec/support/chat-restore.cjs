@@ -52,10 +52,15 @@ async function boot(snapshot){
  bottom.dom.window.close();original.dom.window.close();
  // Resume the same document, including WebKit moving the scroll position while
  // hidden and again during the first foreground frame. No history changes.
- for(const [name,position] of [['resumeReading',4825],['resumeBottom',Infinity],['beforeHidden',4825]]){
+ for(const [name,position] of [['resumeReading',4825],['resumeBottom',Infinity],['beforeHidden',4825],['resizedGesture',4825]]){
   const app=await boot(full);app.host.scrollTop=position;
   app.host.dispatchEvent(new app.w.Event('scroll'));
-  const before=app.visible();
+  let before=app.visible();
+  if(name==='resizedGesture'){
+   app.layout.width=500;app.layout.height=300;
+   app.host.dispatchEvent(new app.w.Event('pointerdown'));app.host.scrollTop=2500;
+   app.host.dispatchEvent(new app.w.Event('scroll'));before=app.visible();
+  }
   if(name==='beforeHidden'){
    app.layout.width=500;app.layout.height=300;app.host.scrollTop=2500;
    app.host.dispatchEvent(new app.w.Event('scroll'));app.w.sapiensWorkspace.save();

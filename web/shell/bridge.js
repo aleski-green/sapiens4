@@ -532,7 +532,7 @@ $('#conversation-body').addEventListener('scroll',()=>{
   scrollSaveTimer=setTimeout(()=>window.SapiensConnections?.save(workspacePreferences()),100);
 },{passive:true});
 // Explicit reading/navigation takes precedence over a bookmark awaiting history.
-for (const event of ['touchstart','wheel','keydown']) $('#conversation-body').addEventListener(event,()=>{pendingChatPosition=null;lastChatGeometry=null;},{passive:true});
+for (const event of ['pointerdown','touchstart','wheel','keydown']) $('#conversation-body').addEventListener(event,()=>{pendingChatPosition=null;lastChatGeometry=null;},{passive:true});
 function suspendChat() {
   cancelAnimationFrame(resumeChatFrame);
   resumingChat = false;
@@ -560,20 +560,6 @@ function resumeChat() {
 window.addEventListener('pagehide',suspendChat);
 window.addEventListener('pageshow',resumeChat);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)suspendChat();else resumeChat();});
-// Temporary on-device observations; no chat contents or credentials are logged.
-if (window.SapiensConnections?.remote) {
-  const output=document.createElement('pre');
-  output.style.cssText='position:fixed;top:98px;left:4px;z-index:9999;background:#111e;color:#ff9;font:9px monospace;pointer-events:none;margin:0;white-space:pre;';
-  document.body.append(output);
-  const observations=[];
-  const observe=event=>{
-    const viewport=$('#conversation-body');
-    observations.push(`${event.type}:${event.target?.id||''} h${Number(document.hidden)} y${Math.round(viewport.scrollTop)} p${pendingChatPosition?.offset?.toFixed(0)??'-'} l${lastChatPosition?.offset?.toFixed(0)??'-'} ${viewport.clientWidth}x${viewport.clientHeight} g${lastChatGeometry}`);
-    output.textContent=observations.slice(-9).join('\n');
-  };
-  for(const type of ['scroll','touchstart','touchend','wheel','visibilitychange'])document.addEventListener(type,observe,true);
-  for(const type of ['pageshow','pagehide'])window.addEventListener(type,observe);
-}
 window.SapiensConnections?.subscribe(snapshot=>{
   clearTimeout(saveTimer);
   if (snapshot.corpora?.id === live.corpora?.id) {
