@@ -5,6 +5,19 @@ RSpec.describe 'Corpora workspace browser flows' do
     JSON.parse(out)
   end
 
+  it 'manages pairing for the chosen local corpora without changing selection' do
+    result = probe('pairing-rows')
+    expect(result).to include('column' => true, 'selected' => 'Home', 'title' => 'Edit Pairing', 'after' => 'New Pairing')
+    expect(result['rows']).to eq([{'name' => 'Home', 'action' => 'New Pairing'}, {'name' => 'Studio', 'action' => nil}, {'name' => 'Second local', 'action' => 'Edit Pairing'}])
+    expect(result['details']).to include('Second local', 'iPhone', 'iOS 26', 'Home Screen app', 'Paired', 'Last connected', 'Replace remote', 'Revoke remote')
+    expect(result['details']).not_to include('Not recorded')
+    expect(result['revoke']).to include('/cccccccc-cccc-4ccc-8ccc-cccccccccccc/api/remote/revoke')
+  end
+
+  it 'hides pairing for a device with only remote corpora' do
+    expect(probe('pairing-only-remote')).to eq('column' => false, 'actions' => 0, 'requests' => 0)
+  end
+
   it 'pauses the previous corpora, activates the selected one and leaves the selector open' do
     expect(probe('switch')).to include('active' => 'Studio', 'status' => 'Active', 'menuOpen' => true,
       'commands' => [{'target' => 'Home', 'action' => 'pause'}, {'target' => 'Studio', 'action' => 'activate'}])

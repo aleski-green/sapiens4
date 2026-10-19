@@ -112,7 +112,7 @@ $('#agent-search').addEventListener('keydown',e=>{
 function appMenu(){
   const identity=$('#corpora-identity')?.textContent || 'CORPORA';
   const row=(label,target,detail='')=>`<button class="app-menu-row" data-menu-target="${target}"><span>${label}</span><span>${esc(detail)}</span></button>`;
-  modal(identity,`<nav aria-label="Corpora menu">${row('Workspace & settings','workspace-settings')}${row('Shared computer','resource-button',$('#resource-owner').textContent)}${row('Remote control','remote-control')}</nav>`,'MENU');
+  modal(identity,`<nav aria-label="Corpora menu">${row('Workspace & settings','workspace-settings')}${row('Shared computer','resource-button',$('#resource-owner').textContent)}</nav>`,'MENU');
   $('#modal').classList.add('app-menu-sheet');
 }
 
@@ -161,8 +161,7 @@ document.addEventListener('click',e=>{
 
   if(d.menuTarget){
     closeModal();
-    if(d.menuTarget==='remote-control'){window.SapiensConnections?.remoteControl();}
-    else if(d.menuTarget==='remote-connection'){
+    if(d.menuTarget==='remote-connection'){
       modal('Device connection',`<p>${esc($('#remote-status')?.title || 'Connected')}</p><button class="button" data-menu-target="forget-device">Forget this device</button>`,'CORPORA');
     }else if(d.menuTarget==='workspace-settings')autonomyDialog();
     else if(d.menuTarget==='forget-device')$('#remote-status')?.click();

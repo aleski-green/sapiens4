@@ -8,12 +8,14 @@ const sleep=()=>new Promise(resolve=>setTimeout(resolve,0));
 const template=fs.readFileSync(path.join(root,'prompts/corpora-settings-request.md'),'utf8');
 const a={id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',name:'Home',device:'This Mac',scope:'Home tasks',status:'active',revision:1,chief_id:'chief-a',location:'Local',settings_template:template};
 const b={id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',name:'Studio',device:'Mac mini',scope:'Studio tasks',status:'paused',revision:1,chief_id:'chief-b',location:'Remote',settings_template:template};
+const c={...a,id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',name:'Second local',paired:true};
 const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],turns:[]});
 (async()=>{
  const dom=new JSDOM(fs.readFileSync(path.join(root,'web/shell/index.html'),'utf8'),{url:'https://relay.example/workspace/',runScripts:'outside-only',pretendToBeVisual:true});
- const w=dom.window,d=w.document,calls=[],operations=new Map(),workers=[];let fail=false,credentialReads=0;
+ const w=dom.window,d=w.document,calls=[],operations=new Map(),workers=[];let fail=false,credentialReads=0;let paired=true;
  Object.defineProperty(w,'crypto',{value:webcrypto});w.AbortSignal=AbortSignal;w.Response=Response;
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
+ w.confirm=()=>true;
  w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
  const evaluate=name=>w.eval(fs.readFileSync(path.join(root,'web/features',name+'.js'),'utf8'));
  if(scenario==='storage'){
@@ -32,8 +34,10 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
  }
  w.fetch=async(url,options={})=>{
    calls.push({url,method:options.method||'GET',data:options.body&&JSON.parse(options.body)});
-   if(url==='/api/host')return {ok:true,json:async()=>({local_available:true,corpora:[a,b]})};
-   const record=String(url).includes(a.id)?a:b;
+   if(url==='/api/host')return {ok:true,json:async()=>({local_available:true,corpora:scenario==='pairing-only-remote'?[b]:scenario==='pairing-rows'?[a,b,c]:[a,b]})};
+   const record=String(url).includes(a.id)?a:String(url).includes(c.id)?c:b;
+   if(String(url).endsWith('/api/remote/revoke')){paired=false;return {ok:true,json:async()=>({revoked:true})};}
+   if(String(url).endsWith('/api/remote'))return {ok:true,json:async()=>({paired:record===c&&paired,device_info:{name:'iPhone',platform:'iOS 26',client:'Home Screen app'},paired_at:1720000000,last_connected_at:1720003600,configured_relay:'https://relay.example'})};
    if(fail&&record===b)throw new Error('This device is unreachable. Try again later.');
    if(String(url).endsWith('/api/corpora/lifecycle')){if(scenario==='edit-activation-failed')return {ok:false,json:async()=>({error:'This device is unreachable. Try again later.'})};const data=JSON.parse(options.body);operations.set(data.operation,data);record.status=data.action==='pause'?'paused':'active';record.revision++;return {ok:true,json:async()=>({...record})};}
    if(String(url).endsWith('/api/state'))return {ok:true,json:async()=>snapshot(record)};
@@ -49,7 +53,17 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
  evaluate('remote-install');evaluate('corpora');
  for(let i=0;i<12;i++)await sleep();
  const click=selector=>d.querySelector(selector).click();
- if(scenario==='switch'||scenario==='unreachable'){
+ if(scenario==='pairing-rows'){
+   click('#corpora-picker');for(let i=0;i<12;i++)await sleep();
+   const rows=Array.from(d.querySelectorAll('.corpora-record')).map(row=>({name:row.querySelector('.corpora-name').textContent,action:row.querySelector('[data-pairing]')?.textContent||null}));
+   click('[data-pairing="'+c.id+'"]');for(let i=0;i<12;i++)await sleep();
+   const details=d.querySelector('#remote-host-content').textContent,title=d.querySelector('#corpora-dialog-title').textContent;
+   click('[data-remote-action="revoke"]');for(let i=0;i<12;i++)await sleep();
+   console.log(JSON.stringify({rows,details,title,selected:w.SapiensConnections.active.name,column:!d.querySelector('.corpora-remote-column').hidden,revoke:calls.find(call=>call.url.endsWith('/remote/revoke'))?.url,after:d.querySelector('[data-pairing="'+c.id+'"]').textContent}));
+ }else if(scenario==='pairing-only-remote'){
+   click('#corpora-picker');for(let i=0;i<12;i++)await sleep();
+   console.log(JSON.stringify({column:!d.querySelector('.corpora-remote-column').hidden,actions:d.querySelectorAll('[data-pairing]').length,requests:calls.filter(call=>call.url.endsWith('/api/remote')).length}));
+ }else if(scenario==='switch'||scenario==='unreachable'){
    fail=scenario==='unreachable';click('#corpora-picker');click('[data-enter="'+b.id+'"]');for(let i=0;i<15;i++)await sleep();
    console.log(JSON.stringify({active:w.SapiensConnections.active.name,menuOpen:!d.querySelector('#corpora-menu').hidden,status:d.querySelector('#connection-label').textContent,commands:calls.filter(c=>c.url.endsWith('/lifecycle')).map(c=>({target:c.url.includes(a.id)?'Home':'Studio',action:c.data.action})),notice:d.querySelector('#corpora-notice').open?d.querySelector('#corpora-notice-text').textContent:null}));
  }else if(scenario.startsWith('edit')){

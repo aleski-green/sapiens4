@@ -9,7 +9,7 @@ window.RemoteCode = (() => {
       url64(data.desktop), Math.floor(data.expires).toString(36), ...(data.public_id ? [data.public_id] : [])].join('.');
   }
   function decode(text) {
-    if (typeof text !== 'string' || text.length > 4096) throw new Error('Use the QR from desktop Remote control.');
+    if (typeof text !== 'string' || text.length > 4096) throw new Error('Use the QR from the host corpora’s New Pairing.');
     if (text.trim().startsWith('{')) return JSON.parse(text);
     if (/^https?:\/\//.test(text.trim())) {
       const link = new URL(text.trim());
@@ -23,11 +23,11 @@ window.RemoteCode = (() => {
         // Accept the original mixed-character suffix in existing QR invitations.
         (parts.length===8 && !/^sapi4_[a-z0-9]{9}$/.test(parts[7])) ||
         !parts.slice(1,6).every(value => /^[A-Za-z0-9_-]+$/.test(value)) ||
-        !/^[0-9a-z]{1,10}$/.test(parts[6])) throw new Error('Use the QR from desktop Remote control.');
+        !/^[0-9a-z]{1,10}$/.test(parts[6])) throw new Error('Use the QR from the host corpora’s New Pairing.');
     try {
       return {v:protocol, relay:atob(base64(parts[1])), room:parts[2], token:parts[3],
         secret:parts[4], desktop:base64(parts[5]), expires:parseInt(parts[6],36), ...(parts[7] ? {public_id:parts[7]} : {})};
-    } catch { throw new Error('Use the QR from desktop Remote control.'); }
+    } catch { throw new Error('Use the QR from the host corpora’s New Pairing.'); }
   }
   async function confirmation(desktop, phone, room) {
     const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz';
@@ -46,5 +46,13 @@ window.RemoteCode = (() => {
     return code.slice(0, 4) + ' · ' + code.slice(4);
   }
   const link = data => data.relay + '/#' + encode(data);
-  return {encode, decode, link, confirmation};
+  function deviceInfo() {
+    const ua=navigator.userAgent,ipad=/iPad/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1);
+    const name=ipad?'iPad':/iPhone/.test(ua)?'iPhone':/Android/.test(ua)?'Android device':/Windows/.test(ua)?'Windows PC':/Macintosh/.test(ua)?'Mac':/Linux/.test(ua)?'Linux device':'Remote device';
+    const version=ua.match(/(?:CPU (?:iPhone )?OS|iPhone OS|Android|Windows NT|Mac OS X) ([\d_.]+)/)?.[1]?.replace(/_/g,'.');
+    const platform=(ipad?'iPadOS':/iPhone/.test(ua)?'iOS':name==='Mac'?'macOS':name==='Windows PC'?'Windows':name==='Android device'?'Android':name==='Linux device'?'Linux':'Unknown platform')+(version?' '+version:'');
+    const installed=navigator.standalone===true||window.matchMedia?.('(display-mode: standalone)').matches;
+    return {name,platform,client:installed?'Sapiens4 Home Screen app':'Sapiens4 browser'};
+  }
+  return {encode, decode, link, confirmation, deviceInfo};
 })();

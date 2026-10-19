@@ -58,6 +58,47 @@ RSpec.describe 'Encrypted remote service contracts' do
     expect(host.api('GET', '/api/remote')['invitation']).to be_nil
   end
 
+  it 'keeps older pairings usable without inventing missing device details or dates' do
+    pair
+    host.stop
+    path = File.join(host.root, 'remote-device.json')
+    saved = JSON.parse(File.read(path))
+    %w[paired_at last_connected_at last_connection_id device_info].each { |key| saved.delete(key) }
+    File.write(path, JSON.generate(saved))
+    host.start
+    expect(host.api('GET', '/api/remote')).to include('paired' => true, 'paired_at' => nil, 'last_connected_at' => nil, 'device_info' => {})
+    send_frame(pack(op: 'resume'))
+    expect(receive).to include('paired' => true)
+    expect(host.api('GET', '/api/remote')['paired_at']).to be_nil
+    expect(host.api('GET', '/api/remote')['last_connected_at']).to be_a(Numeric)
+  end
+
+  it 'persists pairing and authenticated device connection details without counting relay reconnects' do
+    pair
+    first = host.api('GET', '/api/remote')
+    expect(first['paired_at']).to be_between(Time.now.to_f - 30, Time.now.to_f)
+    expect(first['last_connected_at']).to be_nil
+    info = {name: 'iPhone', platform: 'iOS 26.0', client: 'Sapiens4 Home Screen app'}
+    send_frame(pack(op: 'resume', connection_id: 'phone-session-one', device_info: info))
+    receive
+    saved = host.api('GET', '/api/remote')
+    expect(saved['device_info']).to eq(info.transform_keys(&:to_s))
+    expect(saved['last_connected_at']).to be >= saved['paired_at']
+    host.restart
+    restored = host.api('GET', '/api/remote')
+    expect(restored.values_at('paired_at', 'last_connected_at', 'device_info')).to eq(saved.values_at('paired_at', 'last_connected_at', 'device_info'))
+    send_frame(pack(op: 'api', method: 'GET', path: '/api/state', connection_id: 'phone-session-one'))
+    receive
+    expect(host.api('GET', '/api/remote')['last_connected_at']).to eq(saved['last_connected_at'])
+    send_frame(pack(op: 'resume', connection_id: 'phone-session-two', device_info: info))
+    receive
+    reconnected = host.api('GET', '/api/remote')
+    expect(reconnected['last_connected_at']).to be > saved['last_connected_at']
+    expect(reconnected['paired_at']).to eq(saved['paired_at'])
+    host.api('POST', '/api/remote/revoke', {})
+    expect(host.api('GET', '/api/remote')).to include('paired' => false, 'paired_at' => nil, 'last_connected_at' => nil, 'device_info' => {})
+  end
+
   it 'executes an encrypted write once across exact retries and restart and returns authoritative state' do
     pair
     agent = chief

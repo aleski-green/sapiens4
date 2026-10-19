@@ -50,7 +50,9 @@ class HostRegistry:
             local = []
             if self.local_available:
                 for identity in [self.server.service.corpora_id, *self.saved['locals']]:
-                    local.append(dict(self.local(identity).corpora_identity(), location='Local'))
+                    info = self.local(identity).corpora_identity()
+                    bridge = self.server.remote if identity == self.server.service.corpora_id else self.children[identity].remote
+                    local.append(dict(info, location='Local', paired=bridge.status()['paired']))
             remote = [dict(item['corpora'], location='Remote') for item in self.saved['remotes'].values()]
             return dict(local_available=self.local_available, corpora=local + remote)
 

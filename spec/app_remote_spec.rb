@@ -29,7 +29,11 @@ RSpec.describe 'Installed app encrypted connection', :host do
     expect(result['state']).to eq('approved'), result.inspect
     identity = host.state['corpora']['id']
     expect(peer.call('request', path: '/api/state')['body']['corpora']['id']).to eq(identity)
+    details = host.api('GET', '/api/remote')
+    expect(details['device_info']).to include('name' => 'iPhone', 'platform' => 'iOS 26.0', 'client' => 'Sapiens4 Home Screen app')
+    expect(details['last_connected_at']).to be >= details['paired_at']
     expect(peer.call('restore')['id']).to eq(identity)
+    expect(host.api('GET', '/api/remote')['last_connected_at']).to be > details['last_connected_at']
     metadata = peer.call('request', path: '/api/corpora')['body']
     expect(peer.call('request', path: "/api/agents/#{chief}/control", method: 'POST', body: {
       op: 'corpora_update', revision: metadata['revision'], name: 'Remote Studio', device: 'Host Mac', scope: 'Design work'

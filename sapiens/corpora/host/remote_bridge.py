@@ -72,6 +72,7 @@ class RemoteBridge:
             except (OSError, ValueError, TypeError, KeyError):
                 self.config = None
                 self.error = 'Saved remote pairing is invalid. Create a new pairing; local CORPORA is unaffected.'
+        self.connections = {self.config.get('last_connection_id')} if self.config else set()
         self.thread = None
         if self.config and crypto.available():
             self.start()
@@ -98,6 +99,8 @@ class RemoteBridge:
                         local_relay=bool(local_connection()),
                         configured_relay=self.saved_relay().get('relay'),
                         paired=bool(config.get('peer')), relay=config.get('relay'),
+                        paired_at=config.get('paired_at'), last_connected_at=config.get('last_connected_at'),
+                        device_info=config.get('device_info', {}),
                         fingerprint=crypto.fingerprint(config['peer']) if config.get('peer') else None,
                         pending=dict(fingerprint=crypto.fingerprint(pending['peer']), peer=pending['peer'],
                                      confirmation_code=crypto.confirmation_code(config['public'], pending['peer'], config['room']))
@@ -161,6 +164,8 @@ class RemoteBridge:
             request(config['relay'], '/api/rooms/' + config['room'] + '/trust',
                     config['token'], 'POST', {})
             config['peer'] = pending['peer']
+            config['paired_at'] = time.time()
+            config['device_info'] = pending.get('device_info', {})
             config['accept'] = self.response(pending['id'], dict(paired=True, corpora=self.service.corpora_identity()))
             config['pending'] = None
             config.pop('secret', None)
@@ -216,7 +221,7 @@ class RemoteBridge:
                 raise ValueError('Invalid pairing proof')
             if config.get('pending') and config['pending']['peer'] != peer:
                 raise ValueError('Another phone is awaiting approval')
-            config['pending'] = dict(peer=peer, id=message['id'])
+            config['pending'] = dict(peer=peer, id=message['id'], device_info=self.device_info(message.get('device_info')))
             self.save()
             return None
         if message.get('kind') != 'request' or message['expires'] > time.time() + 310:
@@ -224,6 +229,7 @@ class RemoteBridge:
         corpora = self.service.corpora_identity()
         if message.get('corpora_id', corpora['id']) != corpora['id']:
             return self.response(message['id'], dict(error='This device is connected to a different CORPORA. Pair again.'))
+        self.record_connection(message)
         if message.get('op') == 'resume':
             return self.response(message['id'], dict(paired=True, corpora=corpora))
         if message.get('op') == 'api' and message.get('method') == 'GET':
@@ -247,6 +253,36 @@ class RemoteBridge:
             db.execute('UPDATE receipts SET reply=? WHERE room=? AND id=?',
                        (json.dumps(reply), config['room'], message['id']))
         return reply
+
+    @staticmethod
+    def device_info(value):
+        if not isinstance(value, dict):
+            return {}
+        return {key: ''.join(c for c in value[key] if c.isprintable()).strip()[:200]
+                for key in ('name', 'platform', 'client') if isinstance(value.get(key), str)}
+
+    def record_connection(self, message):
+        # Only authenticated peer traffic reaches here, never relay keepalives.
+        config = self.config
+        connection = message.get('connection_id')
+        if not isinstance(connection, str) or not 1 <= len(connection) <= 100:
+            connection = None
+        info = self.device_info(message.get('device_info'))
+        changed = False
+        if (not config.get('last_connected_at') or
+                (connection and connection not in self.connections) or
+                (not connection and message.get('op') == 'resume')):
+            config['last_connected_at'] = time.time()
+            config['last_connection_id'] = connection
+            self.connections.add(connection)
+            if len(self.connections) > 128:
+                self.connections = {connection}
+            changed = True
+        if info and info != config.get('device_info'):
+            config['device_info'] = info
+            changed = True
+        if changed:
+            self.save()
 
     def execute_response(self, message):
         try:

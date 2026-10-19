@@ -36,12 +36,18 @@ window.SapiensConnections=(()=>{
     notify();
   }
   function renderRows(){
-    const rowsHTML=records.filter(r=>!r.archived&&r.status!=='archived'||$('corpora-archived').checked).map(r=>`<div class="corpora-record" data-selected="${r.key===selectedKey()}"><span class="corpora-location-cell">${escape(r.location)}</span><span class="corpora-name-cell"><button class="corpora-name" data-enter="${escape(r.key)}" ${r.status==='archived'||busy?'disabled':''} aria-pressed="${r.key===selectedKey()}">${escape(r.name)}</button><button class="corpora-edit" data-edit="${escape(r.key)}" ${busy?'disabled':''}>Edit</button></span><span class="corpora-state"><i class="corpora-dot" data-active="${r.status==='active'}"></i>${escape({active:'Active',paused:'Paused',archived:'Archived'}[r.status]||'Active')}</span><span class="corpora-device">${escape(r.device||'Host computer')}</span></div>`).join('');
+    const hasLocal=!remote&&records.some(r=>r.location==='Local');
+    menu.dataset.hasLocal=String(hasLocal);
+    menu.querySelector('.corpora-remote-column').hidden=!hasLocal;
+    const rowsHTML=records.filter(r=>!r.archived&&r.status!=='archived'||$('corpora-archived').checked).map(r=>`<div class="corpora-record" data-selected="${r.key===selectedKey()}"><span class="corpora-location-cell">${escape(r.location)}</span><span class="corpora-name-cell"><button class="corpora-name" data-enter="${escape(r.key)}" ${r.status==='archived'||busy?'disabled':''} aria-pressed="${r.key===selectedKey()}">${escape(r.name)}</button><button class="corpora-edit" data-edit="${escape(r.key)}" ${busy?'disabled':''}>Edit</button></span><span class="corpora-state"><i class="corpora-dot" data-active="${r.status==='active'}"></i>${escape({active:'Active',paused:'Paused',archived:'Archived'}[r.status]||'Active')}</span><span class="corpora-device">${escape(r.device||'Host computer')}</span>${hasLocal?`<span class="corpora-pairing-cell">${r.location==='Local'?`<button data-pairing="${escape(r.key)}" ${busy?'disabled':''}>${r.paired?'Edit Pairing':'New Pairing'}</button>`:''}</span>`:''}</div>`).join('');
     if($('corpora-rows').innerHTML!==rowsHTML)$('corpora-rows').innerHTML=rowsHTML;
     $('create-local-corpora').hidden=!localAvailable;
     $('corpora-picker').title=active?.name||'Corpora';
     $('corpora-picker').setAttribute('aria-expanded',String(!menu.hidden));
     $('connection-status').setAttribute('aria-expanded',String(!statusMenu.hidden));
+  }
+  async function refreshPairings(){
+    await Promise.all(records.filter(r=>!remote&&r.location==='Local').map(async record=>{try{const data=await request(record,'/api/remote');record.paired=data.paired;renderRows();}catch{}}));
   }
   function error(message){$('corpora-notice-text').textContent=message;$('corpora-notice').showModal();}
   function show(title,html){formCleanup();formCleanup=()=>{};$('corpora-dialog-title').textContent=title;$('corpora-dialog-body').innerHTML=html;if(!dialog.open){dialog.showModal();history.pushState({sapiensDialog:true},'');}}
@@ -49,7 +55,7 @@ window.SapiensConnections=(()=>{
   $('corpora-dialog-close').onclick=closeForm;dialog.addEventListener('cancel',event=>{event.preventDefault();closeForm();});
   window.addEventListener('popstate',()=>{if(suppressDialogPop){suppressDialogPop=false;return;}if(dialog.open&&!history.state?.sapiensDialog){formCleanup();formCleanup=()=>{};dialog.close();}menu.hidden=true;statusMenu.hidden=true;renderRows();});
   $('corpora-notice-close').onclick=()=>$('corpora-notice').close();
-  $('corpora-picker').onclick=()=>{menu.hidden=!menu.hidden;statusMenu.hidden=true;renderRows();};
+  $('corpora-picker').onclick=()=>{menu.hidden=!menu.hidden;statusMenu.hidden=true;renderRows();if(!menu.hidden)refreshPairings();};
   $('connection-status').onclick=()=>{statusMenu.hidden=!statusMenu.hidden;menu.hidden=true;renderRows();};
   $('corpora-menu-close').onclick=()=>{menu.hidden=true;renderRows();};
   document.addEventListener('click',event=>{const path=event.composedPath();if(!path.some(node=>node.id&&['corpora-picker','corpora-menu','connection-status','corpora-status-menu','corpora-dialog','corpora-notice'].includes(node.id))){menu.hidden=true;statusMenu.hidden=true;renderRows();}});
@@ -127,7 +133,7 @@ window.SapiensConnections=(()=>{
     }catch(e){error(e.message);}
     finally{busy=false;renderRows();renderStatus();}
   }
-  $('corpora-rows').onclick=event=>{const button=event.target.closest('button');if(button?.dataset.enter)enter(records.find(r=>r.key===button.dataset.enter));if(button?.dataset.edit)edit(records.find(r=>r.key===button.dataset.edit));};
+  $('corpora-rows').onclick=event=>{const button=event.target.closest('button');if(button?.dataset.enter)enter(records.find(r=>r.key===button.dataset.enter));if(button?.dataset.edit)edit(records.find(r=>r.key===button.dataset.edit));if(button?.dataset.pairing)remoteControl(records.find(r=>r.key===button.dataset.pairing));};
   statusMenu.onclick=async event=>{const action=event.target.closest('[data-lifecycle]')?.dataset.lifecycle;if(!action||busy)return;busy=true;renderStatus();try{await reconcile();await lifecycle(active,action);}catch(e){error(e.message);}finally{busy=false;statusMenu.hidden=true;renderStatus();}};
   function edit(record){
     show('Message to ChiefSapi',`<form id="chief-settings-form"><textarea name="message" aria-label="Message to ChiefSapi" rows="8" required></textarea><p class="corpora-feedback" role="status"></p><button type="submit">Send to ChiefSapi ↑</button></form>`);
@@ -155,7 +161,7 @@ window.SapiensConnections=(()=>{
   };
   async function connectForm(){
     if(installRequired){RemoteInstall.show(false);return;}
-    show('Connect remote corpora',`<p>On the host, open <strong>Remote control</strong> and show its QR.</p><section id="pair-panel"><form id="corpora-form" hidden><input id="corpora-address"><button id="find-corpora"></button></form><div id="qr-step"><code id="selected-address" hidden></code><button id="change-corpora" hidden></button><button id="scan-qr" type="button">Scan QR</button><label class="qr-upload">Upload QR<input id="qr-file" type="file" accept="image/png,image/jpeg,image/webp"></label></div><div id="scanner" hidden><video id="qr-camera" autoplay playsinline muted></video><button id="stop-scan" type="button">Cancel scan</button></div><form id="paste-invitation"><label>Or paste an invitation<textarea name="invitation" rows="2" required spellcheck="false" autocomplete="off"></textarea></label><button type="submit">Connect</button></form></section><section id="verify-panel" hidden><p>Approve this matching code on the host.</p><strong id="confirmation-code"></strong></section><p id="pair-feedback" role="status"></p>`);
+    show('Connect remote corpora',`<p>On the host, open the corpora menu and choose <strong>New Pairing</strong> in its Remote column.</p><section id="pair-panel"><form id="corpora-form" hidden><input id="corpora-address"><button id="find-corpora"></button></form><div id="qr-step"><code id="selected-address" hidden></code><button id="change-corpora" hidden></button><button id="scan-qr" type="button">Scan QR</button><label class="qr-upload">Upload QR<input id="qr-file" type="file" accept="image/png,image/jpeg,image/webp"></label></div><div id="scanner" hidden><video id="qr-camera" autoplay playsinline muted></video><button id="stop-scan" type="button">Cancel scan</button></div><form id="paste-invitation"><label>Or paste an invitation<textarea name="invitation" rows="2" required spellcheck="false" autocomplete="off"></textarea></label><button type="submit">Connect</button></form></section><section id="verify-panel" hidden><p>Approve this matching code on the host.</p><strong id="confirmation-code"></strong></section><p id="pair-feedback" role="status"></p>`);
     let cancelled=false,connecting=false,pendingClient,pendingID;
     const feedback=text=>{if($('pair-feedback'))$('pair-feedback').textContent=text;};
     const pair=async invitation=>{
@@ -182,21 +188,23 @@ window.SapiensConnections=(()=>{
   }
   $('connect-remote-corpora').onclick=connectForm;$('empty-connect-corpora').onclick=connectForm;
   $('empty-create-corpora').onclick=()=>$('create-local-corpora').click();
-  async function remoteControl(){
-    if(active?.location!=='Local'){error('Open Remote control on the host computer to manage its trusted device.');return;}
-    const record=active;
-    show('Remote control','<div id="remote-host-content"></div><p id="remote-host-feedback" role="status"></p>');
+  async function remoteControl(record){
+    if(remote||record?.location!=='Local')return;
+    show(record.paired?'Edit Pairing':'New Pairing','<div id="remote-host-content"></div><p id="remote-host-feedback" role="status"></p>');
     let cancelled=false,timer;
     const status=text=>{if($('remote-host-feedback'))$('remote-host-feedback').textContent=text;};
     async function refresh(){
       try{
         const data=await request(record,'/api/remote');if(cancelled)return;
-        const html=data.paired?'<p>One remote device is trusted.</p><button data-remote-action="replace">Replace device</button><button data-remote-action="revoke">Revoke access</button>':data.pending?`<p>Approve only if this code matches your remote device.</p><strong>${escape(data.pending.confirmation_code)}</strong><button data-remote-action="approve" data-peer="${escape(data.pending.peer)}">Approve device</button>`:data.invitation?'<p>In the installed app, choose Connect remote corpora and scan this QR.</p><canvas id="host-pair-qr"></canvas><button data-remote-action="revoke">Cancel invitation</button>':data.configured_relay?'<button data-remote-action="pair">Show QR</button>':'<form id="relay-setup"><label>Relay URL<input name="relay" type="url" required></label><label>Connection token<input name="token" type="password" required autocomplete="off"></label><button>Show QR</button></form>';
+        record.paired=data.paired;renderRows();$('corpora-dialog-title').textContent=data.paired?'Edit Pairing':'New Pairing';
+        const date=value=>typeof value==='number'&&Number.isFinite(value)?new Date(value*1000).toLocaleString([], {dateStyle:'medium',timeStyle:'long'}):'Not recorded';
+        const info=data.device_info||{};
+        const html=data.paired?`<p class="pairing-corpora">${escape(record.name)}</p><dl class="pairing-details"><dt>Device</dt><dd>${escape(info.name||'Not recorded')}</dd><dt>Device info</dt><dd>${escape([info.platform,info.client].filter(Boolean).join(' · ')||'Not recorded')}</dd><dt>Paired</dt><dd>${escape(date(data.paired_at))}</dd><dt>Last connected</dt><dd>${escape(date(data.last_connected_at))}</dd></dl><div class="pairing-actions"><button data-remote-action="replace">Replace remote</button><button data-remote-action="revoke">Revoke remote</button></div>`:data.pending?`<p>Approve only if this code matches your remote device.</p><strong>${escape(data.pending.confirmation_code)}</strong><button data-remote-action="approve" data-peer="${escape(data.pending.peer)}">Approve device</button>`:data.invitation?'<p>In the installed app, choose Connect remote corpora and scan this QR.</p><canvas id="host-pair-qr"></canvas><button data-remote-action="revoke">Cancel invitation</button>':data.configured_relay?'<button data-remote-action="pair">Show QR</button>':'<form id="relay-setup"><label>Relay URL<input name="relay" type="url" required></label><label>Connection token<input name="token" type="password" required autocomplete="off"></label><button>Show QR</button></form>';
         const container=$('remote-host-content');if(container.dataset.content!==html){container.innerHTML=html;container.dataset.content=html;if(data.invitation&&$('host-pair-qr'))await RemoteVendor.QRCode.toCanvas($('host-pair-qr'),RemoteCode.link(data.invitation),{width:320,margin:3});}
         status(data.error||'');
       }catch(e){status(e.message);}finally{if(!cancelled)timer=setTimeout(refresh,2500);}
     }
-    $('remote-host-content').onclick=async event=>{const button=event.target.closest('[data-remote-action]');if(!button)return;button.disabled=true;try{const action=button.dataset.remoteAction;if(action==='replace'&&!confirm('Replace the trusted remote device? The previous device will lose access.'))return;if(action==='replace'||action==='revoke')await request(record,'/api/remote/revoke','POST',{});if(action==='replace'||action==='pair')await request(record,'/api/remote/pair','POST',{saved:true});if(action==='approve')await request(record,'/api/remote/approve','POST',{peer:button.dataset.peer});clearTimeout(timer);await refresh();}catch(e){status(e.message);}finally{button.disabled=false;}};
+    $('remote-host-content').onclick=async event=>{const button=event.target.closest('[data-remote-action]');if(!button)return;button.disabled=true;try{const action=button.dataset.remoteAction;if(action==='revoke'&&!confirm('Revoke this remote device’s access? It will need to pair again.'))return;if(action==='replace'&&!confirm('Replace the trusted remote device? The previous device will lose access.'))return;if(action==='replace'||action==='revoke')await request(record,'/api/remote/revoke','POST',{});if(action==='replace'||action==='pair')await request(record,'/api/remote/pair','POST',{saved:true});if(action==='approve')await request(record,'/api/remote/approve','POST',{peer:button.dataset.peer});clearTimeout(timer);await refresh();}catch(e){status(e.message);}finally{button.disabled=false;}};
     $('remote-host-content').onsubmit=async event=>{event.preventDefault();try{await request(record,'/api/remote/pair','POST',{relay:event.target.elements.relay.value,token:event.target.elements.token.value});clearTimeout(timer);await refresh();}catch(e){status(e.message);}};
     formCleanup=()=>{cancelled=true;clearTimeout(timer);};refresh();
   }

@@ -14,7 +14,7 @@ window.RemoteTransport = class {
   connect(){
     if(this.blocked)return Promise.reject(this.blocked);
     if(this.ready)return this.ready;
-    const generation=this.generation;
+    const generation=this.generation;this.connectionId=crypto.randomUUID();
     this.ready=new Promise((resolve,reject)=>{
       const ws=new WebSocket(this.session.relay.replace(/^http/,'ws')+'/api/socket');this.socket=ws;
       const timer=setTimeout(()=>{reject(new Error('This device is unreachable. Try again later.'));ws.close();},10000);
@@ -56,7 +56,7 @@ window.RemoteTransport = class {
     await this.connect();
     if(this.pending.size>=128)throw new Error('Connection busy. Try again shortly.');
     const s=this.session,{nacl}=RemoteVendor,id=crypto.randomUUID(),nonce=nacl.randomBytes(24);
-    const raw=new TextEncoder().encode(JSON.stringify({v:'sapiens-remote-box-v1',room:s.room,direction:'phone-to-desktop',corpora_id:s.corpora?.id,id,expires:Date.now()/1000+timeout/1000,...payload}));
+    const raw=new TextEncoder().encode(JSON.stringify({v:'sapiens-remote-box-v1',room:s.room,direction:'phone-to-desktop',corpora_id:s.corpora?.id,connection_id:this.connectionId,device_info:RemoteCode.deviceInfo(),id,expires:Date.now()/1000+timeout/1000,...payload}));
     if(raw.length>16000000)throw new Error('Request is too large.');
     const frame={sender:RemoteTransport.b64(s.keys.publicKey),nonce:RemoteTransport.b64(nonce),ciphertext:RemoteTransport.b64(nacl.box(raw,nonce,RemoteTransport.bytes(s.desktop,32),s.keys.secretKey))};
     return new Promise((resolve,reject)=>{

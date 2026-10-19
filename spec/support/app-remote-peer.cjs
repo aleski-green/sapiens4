@@ -9,6 +9,7 @@ let dom,w,client,otherClient,progress;
 async function run(data){
  if(data.op==='pair'){
   dom=new JSDOM('',{url:data.invitation.relay,runScripts:'outside-only'});w=dom.window;
+  Object.defineProperty(w.navigator,'userAgent',{value:'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)'});Object.defineProperty(w.navigator,'standalone',{value:true});
   Object.defineProperty(w,'crypto',{value:webcrypto});Object.defineProperty(w,'isSecureContext',{value:true});
   w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;w.Uint8Array=Uint8Array;w.Response=Response;w.indexedDB=new IDBFactory();w.RemoteVendor={nacl};
   w.fetch=(url,options)=>fetch(new URL(url,data.invitation.relay),options);

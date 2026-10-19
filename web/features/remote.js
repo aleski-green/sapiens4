@@ -27,6 +27,7 @@
     if(feedback) {feedback.textContent=text;feedback.hidden=text==='Remote · Connected';}
   };
   let session=null, paired=false, polling=false, socket=null, ready=false, reconnectTimer=null, reconnectDelay=1000, serial=0;
+  let connectionId=crypto.randomUUID();
   let starting=true, storageWarning=false, pairing=false;
   const calls=new Map();
   const pending=new Map();
@@ -50,6 +51,7 @@
   }
   function connect() {
     if(!session || socket) return;
+    connectionId=crypto.randomUUID();
     const ws=new WebSocket(location.origin.replace(/^http/, 'ws')+'/api/socket');
     socket=ws;ready=false;
     let delivery=Promise.resolve(), queued=0;
@@ -106,7 +108,7 @@
   }
   async function send(payload, callbacks={}) {
     const id=b64(nacl.randomBytes(18)), expires=payload.kind==='pair' ? session.expires : Date.now()/1000+120;
-    const encrypted=frame({id,expires,...payload});
+    const encrypted=frame({id,expires,connection_id:connectionId,device_info:RemoteCode.deviceInfo(),...payload});
     pending.set(id,{kind:payload.kind,op:payload.op,...callbacks,expires,frame:encrypted,lastSent:0});
     try { await relay('send',{frame:encrypted}); if(pending.has(id)) pending.get(id).lastSent=Date.now(); }
     catch(error) { status(error.message+(payload.kind==='pair' ? ' Pairing remains pending until the code expires.' : ' Message remains pending until its two-minute expiry.')); }

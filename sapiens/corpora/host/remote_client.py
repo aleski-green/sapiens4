@@ -1,5 +1,6 @@
 """Native client of the existing encrypted relay protocol (one serialized socket)."""
 import json
+import platform
 import re
 import threading
 import time
@@ -14,6 +15,7 @@ class RemoteClient:
     def __init__(self, config):
         self.config, self.socket = config, None
         self.lock = threading.Lock()
+        self.connection_id = None
 
     def close(self):
         if self.socket:
@@ -25,9 +27,14 @@ class RemoteClient:
 
     def exchange(self, payload, timeout=12):
         with self.lock:
+            if self.socket is None:
+                self.connection_id = uuid4().hex
             identity = uuid4().hex
             data = dict(id=identity, expires=time.time() + timeout,
-                        corpora_id=self.config.get('corpora', {}).get('id'), **payload)
+                        corpora_id=self.config.get('corpora', {}).get('id'),
+                        connection_id=self.connection_id,
+                        device_info=dict(name=platform.node(), platform=platform.system() + ' ' + platform.release(),
+                                         client='Sapiens4 desktop'), **payload)
             frame = crypto.pack(self.config['private'], self.config['desktop'], self.config['room'], 'phone-to-desktop', data)
             try:
                 if self.socket is None:
