@@ -77,7 +77,7 @@ function setup({touch=true,width=390,height=844,panes={sidebar:true,chat:true,wo
   vm.runInContext('appMenu()',phone.ctx);
   assert.equal(doc.querySelector('#modal').open,true);
   assert.ok(doc.querySelector('[data-menu-target="resource-button"]'));
-  assert.ok(doc.querySelector('[data-menu-target="remote-control"]'));
+  console.log(JSON.stringify({mainMenuTargets:Array.from(doc.querySelectorAll('#modal-content [data-menu-target]'),button=>button.dataset.menuTarget)}));
   let opened=0;vm.runInContext('computerDialog=()=>{}',phone.ctx);
   doc.querySelector('#resource-button').addEventListener('click',()=>opened++);
   doc.querySelector('[data-menu-target="resource-button"]').click();assert.equal(opened,1);

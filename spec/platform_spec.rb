@@ -5,6 +5,10 @@ RSpec.describe 'Browser and native platform probes' do
     it "passes the #{File.basename(file, '.test.cjs')} browser contract", :browser do
       out, error, code = Contract.capture('node', file, timeout: 90)
       expect(code).to eq(0), out + error
+      if File.basename(file) == 'panes.test.cjs'
+        menu = JSON.parse(out.lines.find { |line| line.start_with?('{"mainMenuTargets"') })
+        expect(menu['mainMenuTargets']).to eq(%w[workspace-settings resource-button])
+      end
     end
   end
 
