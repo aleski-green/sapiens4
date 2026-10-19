@@ -254,7 +254,7 @@ class RelayServer:
                 elif path == '/manifest.webmanifest' and req.query.get('platform') in {'ios', 'android', 'mac', 'windows'}:
                     return self.response(200, dict(json.loads(content), start_url='/' + req.query['platform']), mime)
                 return self.response(200, content, mime)
-            if req.method == 'GET' and path in WORKSPACE_ASSETS:
+            if req.method == 'GET' and (path in WORKSPACE_ASSETS or path == '/scroll-check.js'):
                 found = asset(path)
                 if path == '/workspace/':
                     found = (found[0], found[1].replace(b'<body class=', b'<body data-remote class='))
