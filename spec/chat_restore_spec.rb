@@ -37,4 +37,8 @@ RSpec.describe 'Reopening a chat from its offline cache' do
   it 'keeps the latest messages visible when iOS resumes a still-open page' do
     expect(@result['resumeBottom']['after']).to eq(@result['resumeBottom']['before'])
   end
+
+  it 'ignores app-switcher reflow scroll events that arrive before iOS reports the page hidden' do
+    expect(@result['beforeHidden']['after']).to eq(@result['beforeHidden']['before'])
+  end
 end

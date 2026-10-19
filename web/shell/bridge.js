@@ -6,6 +6,7 @@ let saving = false;
 let savedPreferences = '';
 let pendingChatPosition = bootstrap.preferences.chatPosition || null;
 let lastChatPosition = pendingChatPosition;
+let lastChatGeometry = null;
 let resumingChat = false, resumeChatFrame;
 const submitting = new Set();
 const expandedWarnings = new Set();
@@ -32,6 +33,11 @@ function chatPosition() {
   const viewport = $('#conversation-body');
   if (state.panel !== 'chat' || chatView !== 'conversation') return null;
   if (document.hidden || !viewport.clientHeight) return lastChatPosition;
+  const geometry = `${viewport.clientWidth}:${viewport.clientHeight}`;
+  // iOS reflows its app-switcher snapshot BEFORE visibilitychange. The resulting
+  // scroll event is not a reading gesture and must not replace the bookmark.
+  if (lastChatPosition?.selected === state.selected && lastChatGeometry && lastChatGeometry !== geometry) return lastChatPosition;
+  lastChatGeometry = geometry;
   const top = viewport.getBoundingClientRect().top;
   const node = [...viewport.children].find(node => node.dataset.chatKey && node.getBoundingClientRect().bottom > top);
   return lastChatPosition = {selected:state.selected,
@@ -52,6 +58,7 @@ function restoreChatPosition() {
   viewport.scrollTop = saved.bottom ? viewport.scrollHeight - viewport.clientHeight :
     viewport.scrollTop + node.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (saved.offset || 0);
   lastChatPosition = saved;
+  lastChatGeometry = `${viewport.clientWidth}:${viewport.clientHeight}`;
   if (!resumingChat) pendingChatPosition = null;
 }
 function workspacePreferences() {
@@ -242,6 +249,7 @@ renderConversation = function() {
   const turns = live.turns.filter(j => j.agent === state.selected);
   const key = state.selected + ':' + state.panel + ':'+(state.panel==='work'?workView:state.panel==='chat'?chatView:updatesView);
   const changedView = renderedConversation !== key;
+  if (changedView) lastChatGeometry = null;
   renderedConversation = key;
   const scroll = changedView ? 0 : viewport.scrollTop;
   const bottom = state.panel === 'chat' && (changedView || viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80);
@@ -524,7 +532,7 @@ $('#conversation-body').addEventListener('scroll',()=>{
   scrollSaveTimer=setTimeout(()=>window.SapiensConnections?.save(workspacePreferences()),100);
 },{passive:true});
 // Explicit reading/navigation takes precedence over a bookmark awaiting history.
-for (const event of ['touchstart','wheel','keydown']) $('#conversation-body').addEventListener(event,()=>{pendingChatPosition=null;},{passive:true});
+for (const event of ['touchstart','wheel','keydown']) $('#conversation-body').addEventListener(event,()=>{pendingChatPosition=null;lastChatGeometry=null;},{passive:true});
 function suspendChat() {
   cancelAnimationFrame(resumeChatFrame);
   resumingChat = false;
@@ -560,7 +568,7 @@ if (window.SapiensConnections?.remote) {
   const observations=[];
   const observe=event=>{
     const viewport=$('#conversation-body');
-    observations.push(`${event.type}:${event.target?.id||''} h${Number(document.hidden)} y${Math.round(viewport.scrollTop)} p${pendingChatPosition?.offset?.toFixed(0)??'-'} b${pendingChatPosition?.bottom??'-'} l${lastChatPosition?.offset?.toFixed(0)??'-'} r${Number(resumingChat)}`);
+    observations.push(`${event.type}:${event.target?.id||''} h${Number(document.hidden)} y${Math.round(viewport.scrollTop)} p${pendingChatPosition?.offset?.toFixed(0)??'-'} l${lastChatPosition?.offset?.toFixed(0)??'-'} ${viewport.clientWidth}x${viewport.clientHeight} g${lastChatGeometry}`);
     output.textContent=observations.slice(-9).join('\n');
   };
   for(const type of ['scroll','touchstart','touchend','wheel','visibilitychange'])document.addEventListener(type,observe,true);

@@ -11,12 +11,13 @@ async function boot(snapshot){
  w.matchMedia=()=>({matches:false,addEventListener(){}});w.ResizeObserver=class{observe(){} disconnect(){}};
  w.HTMLDialogElement.prototype.close=function(){this.open=false;};w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
  w.setTimeout=()=>1;w.clearTimeout=()=>{};
- Object.defineProperties(host,{clientHeight:{get:()=>200},scrollHeight:{get:()=>host.children.length*100},scrollTop:{get:()=>position,set:v=>{position=Math.max(0,Math.min(v,host.scrollHeight-200));}}});
+ const layout={width:400,height:200};
+ Object.defineProperties(host,{clientWidth:{get:()=>layout.width},clientHeight:{get:()=>layout.height},scrollHeight:{get:()=>host.children.length*100},scrollTop:{get:()=>position,set:v=>{position=Math.max(0,Math.min(v,host.scrollHeight-layout.height));}}});
  host.getBoundingClientRect=()=>({top:0,bottom:200});
  w.HTMLElement.prototype.getBoundingClientRect=function(){const i=[...host.children].indexOf(this);return {top:i*100-position,bottom:(i+1)*100-position};};
  w.SapiensConnections={initial:Promise.resolve(snapshot),connected:true,generation:0,remote:true,save:p=>{saved=JSON.parse(JSON.stringify(p));},snapshot(){},subscribe:fn=>{subscriber=fn;fn(snapshot);},fetch:async()=>({ok:true,json:async()=>full})};
  await w.eval('(async()=>{'+scripts+'})()');
- return {dom,w,d,host,get saved(){return saved;},live(){subscriber({...full,preferences:saved});},bookmark(){w.dispatchEvent(new w.Event('pagehide'));},visible(){const n=[...host.children].find(n=>n.dataset.chatKey&&n.getBoundingClientRect().bottom>0);return {text:n?.textContent,offset:n?.getBoundingClientRect().top};}};
+ return {dom,w,d,host,layout,get saved(){return saved;},live(){subscriber({...full,preferences:saved});},bookmark(){w.dispatchEvent(new w.Event('pagehide'));},visible(){const n=[...host.children].find(n=>n.dataset.chatKey&&n.getBoundingClientRect().bottom>0);return {text:n?.textContent,offset:n?.getBoundingClientRect().top};}};
 }
 (async()=>{
  const original=await boot(full);original.host.scrollTop=4825;
@@ -38,7 +39,7 @@ async function boot(snapshot){
  abandoned.host.dispatchEvent(new abandoned.w.Event('touchstart'));abandoned.host.scrollTop=100;
  const chosen=abandoned.visible();abandoned.live();results.manual={before:chosen,after:abandoned.visible()};abandoned.dom.window.close();
  original.w.dispatchEvent(new original.w.Event('pageshow'));
- await new Promise(resolve=>setTimeout(resolve,80));
+ await new Promise(resolve=>original.w.requestAnimationFrame(()=>original.w.requestAnimationFrame(resolve)));
  original.host.dispatchEvent(new original.w.Event('touchstart'));
  original.host.scrollTop=original.host.scrollHeight-original.host.clientHeight-30;original.bookmark();
  const nearExpected=original.visible();
@@ -51,18 +52,23 @@ async function boot(snapshot){
  bottom.dom.window.close();original.dom.window.close();
  // Resume the same document, including WebKit moving the scroll position while
  // hidden and again during the first foreground frame. No history changes.
- for(const [name,position] of [['resumeReading',4825],['resumeBottom',Infinity]]){
+ for(const [name,position] of [['resumeReading',4825],['resumeBottom',Infinity],['beforeHidden',4825]]){
   const app=await boot(full);app.host.scrollTop=position;
   app.host.dispatchEvent(new app.w.Event('scroll'));
   const before=app.visible();
+  if(name==='beforeHidden'){
+   app.layout.width=500;app.layout.height=300;app.host.scrollTop=2500;
+   app.host.dispatchEvent(new app.w.Event('scroll'));app.w.sapiensWorkspace.save();
+  }
   Object.defineProperty(app.d,'hidden',{configurable:true,value:true});
   app.d.dispatchEvent(new app.w.Event('visibilitychange'));
   app.host.scrollTop=0;app.host.dispatchEvent(new app.w.Event('scroll'));
   app.live();
+  app.layout.width=400;app.layout.height=200;
   Object.defineProperty(app.d,'hidden',{configurable:true,value:false});
   app.d.dispatchEvent(new app.w.Event('visibilitychange'));
   app.w.requestAnimationFrame(()=>{app.host.scrollTop=100;app.host.dispatchEvent(new app.w.Event('scroll'));});
-  await new Promise(resolve=>setTimeout(resolve,80));
+  await new Promise(resolve=>app.w.requestAnimationFrame(()=>app.w.requestAnimationFrame(()=>app.w.requestAnimationFrame(resolve))));
   results[name]={before,after:app.visible()};app.dom.window.close();
  }
  console.log(JSON.stringify(results));
