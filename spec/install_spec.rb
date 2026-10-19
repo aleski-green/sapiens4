@@ -1,6 +1,15 @@
 require_relative 'support/relay'
 
 RSpec.describe 'Remote app installation guidance' do
+  it 'activates a complete updated shell without waiting for backgrounded iOS clients' do
+    out, error, code = Contract.capture('node', 'spec/support/shell-update.cjs')
+    expect(code).to eq(0), error
+    result = JSON.parse(out)
+    expect(result['success']['events']).to eq(%w[download complete activate-ready])
+    expect(result['success'].values_at('asset', 'offlinePage')).to eq(['new shell', 'new shell'])
+    expect(result['failure']['events']).to eq(%w[download failed])
+  end
+
   it 'serves every public shell asset advertised for offline installation with a versioned cache' do
     relay = Relay.new
     status, script = relay.request('GET', '/sw.js')

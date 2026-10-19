@@ -1,0 +1,14 @@
+const fs=require('node:fs'),vm=require('node:vm');
+const source=fs.readFileSync('web/shell/sw.js','utf8');
+async function scenario(fail){
+ const handlers={},events=[];let ready;
+ const scope={self:{location:{origin:'https://app.example'},addEventListener:(name,fn)=>handlers[name]=fn,skipWaiting:()=>events.push('activate-ready')},URL,
+  caches:{open:async()=>({addAll:async()=>{events.push('download');if(fail)throw new Error('offline');events.push('complete');},match:async()=> 'new shell'}),match:async()=> 'old shell',keys:async()=>[]},fetch:async()=>{throw new Error('offline');}};
+ vm.runInNewContext(source,scope);
+ handlers.install({waitUntil:p=>ready=p});await ready.catch(()=>events.push('failed'));
+ let response;handlers.fetch({request:{method:'GET',url:'https://app.example/workspace/app.js'},respondWith:p=>response=p});
+ const asset=await response;
+ handlers.fetch({request:{method:'GET',url:'https://app.example/',mode:'navigate'},respondWith:p=>response=p});
+ return {events,asset,offlinePage:await response};
+}
+Promise.all([scenario(false),scenario(true)]).then(([success,failure])=>console.log(JSON.stringify({success,failure})));
