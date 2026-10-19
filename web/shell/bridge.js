@@ -4,6 +4,8 @@ let refreshing = null;
 let saveTimer;
 let saving = false;
 let savedPreferences = '';
+let pendingChatPosition = bootstrap.preferences.chatPosition || null;
+let lastChatPosition = pendingChatPosition;
 const submitting = new Set();
 const expandedWarnings = new Set();
 const attachmentDrafts = bootstrap.attachment_drafts || {};
@@ -22,8 +24,39 @@ function preferences() {
     drafts:state.drafts,
     attachment_drafts:Object.fromEntries(Object.entries(attachmentDrafts).map(([id, items]) => [id, items.map(a => a.id)]))};
 }
+// Pixel offsets alone cannot survive the shortened offline transcript. Persist
+// a message identity and its position inside the viewport instead.
+function chatPosition() {
+  if (pendingChatPosition) return pendingChatPosition;
+  const viewport = $('#conversation-body');
+  if (state.panel !== 'chat' || chatView !== 'conversation') return null;
+  if (!viewport.clientHeight) return lastChatPosition;
+  const top = viewport.getBoundingClientRect().top;
+  const node = [...viewport.children].find(node => node.dataset.chatKey && node.getBoundingClientRect().bottom > top);
+  return lastChatPosition = {selected:state.selected,
+    bottom:viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80,
+    key:node?.dataset.chatKey,offset:node ? node.getBoundingClientRect().top - top : 0};
+}
+function restoreChatPosition() {
+  const saved = pendingChatPosition, viewport = $('#conversation-body');
+  if (!saved) return;
+  if (saved.selected !== state.selected || state.panel !== 'chat' || chatView !== 'conversation') {
+    pendingChatPosition = null;return;
+  }
+  if (!viewport.clientHeight) return;
+  const node = [...viewport.children].find(node => node.dataset.chatKey === saved.key);
+  // An older message may not exist in the offline cache. Keep the bookmark
+  // until live history arrives, without overwriting it with a clamped offset.
+  if (!saved.bottom && !node) return;
+  viewport.scrollTop = saved.bottom ? viewport.scrollHeight - viewport.clientHeight :
+    viewport.scrollTop + node.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (saved.offset || 0);
+  pendingChatPosition = null;
+}
+function workspacePreferences() {
+  return {...preferences(),workspaces:state.workspaces,scroll:$('#conversation-body').scrollTop,chatPosition:chatPosition()};
+}
 save = function() {
-  window.SapiensConnections?.save({...preferences(),workspaces:state.workspaces,scroll:$('#conversation-body').scrollTop});
+  window.SapiensConnections?.save(workspacePreferences());
   clearTimeout(saveTimer);
   saveTimer = setTimeout(flushPreferences, 300);
 };
@@ -210,7 +243,7 @@ renderConversation = function() {
   const anchor = firstVisible ? {node:firstVisible,top:firstVisible.getBoundingClientRect().top} : null;
   const chat = state.panel === 'chat' && chatView === 'conversation';
   const host = chat ? document.createElement('div') : viewport;
-  const finish = () => { if (chat) commitChat(viewport, host, changedView, bottom, scroll, anchor); };
+  const finish = () => { if (chat) {commitChat(viewport, host, changedView, bottom, scroll, anchor);restoreChatPosition();} };
   if(renderChatCollection(host)){renderAgentHeader();renderGlobal();return;}
   if(selected().kind==='group') {renderGroupPanel(host);renderAgentHeader();renderGlobal();if(chat)finish();else if(changedView)viewport.scrollTop=0;return;}
   if(state.panel==='work' || state.panel==='updates') {renderWork(host);renderAgentHeader();renderGlobal();if(changedView)host.scrollTop=0;return;}
@@ -460,7 +493,7 @@ async function refresh() {
 applySnapshot(bootstrap);
 savedPreferences = JSON.stringify(preferences());
 render();
-if (Number.isFinite(bootstrap.preferences.scroll)) {
+if (!bootstrap.preferences.chatPosition && Number.isFinite(bootstrap.preferences.scroll)) {
   $('#conversation-body').scrollTop = bootstrap.preferences.scroll;
   save();
 }
@@ -473,8 +506,10 @@ setTimeout(poll, 750);
 
 window.sapiensWorkspace = {save:()=>{
   state.drafts[state.selected]=$('#message-input').value;
-  window.SapiensConnections?.save({...preferences(),workspaces:state.workspaces,scroll:$('#conversation-body').scrollTop});
+  window.SapiensConnections?.save(workspacePreferences());
 }};
+// Explicit reading/navigation takes precedence over a bookmark awaiting history.
+for (const event of ['touchstart','wheel','keydown']) $('#conversation-body').addEventListener(event,()=>{pendingChatPosition=null;},{passive:true});
 window.addEventListener('pagehide',()=>window.sapiensWorkspace.save());
 document.addEventListener('visibilitychange',()=>{if(document.hidden)window.sapiensWorkspace.save();else refresh();});
 window.SapiensConnections?.subscribe(snapshot=>{
@@ -486,12 +521,13 @@ window.SapiensConnections?.subscribe(snapshot=>{
     applySnapshot(snapshot);renderSidebar();renderConversation();renderTabs();renderWorkspace();renderGlobal();
     return;
   }
+  pendingChatPosition=snapshot.preferences.chatPosition || null;lastChatPosition=pendingChatPosition;
   state=makeInitialState(snapshot);live=snapshot;online=SapiensConnections.connected;
   workspaceRevision=snapshot.preferences.workspace_revision||0;
   workspaceOwner=state.selected;renderedConversation='';search='';$('#agent-search').value='';
   Object.keys(attachmentDrafts).forEach(key=>delete attachmentDrafts[key]);Object.assign(attachmentDrafts,snapshot.attachment_drafts||{});
   $('#message-input').value=state.drafts[state.selected]||'';
   applySnapshot(snapshot);savedPreferences=JSON.stringify(preferences());render();
-  if(Number.isFinite(snapshot.preferences.scroll))$('#conversation-body').scrollTop=snapshot.preferences.scroll;
+  if(!snapshot.preferences.chatPosition && Number.isFinite(snapshot.preferences.scroll))$('#conversation-body').scrollTop=snapshot.preferences.scroll;
   save();
 });
