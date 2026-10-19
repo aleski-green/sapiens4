@@ -34,7 +34,7 @@ function chatPosition() {
   const top = viewport.getBoundingClientRect().top;
   const node = [...viewport.children].find(node => node.dataset.chatKey && node.getBoundingClientRect().bottom > top);
   return lastChatPosition = {selected:state.selected,
-    bottom:viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80,
+    bottom:viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 2,
     key:node?.dataset.chatKey,offset:node ? node.getBoundingClientRect().top - top : 0};
 }
 function restoreChatPosition() {
@@ -201,6 +201,7 @@ renderAgentHeader = function() {
 // Keep existing messages mounted: clearing the scroll container interrupts iOS
 // momentum scrolling, even when scrollTop is restored in the same JavaScript turn.
 function commitChat(viewport, content, changedView, bottom, scroll, anchor) {
+  const latestChanged = changedView || !viewport.lastElementChild?.isEqualNode(content.lastElementChild);
   const key = (node, index) => node.dataset.chatKey || node.className + ':' + index;
   const existing = new Map([...viewport.children].map((node, index) => [key(node, index), node]));
   const keep = new Set();
@@ -220,7 +221,7 @@ function commitChat(viewport, content, changedView, bottom, scroll, anchor) {
   });
   [...viewport.children].forEach(node => { if (!keep.has(node)) {node.remove();changed = true;} });
   let target = scroll;
-  if (bottom && changed) target = viewport.scrollHeight - viewport.clientHeight;
+  if (bottom && changed && latestChanged) target = viewport.scrollHeight - viewport.clientHeight;
   else if (anchor?.node.isConnected) {
     target = viewport.scrollTop + anchor.node.getBoundingClientRect().top - anchor.top;
   }
@@ -239,7 +240,7 @@ renderConversation = function() {
   renderedConversation = key;
   const scroll = changedView ? 0 : viewport.scrollTop;
   const bottom = state.panel === 'chat' && (changedView || viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80);
-  const firstVisible = !changedView && !bottom && [...viewport.children].find(node => node.getBoundingClientRect().bottom > viewport.getBoundingClientRect().top);
+  const firstVisible = !changedView && [...viewport.children].find(node => node.getBoundingClientRect().bottom > viewport.getBoundingClientRect().top);
   const anchor = firstVisible ? {node:firstVisible,top:firstVisible.getBoundingClientRect().top} : null;
   const chat = state.panel === 'chat' && chatView === 'conversation';
   const host = chat ? document.createElement('div') : viewport;

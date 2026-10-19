@@ -37,6 +37,10 @@ async function boot(snapshot){
  const abandoned=await boot({...full,turns:turns.slice(28),preferences:saved});
  abandoned.host.dispatchEvent(new abandoned.w.Event('touchstart'));abandoned.host.scrollTop=100;
  const chosen=abandoned.visible();abandoned.live();results.manual={before:chosen,after:abandoned.visible()};abandoned.dom.window.close();
+ original.host.scrollTop=original.host.scrollHeight-original.host.clientHeight-30;original.bookmark();
+ const nearExpected=original.visible();
+ const near=await boot({...full,turns:turns.slice(20),preferences:original.saved});near.live();
+ results.nearBottom={before:nearExpected,after:near.visible()};near.dom.window.close();
  original.host.scrollTop=original.host.scrollHeight;original.bookmark();
  const bottom=await boot({...full,turns:turns.slice(20),preferences:original.saved});bottom.live();
  results.bottom={scroll:bottom.host.scrollTop,max:bottom.host.scrollHeight-bottom.host.clientHeight};

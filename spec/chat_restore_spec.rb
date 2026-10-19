@@ -22,6 +22,10 @@ RSpec.describe 'Reopening a chat from its offline cache' do
     expect(@result['manual']['after']).to eq(@result['manual']['before'])
   end
 
+  it 'restores a deliberate reading position just above the bottom without snapping' do
+    expect(@result['nearBottom']['after']).to eq(@result['nearBottom']['before'])
+  end
+
   it 'keeps the latest messages visible after restoring a bottom position' do
     expect(@result['bottom']['scroll']).to eq(@result['bottom']['max'])
   end
