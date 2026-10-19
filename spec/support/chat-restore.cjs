@@ -37,12 +37,33 @@ async function boot(snapshot){
  const abandoned=await boot({...full,turns:turns.slice(28),preferences:saved});
  abandoned.host.dispatchEvent(new abandoned.w.Event('touchstart'));abandoned.host.scrollTop=100;
  const chosen=abandoned.visible();abandoned.live();results.manual={before:chosen,after:abandoned.visible()};abandoned.dom.window.close();
+ original.w.dispatchEvent(new original.w.Event('pageshow'));
+ await new Promise(resolve=>setTimeout(resolve,80));
+ original.host.dispatchEvent(new original.w.Event('touchstart'));
  original.host.scrollTop=original.host.scrollHeight-original.host.clientHeight-30;original.bookmark();
  const nearExpected=original.visible();
  const near=await boot({...full,turns:turns.slice(20),preferences:original.saved});near.live();
  results.nearBottom={before:nearExpected,after:near.visible()};near.dom.window.close();
+ original.host.dispatchEvent(new original.w.Event('touchstart'));
  original.host.scrollTop=original.host.scrollHeight;original.bookmark();
  const bottom=await boot({...full,turns:turns.slice(20),preferences:original.saved});bottom.live();
  results.bottom={scroll:bottom.host.scrollTop,max:bottom.host.scrollHeight-bottom.host.clientHeight};
- bottom.dom.window.close();original.dom.window.close();console.log(JSON.stringify(results));
+ bottom.dom.window.close();original.dom.window.close();
+ // Resume the same document, including WebKit moving the scroll position while
+ // hidden and again during the first foreground frame. No history changes.
+ for(const [name,position] of [['resumeReading',4825],['resumeBottom',Infinity]]){
+  const app=await boot(full);app.host.scrollTop=position;
+  app.host.dispatchEvent(new app.w.Event('scroll'));
+  const before=app.visible();
+  Object.defineProperty(app.d,'hidden',{configurable:true,value:true});
+  app.d.dispatchEvent(new app.w.Event('visibilitychange'));
+  app.host.scrollTop=0;app.host.dispatchEvent(new app.w.Event('scroll'));
+  app.live();
+  Object.defineProperty(app.d,'hidden',{configurable:true,value:false});
+  app.d.dispatchEvent(new app.w.Event('visibilitychange'));
+  app.w.requestAnimationFrame(()=>{app.host.scrollTop=100;app.host.dispatchEvent(new app.w.Event('scroll'));});
+  await new Promise(resolve=>setTimeout(resolve,80));
+  results[name]={before,after:app.visible()};app.dom.window.close();
+ }
+ console.log(JSON.stringify(results));
 })().catch(e=>{console.error(e);process.exitCode=1;});

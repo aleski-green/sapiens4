@@ -6,6 +6,7 @@ let saving = false;
 let savedPreferences = '';
 let pendingChatPosition = bootstrap.preferences.chatPosition || null;
 let lastChatPosition = pendingChatPosition;
+let resumingChat = false, resumeChatFrame;
 const submitting = new Set();
 const expandedWarnings = new Set();
 const attachmentDrafts = bootstrap.attachment_drafts || {};
@@ -39,7 +40,7 @@ function chatPosition() {
 }
 function restoreChatPosition() {
   const saved = pendingChatPosition, viewport = $('#conversation-body');
-  if (!saved) return;
+  if (!saved || document.hidden) return;
   if (saved.selected !== state.selected || state.panel !== 'chat' || chatView !== 'conversation') {
     pendingChatPosition = null;return;
   }
@@ -50,7 +51,8 @@ function restoreChatPosition() {
   if (!saved.bottom && !node) return;
   viewport.scrollTop = saved.bottom ? viewport.scrollHeight - viewport.clientHeight :
     viewport.scrollTop + node.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (saved.offset || 0);
-  pendingChatPosition = null;
+  lastChatPosition = saved;
+  if (!resumingChat) pendingChatPosition = null;
 }
 function workspacePreferences() {
   return {...preferences(),workspaces:state.workspaces,scroll:$('#conversation-body').scrollTop,chatPosition:chatPosition()};
@@ -231,6 +233,9 @@ function commitChat(viewport, content, changedView, bottom, scroll, anchor) {
 
 let renderedConversation = '';
 renderConversation = function() {
+  // Background layout is not a reading position. Reconcile the transcript when
+  // visible again, after the phone has restored its viewport.
+  if (document.hidden) return;
   const viewport = $('#conversation-body');
   if(['tasks','notes'].includes(state.panel)){workView=state.panel==='notes'?'memo':'tasks';state.panel='work';}
   viewport.classList.toggle('notes-view', state.panel === 'notes');
@@ -520,8 +525,33 @@ $('#conversation-body').addEventListener('scroll',()=>{
 },{passive:true});
 // Explicit reading/navigation takes precedence over a bookmark awaiting history.
 for (const event of ['touchstart','wheel','keydown']) $('#conversation-body').addEventListener(event,()=>{pendingChatPosition=null;},{passive:true});
-window.addEventListener('pagehide',()=>window.sapiensWorkspace.save());
-document.addEventListener('visibilitychange',()=>{if(document.hidden)window.sapiensWorkspace.save();else refresh();});
+function suspendChat() {
+  cancelAnimationFrame(resumeChatFrame);
+  resumingChat = false;
+  pendingChatPosition = chatPosition();
+  window.sapiensWorkspace.save();
+}
+function resumeChat() {
+  if (document.hidden) return;
+  cancelAnimationFrame(resumeChatFrame);
+  resumingChat = true;
+  syncMobileViewport();
+  renderConversation();
+  // WebKit restores the scrolling layer after visibilitychange. Keep the
+  // bookmark through the first paint so that its scroll events cannot replace
+  // the user's position with the temporary foreground layout.
+  resumeChatFrame = requestAnimationFrame(() => {
+    restoreChatPosition();
+    resumeChatFrame = requestAnimationFrame(() => {
+      resumingChat = false;
+      restoreChatPosition();
+    });
+  });
+  refresh();
+}
+window.addEventListener('pagehide',suspendChat);
+window.addEventListener('pageshow',resumeChat);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)suspendChat();else resumeChat();});
 window.SapiensConnections?.subscribe(snapshot=>{
   clearTimeout(saveTimer);
   if (snapshot.corpora?.id === live.corpora?.id) {

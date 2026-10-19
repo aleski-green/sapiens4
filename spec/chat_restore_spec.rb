@@ -29,4 +29,12 @@ RSpec.describe 'Reopening a chat from its offline cache' do
   it 'keeps the latest messages visible after restoring a bottom position' do
     expect(@result['bottom']['scroll']).to eq(@result['bottom']['max'])
   end
+
+  it 'restores the same message when iOS resumes a still-open page with unchanged history' do
+    expect(@result['resumeReading']['after']).to eq(@result['resumeReading']['before'])
+  end
+
+  it 'keeps the latest messages visible when iOS resumes a still-open page' do
+    expect(@result['resumeBottom']['after']).to eq(@result['resumeBottom']['before'])
+  end
 end
