@@ -52,9 +52,6 @@
 #corpora-startup-feedback{padding:12px;color:var(--muted);margin:0}
 .corpora-empty{padding:40px 24px;text-align:center}
 .app:has(.corpora-empty:not([hidden])) .main-grid{display:none!important}
-#mobile-install-gate{position:fixed;inset:0;z-index:60;background:var(--sapi-bg);display:grid;place-items:center;padding:24px;padding-top:calc(24px + env(safe-area-inset-top));padding-bottom:calc(24px + env(safe-area-inset-bottom))}
-#mobile-install-gate>div{max-width:380px;line-height:1.6}
-#mobile-install-gate h1{font-size:26px;line-height:1.2}
 @media(max-width:600px){
  :root body.sapi-workspace .app-header{display:flex;flex-wrap:wrap;gap:4px;padding:6px 12px;min-height:56px}
  .app-header .wordmark{order:0}.app-header #app-menu{order:1}.app-header #corpora-picker{order:2;margin-left:auto}.app-header #connection-status{order:3}

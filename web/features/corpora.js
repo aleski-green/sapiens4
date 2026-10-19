@@ -166,8 +166,8 @@ window.SapiensConnections=(()=>{
     const form=$('new-corpora-form');form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('button');button.disabled=true;try{const record=await json('/api/host/local','POST',{name:form.elements.name.value,scope:form.elements.scope.value});record.key=record.id;records.push(record);renderRows();closeForm();await enter(record);}catch(e){form.querySelector('[role=status]').textContent=e.message;button.disabled=false;}};
   };
   async function connectForm(){
-    if(installRequired){RemoteInstall.show(false);return;}
-    show('Connect remote corpora',`<p>On the host, open the corpora menu and choose <strong>New Pairing</strong> in its Remote column.</p><section id="pair-panel"><form id="corpora-form" hidden><input id="corpora-address"><button id="find-corpora"></button></form><div id="qr-step"><code id="selected-address" hidden></code><button id="change-corpora" hidden></button><button id="scan-qr" type="button">Scan QR</button><label class="qr-upload">Upload QR<input id="qr-file" type="file" accept="image/png,image/jpeg,image/webp"></label></div><div id="scanner" hidden><video id="qr-camera" autoplay playsinline muted></video><button id="stop-scan" type="button">Cancel scan</button></div><form id="paste-invitation"><label>Or paste an invitation<textarea name="invitation" rows="2" required spellcheck="false" autocomplete="off"></textarea></label><button type="submit">Connect</button></form></section><section id="verify-panel" hidden><p>Approve this matching code on the host.</p><strong id="confirmation-code"></strong></section><p id="pair-feedback" role="status"></p>`);
+    if(installRequired){RemoteInstall.mount();return;}
+    show('Connect remote corpora',`<p>On the host, open the corpora menu and choose <strong>New Pairing</strong> in its Remote column.</p><section id="pair-panel"><div id="qr-step"><button id="scan-qr" type="button">Scan QR</button><label class="qr-upload">Upload QR<input id="qr-file" type="file" accept="image/png,image/jpeg,image/webp"></label></div><div id="scanner" hidden><video id="qr-camera" autoplay playsinline muted></video><button id="stop-scan" type="button">Cancel scan</button></div><form id="paste-invitation"><label>Or paste an invitation<textarea name="invitation" rows="2" required spellcheck="false" autocomplete="off"></textarea></label><button type="submit">Connect</button></form></section><section id="verify-panel" hidden><p>Approve this matching code on the host.</p><strong id="confirmation-code"></strong></section><p id="pair-feedback" role="status"></p>`);
     let cancelled=false,connecting=false,pendingClient,pendingID;
     const feedback=text=>{if($('pair-feedback'))$('pair-feedback').textContent=text;};
     const pair=async invitation=>{
@@ -190,7 +190,7 @@ window.SapiensConnections=(()=>{
     };
     const scanner=RemoteOnboarding.mount(pair,feedback);
     $('paste-invitation').onsubmit=async event=>{event.preventDefault();try{await pair(RemoteCode.decode(event.target.elements.invitation.value));}catch(e){feedback(e.message);}};
-    formCleanup=()=>{cancelled=true;scanner.stop();pendingClient?.close();if(pendingID)json('/api/host/pair/'+pendingID,'POST',{}).catch(()=>{});};
+    formCleanup=()=>{cancelled=true;scanner.dispose();pendingClient?.close();if(pendingID)json('/api/host/pair/'+pendingID,'POST',{}).catch(()=>{});};
   }
   $('connect-remote-corpora').onclick=connectForm;$('empty-connect-corpora').onclick=connectForm;
   $('empty-create-corpora').onclick=()=>$('create-local-corpora').click();
@@ -198,20 +198,62 @@ window.SapiensConnections=(()=>{
     if(remote||record?.location!=='Local')return;
     show(record.paired?'Edit Pairing':'New Pairing','<div id="remote-host-content"></div><p id="remote-host-feedback" role="status"></p>');
     let cancelled=false,timer;
-    const status=text=>{if($('remote-host-feedback'))$('remote-host-feedback').textContent=text;};
+    const container=$('remote-host-content');
+    const status=text=>{if(!cancelled)$('remote-host-feedback').textContent=text;};
+    const date=value=>typeof value==='number'&&Number.isFinite(value)?new Date(value*1000).toLocaleString([], {dateStyle:'medium',timeStyle:'long'}):'Not recorded';
     async function refresh(){
       try{
         const data=await request(record,'/api/remote');if(cancelled)return;
         record.paired=data.paired;renderRows();$('corpora-dialog-title').textContent=data.paired?'Edit Pairing':'New Pairing';
-        const date=value=>typeof value==='number'&&Number.isFinite(value)?new Date(value*1000).toLocaleString([], {dateStyle:'medium',timeStyle:'long'}):'Not recorded';
-        const info=data.device_info||{};
-        const html=data.paired?`<p class="pairing-corpora">${escape(record.name)}</p><dl class="pairing-details"><dt>Device</dt><dd>${escape(info.name||'Not recorded')}</dd><dt>Device info</dt><dd>${escape([info.platform,info.client].filter(Boolean).join(' · ')||'Not recorded')}</dd><dt>Paired</dt><dd>${escape(date(data.paired_at))}</dd><dt>Last connected</dt><dd>${escape(date(data.last_connected_at))}</dd></dl><div class="pairing-actions"><button data-remote-action="replace">Replace remote</button><button data-remote-action="revoke">Revoke remote</button></div>`:data.pending?`<p>Approve only if this code matches your remote device.</p><strong>${escape(data.pending.confirmation_code)}</strong><button data-remote-action="approve" data-peer="${escape(data.pending.peer)}">Approve device</button>`:data.invitation?'<p>In the installed app, choose Connect remote corpora and scan this QR.</p><canvas id="host-pair-qr"></canvas><button data-remote-action="revoke">Cancel invitation</button>':data.configured_relay?'<button data-remote-action="pair">Show QR</button>':'<form id="relay-setup"><label>Relay URL<input name="relay" type="url" required></label><label>Connection token<input name="token" type="password" required autocomplete="off"></label><button>Show QR</button></form>';
-        const container=$('remote-host-content');if(container.dataset.content!==html){container.innerHTML=html;container.dataset.content=html;if(data.invitation&&$('host-pair-qr'))await RemoteVendor.QRCode.toCanvas($('host-pair-qr'),RemoteCode.link(data.invitation),{width:320,margin:3});}
-        status(data.error||'');
-      }catch(e){status(e.message);}finally{if(!cancelled)timer=setTimeout(refresh,2500);}
+        const info=data.device_info||{},invitation=data.enabled&&data.invitation?.expires>Date.now()/1000?data.invitation:null;
+        const html=data.available===false?'<p>Remote control is unavailable. Install the remote dependencies and restart Sapiens4.</p>':data.paired?`<p class="pairing-corpora">${escape(record.name)}</p><dl class="pairing-details"><dt>Device</dt><dd>${escape(info.name||'Not recorded')}</dd><dt>Device info</dt><dd>${escape([info.platform,info.client].filter(Boolean).join(' · ')||'Not recorded')}</dd><dt>Paired</dt><dd>${escape(date(data.paired_at))}</dd><dt>Last connected</dt><dd>${escape(date(data.last_connected_at))}</dd></dl><div class="pairing-actions"><button data-remote-action="replace">Replace remote</button><button data-remote-action="revoke">Revoke remote</button></div>`
+          :data.pending?`<p>Approve only if this code matches your remote device.</p><strong>${escape(data.pending.confirmation_code||'')}</strong><button data-remote-action="approve" data-peer="${escape(data.pending.peer)}" ${data.pending.confirmation_code?'':'disabled'}>Approve device</button>`
+          :invitation?`<p>In the installed app, choose Connect remote corpora and scan this QR.</p><canvas id="host-pair-qr"></canvas><p>Expires ${escape(date(invitation.expires))}</p><div class="pairing-actions"><a id="download-pair-qr" download="sapiens4-pairing.png">Download QR</a><a href="${escape(invitation.relay)}" target="_blank" rel="noopener noreferrer">Open app ↗</a><button data-remote-action="revoke">Cancel invitation</button></div>`
+          :data.enabled?'<p>Invitation expired.</p><button data-remote-action="revoke">Cancel invitation</button>'
+          :`<div class="pairing-actions">${data.configured_relay?'<button data-remote-action="pair">Show QR</button>':''}${data.local_relay?'<button data-remote-action="local">Use local relay</button>':''}</div><details ${data.configured_relay?'':'open'}><summary>Relay settings</summary><form id="relay-setup"><label>Connection file<input name="connection" type="file" accept="application/json,.json"></label><label>Relay URL<input name="relay" type="url" required></label><label>Connection token<input name="token" type="password" required autocomplete="off" minlength="32" maxlength="256"></label><button disabled>Show QR</button></form></details>`;
+        const content=html+(data.error?`<p>${escape(data.error)}</p>`:'');
+        if(container.dataset.content!==content){
+          container.innerHTML=content;container.dataset.content=content;
+          const canvas=$('host-pair-qr');
+          if(canvas){await RemoteVendor.QRCode.toCanvas(canvas,RemoteCode.link(invitation),{width:320,margin:3});if(!cancelled&&canvas.isConnected)$('download-pair-qr').href=canvas.toDataURL('image/png');}
+        }
+      }catch(e){status(e.message);}finally{if(!cancelled){clearTimeout(timer);timer=setTimeout(refresh,2500);}}
     }
-    $('remote-host-content').onclick=async event=>{const button=event.target.closest('[data-remote-action]');if(!button)return;button.disabled=true;try{const action=button.dataset.remoteAction;if(action==='revoke'&&!confirm('Revoke this remote device’s access? It will need to pair again.'))return;if(action==='replace'&&!confirm('Replace the trusted remote device? The previous device will lose access.'))return;if(action==='replace'||action==='revoke')await request(record,'/api/remote/revoke','POST',{});if(action==='replace'||action==='pair')await request(record,'/api/remote/pair','POST',{saved:true});if(action==='approve')await request(record,'/api/remote/approve','POST',{peer:button.dataset.peer});clearTimeout(timer);await refresh();}catch(e){status(e.message);}finally{button.disabled=false;}};
-    $('remote-host-content').onsubmit=async event=>{event.preventDefault();try{await request(record,'/api/remote/pair','POST',{relay:event.target.elements.relay.value,token:event.target.elements.token.value});clearTimeout(timer);await refresh();}catch(e){status(e.message);}};
+    async function action(button,perform){
+      button.disabled=true;status('');
+      try{await perform();if(!cancelled)await refresh();}catch(e){status(e.message);}finally{if(button.isConnected)button.disabled=false;}
+    }
+    container.onclick=event=>{
+      const button=event.target.closest('[data-remote-action]');if(!button||button.disabled)return;
+      const command=button.dataset.remoteAction;
+      if(command==='revoke'&&!confirm('Revoke this remote access? It will need to pair again.'))return;
+      if(command==='replace'&&!confirm('Replace the trusted remote device? The previous device will lose access.'))return;
+      action(button,async()=>{
+        if(command==='replace'||command==='revoke'){
+          const result=await request(record,'/api/remote/revoke','POST',{});
+          if(result.relay_deleted===false)status('Revoked locally. Relay could not be reached.');
+        }
+        if(['replace','pair','local'].includes(command))await request(record,'/api/remote/pair','POST',command==='local'?{local:true}:{saved:true});
+        if(command==='approve')await request(record,'/api/remote/approve','POST',{peer:button.dataset.peer});
+      });
+    };
+    const validate=form=>{form.querySelector('button').disabled=!(form.elements.relay.validity.valid&&form.elements.relay.value&&/^[\x21-\x7e]{32,256}$/.test(form.elements.token.value));};
+    container.oninput=event=>{if(event.target.form)validate(event.target.form);};
+    container.onchange=async event=>{
+      if(event.target.name!=='connection')return;
+      const form=event.target.form,file=event.target.files[0];if(!file)return;
+      form.elements.relay.value='';form.elements.token.value='';validate(form);
+      try{
+        if(file.size>4096)throw new Error('Connection file is too large.');
+        const data=JSON.parse(await file.text()),url=new URL(data.relay);
+        if(data.format!=='sapiens-relay-connection-v1'||typeof data.token!=='string'||!/^[\x21-\x7e]{32,256}$/.test(data.token)||url.username||url.password||url.search||url.hash||url.pathname!=='/'||!(url.protocol==='https:'||(url.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(url.hostname))))throw new Error('Choose a valid Sapiens relay connection file.');
+        form.elements.relay.value=url.origin;form.elements.token.value=data.token;validate(form);status('Ready. Select Show QR.');
+      }catch(e){status(e.message);}finally{event.target.value='';}
+    };
+    container.onsubmit=event=>{
+      event.preventDefault();const form=event.target,button=form.querySelector('button');if(button.disabled)return;
+      action(button,async()=>{await request(record,'/api/remote/pair','POST',{relay:form.elements.relay.value.trim(),token:form.elements.token.value});form.elements.token.value='';validate(form);});
+    };
     formCleanup=()=>{cancelled=true;clearTimeout(timer);};refresh();
   }
   async function restore(){
@@ -223,6 +265,7 @@ window.SapiensConnections=(()=>{
       write('s4.records',records);
       if(!active)active=records.find(r=>r.key===read('s4.active',null))||records[0]||null;
       else active=records.find(r=>r.key===active.key)||null;
+      if(!remote&&new URLSearchParams(location.search).get('pairing')==='local'){history.replaceState(null,'',location.pathname);remoteControl(records.find(r=>r.location==='Local'));}
       $('empty-create-corpora').hidden=!localAvailable;$('corpora-empty').hidden=!!active;renderRows();renderStatus();
       if(active){
         write('s4.active',active.key);
@@ -236,7 +279,7 @@ window.SapiensConnections=(()=>{
     if(remote&&'serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
     if(remote&&RemoteInstall.mobile&&!RemoteInstall.installed()){
       installRequired=true;$('mobile-install-gate').hidden=false;$('corpora-empty').hidden=true;
-      $('mobile-install-action').onclick=()=>RemoteInstall.show(false);return;
+      RemoteInstall.mount();return;
     }
     installRequired=false;$('mobile-install-gate').hidden=true;
     records=read('s4.records',[]);active=records.find(r=>r.key===read('s4.active',null))||null;

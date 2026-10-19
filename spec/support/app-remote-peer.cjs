@@ -21,6 +21,7 @@ async function run(data){
   return progress;
  }
  if(data.op==='status')return progress;
+ if(data.op==='saved'){const saved=await w.RemoteSession.list();return {count:saved.length,secrets:saved.some(s=>'secret' in s),browserStorage:w.localStorage.length+w.sessionStorage.length};}
  if(data.op==='request'||data.op==='other-request'){
   try{const response=await (data.op==='request'?client:otherClient).fetch(data.path,{method:data.method||'GET',...(data.body?{body:JSON.stringify(data.body)}:{})});return {status:response.status,body:await response.json()};}
   catch(error){return {error:error.message,revoked:!!error.revoked};}

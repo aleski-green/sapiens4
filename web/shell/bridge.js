@@ -182,10 +182,8 @@ function applySnapshot(snapshot) {
 
 renderGlobal = function() {
   if(!window.SapiensConnections) {
-    const remote = $('#remote-status');
-    const connected = online && (!remote || remote.dataset.connected === 'true');
-    $('#connection-label').textContent = `${remote ? 'Remote' : 'Local'} · ${connected ? 'Online' : 'Reconnecting…'}`;
-    $('#connection-status').dataset.online = String(connected);
+    $('#connection-label').textContent = `Local · ${online ? 'Online' : 'Reconnecting…'}`;
+    $('#connection-status').dataset.online = String(online);
   }
   const owner = live.computer.owner;
   $('#resource-owner').textContent = owner ? `In use · ${agent(owner).name}` : live.computer.built ? 'Blindly4 · Available' : 'Blindly4 · Build required';
@@ -514,7 +512,7 @@ if (!bootstrap.preferences.chatPosition && Number.isFinite(bootstrap.preferences
 async function poll() {
   await refresh();
   updateProgress();
-  setTimeout(poll, (window.sapiensRemote||window.SapiensConnections?.remote) ? 2000 : online ? 750 : 2000);
+  setTimeout(poll, window.SapiensConnections?.remote ? 2000 : online ? 750 : 2000);
 }
 setTimeout(poll, 750);
 

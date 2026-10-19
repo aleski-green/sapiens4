@@ -25,23 +25,37 @@ RSpec.describe 'Remote app installation guidance' do
     relay.close if relay
   end
 
-  {
-    'ios' => ['IPHONE & IPAD', 'Add to Home Screen', 'Safari', 'Open as Web App'],
-    'android' => ['ANDROID', 'Add to Home Screen', 'Chrome', 'Install'],
-    'mac' => ['MAC', 'Install Sapiens4', 'Add to Dock', 'Chrome'],
-    'windows' => ['WINDOWS', 'Install Sapiens4', 'Chrome or Edge', 'Start menu']
-  }.each do |platform, (title, action, *instructions)|
-    it "explains how to install on #{platform} and hides the guide in standalone mode" do
-      probe = File.join(Contract::ROOT, 'spec/support/install_probe.cjs')
-      out, error, code = Contract.capture('node', probe, "/#{platform}")
-      expect(code).to eq(0), error
-      result = JSON.parse(out)
-      expect(result['title']).to eq("SAPIENS4 FOR #{title}")
-      expect(result['entry']).to eq(action)
+  it 'redirects the previous pairing page into the workspace', :host do
+    status, _, headers = host.request('GET', '/remote/')
+    expect(status).to eq(302)
+    expect(headers['location']).to eq(['/workspace/?pairing=local'])
+    expect(host.request('GET', headers['location'].first).first).to eq(200)
+  end
+
+  def install_probe(platform, mode = 'browser')
+    out, error, code = Contract.capture('node', 'spec/support/install_probe.cjs', platform, mode)
+    expect(code).to eq(0), error
+    JSON.parse(out)
+  end
+
+  {'ios' => ['Safari', 'Share', 'Open as Web App'],
+   'ipad' => ['Safari', 'Share', 'Open as Web App'],
+   'android' => ['Chrome', 'Install and create shortcut', 'Install']}.each do |platform, instructions|
+    it "shows concise #{platform} instructions, chosen by the device even on an /ios link" do
+      result = install_probe(platform)
+      expect(result).to include('gate' => true, 'title' => 'Add to Home Screen', 'network' => 0, 'storage' => 0, 'cookie' => '')
       instructions.each { |text| expect(result['instructions']).to include(text) }
-      out, error, code = Contract.capture('node', probe, "/#{platform}", 'standalone')
-      expect(code).to eq(0), error
-      expect(JSON.parse(out)).to eq('entry' => nil, 'title' => nil, 'instructions' => nil)
+      expect(result['words']).to be <= 50
+      expect(result['help']).to eq('href' => 'https://sapiens4.ai/help?q=add2homescreen', 'target' => '_blank', 'rel' => 'noopener noreferrer')
+      expect(install_probe(platform, 'standalone')['gate']).to eq(false)
     end
+  end
+
+  it 'offers the native Android prompt without unlocking connections in the browser' do
+    expect(install_probe('android', 'prompt')).to eq('offered' => true, 'prompts' => 1, 'hiddenAfter' => true, 'gate' => true, 'prevented' => true)
+  end
+
+  it 'does not require installation in desktop browsers' do
+    expect(install_probe('linux')['gate']).to eq(false)
   end
 end

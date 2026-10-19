@@ -19,40 +19,10 @@ from urllib.parse import urlsplit
 from aiohttp import web, WSMsgType
 
 from sapiens.corpora.host.remote_pairing import MAX_FRAME, PAIRING_TTL, origin, unb64
-from sapiens.paths import ROOT
-from sapiens.corpora.host.assets import asset, index, javascript
+from sapiens.corpora.host.assets import asset, PUBLIC_ASSETS
 from sapiens.corpora.host.remote_setup import provision
 from sapiens.corpora.host.identity import public_id
 
-ASSETS = {
-    '/corpora.js': ('features/corpora.js', 'text/javascript'),
-    '/remote-transport.js': ('features/remote-transport.js', 'text/javascript'),
-    '/corpora.css': ('theme/corpora.css', 'text/css'),
-    '/sw.js': ('shell/sw.js', 'text/javascript'),
-    '/': ('shell/remote.html', 'text/html'),
-    '/ios': ('shell/remote.html', 'text/html'),
-    '/ios/': ('shell/remote.html', 'text/html'),
-    '/android': ('shell/remote.html', 'text/html'),
-    '/android/': ('shell/remote.html', 'text/html'),
-    '/mac': ('shell/remote.html', 'text/html'),
-    '/mac/': ('shell/remote.html', 'text/html'),
-    '/windows': ('shell/remote.html', 'text/html'),
-    '/windows/': ('shell/remote.html', 'text/html'),
-    '/remote-code.js': ('features/remote-code.js', 'text/javascript'),
-    '/remote-session.js': ('features/remote-session.js', 'text/javascript'),
-    '/remote.js': ('features/remote.js', 'text/javascript'),
-    '/remote-onboarding.js': ('features/remote-onboarding.js', 'text/javascript'),
-    '/remote-vendor.js': ('features/remote-vendor.js', 'text/javascript'),
-    '/remote.css': ('theme/remote.css', 'text/css'),
-    '/remote-install.js': ('features/remote-install.js', 'text/javascript'),
-    '/remote-install.css': ('theme/remote-install.css', 'text/css'),
-    '/manifest.webmanifest': ('shell/remote.webmanifest', 'application/manifest+json'),
-    '/app-icon-180.png': ('shell/app-icon-180.png', 'image/png'),
-    '/app-icon-192.png': ('shell/app-icon-192.png', 'image/png'),
-    '/app-icon-512.png': ('shell/app-icon-512.png', 'image/png'),
-}
-WORKSPACE_ASSETS = ('/workspace/', '/workspace/app.js', '/workspace/styles.css',
-                    '/live.css', '/assets/sapi-theme.css', '/assets/sapi-theme.js')
 
 
 def digest(value):
@@ -240,25 +210,25 @@ class RelayServer:
                 if req.query_string or request_origin != self.public_origin:
                     raise RelayError(403, 'WebSocket requires the relay origin and no query credentials')
                 return await self.websocket(req)
-            if req.method == 'GET' and path in ASSETS:
-                name, mime = ASSETS[path]
-                content = (index().replace('<body class=', '<body data-remote class=').encode() if name == 'shell/remote.html' else (ROOT / 'web' / name).read_bytes())
-                if path == '/sw.js':
-                    sources = b''.join(asset(path)[1] for path in WORKSPACE_ASSETS) + b''.join((ROOT / 'web' / item[0]).read_bytes() for item in ASSETS.values())
-                    version = hashlib.sha256(sources).hexdigest()[:16]
-                    content = content.replace(b'sapiens-shell-v1', ('sapiens-shell-' + version).encode())
+            if req.method == 'GET':
                 platform = path.strip('/')
-                if platform in {'ios', 'android', 'mac', 'windows'}:
-                    content = content.replace(b'href="/manifest.webmanifest"',
-                                              f'href="/manifest.webmanifest?platform={platform}"'.encode())
-                elif path == '/manifest.webmanifest' and req.query.get('platform') in {'ios', 'android', 'mac', 'windows'}:
-                    return self.response(200, dict(json.loads(content), start_url='/' + req.query['platform']), mime)
-                return self.response(200, content, mime)
-            if req.method == 'GET' and path in WORKSPACE_ASSETS:
-                found = asset(path)
-                if path == '/workspace/':
-                    found = (found[0], found[1].replace(b'<body class=', b'<body data-remote class='))
-                return self.response(200, found[1], found[0].split(';')[0])
+                platforms = {'ios', 'android', 'mac', 'windows'}
+                found = asset('/' if platform in platforms else path)
+                if found:
+                    mime, content = found
+                    mime = mime.split(';')[0]
+                    if mime == 'text/html':
+                        content = content.replace(b'<body class=', b'<body data-remote class=')
+                        if platform in platforms:
+                            content = content.replace(b'href="/manifest.webmanifest"',
+                                                      f'href="/manifest.webmanifest?platform={platform}"'.encode())
+                    elif path == '/sw.js':
+                        sources = b''.join(asset(p)[1] for p in ('/', '/workspace/app.js', *sorted(PUBLIC_ASSETS)))
+                        version = hashlib.sha256(sources).hexdigest()[:16]
+                        content = content.replace(b'sapiens-shell-v1', ('sapiens-shell-' + version).encode())
+                    elif path == '/manifest.webmanifest' and req.query.get('platform') in platforms:
+                        content = dict(json.loads(content), start_url='/' + req.query['platform'])
+                    return self.response(200, content, mime)
             body = {}
             if req.method == 'POST':
                 if not 0 < (req.content_length or 0) <= MAX_FRAME or req.content_type != 'application/json':

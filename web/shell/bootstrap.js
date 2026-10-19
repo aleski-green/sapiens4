@@ -13,7 +13,7 @@ syncBrandIcon();
 new MutationObserver(syncBrandIcon).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
 
 function apiFetch(path, options) {
-  return window.SapiensConnections ? window.SapiensConnections.fetch(path, options) : window.sapiensRemote ? window.sapiensRemote.fetch(path, options) : fetch(path, options);
+  return window.SapiensConnections ? window.SapiensConnections.fetch(path, options) : fetch(path, options);
 }
 async function api(path, method = 'GET', data) {
   const generation=window.SapiensConnections?.generation;

@@ -22,8 +22,8 @@ window.RemoteSession = (() => {
         opening.onsuccess=()=>{
           db=opening.result;if(finished){db.close();return;}
           try {
-            const tx=db.transaction(['device','connections'],mode);
-            const request=operation(tx.objectStore('connections'),tx.objectStore('device'));
+            const tx=db.transaction('connections',mode);
+            const request=operation(tx.objectStore('connections'));
             request.onsuccess=()=>{value=request.result;};
             tx.oncomplete=()=>finish();tx.onabort=()=>finish(tx.error||new Error('Device storage failed.'));
           }catch(error){finish(error);}
@@ -34,14 +34,10 @@ window.RemoteSession = (() => {
   return {
     key,
     list:()=>transaction('readonly',store=>store.getAll()),
-    read:id=>transaction('readonly',(store,legacy)=>id?store.get(id):legacy.get('trusted')),
-    save:session=>transaction('readwrite',(store,legacy)=>{
+    save:session=>transaction('readwrite',store=>{
       const saved={version:1,relay:session.relay,room:session.room,token:session.token,desktop:session.desktop,keys:session.keys,corpora:session.corpora};
-      legacy.put(saved,'trusted');return store.put(saved,key(saved));
+      return store.put(saved,key(saved));
     }),
-    clear:id=>transaction('readwrite',(store,legacy)=>{
-      if(id){const old=legacy.get('trusted');old.onsuccess=()=>{if(old.result&&key(old.result)===id)legacy.delete('trusted');};return store.delete(id);}
-      const old=legacy.get('trusted');old.onsuccess=()=>{if(old.result?.corpora)store.delete(key(old.result));};return legacy.delete('trusted');
-    }),
+    clear:id=>transaction('readwrite',store=>store.delete(id)),
   };
 })();

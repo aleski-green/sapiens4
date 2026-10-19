@@ -1,7 +1,14 @@
 /* Persistent encrypted sessions; UI and pairing are owned by the workspace shell. */
 'use strict';
 window.RemoteTransport = class {
-  constructor(session){this.session=session;this.socket=null;this.pending=new Map();this.serial=0;this.generation=0;}
+  constructor(session){
+    const keys=session?.keys;
+    if(!keys||keys.secretKey?.length!==32||keys.publicKey?.length!==32||!RemoteVendor.nacl.verify(RemoteVendor.nacl.box.keyPair.fromSecretKey(keys.secretKey).publicKey,keys.publicKey)){
+      if(session?.corpora)RemoteSession.clear(RemoteSession.key(session)).catch(()=>{});
+      throw new Error('Saved device keys are invalid. Connect this corpora again.');
+    }
+    this.session=session;this.socket=null;this.pending=new Map();this.serial=0;this.generation=0;
+  }
   static bytes(text,length){const bytes=Uint8Array.from(atob(text),c=>c.charCodeAt(0));if(length&&bytes.length!==length)throw new Error('Invalid key');return bytes;}
   static b64(bytes){return btoa(Array.from(bytes,b=>String.fromCharCode(b)).join(''));}
   static async invitation(data){
@@ -37,6 +44,7 @@ window.RemoteTransport = class {
         clearTimeout(timer);if(this.socket!==ws)return;this.socket=null;this.ready=null;
         const error=new Error(event.code===4001?'Access revoked. Connect this corpora again.':event.code===4002?'This connection is open in another window.':'This device is unreachable. Try again later.');error.revoked=event.code===4001;
         if(event.code===4001||event.code===4002)this.blocked=error;
+        if(error.revoked&&this.session.corpora)RemoteSession.clear(RemoteSession.key(this.session)).catch(()=>{});
         reject(error);for(const p of this.pending.values())p.reject(error);this.pending.clear();
       };
       ws.onerror=()=>ws.close();

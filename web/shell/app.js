@@ -161,11 +161,7 @@ document.addEventListener('click',e=>{
 
   if(d.menuTarget){
     closeModal();
-    if(d.menuTarget==='remote-connection'){
-      modal('Device connection',`<p>${esc($('#remote-status')?.title || 'Connected')}</p><button class="button" data-menu-target="forget-device">Forget this device</button>`,'CORPORA');
-    }else if(d.menuTarget==='workspace-settings')autonomyDialog();
-    else if(d.menuTarget==='forget-device')$('#remote-status')?.click();
-    else if(d.menuTarget==='install')$('#install-entry button')?.click();
+    if(d.menuTarget==='workspace-settings')autonomyDialog();
     else document.getElementById(d.menuTarget)?.click();
     return;
   }

@@ -24,9 +24,11 @@ RSpec.describe 'Installed app encrypted connection', :host do
     start = peer.call('pair', invitation: invitation)
     pending = Contract.wait { host.api('GET', '/api/remote')['pending'] }
     expect(start['code']).to eq(pending['confirmation_code'])
+    expect(peer.call('saved')['count']).to eq(0)
     host.api('POST', '/api/remote/approve', {peer: pending['peer']})
     result = Contract.wait { value = peer.call('status'); value if value['state'] != 'waiting' }
     expect(result['state']).to eq('approved'), result.inspect
+    expect(peer.call('saved')).to include('count' => 1, 'secrets' => false, 'browserStorage' => 0)
     identity = host.state['corpora']['id']
     expect(peer.call('request', path: '/api/state')['body']['corpora']['id']).to eq(identity)
     details = host.api('GET', '/api/remote')
@@ -46,8 +48,8 @@ RSpec.describe 'Installed app encrypted connection', :host do
     expect(host.state['pulse']['running']).to eq(false)
     expect(peer.call('request', path: '/api/host')['error']).to include('not allowed')
     host.api('POST', '/api/remote/revoke', {})
-    peer.call('close')
-    expect { peer.call('restore') }.to raise_error(/revoked/)
+    Contract.wait { peer.call('saved')['count'] == 0 }
+    expect(peer.call('saved')['count']).to eq(0)
   ensure
     peer.close if peer
     relay.close if relay

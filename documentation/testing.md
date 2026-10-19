@@ -104,3 +104,14 @@ the boundary. Extend the controlled external provider or HTTP peer only when a
 new observable scenario needs it. Use fresh environments, bounded condition
 polling, and explicit expected effects; do not replace several assertions with
 only a process exit-code check when the service exposes the actual result.
+
+The retired standalone phone and desktop pairing pages are now covered through
+`install_spec.rb`, `corpora_browser_spec.rb`, `remote_browser_spec.rb` and
+`app_remote_spec.rb`, using the shipped workspace, QR scanner and encrypted
+transport. These retain QR validation/capture, camera cancellation, import safety,
+matching-code approval, binary responses, identity binding, trust migration,
+revocation and tab handoff checks. The old ID-entry wizard and carousel no longer
+exist. The current transport rejects interrupted requests instead of automatically
+replaying writes; the regression contract checks that no write is replayed.
+Browser probes simulate mobile installation state and Android's install event;
+physical Android installation and keyboard behavior still require a device run.

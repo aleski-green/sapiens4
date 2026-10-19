@@ -108,9 +108,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, snapshot)
             if path == '/api/remote':
                 return self._send(200, self.server.remote.status())
-            if path == '/':
+            if path in {'/', '/remote/', '/remote'}:
                 self.send_response(302)
-                self.send_header('Location', '/workspace/')
+                self.send_header('Location', '/workspace/?pairing=local' if path.startswith('/remote') else '/workspace/')
                 self.end_headers()
                 return
             found = asset(path)

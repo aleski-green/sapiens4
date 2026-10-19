@@ -74,8 +74,8 @@ function notesWiki(source, path, owner, profile = {}, metadata = {}, turnCount =
       if (/^data:image\/(?:png|jpeg|gif|webp|svg\+xml)[;,]/i.test(src)) element.src = src;
       else if (src && !/^(?:[a-z]+:|\/\/|\/)/i.test(src)) {
         const uri = '/api/' + (profile.kind==='group'?'groups':'agents') + '/' + encodeURIComponent(owner) + '/notes?image=' + encodeURIComponent(src);
-        if (typeof window !== 'undefined' && window.sapiensRemote) {
-          window.sapiensRemote.fetch(uri).then(async response => {
+        if (typeof window !== 'undefined' && window.SapiensConnections) {
+          window.SapiensConnections.fetch(uri).then(async response => {
             if (!response.ok) throw new Error('Image unavailable');
             const url = URL.createObjectURL(await response.blob());
             element.onload = element.onerror = () => URL.revokeObjectURL(url);

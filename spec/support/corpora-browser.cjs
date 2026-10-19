@@ -26,9 +26,9 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
    const after=await w.RemoteSession.list();await w.RemoteSession.clear(w.RemoteSession.key(after.find(item=>item.corpora.id===b.id)));
    console.log(JSON.stringify({before:before.map(s=>s.corpora.name),after:after.map(s=>s.corpora.name),remaining:(await w.RemoteSession.list()).map(s=>s.corpora.name)}));dom.window.close();return;
  }
- if(scenario==='mobile'||scenario==='linux'){
+ if(['mobile','android','linux'].includes(scenario)){
    d.body.setAttribute('data-remote','');
-   Object.defineProperty(w.navigator,'userAgent',{value:scenario==='mobile'?'Mozilla/5.0 (iPhone)':'Mozilla/5.0 (X11; Linux x86_64)'});
+   Object.defineProperty(w.navigator,'userAgent',{value:scenario==='mobile'?'Mozilla/5.0 (iPhone)':scenario==='android'?'Mozilla/5.0 (Linux; Android 16)':'Mozilla/5.0 (X11; Linux x86_64)'});
    w.RemoteSession={list:async()=>{credentialReads++;return [];}};
    Object.defineProperty(w.navigator,'serviceWorker',{value:{register:async path=>{workers.push(path);}}});
  }
@@ -50,6 +50,21 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
    w.localStorage.setItem('s4.workspace.'+a.id,JSON.stringify({selected:'last-chat',drafts:{'last-chat':'Keep this draft'},panes:{chat:true,sidebar:false}}));
    w.fetch=()=>new Promise(()=>{});
  }
+ let poll,pairFailure=false;
+ const setup={enabled:false,local_relay:true,configured_relay:'https://relay.example'};
+ const invitation={relay:'https://relay.example',expires:Date.now()/1000+3600};
+ let pairData={...setup};
+ if(scenario==='pairing-setup'){
+   const baseFetch=w.fetch,setTimeout=w.setTimeout.bind(w);w.setTimeout=(fn,ms,...args)=>ms===2500?(poll=fn,1):setTimeout(fn,ms,...args);
+   w.RemoteCode={link:()=> 'https://relay.example/#invitation'};w.RemoteVendor={QRCode:{toCanvas:async()=>{}}};w.HTMLCanvasElement.prototype.toDataURL=()=> 'data:image/png;base64,AAAA';
+   w.fetch=async(url,options={})=>{
+     if(!url.includes('/api/remote'))return baseFetch(url,options);
+     calls.push({url,method:options.method||'GET',data:options.body&&JSON.parse(options.body)});
+     if(url.endsWith('/pair')){if(pairFailure)return {ok:false,json:async()=>({error:'Relay unavailable'})};pairData={...setup,enabled:true,invitation:{...invitation}};}
+     if(url.endsWith('/revoke'))pairData={...setup};
+     return {ok:true,json:async()=>({...pairData})};
+   };
+ }
  let releaseSession,earlyError,transports=[];
  if(scenario==='resume-before-credentials'){
    d.body.setAttribute('data-remote','');
@@ -66,6 +81,23 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
  }
  for(let i=0;i<12;i++)await sleep();
  const click=selector=>d.querySelector(selector).click();
+ if(scenario==='pairing-setup'){
+   click('#corpora-picker');click('[data-pairing="'+a.id+'"]');for(let i=0;i<8;i++)await sleep();
+   const out={local:!!d.querySelector('[data-remote-action="local"]'),saved:!!d.querySelector('[data-remote-action="pair"]')};
+   const form=d.querySelector('#relay-setup'),file=form.elements.connection;
+   const importFile=async relay=>{Object.defineProperty(file,'files',{value:[{size:200,text:async()=>JSON.stringify({format:'sapiens-relay-connection-v1',relay,token:'t'.repeat(32)})}],configurable:true});file.dispatchEvent(new w.Event('change',{bubbles:true}));await sleep();};
+   await importFile('https://relay.example');out.imported={relay:form.elements.relay.value,enabled:!form.querySelector('button').disabled,writes:calls.filter(c=>c.method==='POST').length};
+   await importFile('http://public.example');out.invalid={relay:form.elements.relay.value,token:form.elements.token.value,disabled:form.querySelector('button').disabled};
+   await importFile('https://relay.example');pairFailure=true;form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await sleep();await poll();out.error=d.querySelector('#remote-host-feedback').textContent;
+   pairFailure=false;form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));for(let i=0;i<8;i++)await sleep();out.invitation={download:d.querySelector('#download-pair-qr')?.href,link:d.querySelector('#remote-host-content a[target]')?.href,expiry:d.querySelector('#remote-host-content').textContent.includes('Expires'),token:form.elements.token.value};
+   pairData.pending={peer:'phone'};await poll();out.noCodeDisabled=d.querySelector('[data-remote-action="approve"]').disabled;
+   pairData.pending.confirmation_code='CwnX · eCGC';await poll();out.code=d.querySelector('#remote-host-content strong').textContent;click('[data-remote-action="approve"]');await sleep();
+   delete pairData.pending;pairData.invitation.expires=0;await poll();out.expiredQR=!!d.querySelector('canvas');
+   click('[data-remote-action="revoke"]');await sleep();click('[data-remote-action="local"]');await sleep();
+   click('[data-remote-action="revoke"]');await sleep();click('[data-remote-action="pair"]');await sleep();
+   out.writes=calls.filter(c=>c.method==='POST').map(c=>({path:c.url.split('/api/remote')[1],data:c.data}));
+   console.log(JSON.stringify(out));dom.window.close();return;
+ }
  if(scenario==='resume-before-credentials'){
    console.log(JSON.stringify({earlyError,transports,connected:w.SapiensConnections.connected,status:d.querySelector('#connection-label').textContent}));
  }else if(scenario==='pairing-rows'){
