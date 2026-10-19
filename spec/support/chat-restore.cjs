@@ -21,7 +21,13 @@ async function boot(snapshot){
 (async()=>{
  const original=await boot(full);original.host.scrollTop=4825;
  const input=original.d.querySelector('#message-input');input.value='My unsent draft';input.dispatchEvent(new original.w.Event('input'));
- original.bookmark();const saved=original.saved,expected=original.visible(),results={};
+ original.host.dispatchEvent(new original.w.Event('scroll'));
+ const expected=original.visible(),results={};
+ // WebKit may change scroll geometry as its process goes into the background.
+ Object.defineProperty(original.d,'hidden',{configurable:true,value:true});
+ original.host.scrollTop=original.host.scrollHeight;
+ original.bookmark();const saved=original.saved;
+ Object.defineProperty(original.d,'hidden',{configurable:true,value:false});
  for(const [name,start] of [['cached',20],['missing',28]]){
   const app=await boot({...full,turns:turns.slice(start),preferences:saved});
   results[name]={before:app.visible(),pending:app.saved.chatPosition,draft:app.d.querySelector('#message-input').value};

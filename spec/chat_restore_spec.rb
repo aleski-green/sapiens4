@@ -5,7 +5,7 @@ RSpec.describe 'Reopening a chat from its offline cache' do
     @result = JSON.parse(out)
   end
 
-  it 'restores the same message and offset despite a shorter cached transcript' do
+  it 'restores the visible message despite hidden iOS layout changes and a shorter cache' do
     result = @result['cached']
     expect(result['before']).to eq(result['expected'])
     expect(result['after']).to eq(result['expected'])

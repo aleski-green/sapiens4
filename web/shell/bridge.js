@@ -30,7 +30,7 @@ function chatPosition() {
   if (pendingChatPosition) return pendingChatPosition;
   const viewport = $('#conversation-body');
   if (state.panel !== 'chat' || chatView !== 'conversation') return null;
-  if (!viewport.clientHeight) return lastChatPosition;
+  if (document.hidden || !viewport.clientHeight) return lastChatPosition;
   const top = viewport.getBoundingClientRect().top;
   const node = [...viewport.children].find(node => node.dataset.chatKey && node.getBoundingClientRect().bottom > top);
   return lastChatPosition = {selected:state.selected,
@@ -508,6 +508,15 @@ window.sapiensWorkspace = {save:()=>{
   state.drafts[state.selected]=$('#message-input').value;
   window.SapiensConnections?.save(workspacePreferences());
 }};
+// iOS can collapse/reflow a backgrounded web app before pagehide. Capture the
+// reading position while visible, rather than measuring that hidden layout.
+let scrollSaveTimer;
+$('#conversation-body').addEventListener('scroll',()=>{
+  if (document.hidden) return;
+  chatPosition();
+  clearTimeout(scrollSaveTimer);
+  scrollSaveTimer=setTimeout(()=>window.SapiensConnections?.save(workspacePreferences()),100);
+},{passive:true});
 // Explicit reading/navigation takes precedence over a bookmark awaiting history.
 for (const event of ['touchstart','wheel','keydown']) $('#conversation-body').addEventListener(event,()=>{pendingChatPosition=null;},{passive:true});
 window.addEventListener('pagehide',()=>window.sapiensWorkspace.save());
