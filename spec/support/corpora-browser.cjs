@@ -50,10 +50,25 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
    w.localStorage.setItem('s4.workspace.'+a.id,JSON.stringify({selected:'last-chat',drafts:{'last-chat':'Keep this draft'},panes:{chat:true,sidebar:false}}));
    w.fetch=()=>new Promise(()=>{});
  }
+ let releaseSession,earlyError,transports=[];
+ if(scenario==='resume-before-credentials'){
+   d.body.setAttribute('data-remote','');
+   Object.defineProperty(w.navigator,'standalone',{value:true});
+   w.localStorage.setItem('s4.records',JSON.stringify([{...b,key:b.id}]));w.localStorage.setItem('s4.active',JSON.stringify(b.id));
+   w.localStorage.setItem('s4.snapshot.'+b.id,JSON.stringify(snapshot(b)));
+   w.RemoteSession={list:()=>new Promise(resolve=>{releaseSession=()=>resolve([{relay:'https://relay.example',corpora:b}]);}),key:s=>s.corpora.id};
+   w.RemoteTransport=class{constructor(session){this.session=session;transports.push(!!session);}async authenticate(){return this.session.corpora;}async fetch(){return {ok:true,json:async()=>snapshot(this.session.corpora)};}};
+ }
  evaluate('remote-install');evaluate('corpora');
+ if(scenario==='resume-before-credentials'){
+   try{await w.SapiensConnections.fetch('/api/state');}catch(e){earlyError=e.message;}
+   releaseSession();
+ }
  for(let i=0;i<12;i++)await sleep();
  const click=selector=>d.querySelector(selector).click();
- if(scenario==='pairing-rows'){
+ if(scenario==='resume-before-credentials'){
+   console.log(JSON.stringify({earlyError,transports,connected:w.SapiensConnections.connected,status:d.querySelector('#connection-label').textContent}));
+ }else if(scenario==='pairing-rows'){
    click('#corpora-picker');for(let i=0;i<12;i++)await sleep();
    const rows=Array.from(d.querySelectorAll('.corpora-record')).map(row=>({name:row.querySelector('.corpora-name').textContent,action:row.querySelector('[data-pairing]')?.textContent||null}));
    click('[data-pairing="'+c.id+'"]');for(let i=0;i<12;i++)await sleep();

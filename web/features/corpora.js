@@ -19,7 +19,13 @@ window.SapiensConnections=(()=>{
   const selectedKey=()=>active?.key;
   const notify=()=>window.dispatchEvent(new Event('sapiens-connection-change'));
   async function json(path,method='GET',data){const response=await fetch(path,{method,headers:{'Content-Type':'application/json','X-Sapiens-Local':'1'},...(data===undefined?{}:{body:JSON.stringify(data)}),signal:AbortSignal.timeout(20000)});const result=await response.json();if(!response.ok)throw new Error(result.error||'Request failed');return result;}
-  const client=record=>{if(!clients.has(record.key))clients.set(record.key,new RemoteTransport(sessions.get(record.key)));return clients.get(record.key);};
+  const client=record=>{
+    // A cached page can resume before IndexedDB has restored its credentials.
+    // Do not retain an unusable transport for the rest of that page's lifetime.
+    if(!sessions.has(record.key))throw new Error('Connecting…');
+    if(!clients.has(record.key))clients.set(record.key,new RemoteTransport(sessions.get(record.key)));
+    return clients.get(record.key);
+  };
   async function request(record,path,method='GET',data){
     if(!record)throw new Error('Connect a corpora first.');
     if(remote){const response=await client(record).fetch(path,{method,...(data===undefined?{}:{body:JSON.stringify(data)})});const value=await response.json();if(!response.ok)throw new Error(value.error||'Request failed');return value;}

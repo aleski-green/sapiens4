@@ -35,6 +35,11 @@ RSpec.describe 'Corpora workspace browser flows' do
       'panes' => {'chat' => true, 'sidebar' => false})
   end
 
+  it 'connects after saved credentials arrive even if the cached workspace requested data first' do
+    expect(probe('resume-before-credentials')).to include('earlyError' => 'Connecting…',
+      'transports' => [true], 'connected' => true, 'status' => 'Paused')
+  end
+
   it 'requires installation on a phone before accessing saved connections or pairing' do
     expect(probe('mobile')).to include('gate' => true, 'localVisible' => false, 'networkCalls' => 0,
       'credentialReads' => 0, 'workers' => ['/sw.js'])
