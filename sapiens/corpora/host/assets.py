@@ -33,7 +33,6 @@ def asset(path):
         return "text/javascript; charset=utf-8", javascript().encode()
     # Never expose Python sources, runtime data, or Git metadata.
     files = {
-        '/scroll-check.js': ('text/javascript', 'shell/scroll-check.js'),
         **{'/' + name + '.js': ('text/javascript', 'features/' + name + '.js') for name in
            ('corpora', 'remote-session', 'remote-transport', 'remote-code', 'remote-vendor', 'remote-onboarding', 'remote-install')},
         '/corpora.css': ('text/css', 'theme/corpora.css'),
