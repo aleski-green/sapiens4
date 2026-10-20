@@ -111,11 +111,15 @@ RSpec.describe 'Corpora lifecycle and device registry', :host do
     route = "/api/host/corpora/#{identity}"
     expect(host.api('GET', route + '/api/state')['corpora']['id']).to eq(identity)
     metadata = host.api('GET', route + '/api/corpora')
+    saved_path = File.join(host.root, 'host-corpora.json')
+    saved_at = File.mtime(saved_path)
+    3.times { expect(host.api('GET', route + '/api/state')['corpora']).to eq(metadata) }
+    expect(File.mtime(saved_path)).to eq(saved_at)
     host.api('PUT', route + '/api/corpora/lifecycle', action: 'pause', revision: metadata['revision'], operation: SecureRandom.uuid)
     expect(other.state['corpora']['status']).to eq('paused')
     expect(host.request('GET', route + '/api/remote').first).to eq(403)
     host.restart
-    expect(host.api('GET', '/api/host')['corpora']).to include(hash_including('id' => identity, 'location' => 'Remote'))
+    expect(host.api('GET', '/api/host')['corpora']).to include(hash_including('id' => identity, 'location' => 'Remote', 'status' => 'paused'))
     expect(host.api('GET', route + '/api/state')['corpora']['id']).to eq(identity)
   ensure
     other.close if other

@@ -10,7 +10,7 @@ from sapiens.corpora.host.remote_bridge import RemoteBridge
 from sapiens.corpora.host.remote_pairing import confirmation_code
 from sapiens.files import atomic_json
 from sapiens.validation import APIError
-from sapiens.corpora.host.relay_servers import RelayServers
+from sapiens.corpora.host.relay_servers import RelayServers, reset_saved_connections
 
 
 class HostRegistry:
@@ -65,7 +65,9 @@ class HostRegistry:
     def route(self, identity, method, path, data):
         with self.lock:
             if identity in self.saved['remotes']:
-                client = self.clients.setdefault(identity, RemoteClient(self.saved['remotes'][identity]))
+                if identity not in self.clients:
+                    self.clients[identity] = RemoteClient(self.saved['remotes'][identity])
+                client = self.clients[identity]
                 service = None
             else:
                 service = self.local(identity) if self.local_available else None
@@ -94,8 +96,9 @@ class HostRegistry:
                 with self.lock:
                     if identity not in self.saved['remotes']:
                         raise APIError(410, 'Remote connection was revoked')
-                    self.saved['remotes'][identity]['corpora'] = metadata
-                    self.save()
+                    if self.saved['remotes'][identity]['corpora'] != metadata:
+                        self.saved['remotes'][identity]['corpora'] = metadata
+                        self.save()
         return result
 
     def remote_action(self, remote, path, data):
@@ -152,16 +155,7 @@ class HostRegistry:
         self.clients.clear()
         for server in [self.server, *self.children.values()]:
             server.remote.revoke(notify=False)
-        # Revoke unopened corpora on disk, without starting their workers or bridges.
-        for identity in self.saved['locals']:
-            if identity in self.children:
-                continue
-            path = self.root / 'corporas' / identity / 'remote-device.json'
-            if path.exists():
-                path.unlink(missing_ok=True)
-        for folder in [self.root, *(self.root / 'corporas' / identity for identity in self.saved['locals'])]:
-            if folder.exists():
-                atomic_json(folder / 'remote-relay.json', connection)
+        reset_saved_connections(self.root, self.saved['locals'], connection)
         threading.Thread(target=self.cleanup_relays, daemon=True).start()
 
     def create(self, data):

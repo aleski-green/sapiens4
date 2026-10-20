@@ -234,8 +234,10 @@ class RelayServer:
                             content = content.replace(b'href="/manifest.webmanifest"',
                                                       f'href="/manifest.webmanifest?platform={platform}"'.encode())
                     elif path == '/sw.js':
-                        sources = b''.join(asset(p)[1] for p in ('/', '/workspace/app.js', *sorted(PUBLIC_ASSETS)))
-                        version = hashlib.sha256(sources).hexdigest()[:16]
+                        sources = hashlib.sha256()
+                        for source in ('/', '/workspace/app.js', *sorted(PUBLIC_ASSETS)):
+                            sources.update(asset(source)[1])
+                        version = sources.hexdigest()[:16]
                         content = content.replace(b'sapiens-shell-v1', ('sapiens-shell-' + version).encode())
                     elif path == '/manifest.webmanifest' and req.query.get('platform') in platforms:
                         content = dict(json.loads(content), start_url='/' + req.query['platform'])

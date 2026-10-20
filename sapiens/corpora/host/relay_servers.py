@@ -13,6 +13,14 @@ BUILTINS = (
 )
 
 
+def reset_saved_connections(root, identities, connection):
+    """Replace saved relay trust without starting unopened corpora."""
+    for folder in [root, *(root / 'corporas' / identity for identity in identities)]:
+        (folder / 'remote-device.json').unlink(missing_ok=True)
+        if folder.exists():
+            atomic_json(folder / 'remote-relay.json', connection)
+
+
 def recover(root):
     """Finish a committed reset before any bridge starts accepting traffic."""
     path = root / 'host-corpora.json'
@@ -23,10 +31,7 @@ def recover(root):
     if not state.get('reset_pending'):
         return
     selected = next(row for row in state['servers'] if row['id'] == state['selected'])
-    for folder in [root, *(root / 'corporas' / identity for identity in saved['locals'])]:
-        (folder / 'remote-device.json').unlink(missing_ok=True)
-        if folder.exists():
-            atomic_json(folder / 'remote-relay.json', selected['connection'])
+    reset_saved_connections(root, saved['locals'], selected['connection'])
     saved['remotes'] = {}
     state.pop('reset_pending')
     atomic_json(path, saved)
