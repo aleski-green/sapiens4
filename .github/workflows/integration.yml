@@ -34,9 +34,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - run: swift build --package-path blindly4
-      - run: swift run --package-path blindly4 blindly4 --self-test
-      - run: swift run --package-path blindly4 blindly4 schema
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+      - run: ./blindly4/macos/build.sh
+      - name: Blindly4 CLI regressions
+        working-directory: blindly4
+        env:
+          BLINDLY4_BIN: .build/release/blindly4
+        run: |
+          bundle install
+          bundle exec rspec
+      - run: ./blindly4/.build/release/blindly4 schema
       - name: Desktop navigation, readiness and update tests
         run: |
           swiftc macos/NavigationPolicy.swift macos/NavigationPolicyTests.swift -o /tmp/navigation-tests

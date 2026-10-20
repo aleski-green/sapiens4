@@ -1,6 +1,6 @@
 # Sapiens4 for macOS
 
-An AppKit/WebKit window with its own Dock icon and managed updates. Requires macOS 13+, installed Command Line Tools, Python 3.9+, Git and authenticated Codex CLI 0.156.1 or newer. No full Xcode installation or extra Python packages are needed. Set up the repository and build Blindly4 first using the normal project setup.
+An AppKit/WebKit window with its own Dock icon and managed updates. Requires macOS 13+, installed Command Line Tools, stable Rust, Python 3.9+, Git and authenticated Codex CLI 0.156.1 or newer. No full Xcode installation or extra Python packages are needed. Set up the repository and build Blindly4 first using the normal project setup.
 
 ## Install
 
@@ -27,11 +27,9 @@ The managed app checks `https://github.com/aleski-green/sapiens4.git`, branch `m
 
 Click **Update now** once:
 
-The updater probes installed macOS SDKs for compiler compatibility. If SwiftPM
-fails with the known missing `llbuild` symbol, it compiles the dependency-free
-Blindly4 target directly and runs its self-test. The desktop build uses the same
-compatible SDK. This does not change system developer-tool settings; other build
-failures still leave the running version intact.
+The updater builds Blindly4 with Rust and checks its command schema. It probes
+installed macOS SDKs for the Swift desktop build without changing system
+developer-tool settings. Build failures leave the running version intact.
 
 1. Download the advertised main revision into a new release directory, verify Codex version/login/model access, fetch the pinned Blindly4 submodule, and build Blindly4. If main includes the compatible desktop build, build and validate that bundle too. Build failures leave the running version alone.
 2. Wait until active and queued work finishes. The update helper can continue waiting if the desktop window closes. Reopening the app shows its persisted progress; an installation lock prevents overlapping updates.

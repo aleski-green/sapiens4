@@ -3,7 +3,7 @@
 ## Setup
 
 Requires Python 3.9+, Git and authenticated Codex CLI 0.156.1 or newer. Blindly4
-requires macOS 13+, Swift 6 and Accessibility permission. The runtime has no
+requires stable Rust to build; macOS needs macOS 13+, Command Line Tools and Accessibility permission. The runtime has no
 third-party Python dependencies. The optional independent YAML parser test uses
 `python3 -m pip install -r tests/requirements.txt`. The only Git submodule is `blindly4`.
 

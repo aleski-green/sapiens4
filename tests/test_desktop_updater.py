@@ -194,29 +194,26 @@ class DesktopUpdaterTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'Repair or reinstall'):
                 updater.swift_environment()
 
-    def test_swiftpm_loader_failure_uses_direct_compiler_and_self_test(self):
+    def test_blindly_rust_build_validates_the_compiled_binary(self):
         package = self.home / 'blindly4'
-        package.mkdir()
-        original = Path(__file__).resolve().parents[1] / 'blindly4/Package.swift'
-        shutil.copy2(original, package / 'Package.swift')
-        failure = Mock(returncode=1, stderr='dyld: Symbol not found: llbuild', stdout='')
-        with patch.object(updater.subprocess, 'run', side_effect=[failure, Mock(returncode=0)]) as run, patch.object(updater, 'command') as command:
-            updater.build_blindly(self.home, {'SDKROOT': '/compatible.sdk'})
-        self.assertEqual(run.call_args_list[1].args[0][:4], ['xcrun', 'swiftc', '-sdk', '/compatible.sdk'])
-        command.assert_called_once_with([str(package / '.build/release/blindly4'), '--self-test'])
+        env = {'PATH': '/rust/bin', 'SDKROOT': '/compatible.sdk'}
+        with patch.object(updater.subprocess, 'run', return_value=Mock(returncode=0)) as run, patch.object(updater, 'command') as command:
+            updater.build_blindly(self.home, env)
+        run.assert_called_once_with([str(package / 'macos/build.sh')], env=env, capture_output=True, text=True, timeout=1200)
+        command.assert_called_once_with([str(package / '.build/release/blindly4'), 'schema'])
 
-    def test_source_errors_and_complex_packages_do_not_use_fallback(self):
-        package = self.home / 'blindly4'
-        package.mkdir()
-        original = Path(__file__).resolve().parents[1] / 'blindly4/Package.swift'
-        for error, manifest in [('source compilation error', original.read_text()),
-                                ('Symbol not found: llbuild', 'import PackageDescription\n// different package')]:
-            with self.subTest(error=error):
-                (package / 'Package.swift').write_text(manifest)
-                with patch.object(updater.subprocess, 'run', return_value=Mock(returncode=1, stderr=error, stdout='')) as run:
-                    with self.assertRaises(RuntimeError):
-                        updater.build_blindly(self.home, {'SDKROOT': '/compatible.sdk'})
-                self.assertEqual(run.call_count, 1)
+    def test_blindly_build_failure_never_validates_a_stale_binary(self):
+        with patch.object(updater.subprocess, 'run', return_value=Mock(returncode=1, stderr='Rust compilation failed', stdout='')), \
+                patch.object(updater, 'command') as command:
+            with self.assertRaisesRegex(RuntimeError, 'Rust compilation failed'):
+                updater.build_blindly(self.home, {})
+        command.assert_not_called()
+
+    def test_blindly_schema_failure_aborts_the_update(self):
+        with patch.object(updater.subprocess, 'run', return_value=Mock(returncode=0)), \
+                patch.object(updater, 'command', side_effect=RuntimeError('Binary failed')):
+            with self.assertRaisesRegex(RuntimeError, 'Binary failed'):
+                updater.build_blindly(self.home, {})
 
     @unittest.skipUnless(sys.platform == "darwin", "macOS bundle exchange")
     def test_bundle_exchange_preserves_previous_app(self):
