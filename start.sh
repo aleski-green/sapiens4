@@ -3,7 +3,7 @@ set -eu
 cd "$(dirname "$0")"
 git submodule update --init --recursive -- blindly4
 if [ "$(uname -s)" = Darwin ]; then
-  swift build --package-path blindly4 -c release
+  ./blindly4/macos/build.sh
 else
   echo "Blindly4 computer tasks require macOS. Chat is available on this platform."
 fi

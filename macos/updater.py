@@ -60,29 +60,11 @@ def swift_environment():
 
 def build_blindly(root, env):
     package = Path(root) / 'blindly4'
-    result = subprocess.run(['xcrun', 'swift', 'build', '--package-path', str(package), '-c', 'release'],
+    result = subprocess.run([str(package / 'macos/build.sh')],
                             env=env, capture_output=True, text=True, timeout=1200)
     if result.returncode:
-        error = result.stderr or result.stdout
-        # Only bypass the known broken SwiftPM/llbuild loader. Source compilation
-        # failures must remain failures, and complex packages need SwiftPM.
-        simple_package = '''import PackageDescription
-let package = Package(name: "blindly4", platforms: [.macOS(.v13)],
-products: [.executable(name: "blindly4", targets: ["blindly4"])],
-targets: [.executableTarget(name: "blindly4")])'''
-        manifest = re.sub(r'//[^\n]*', '', (package / 'Package.swift').read_text())
-        simple = re.sub(r'\s+', '', manifest) == re.sub(r'\s+', '', simple_package)
-        if not ('Symbol not found:' in error and 'llbuild' in error and simple):
-            raise RuntimeError(error[-3000:])
-        output = package / '.build/release/blindly4'
-        output.parent.mkdir(parents=True, exist_ok=True)
-        sources = sorted((package / 'Sources/blindly4').rglob('*.swift'))
-        result = subprocess.run(['xcrun', 'swiftc', '-sdk', env['SDKROOT'], '-swift-version', '6',
-                                 '-O', '-module-name', 'blindly4', *map(str, sources), '-o', str(output)],
-                                env=env, capture_output=True, text=True, timeout=1200)
-        if result.returncode:
-            raise RuntimeError('Blindly4 compiler fallback failed: ' + result.stderr[-3000:])
-    command([str(package / '.build/release/blindly4'), '--self-test'])
+        raise RuntimeError((result.stderr or result.stdout or 'Blindly4 build failed')[-3000:])
+    command([str(package / '.build/release/blindly4'), 'schema'])
 
 
 def clean_build_caches(root):

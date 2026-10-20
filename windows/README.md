@@ -14,7 +14,9 @@ The first build is unsigned. No automatic updater or installer is included: repl
 
 ## Source development
 
-Install Python 3.9+, Git and .NET SDK 10. Then:
+Install Python 3.9+, Git, .NET SDK 10, stable Rust and MSVC C++ build tools. Install
+the Rust target for your package (`rustup target add aarch64-pc-windows-msvc` or
+`rustup target add x86_64-pc-windows-msvc`). Then:
 
 ```powershell
 git clone --recurse-submodules https://github.com/aleski-green/sapiens4.git
