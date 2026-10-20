@@ -1,6 +1,35 @@
 require_relative 'support/relay'
 
 RSpec.describe 'Remote app installation guidance' do
+  def logo_probe(scenario)
+    out, error, code = Contract.capture('node', 'spec/support/logo-reload.cjs', scenario)
+    expect(code).to eq(0), error
+    JSON.parse(out)
+  end
+
+  it 'reloads the iOS home-screen app only after an update activates, keeping the latest draft and connection' do
+    result = logo_probe('update')
+    expect(result).to include('beforeActivation' => 0, 'updates' => 1, 'reloads' => 1, 'normalClicks' => 0,
+      'draft' => 'Draft edited while checking', 'connection' => 'unchanged')
+    expect(result['events']).to eq(%w[save check activated save reload])
+    expect(result['label']).to include('Reload', 'updates')
+  end
+
+  %w[unchanged offline failed timeout no-worker].each do |scenario|
+    it "reopens the complete saved iOS app when the update is #{scenario}" do
+      result = logo_probe(scenario)
+      expect(result).to include('reloads' => 1, 'normalClicks' => 0, 'connection' => 'unchanged')
+      expect(result['draft']).to match(/draft/i)
+      expect(result['events'].last(2)).to eq(%w[save reload])
+    end
+  end
+
+  %w[browser android desktop].each do |scenario|
+    it "keeps normal logo navigation in #{scenario}" do
+      expect(logo_probe(scenario)).to include('updates' => 0, 'reloads' => 0, 'normalClicks' => 1)
+    end
+  end
+
   it 'activates a complete updated shell without waiting for backgrounded iOS clients' do
     out, error, code = Contract.capture('node', 'spec/support/shell-update.cjs')
     expect(code).to eq(0), error
