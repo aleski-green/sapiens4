@@ -23,6 +23,7 @@ RSpec.describe 'Remote Control Relay Servers browser flow', :host do
   end
 
   it 'requires explicit beta acceptance before showing the pairing action' do
+    skip 'Local corpora pairing is available on macOS and Windows only' unless host.api('GET', '/api/host')['local_available']
     result = probe('terms')
     expect(result).to include('gated' => true, 'acceptEnabled' => true, 'accepted' => true)
     expect(result['terms']).to include('authors, contributors, and operators disclaim liability', 'use your own securely maintained relay')

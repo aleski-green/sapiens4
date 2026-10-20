@@ -5,18 +5,18 @@ const root=path.resolve(__dirname,'../..'),url=process.argv[2],scenario=process.
 const wait=async fn=>{for(let i=0;i<250;i++){if(fn())return;await new Promise(r=>setTimeout(r,20));}throw new Error('Browser action timed out');};
 (async()=>{
  const dom=new JSDOM(fs.readFileSync(path.join(root,'web/shell/index.html'),'utf8'),{url:url+'/workspace/',runScripts:'outside-only',pretendToBeVisual:true});
- const w=dom.window,d=w.document,writes=[];
+ const w=dom.window,d=w.document,writes=[];let hostLoaded=false;
  Object.defineProperty(w,'crypto',{value:webcrypto});w.AbortSignal=AbortSignal;
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
  w.matchMedia=()=>({matches:false,addEventListener(){}});
- w.fetch=async(p,options={})=>{if(options.method==='POST')writes.push({url:p,data:JSON.parse(options.body)});return fetch(new URL(p,url),options);};
+ w.fetch=async(p,options={})=>{if(options.method==='POST')writes.push({url:p,data:JSON.parse(options.body)});const response=await fetch(new URL(p,url),options);if(p==='/api/host')hostLoaded=true;return response;};
  for(const script of ['remote-install','relay-servers','corpora'])w.eval(fs.readFileSync(path.join(root,'web/features',script+'.js'),'utf8'));
  const click=selector=>{const el=d.querySelector(selector);if(!el)throw new Error('Missing '+selector);el.click();};
  const text=selector=>d.querySelector(selector)?.textContent;
  const rows=()=>Array.from(d.querySelectorAll('.relay-row')).map(row=>({name:row.querySelector('strong').textContent,current:row.dataset.current==='true',disabled:row.querySelector('input').disabled}));
  const submit=()=>d.querySelector('#relay-editor').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
  const listed=()=>wait(()=>d.querySelector('#relay-list'));
- await wait(()=>w.SapiensConnections.connected);
+ await wait(()=>hostLoaded&&(scenario!=='terms'||w.SapiensConnections.connected));
  click('#corpora-picker');click('#manage-relay-servers');await listed();
  const out={heading:text('#corpora-dialog-title'),initial:rows(),archivedDefault:d.querySelector('#relay-archived').checked};
  if(scenario==='terms'){
