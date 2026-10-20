@@ -26,7 +26,7 @@
         <div class="corpora-menu-heading"><strong>Corpora</strong><button id="corpora-menu-close" aria-label="Close corpora menu">×</button></div>
         <div class="corpora-columns"><span>Location</span><span>Name</span><span>Status</span><span>Device</span><span class="corpora-remote-column">Remote</span></div>
         <div id="corpora-rows"></div>
-        <div class="corpora-actions"><button id="create-local-corpora" hidden>＋ Create new local corpora</button><button id="connect-remote-corpora">＋ Connect remote corpora</button></div>
+        <div class="corpora-actions"><button id="manage-relay-servers" hidden>Remote Control Relay Servers</button><button id="create-local-corpora" hidden>＋ Create new local corpora</button><button id="connect-remote-corpora">＋ Connect remote corpora</button></div>
         <label class="corpora-archive-toggle"><input id="corpora-archived" type="checkbox"> Show archived corporas</label>
       </section>
       <div id="corpora-status-menu" class="corpora-popover status-popover" hidden></div>
@@ -76,7 +76,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <dialog id="corpora-dialog" aria-labelledby="corpora-dialog-title"><div class="corpora-menu-heading"><h2 id="corpora-dialog-title"></h2><button id="corpora-dialog-close" aria-label="Close">×</button></div><div id="corpora-dialog-body"></div></dialog>
   <dialog id="corpora-notice" aria-label="Connection notice"><p id="corpora-notice-text"></p><button id="corpora-notice-close">OK</button></dialog>
-  <script src="/remote-vendor.js"></script><script src="/remote-code.js"></script><script src="/remote-session.js"></script><script src="/remote-transport.js"></script><script src="/remote-install.js"></script><script src="/remote-onboarding.js"></script><script src="/corpora.js"></script>
+  <script src="/remote-vendor.js"></script><script src="/remote-code.js"></script><script src="/remote-session.js"></script><script src="/remote-transport.js"></script><script src="/remote-install.js"></script><script src="/remote-onboarding.js"></script><script src="/relay-servers.js"></script><script src="/corpora.js"></script>
   <script src="/assets/sapi-theme.js"></script>
   <script src="/workspace/app.js"></script>
 </body>

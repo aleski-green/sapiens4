@@ -47,6 +47,7 @@ class Mailboxes:
                 (id INTEGER PRIMARY KEY AUTOINCREMENT, room TEXT, recipient TEXT,
                  body TEXT, expires REAL);
                 CREATE INDEX IF NOT EXISTS inbox ON messages(room, recipient, id);
+                CREATE TABLE IF NOT EXISTS beta_requests (created REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS corpora
                 (address TEXT PRIMARY KEY, identity TEXT NOT NULL, room TEXT NOT NULL,
                  public_key TEXT NOT NULL, expires REAL NOT NULL);
@@ -61,22 +62,31 @@ class Mailboxes:
         finally:
             db.close()  # Release file handles after both commit and rollback.
 
-    def transact(self, method, parts, bearer, body, admin):
+    def transact(self, method, parts, bearer, body, admin, beta=False):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             now = time.time()
             self.expire(db, now)
             if parts == ['api', 'rooms'] and method == 'POST':
-                if not hmac.compare_digest(bearer, admin):
+                if not beta and not hmac.compare_digest(bearer, admin):
                     raise RelayError(401, 'Unauthorized')
                 if db.execute('SELECT count(*) FROM rooms').fetchone()[0] >= 100:
                     raise RelayError(429, 'Room limit reached')
+                if beta:
+                    db.execute('DELETE FROM beta_requests WHERE created < ?', (now - 60,))
+                    if db.execute('SELECT count(*) FROM beta_requests').fetchone()[0] >= 10:
+                        raise RelayError(429, 'Beta is busy. Try again in a minute or use your own relay.')
+                    db.execute('INSERT INTO beta_requests VALUES (?)', (now,))
                 address = body.get('public_id')
+                if beta and address is None:
+                    raise RelayError(400, 'CORPORA identity required')
                 if address is not None:
                     if not isinstance(address, str) or address != public_id(body.get('corpora_id')):
                         raise RelayError(400, 'Invalid CORPORA ID')
                     unb64(body.get('public_key'), 32)
                     existing = db.execute('SELECT identity FROM corpora WHERE address=?', (address,)).fetchone()
+                    if beta and db.execute('SELECT 1 FROM corpora c JOIN rooms r ON r.id=c.room WHERE address=?', (address,)).fetchone():
+                        raise RelayError(409, 'Revoke the existing pairing before creating another')
                     if existing and existing[0] != body['corpora_id']:
                         raise RelayError(409, 'CORPORA ID collision')
                 room, desktop, phone = [secrets.token_urlsafe(32) for _ in range(3)]
@@ -160,7 +170,8 @@ class Mailboxes:
 
 class RelayServer:
     """One HTTP/WebSocket listener; ciphertext is committed before delivery."""
-    def __init__(self, address, path, admin, public_origin):
+    def __init__(self, address, path, admin, public_origin, beta=False):
+        self.beta = beta
         if len(admin) < 32 or not admin.isascii():
             raise ValueError('SAPIENS_RELAY_ADMIN_TOKEN must contain at least 32 ASCII characters')
         self.mailboxes, self.admin = Mailboxes(path), admin
@@ -213,7 +224,7 @@ class RelayServer:
             if req.method == 'GET':
                 platform = path.strip('/')
                 platforms = {'ios', 'android', 'mac', 'windows'}
-                found = asset('/' if platform in platforms else path)
+                found = asset('/' if platform in platforms or path == '/beta' else path)
                 if found:
                     mime, content = found
                     mime = mime.split(';')[0]
@@ -231,11 +242,17 @@ class RelayServer:
                     return self.response(200, content, mime)
             body = {}
             if req.method == 'POST':
-                if not 0 < (req.content_length or 0) <= MAX_FRAME or req.content_type != 'application/json':
+                limit = 4096 if path == '/beta/api/rooms' else MAX_FRAME
+                if not 0 < (req.content_length or 0) <= limit or req.content_type != 'application/json':
                     raise RelayError(413, 'Invalid body size or content type')
                 body = await asyncio.wait_for(req.json(), 10)
                 if not isinstance(body, dict):
                     raise RelayError(400, 'Expected object')
+            if req.method == 'POST' and path == '/beta/api/rooms':
+                if not self.beta:
+                    raise RelayError(404, 'Beta access is unavailable. Use your own relay.')
+                result = self.mailboxes.transact('POST', ['api', 'rooms'], '', body, self.admin, beta=True)
+                return self.response(200, result)
             authorization = req.headers.get('Authorization', '')
             if not re.fullmatch(r'Bearer [\x21-\x7e]{1,256}', authorization):
                 raise RelayError(401, 'Bearer token required')
@@ -402,6 +419,8 @@ def main():
                         help='Public HTTPS origin, or loopback HTTP for tests')
     parser.add_argument('--connection-file', type=Path,
                         help='Private connection file to import in CORPORA (default: beside database)')
+    parser.add_argument('--beta', action='store_true', default=os.environ.get('SAPIENS_RELAY_BETA') == '1',
+                        help='Allow bounded public beta mailbox creation without exposing the admin token')
     args = parser.parse_args()
     if os.environ.get('RAILWAY_ENVIRONMENT_ID'):
         mount = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH')
@@ -410,9 +429,9 @@ def main():
     connection_path = args.connection_file or args.db.with_suffix('.connection.json')
     connection = provision(connection_path, args.origin, os.environ.get('SAPIENS_RELAY_ADMIN_TOKEN', ''))
     server = RelayServer((args.bind, args.port), args.db,
-                         connection['token'], connection['relay'])
+                         connection['token'], connection['relay'], beta=args.beta)
     print('Relay connection file: ' + str(connection_path.resolve()), flush=True)
-    print('In desktop CORPORA → Connect phone → Import relay connection file. '
+    print('In desktop CORPORA → Remote Control Relay Servers → Add your own relay → Import JSON. '
           'Keep this file private; it contains the provisioning token.', flush=True)
     print('Remote relay ready. Configure HTTPS and proxy limits before internet exposure.', flush=True)
     try:

@@ -18,6 +18,9 @@ class Server(ThreadingHTTPServer):
         super().__init__(("127.0.0.1", port), Handler)
         with service._lock:
             service.orchestration.attach(f"http://127.0.0.1:{self.server_port}")
+        if not managed:
+            from sapiens.corpora.host.relay_servers import recover
+            recover(service.root)
         self.remote = RemoteBridge(service)
         from sapiens.corpora.host.host_registry import HostRegistry
         self.registry = None if managed else HostRegistry(self)
@@ -89,6 +92,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, registry.records())
             if write and self.server.service._stopping.is_set():
                 raise APIError(503, 'Host is shutting down')
+            if path == '/api/host/relays' and self.command == 'GET':
+                return self._send(200, registry.relays.view())
+            if path.startswith('/api/host/relays/') and self.command == 'GET':
+                return self._send(200, registry.relays.view(path.split('/')[-1]))
+            if path == '/api/host/relays' and self.command == 'POST':
+                return self._send(200, registry.relays.change(data))
             if path == '/api/host/local' and self.command == 'POST':
                 return self._send(201, registry.create(data))
             if path == '/api/host/pair' and self.command == 'POST':
@@ -118,6 +127,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, found[1], found[0])
         data = self._body() if write else None
         if self.command == 'POST' and path.startswith('/api/remote/'):
+            if self.server.registry:
+                return self._send(201 if path.endswith('/pair') else 200,
+                                  self.server.registry.remote_action(self.server.remote, path, data))
             if path == '/api/remote/pair':
                 return self._send(201, self.server.remote.create(data))
             if path == '/api/remote/approve':

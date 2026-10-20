@@ -15,6 +15,10 @@ def validate(value):
     if not isinstance(value, dict) or value.get('format') != FORMAT:
         raise ValueError('Choose a Sapiens relay connection file')
     relay, token = origin(value.get('relay')), value.get('token')
+    if value.get('beta') is True:
+        if token:
+            raise ValueError('Beta connections do not use an admin token')
+        return dict(format=FORMAT, relay=relay, beta=True)
     if not isinstance(token, str) or not 32 <= len(token) <= 256 or any(
             not 33 <= ord(char) <= 126 for char in token):
         raise ValueError('Invalid relay provisioning token')

@@ -19,6 +19,12 @@ from sapiens.corpora.host.remote_socket import SocketClient, websocket
 from sapiens.validation import APIError
 
 
+class RelayRequestError(ValueError):
+    def __init__(self, status):
+        self.status = status
+        super().__init__('Relay request failed (HTTP %s)' % status)
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None  # Never forward mailbox or provisioning credentials to a redirect.
@@ -38,7 +44,7 @@ def request(relay, path, bearer, method='GET', body=None):
                 raise ValueError('Invalid relay response')
             return value
     except HTTPError as error:
-        raise ValueError('Relay request failed (HTTP %s)' % error.code) from None
+        raise RelayRequestError(error.code) from None
 
 
 class RemoteBridge:
@@ -124,15 +130,15 @@ class RemoteBridge:
             data = self.saved_relay()
             if not data:
                 raise ValueError('Configure your relay once before connecting a phone.')
-        connection = validate_connection(dict(format=FORMAT, relay=data.get('relay'), token=data.get('token')))
-        relay, admin = connection['relay'], connection['token']
+        connection = validate_connection(dict(format=FORMAT, relay=data.get('relay'), token=data.get('token'), beta=data.get('beta')))
+        relay, admin = connection['relay'], connection.get('token', '')
         private, public = crypto.keypair()
         with self.lock:
             if self.config:
                 raise ValueError('Revoke the existing pairing before creating another')
             identity = self.service.corpora_identity()['id']
             address = public_id(identity)
-            room = request(relay, '/api/rooms', admin, 'POST', dict(
+            room = request(relay, '/beta/api/rooms' if connection.get('beta') else '/api/rooms', admin, 'POST', dict(
                 public_id=address, corpora_id=identity, public_key=public))
             if any(not isinstance(room.get(k), str) or not 32 <= len(room[k]) <= 64 or
                    any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_' for c in room[k])
@@ -173,18 +179,25 @@ class RemoteBridge:
             self.save()
             return dict(approved=True)
 
-    def revoke(self):
+    def revoke(self, notify=True):
         with self.lock:
             config, self.config = self.config, None
             self.save()  # Local revocation takes effect even if relay is unreachable.
             self.error, self.last_contact = '', None
-        deleted = True
-        if config:
-            try:
-                request(config['relay'], '/api/rooms/' + config['room'], config['token'], 'DELETE')
-            except Exception:
-                deleted = False
+        deleted = None if config else True
+        if config and notify:
+            deleted = self.delete_room(config)
         return dict(revoked=True, relay_deleted=deleted)
+
+    @staticmethod
+    def delete_room(config):
+        try:
+            request(config['relay'], '/api/rooms/' + config['room'], config['token'], 'DELETE')
+        except RelayRequestError as error:
+            return error.status in {401, 404}  # Already removed or expired.
+        except Exception:
+            return False
+        return True
 
     def close(self):
         self.stopped.set()

@@ -16,6 +16,11 @@ class RemoteClient:
         self.config, self.socket = config, None
         self.lock = threading.Lock()
         self.connection_id = None
+        self.revoked = False
+
+    def revoke(self):
+        self.revoked = True
+        self.close()
 
     def close(self):
         if self.socket:
@@ -27,6 +32,8 @@ class RemoteClient:
 
     def exchange(self, payload, timeout=12):
         with self.lock:
+            if self.revoked:
+                raise APIError(410, 'Remote connection was revoked')
             if self.socket is None:
                 self.connection_id = uuid4().hex
             identity = uuid4().hex
@@ -39,6 +46,9 @@ class RemoteClient:
             try:
                 if self.socket is None:
                     self.socket = SocketClient(self.config)
+                if self.revoked:
+                    self.close()
+                    raise APIError(410, 'Remote connection was revoked')
                 self.socket.call('send', frame=frame)
                 deadline = time.monotonic() + timeout
                 while time.monotonic() < deadline:

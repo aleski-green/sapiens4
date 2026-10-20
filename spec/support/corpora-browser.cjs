@@ -74,7 +74,7 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
    w.RemoteSession={list:()=>new Promise(resolve=>{releaseSession=()=>resolve([{relay:'https://relay.example',corpora:b}]);}),key:s=>s.corpora.id};
    w.RemoteTransport=class{constructor(session){this.session=session;transports.push(!!session);}async authenticate(){return this.session.corpora;}async fetch(){return {ok:true,json:async()=>snapshot(this.session.corpora)};}};
  }
- evaluate('remote-install');evaluate('corpora');
+ evaluate('remote-install');evaluate('relay-servers');evaluate('corpora');
  if(scenario==='resume-before-credentials'){
    try{await w.SapiensConnections.fetch('/api/state');}catch(e){earlyError=e.message;}
    releaseSession();
@@ -82,18 +82,14 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
  for(let i=0;i<12;i++)await sleep();
  const click=selector=>d.querySelector(selector).click();
  if(scenario==='pairing-setup'){
-   click('#corpora-picker');click('[data-pairing="'+a.id+'"]');for(let i=0;i<8;i++)await sleep();
-   const out={local:!!d.querySelector('[data-remote-action="local"]'),saved:!!d.querySelector('[data-remote-action="pair"]')};
-   const form=d.querySelector('#relay-setup'),file=form.elements.connection;
-   const importFile=async relay=>{Object.defineProperty(file,'files',{value:[{size:200,text:async()=>JSON.stringify({format:'sapiens-relay-connection-v1',relay,token:'t'.repeat(32)})}],configurable:true});file.dispatchEvent(new w.Event('change',{bubbles:true}));await sleep();};
-   await importFile('https://relay.example');out.imported={relay:form.elements.relay.value,enabled:!form.querySelector('button').disabled,writes:calls.filter(c=>c.method==='POST').length};
-   await importFile('http://public.example');out.invalid={relay:form.elements.relay.value,token:form.elements.token.value,disabled:form.querySelector('button').disabled};
-   await importFile('https://relay.example');pairFailure=true;form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await sleep();await poll();out.error=d.querySelector('#remote-host-feedback').textContent;
-   pairFailure=false;form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));for(let i=0;i<8;i++)await sleep();out.invitation={download:d.querySelector('#download-pair-qr')?.href,link:d.querySelector('#remote-host-content a[target]')?.href,expiry:d.querySelector('#remote-host-content').textContent.includes('Expires'),token:form.elements.token.value};
+   await w.SapiensConnections.remoteControl(a,true);for(let i=0;i<8;i++)await sleep();
+   const out={saved:!!d.querySelector('[data-remote-action="pair"]')};
+   pairFailure=true;click('[data-remote-action="pair"]');await sleep();await poll();out.error=d.querySelector('#remote-host-feedback').textContent;
+   pairFailure=false;click('[data-remote-action="pair"]');for(let i=0;i<8;i++)await sleep();out.invitation={download:d.querySelector('#download-pair-qr')?.href,link:d.querySelector('#remote-host-content a[target]')?.href,expiry:d.querySelector('#remote-host-content').textContent.includes('Expires')};
+   click('[data-remote-action="link"]');out.invitation.pairingLink=d.querySelector('#host-pair-link').value;
    pairData.pending={peer:'phone'};await poll();out.noCodeDisabled=d.querySelector('[data-remote-action="approve"]').disabled;
    pairData.pending.confirmation_code='CwnX · eCGC';await poll();out.code=d.querySelector('#remote-host-content strong').textContent;click('[data-remote-action="approve"]');await sleep();
    delete pairData.pending;pairData.invitation.expires=0;await poll();out.expiredQR=!!d.querySelector('canvas');
-   click('[data-remote-action="revoke"]');await sleep();click('[data-remote-action="local"]');await sleep();
    click('[data-remote-action="revoke"]');await sleep();click('[data-remote-action="pair"]');await sleep();
    out.writes=calls.filter(c=>c.method==='POST').map(c=>({path:c.url.split('/api/remote')[1],data:c.data}));
    console.log(JSON.stringify(out));dom.window.close();return;

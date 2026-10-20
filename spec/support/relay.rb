@@ -4,15 +4,23 @@ require_relative 'process'
 
 class Relay
   attr_reader :root, :url, :token
-  def initialize
+  def initialize(beta: false)
     @root = Dir.mktmpdir('sapiens relay ')
     socket = TCPServer.new('127.0.0.1', 0)
     port = socket.addr[1]
     socket.close
+    @port, @beta = port, beta
     @url, @token = "http://127.0.0.1:#{port}", SecureRandom.urlsafe_base64(32)
+    start
+  rescue Exception
+    close
+    raise
+  end
+  def start
     @process = Contract::Child.new(Contract::PYTHON, '-m', 'sapiens.corpora.host.remote_relay',
-      '--port', port.to_s, '--origin', url, '--db', File.join(root, 'relay.sqlite3'),
-      env: {'SAPIENS_RELAY_ADMIN_TOKEN' => token, 'RAILWAY_ENVIRONMENT_ID' => nil, 'PYTHONUTF8' => '1'})
+      '--port', @port.to_s, '--origin', url, '--db', File.join(root, 'relay.sqlite3'),
+      env: {'SAPIENS_RELAY_ADMIN_TOKEN' => token, 'SAPIENS_RELAY_BETA' => @beta ? '1' : nil,
+        'RAILWAY_ENVIRONMENT_ID' => nil, 'PYTHONUTF8' => '1'})
     Contract.wait(description: 'relay startup') { @process.stdout.include?('Remote relay ready') }
     Contract.wait do
       begin
@@ -21,9 +29,11 @@ class Relay
         false
       end
     end
-  rescue Exception
-    close
-    raise
+  end
+  def stop
+    @process.signal(Gem.win_platform? ? 'KILL' : 'TERM') if @process
+    @process.close if @process
+    @process = nil
   end
   def request(method, path, body = nil, bearer: token, headers: {})
     body = {} if method == 'POST' && body.nil?
@@ -35,8 +45,7 @@ class Relay
     body
   end
   def close
-    @process.signal(Gem.win_platform? ? 'KILL' : 'TERM') if @process
-    @process.close if @process
+    stop
     FileUtils.remove_entry(root) if root && File.exist?(root)
   end
 end

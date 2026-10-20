@@ -6,9 +6,11 @@ from uuid import uuid4
 
 from sapiens.corpora.host.corpora_api import dispatch
 from sapiens.corpora.host.remote_client import RemoteClient
+from sapiens.corpora.host.remote_bridge import RemoteBridge
 from sapiens.corpora.host.remote_pairing import confirmation_code
 from sapiens.files import atomic_json
 from sapiens.validation import APIError
+from sapiens.corpora.host.relay_servers import RelayServers
 
 
 class HostRegistry:
@@ -20,8 +22,12 @@ class HostRegistry:
         self.local_available = sys.platform in {'darwin', 'win32'}
         self.services = {server.service.corpora_id: server.service}
         self.children, self.clients, self.pending = {}, {}, {}
+        self.pair_clients = {}
         self.lock = threading.RLock()
         self.closed = False
+        self.relays = RelayServers(self)
+        if self.saved.get('relay_cleanup'):
+            threading.Thread(target=self.cleanup_relays, daemon=True).start()
 
     def save(self):
         atomic_json(self.path, self.saved)
@@ -74,19 +80,89 @@ class HostRegistry:
             remote = self.server.remote if service is self.server.service else self.children[identity].remote
             if path == '/api/remote' and method == 'GET':
                 return 200, remote.status(), 'application/json'
-            actions = {'/api/remote/pair': remote.create, '/api/remote/approve': remote.approve,
-                       '/api/remote/revoke': lambda _: remote.revoke()}
-            if method == 'POST' and path in actions:
-                return 200, actions[path](data), 'application/json'
+            if method == 'POST':
+                return 200, self.remote_action(remote, path, data), 'application/json'
             raise APIError(404, 'Not found')
         result = dispatch(service, method, path, data) if service else client.request(method, path, data)
+        if service is None:
+            with self.lock:
+                if identity not in self.saved['remotes'] or self.clients.get(identity) is not client:
+                    raise APIError(410, 'Remote connection was revoked')
         if service is None and result[0] == 200:
             metadata = result[1].get('corpora') if path == '/api/state' else result[1] if path in {'/api/corpora', '/api/corpora/lifecycle'} else None
             if metadata and metadata.get('id') == identity:
                 with self.lock:
+                    if identity not in self.saved['remotes']:
+                        raise APIError(410, 'Remote connection was revoked')
                     self.saved['remotes'][identity]['corpora'] = metadata
                     self.save()
         return result
+
+    def remote_action(self, remote, path, data):
+        with self.lock:
+            if self.saved.get('relay_servers', {}).get('reset_pending'):
+                raise APIError(409, 'Relay switch interrupted. Restart the app to finish.')
+            if path == '/api/remote/pair':
+                if 'relay_servers' in self.saved:
+                    connection = self.relays.connection()
+                    if not data.get('saved') or data.get('local'):
+                        raise APIError(409, 'Choose the relay in Remote Control Relay Servers.')
+                    self.cleanup_relays(connection['relay'], remote.service.corpora_id)
+                    return remote.create(connection)
+                return remote.create(data)
+            if path == '/api/remote/approve':
+                return remote.approve(data)
+            if path == '/api/remote/revoke':
+                return remote.revoke()
+            raise APIError(404, 'Not found')
+
+    def queue_relay_cleanup(self):
+        pending = self.saved.setdefault('relay_cleanup', [])
+        folders = [(self.root, self.server.service.corpora_id),
+                   *((self.root / 'corporas' / identity, identity) for identity in self.saved['locals'])]
+        for folder, identity in folders:
+            try:
+                config = json.loads((folder / 'remote-device.json').read_text())
+                item = {key: config[key] for key in ('relay', 'room', 'token')}
+                item['corpora_id'] = config.get('corpora_id', identity)
+                if item not in pending:
+                    pending.append(item)
+            except (OSError, ValueError, TypeError, KeyError):
+                continue
+
+    def cleanup_relays(self, relay=None, identity=None):
+        with self.lock:
+            pending = [item for item in self.saved.get('relay_cleanup', [])
+                       if (relay is None or item['relay'] == relay) and
+                          (identity is None or item['corpora_id'] == identity)]
+        for item in pending:
+            if self.closed:
+                return
+            if RemoteBridge.delete_room(item):
+                with self.lock:
+                    if item in self.saved.get('relay_cleanup', []):
+                        self.saved['relay_cleanup'].remove(item)
+                        self.save()
+
+    def reset_connections(self, connection):
+        for item in self.pending.values():
+            item['state'] = 'cancelled'
+        for client in [*self.clients.values(), *self.pair_clients.values()]:
+            client.revoke()
+        self.clients.clear()
+        for server in [self.server, *self.children.values()]:
+            server.remote.revoke(notify=False)
+        # Revoke unopened corpora on disk, without starting their workers or bridges.
+        for identity in self.saved['locals']:
+            if identity in self.children:
+                continue
+            path = self.root / 'corporas' / identity / 'remote-device.json'
+            if path.exists():
+                path.unlink(missing_ok=True)
+        for folder in [self.root, *(self.root / 'corporas' / identity for identity in self.saved['locals'])]:
+            if folder.exists():
+                atomic_json(folder / 'remote-relay.json', connection)
+        threading.Thread(target=self.cleanup_relays, daemon=True).start()
 
     def create(self, data):
         if not self.local_available:
@@ -112,9 +188,12 @@ class HostRegistry:
         identity = uuid4().hex
         item = dict(id=identity, state='waiting', code=confirmation_code(data['desktop'], client.config['public'], data['room']))
         with self.lock:
+            if self.saved.get('relay_servers', {}).get('reset_pending'):
+                raise APIError(409, 'Relay switch interrupted. Restart the app to finish.')
             if any(p['state'] == 'waiting' for p in self.pending.values()):
                 raise APIError(409, 'A connection is already waiting for approval')
             self.pending = {identity: item}
+            self.pair_clients[identity] = client
         def pair():
             try:
                 corpora = client.pair(data)
@@ -127,9 +206,13 @@ class HostRegistry:
                     self.save()
                     item.update(state='approved', corpora=dict(corpora, location='Remote'))
             except Exception as error:
-                item.update(state='failed', error=str(error))
+                with self.lock:
+                    if item['state'] != 'cancelled':
+                        item.update(state='failed', error=str(error))
             finally:
                 client.close()
+                with self.lock:
+                    self.pair_clients.pop(identity, None)
         threading.Thread(target=pair, daemon=True).start()
         return item.copy()
 
@@ -139,6 +222,8 @@ class HostRegistry:
                 raise APIError(404, 'Unknown pairing')
             if cancel:
                 self.pending[identity]['state'] = 'cancelled'
+                if identity in self.pair_clients:
+                    self.pair_clients[identity].revoke()
             return self.pending[identity].copy()
 
     def busy(self, primary):
@@ -159,8 +244,8 @@ class HostRegistry:
 
     def close(self):
         self.closed = True
-        for client in self.clients.values():
-            client.close()
+        for client in [*self.clients.values(), *self.pair_clients.values()]:
+            client.revoke()
         for identity, server in self.children.items():
             server.shutdown()
             server.server_close()

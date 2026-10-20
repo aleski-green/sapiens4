@@ -10,7 +10,7 @@ SCRIPTS = ("shell/bootstrap.js", "shell/app.js", "features/names.js", "features/
 # Never expose Python sources, runtime data, or Git metadata.
 PUBLIC_ASSETS = {
     **{'/' + name + '.js': ('text/javascript', 'features/' + name + '.js') for name in
-       ('corpora', 'remote-session', 'remote-transport', 'remote-code', 'remote-vendor', 'remote-onboarding', 'remote-install')},
+       ('corpora', 'relay-servers', 'remote-session', 'remote-transport', 'remote-code', 'remote-vendor', 'remote-onboarding', 'remote-install')},
     '/corpora.css': ('text/css', 'theme/corpora.css'),
     '/remote-install.css': ('text/css', 'theme/remote-install.css'),
     '/manifest.webmanifest': ('application/manifest+json', 'shell/remote.webmanifest'),

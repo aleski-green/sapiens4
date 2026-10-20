@@ -48,20 +48,17 @@ location, never its contents. Subsequent launches reuse the token. An explicit
 custom destination. Keep that file private and transfer it securely to the desktop
 owner. It is never served over HTTP. Windows requires a private directory/ACL.
 The token authorizes mailbox creation; it is not an encryption key. Never give
-it to the phone or embed it in a URL. Desktop saves it privately in `remote-relay.json` after successful setup, so subsequent invitations need only **Show QR**. It is never returned by the status API or sent to the phone.
+it to the phone or embed it in a URL. Desktop stores the catalogue privately in `host-corpora.json` and the pairing configuration in `remote-relay.json` (0600 on POSIX). Tokens are omitted from catalogue/status responses and returned only to the local connection editor. They never enter browser storage or the phone invitation.
 
-1. In local CORPORA, open the hamburger menu's **Remote control**. Enter the relay
-   address and provisioning token once, then select **Show QR**. Saved relay settings
-   are reused for later invitations. Each corpora trusts one remote device.
-2. For file-based setup, the legacy host setup page remains available at
-   `http://127.0.0.1:4174/remote/`. Its **Use local test relay** option reads the connection file
-   from this checkout's `.sapiens4/relay.connection.json` on the server side;
-   the token is never returned to the browser. This shortcut only accepts loopback
-   HTTP origins. For a custom database/location or another server, select
-   **Import relay connection file**, review the displayed address, then select
-   **Show QR**. Manual address/token entry remains available.
-   This is a one-time setup on each desktop. Future connections use **Show QR**.
-   The QR remains available on this local page until approved, revoked, or expired (three days).
+1. Open the corpora menu → **Remote Control Relay Servers**. Choose the Sapiens4
+   beta or **Add your own relay**. For a self-hosted server, enter a name and paste
+   or import its `relay.connection.json`, then **Save**. Loopback HTTP is accepted
+   for local testing; public servers require an HTTPS origin with no path.
+2. Select the saved server and confirm the switch. In a local corpora's Remote
+   column, choose **New Pairing**, continue through the selector, then **Show QR**.
+   Beta use requires explicit acceptance of its terms. Each local corpora trusts
+   one remote device. The QR remains available until approved, revoked, or expired
+   (three days). `/remote/` redirects to this workspace pairing flow.
 3. On mobile, add the app to the Home Screen and launch its icon before pairing.
    Choose **Connect remote corpora**, then scan/upload the host QR or paste its
    invitation. No CORPORA ID entry is required. For a same-computer browser test use
@@ -128,9 +125,9 @@ and request bodies from proxy logs. Keep the provisioning token in protected
 service configuration and rotate it when needed.
 
 Retrieve `relay.connection.json` from your server using your normal secure file
-transfer method. In desktop CORPORA, select **Import relay connection file** and
-create the pairing QR. Scan it with the iPhone Camera app and open the link;
-confirm the matching code on desktop once. The public relay site never displays the provisioning token. Hosted
+transfer method. In desktop CORPORA, choose **Add your own relay**, import its
+connection JSON and save it. Select the server, then create the pairing QR and
+scan it in the installed app; confirm the matching code on desktop. The public relay site never displays the provisioning token. Hosted
 Sapiens sign-in/automatic account provisioning is not implemented. Desktop and phone both make outbound HTTP(S)
 requests, so there is no inbound port or router change on the desktop. Origin
 changes require new pairing; QR upload never navigates to an arbitrary encoded URL.
@@ -165,6 +162,59 @@ usage is charged to the selected Railway plan; choose account spending limits
 in Railway before expanding traffic. Changing the public origin requires a fresh
 pairing. Configure a private backup policy for the volume if retained mailboxes
 are important; the local PC remains the source of truth.
+
+## Relay selector and hosted beta
+
+The catalogue and selected relay belong to this local app, across all local
+corpora. Existing distinct relay configurations are imported without revoking
+existing pairings. Saving a server does not select it. Entries support editing,
+archive and restore; archived entries are hidden by default. The list scrolls
+from the third visible entry. The current server cannot be archived.
+
+Switching servers, or changing the current server's connection JSON, requires
+**Switch & revoke all**. This removes all local paired-device keys and invitation
+secrets, closes this app's outgoing remote connections, cancels pending pairing,
+and forgets its saved remote corpora credentials. Devices and remote corpora must
+be paired again. Names can change without revocation. Other local corpora data
+and execution state remain intact. Remote mailbox deletion is best-effort; local
+revocation does not depend on relay availability. Minimal old mailbox deletion
+credentials (origin, room and desktop mailbox token, with corpora ID) are retained
+privately until cleanup succeeds; encryption keys, peer trust and invitation
+secrets are removed immediately. Cleanup retries at restart, on a switch and
+before pairing that corpora on the same relay, so returning to an offline beta
+does not strand its identity. A persisted reset marker makes
+an interrupted switch finish before bridges start on the next launch. Concurrent
+selector edits use a revision check and cannot silently overwrite a newer choice.
+
+The offered endpoints are `https://remote-relay.sapiens4.ai/beta` (Sapiens4 beta)
+and `https://remote-relay.utana.group/beta` (Utana beta, inactive). `/beta` is an
+onboarding page; protocol URLs use the root origin. Utana remains unavailable
+even if its entry is renamed, edited, archived or restored.
+
+For the Sapiens4 beta deployment, configure the custom domain and
+`SAPIENS_RELAY_ORIGIN=https://remote-relay.sapiens4.ai`, then explicitly set
+`SAPIENS_RELAY_BETA=1` (or `--beta`). It is off by default. This enables
+`POST /beta/api/rooms`, which creates a fresh mailbox and returns only that
+mailbox's credentials. No shared admin token is shipped with the desktop app or
+published by the relay. Normal `/api/rooms` still requires the private admin
+token. The beta endpoint requires corpora identity, refuses replacement of a live
+identity, allows at most ten successful public creations per rolling minute
+(persisted in SQLite), and shares the existing 100-room capacity. Invalid or
+failed creation does not consume quota. Proxy rate/body/connection limits and
+operator monitoring are still required; this small public beta can exhaust its
+capacity and is not an account/quota service. Approved mailboxes occupy capacity
+until revoked. A disabled or full beta reports an error without producing a QR.
+This PR supplies the opt-in endpoint; it does not configure domains or turn on
+hosted beta access.
+
+Self-hosted JSON keeps the `format`, `relay`, `token` shape. Beta records use
+`{"format":"sapiens-relay-connection-v1","relay":"https://remote-relay.sapiens4.ai","beta":true}`
+with no admin token. QR/link invitations continue to pair devices; they do not
+replace desktop self-hosted server configuration.
+
+The UI recommends a securely maintained self-hosted relay for sensitive work.
+Beta consent presents the authors/contributors/operators liability disclaimer,
+retains non-excludable rights, and requires an unchecked-by-default acceptance.
 
 ## Encryption and storage boundaries
 

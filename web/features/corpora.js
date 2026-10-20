@@ -48,6 +48,7 @@ window.SapiensConnections=(()=>{
     const rowsHTML=records.filter(r=>!r.archived&&r.status!=='archived'||$('corpora-archived').checked).map(r=>`<div class="corpora-record" data-selected="${r.key===selectedKey()}"><span class="corpora-location-cell">${escape(r.location)}</span><span class="corpora-name-cell"><button class="corpora-name" data-enter="${escape(r.key)}" ${r.status==='archived'||busy?'disabled':''} aria-pressed="${r.key===selectedKey()}">${escape(r.name)}</button><button class="corpora-edit" data-edit="${escape(r.key)}" ${busy?'disabled':''}>Edit</button></span><span class="corpora-state"><i class="corpora-dot" data-active="${r.status==='active'}"></i>${escape({active:'Active',paused:'Paused',archived:'Archived'}[r.status]||'Active')}</span><span class="corpora-device">${escape(r.device||'Host computer')}</span>${hasLocal?`<span class="corpora-pairing-cell">${r.location==='Local'?`<button data-pairing="${escape(r.key)}" ${busy?'disabled':''}>${r.paired?'Edit Pairing':'New Pairing'}</button>`:''}</span>`:''}</div>`).join('');
     if($('corpora-rows').innerHTML!==rowsHTML)$('corpora-rows').innerHTML=rowsHTML;
     $('create-local-corpora').hidden=!localAvailable;
+    $('manage-relay-servers').hidden=remote;
     $('corpora-picker').title=active?.name||'Corpora';
     $('corpora-picker').setAttribute('aria-expanded',String(!menu.hidden));
     $('connection-status').setAttribute('aria-expanded',String(!statusMenu.hidden));
@@ -194,10 +195,36 @@ window.SapiensConnections=(()=>{
   }
   $('connect-remote-corpora').onclick=connectForm;$('empty-connect-corpora').onclick=connectForm;
   $('empty-create-corpora').onclick=()=>$('create-local-corpora').click();
-  async function remoteControl(record){
+  async function resetRelayConnections(broadcast=true){
+    generation++;
+    const removed=records.filter(row=>row.location==='Remote');
+    removed.forEach(row=>{clients.get(row.key)?.close();clients.delete(row.key);sessions.delete(row.key);localStorage.removeItem('s4.snapshot.'+row.key);});
+    records=records.filter(row=>row.location==='Local');records.forEach(row=>{row.paired=false;});
+    if(active?.location==='Remote'){
+      active=records[0]||null;lastSnapshot=null;connected=false;
+      write('s4.active',active?.key||null);
+    }
+    write('s4.records',records);write('s4.lifecycle.pending',null);write('s4.switch.pending',null);
+    if(broadcast)write('s4.relay-reset',crypto.randomUUID());
+    await restore();
+  }
+  function relayManager(record){
+    if(remote||busy)return;
+    RelayServers.mount({show,json,reset:resetRelayConnections,pairing:!!record,
+      done:record?()=>remoteControl(record,true):closeForm,
+      cleanup:fn=>{formCleanup=fn;}});
+  }
+  $('manage-relay-servers').onclick=()=>relayManager();
+  window.addEventListener('storage',event=>{
+    if(!remote&&event.key==='s4.relay-reset'){closeForm();resetRelayConnections(false);}
+  });
+  async function remoteControl(record,ready=false){
     if(remote||record?.location!=='Local')return;
+    if(!ready){
+      try{const data=await request(record,'/api/remote');if(!data.enabled&&!data.paired){relayManager(record);return;}}catch(e){error(e.message);return;}
+    }
     show(record.paired?'Edit Pairing':'New Pairing','<div id="remote-host-content"></div><p id="remote-host-feedback" role="status"></p>');
-    let cancelled=false,timer;
+    let cancelled=false,timer,invitationLink='';
     const container=$('remote-host-content');
     const status=text=>{if(!cancelled)$('remote-host-feedback').textContent=text;};
     const date=value=>typeof value==='number'&&Number.isFinite(value)?new Date(value*1000).toLocaleString([], {dateStyle:'medium',timeStyle:'long'}):'Not recorded';
@@ -206,11 +233,12 @@ window.SapiensConnections=(()=>{
         const data=await request(record,'/api/remote');if(cancelled)return;
         record.paired=data.paired;renderRows();$('corpora-dialog-title').textContent=data.paired?'Edit Pairing':'New Pairing';
         const info=data.device_info||{},invitation=data.enabled&&data.invitation?.expires>Date.now()/1000?data.invitation:null;
+        invitationLink=invitation?RemoteCode.link(invitation):'';
         const html=data.available===false?'<p>Remote control is unavailable. Install the remote dependencies and restart Sapiens4.</p>':data.paired?`<p class="pairing-corpora">${escape(record.name)}</p><dl class="pairing-details"><dt>Device</dt><dd>${escape(info.name||'Not recorded')}</dd><dt>Device info</dt><dd>${escape([info.platform,info.client].filter(Boolean).join(' · ')||'Not recorded')}</dd><dt>Paired</dt><dd>${escape(date(data.paired_at))}</dd><dt>Last connected</dt><dd>${escape(date(data.last_connected_at))}</dd></dl><div class="pairing-actions"><button data-remote-action="replace">Replace remote</button><button data-remote-action="revoke">Revoke remote</button></div>`
           :data.pending?`<p>Approve only if this code matches your remote device.</p><strong>${escape(data.pending.confirmation_code||'')}</strong><button data-remote-action="approve" data-peer="${escape(data.pending.peer)}" ${data.pending.confirmation_code?'':'disabled'}>Approve device</button>`
-          :invitation?`<p>In the installed app, choose Connect remote corpora and scan this QR.</p><canvas id="host-pair-qr"></canvas><p>Expires ${escape(date(invitation.expires))}</p><div class="pairing-actions"><a id="download-pair-qr" download="sapiens4-pairing.png">Download QR</a><a href="${escape(invitation.relay)}" target="_blank" rel="noopener noreferrer">Open app ↗</a><button data-remote-action="revoke">Cancel invitation</button></div>`
+          :invitation?`<p>In the installed app, choose Connect remote corpora and scan this QR.</p><canvas id="host-pair-qr"></canvas><p>Expires ${escape(date(invitation.expires))}</p><div class="pairing-actions"><button data-remote-action="link">Show link</button><a id="download-pair-qr" download="sapiens4-pairing.png">Download QR</a><a href="${escape(invitation.relay)}" target="_blank" rel="noopener noreferrer">Open app ↗</a><button data-remote-action="revoke">Cancel invitation</button></div><input id="host-pair-link" aria-label="Pairing link" readonly hidden>`
           :data.enabled?'<p>Invitation expired.</p><button data-remote-action="revoke">Cancel invitation</button>'
-          :`<div class="pairing-actions">${data.configured_relay?'<button data-remote-action="pair">Show QR</button>':''}${data.local_relay?'<button data-remote-action="local">Use local relay</button>':''}</div><details ${data.configured_relay?'':'open'}><summary>Relay settings</summary><form id="relay-setup"><label>Connection file<input name="connection" type="file" accept="application/json,.json"></label><label>Relay URL<input name="relay" type="url" required></label><label>Connection token<input name="token" type="password" required autocomplete="off" minlength="32" maxlength="256"></label><button disabled>Show QR</button></form></details>`;
+          :'<div class="pairing-actions"><button data-remote-action="pair">Show QR</button><button data-remote-action="servers">Relay servers</button></div>';
         const content=html+(data.error?`<p>${escape(data.error)}</p>`:'');
         if(container.dataset.content!==content){
           container.innerHTML=content;container.dataset.content=content;
@@ -226,6 +254,8 @@ window.SapiensConnections=(()=>{
     container.onclick=event=>{
       const button=event.target.closest('[data-remote-action]');if(!button||button.disabled)return;
       const command=button.dataset.remoteAction;
+      if(command==='servers'){relayManager(record);return;}
+      if(command==='link'){const field=$('host-pair-link');field.value=invitationLink;field.hidden=false;field.focus();field.select();return;}
       if(command==='revoke'&&!confirm('Revoke this remote access? It will need to pair again.'))return;
       if(command==='replace'&&!confirm('Replace the trusted remote device? The previous device will lose access.'))return;
       action(button,async()=>{
@@ -236,23 +266,6 @@ window.SapiensConnections=(()=>{
         if(['replace','pair','local'].includes(command))await request(record,'/api/remote/pair','POST',command==='local'?{local:true}:{saved:true});
         if(command==='approve')await request(record,'/api/remote/approve','POST',{peer:button.dataset.peer});
       });
-    };
-    const validate=form=>{form.querySelector('button').disabled=!(form.elements.relay.validity.valid&&form.elements.relay.value&&/^[\x21-\x7e]{32,256}$/.test(form.elements.token.value));};
-    container.oninput=event=>{if(event.target.form)validate(event.target.form);};
-    container.onchange=async event=>{
-      if(event.target.name!=='connection')return;
-      const form=event.target.form,file=event.target.files[0];if(!file)return;
-      form.elements.relay.value='';form.elements.token.value='';validate(form);
-      try{
-        if(file.size>4096)throw new Error('Connection file is too large.');
-        const data=JSON.parse(await file.text()),url=new URL(data.relay);
-        if(data.format!=='sapiens-relay-connection-v1'||typeof data.token!=='string'||!/^[\x21-\x7e]{32,256}$/.test(data.token)||url.username||url.password||url.search||url.hash||url.pathname!=='/'||!(url.protocol==='https:'||(url.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(url.hostname))))throw new Error('Choose a valid Sapiens relay connection file.');
-        form.elements.relay.value=url.origin;form.elements.token.value=data.token;validate(form);status('Ready. Select Show QR.');
-      }catch(e){status(e.message);}finally{event.target.value='';}
-    };
-    container.onsubmit=event=>{
-      event.preventDefault();const form=event.target,button=form.querySelector('button');if(button.disabled)return;
-      action(button,async()=>{await request(record,'/api/remote/pair','POST',{relay:form.elements.relay.value.trim(),token:form.elements.token.value});form.elements.token.value='';validate(form);});
     };
     formCleanup=()=>{cancelled=true;clearTimeout(timer);};refresh();
   }

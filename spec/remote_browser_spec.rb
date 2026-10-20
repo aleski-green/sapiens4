@@ -36,14 +36,11 @@ RSpec.describe 'Workspace remote client regression contracts' do
     expect(result['interrupted']).to include('unreachable')
   end
 
-  it 'keeps local, saved and file-based relay setup in the workspace pairing dialog' do
+  it 'uses the selected relay for QR creation, retry and approval in the workspace pairing dialog' do
     result = browser_probe('corpora-browser', 'pairing-setup')
-    expect(result).to include('local' => true, 'saved' => true, 'noCodeDisabled' => true,
+    expect(result).to include('saved' => true, 'noCodeDisabled' => true,
       'code' => 'CwnX · eCGC', 'expiredQR' => false, 'error' => 'Relay unavailable')
-    expect(result['imported']).to eq('relay' => 'https://relay.example', 'enabled' => true, 'writes' => 0)
-    expect(result['invalid']).to eq('relay' => '', 'token' => '', 'disabled' => true)
-    expect(result['invitation']).to include('download' => 'data:image/png;base64,AAAA', 'link' => 'https://relay.example/', 'expiry' => true, 'token' => '')
-    expect(result['writes']).to include({'path' => '/pair', 'data' => {'local' => true}},
-      {'path' => '/pair', 'data' => {'saved' => true}}, {'path' => '/approve', 'data' => {'peer' => 'phone'}})
+    expect(result['invitation']).to include('download' => 'data:image/png;base64,AAAA', 'link' => 'https://relay.example/', 'expiry' => true, 'pairingLink' => 'https://relay.example/#invitation')
+    expect(result['writes']).to include({'path' => '/pair', 'data' => {'saved' => true}}, {'path' => '/approve', 'data' => {'peer' => 'phone'}})
   end
 end
