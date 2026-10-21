@@ -27,12 +27,12 @@ class UpdaterEnvironment
     Contract.atomic_json(File.join(home, 'current.json'), old)
     tools = File.join(root, 'tools')
     FileUtils.mkdir_p([tools, File.join(root, 'sdk')])
-    %w[git xcrun codesign ditto].each do |name|
+    %w[git xcrun cargo codesign ditto].each do |name|
       path = File.join(tools, name)
       File.write(path, "#!#{RbConfig.ruby}\nload #{File.join(__dir__, 'build_tool.rb').inspect}\n")
       File.chmod(0755, path)
     end
-    FileUtils.cp(File.join(Contract::ROOT, 'blindly4', 'Package.swift'), File.join(root, 'Package.swift'))
+    FileUtils.cp(File.join(Contract::ROOT, 'blindly4', 'macos/build.sh'), File.join(root, 'blindly-build.sh'))
     @environment = host.environment.merge('PATH' => tools + File::PATH_SEPARATOR + ENV.fetch('PATH'),
       'SAPIENS_BUILD_ENV' => root, 'SAPIENS_FIXTURE_UPSTREAM' => @upstream, 'SAPIENS_REAL_GIT' => `command -v git`.strip)
     configure

@@ -96,8 +96,9 @@ not asserted by this migration.
 Existing JavaScript and Swift/C# harnesses remain platform probes called from
 RSpec. Some legacy probes still contain their original assertions. New behavior
 cases and assertions belong in RSpec; runtime-specific helpers should expose
-actions and observations. Blindly4 is an external submodule and retains its own
-upstream self-test command.
+actions and observations. Blindly4 is an external Rust submodule with its own permission-free RSpec
+contracts. Build it with `./blindly4/macos/build.sh`, then run its suite from
+`blindly4/` with `BLINDLY4_BIN=.build/release/blindly4 bundle exec rspec`.
 
 Adding a fake Python service or a general Ruby-to-Python RPC bridge would defeat
 the boundary. Extend the controlled external provider or HTTP peer only when a

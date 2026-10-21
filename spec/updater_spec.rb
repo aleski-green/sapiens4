@@ -27,7 +27,7 @@ RSpec.describe 'Desktop updater process contracts', :macos do
     expect(Dir[File.join(installation.home, 'releases', '*')].size).to eq(1)
   end
 
-  [:model, :compiler, :sdk].each do |failure|
+  [:model, :compiler, :sdk, :schema].each do |failure|
     it "preserves the running release and data when #{failure} preparation fails" do
       installation.start
       before = Contract.http(installation.url + '/api/health', 'GET')[1]
@@ -35,8 +35,11 @@ RSpec.describe 'Desktop updater process contracts', :macos do
       installation.host.configure(fail: true) if failure == :model
       installation.configure(build_failure: true) if failure == :compiler
       installation.configure(sdk_failure: true) if failure == :sdk
+      installation.configure(schema_failure: true) if failure == :schema
       _, _, code = installation.run('update')
       expect(code).to eq(1)
+      expect(installation.status['message']).to include('Fixture Rust compiler source error') if failure == :compiler
+      expect(installation.status['message']).to include('Fixture schema failed') if failure == :schema
       expect(installation.current).to eq(installation.old)
       expect(Contract.http(installation.url + '/api/health', 'GET')[1]).to eq(before)
       expect(File.read(File.join(installation.data, 'keep.txt'))).to eq('Saved user work')

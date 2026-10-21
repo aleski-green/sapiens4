@@ -41,8 +41,9 @@ Extract a package and run `Sapiens4.exe`, or run `.\start.ps1 -Open` from source
 The runtime and UI live in this repo; Blindly4 is the only submodule.
 
 Source startup requires Python 3.9+, Git and authenticated Codex CLI 0.156.1+.
-On macOS, Blindly4 requires macOS 13+, Swift 6 and Accessibility permission. Windows
-builds use .NET SDK 10; portable packages bundle Python, .NET and Blindly4.
+Blindly4 source builds require stable Rust. On macOS, it requires macOS 13+,
+Command Line Tools and Accessibility permission. Windows builds also use .NET
+SDK 10 and MSVC C++ build tools; portable packages bundle Python, .NET and Blindly4.
 
 **macOS source startup:**
 

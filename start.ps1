@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 Push-Location $PSScriptRoot
 try {
     if (-not $SkipBuild) {
-        if (-not (Test-Path ./blindly4/windows/Blindly4.csproj)) {
+        if (-not (Test-Path ./blindly4/windows/Cargo.toml)) {
             git submodule update --init --recursive -- blindly4
             if ($LASTEXITCODE -ne 0) { throw 'Cannot initialize Blindly4' }
         }

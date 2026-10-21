@@ -10,12 +10,14 @@ if (-not $OutputDirectory) { $OutputDirectory = Join-Path $repo ".build/Sapiens4
 $destination = [IO.Path]::GetFullPath($OutputDirectory)
 $payload = Join-Path $destination 'runtime'
 if ($destination -eq $repo -or $repo.StartsWith($destination + [IO.Path]::DirectorySeparatorChar)) { throw 'Output must not replace the source checkout' }
-if (-not (Test-Path (Join-Path $BlindlySource 'windows/Blindly4.csproj'))) { throw 'Initialize the Windows-support revision of the Blindly4 submodule first' }
+if (-not (Test-Path (Join-Path $BlindlySource 'windows/Cargo.toml'))) { throw 'Initialize the Rust revision of the Blindly4 submodule first' }
 
 dotnet publish (Join-Path $PSScriptRoot 'Sapiens4.csproj') -c Release -r $Runtime --self-contained true -o $destination
 if ($LASTEXITCODE -ne 0) { throw 'Sapiens4 desktop build failed' }
-dotnet publish (Join-Path $BlindlySource 'windows/Blindly4.csproj') -c Release -r $Runtime --self-contained true -o (Join-Path $payload 'blindly4/.build/windows')
-if ($LASTEXITCODE -ne 0) { throw 'Blindly4 build failed' }
+& (Join-Path $BlindlySource 'windows/build.ps1') -Runtime $Runtime
+$blindlyOutput = Join-Path $payload 'blindly4/.build/windows'
+New-Item -ItemType Directory -Force -Path $blindlyOutput | Out-Null
+Copy-Item -LiteralPath (Join-Path $BlindlySource '.build/windows/blindly4.exe') -Destination $blindlyOutput -Force
 Copy-Item -LiteralPath (Join-Path $repo 'license') -Destination $destination -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $BlindlySource 'license') -Destination (Join-Path $payload 'blindly4') -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $BlindlySource 'README.md') -Destination (Join-Path $payload 'blindly4/README.md') -Force
