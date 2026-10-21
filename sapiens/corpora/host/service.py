@@ -102,7 +102,7 @@ class Service:
         self.routines = ScheduledRoutines(self)
         self.pulse = SystemPulse(self.store, self._on_pulse, clock=pulse_clock)
         if not self.store.agents():
-            self.create_agent({"name": "SapiTheMain", "role": "Head of Corpora"})
+            self.create_agent({"name": "ChiefSapi", "role": "Head of Corpora"})
         for row in self.store.agents():
             agent = self._agent(row["id"])
             self.agencies.recover(agent)

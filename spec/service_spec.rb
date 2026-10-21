@@ -79,7 +79,7 @@ RSpec.describe 'Local service contracts' do
       {op: 'create_agent', name: 'Scout', role: 'Different role'},
       {op: 'create_agent', name: 'Unreached', role: 'Research'}])
     expect(batch).to include('saved' => false, 'partial' => true, 'failed_index' => 1)
-    expect(host.state['agents'].map { |a| a['name'] }).to contain_exactly('SapiTheMain', 'Scout', 'Writer')
+    expect(host.state['agents'].map { |a| a['name'] }).to contain_exactly('ChiefSapi', 'Scout', 'Writer')
     expect(host.request('POST', "/api/agents/#{chief}/control", {op: 'manager', manager: child}).first).to eq(400)
     expect(host.state['orchestration'][child]['manager']).to eq(chief)
   end
@@ -271,7 +271,9 @@ RSpec.describe 'Local service contracts' do
     expect(turn['input']).to eq('Summarize')
     expect(turn['attachments'].map { |a| a['id'] }).to eq([doc['id'], link['id']])
     expect(File.read(doc['value'])).to eq('Total: 42')
-    expect(host.calls.last['prompt']).to include(doc['value'], link['value'])
+    context = JSON.parse(host.calls.last['prompt'].split("\nContext:\n", 2).last)
+    content = context['conversation']['inputs'].map { |item| item['content'] }.join("\n")
+    expect(content).to include(doc['value'].to_json[1...-1], link['value'])
     other = host.agent
     expect(host.request('POST', "/api/agents/#{other}/messages", {text: 'Steal', attachments: [doc['id']]}).first).to eq(400)
   end

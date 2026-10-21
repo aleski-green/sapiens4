@@ -34,7 +34,7 @@ Build the portable desktop package:
 .\.build\Sapiens4-win-arm64\Sapiens4.exe
 ```
 
-The build downloads CPython 3.13.9 from python.org and verifies a pinned SHA-256. NuGet restores the pinned WebView2 SDK; WebView2 uses the locally installed Evergreen Runtime. To run a desktop development build, set `SAPIENS_PYTHON` to Python's full path and `SAPIENS_RUNTIME_DIR` to the repository root.
+The build downloads CPython 3.13.9 from python.org and verifies a pinned SHA-256. A build-time Python with pip installs CLI and encrypted remote-client dependencies as wheels for the selected architecture into the embedded runtime; the finished package needs no separate Python installation. Use `-BuildPython PATH` to select that build interpreter. The relay server's aiohttp dependency is separate. NuGet restores the pinned WebView2 SDK; WebView2 uses the locally installed Evergreen Runtime. To run a desktop development build, set `SAPIENS_PYTHON` to Python's full path and `SAPIENS_RUNTIME_DIR` to the repository root. An installed LLVM-MinGW Rust toolchain can be selected with `-BlindlyToolchain gnullvm`; MSVC remains the default.
 
 `AppIcon.ico` and `AppIconDark.ico` contain nine resolutions from 16 to 256 pixels, rendered from the SVG in `web/shell/bootstrap.js` with light and dark backgrounds. After changing that favicon, regenerate both with `node windows/icon.cjs` (requires the `sharp` Node package). Normal Windows builds embed the checked-in icons and do not need Node. Explorer and pinned shortcuts retain the default light icon; the running window switches icons with the app theme.
 

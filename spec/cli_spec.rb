@@ -39,7 +39,7 @@ RSpec.describe 'CLI process contracts' do
     expect(cli('history', '--limit', '1').first).to include('You: Question', 'Chief: Answer')
     expect(cli('memo', 'show').first).to include('Good & saved')
     expect(cli('memo', 'show').first).not_to include('<script>', 'bad()')
-    expect(cli('task', 'show', 'work1', '--sapi', 'all', '--format', 'yaml').first).to eq("objective: Real objective\n")
+    expect(cli('task', 'show', 'work1', '--sapi', 'all', '--format', 'yaml').first.gsub("\r\n", "\n")).to eq("objective: Real objective\n")
     expect(writes).to be_empty
   end
 

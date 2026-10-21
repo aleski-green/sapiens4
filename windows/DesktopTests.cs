@@ -35,6 +35,12 @@ internal static class DesktopTests
         string owner = group.GetProperty("id").GetString()!;
         string file = Path.Combine(host.DataDirectory, "workspaces", owner, "group مرحبا #1.html");
         File.WriteAllText(file, "<!doctype html><title>Group browser smoke</title><h1>Shared local document</h1>");
+        await shell.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-scope=groups]').click()");
+        string groupSelector = JsonSerializer.Serialize($".agent-row[data-agent='{owner}']");
+        for (int attempt = 0; attempt < 100 && await shell.CoreWebView2.ExecuteScriptAsync($"!!document.querySelector({groupSelector})") != "true"; attempt++) await Task.Delay(100);
+        if (await shell.CoreWebView2.ExecuteScriptAsync($"!!document.querySelector({groupSelector})") != "true")
+            throw new Exception("New group did not appear in the desktop workspace");
+        await shell.CoreWebView2.ExecuteScriptAsync($"document.querySelector({groupSelector}).click()");
         await shell.CoreWebView2.ExecuteScriptAsync($"window.sapiensBrowserEvent({JsonSerializer.Serialize(new { owner, file })})");
         for (int attempt = 0; attempt < 100; attempt++)
         {

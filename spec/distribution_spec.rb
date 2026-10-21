@@ -13,7 +13,9 @@ RSpec.describe 'Source distribution contract' do
         state = isolated.state
         id = isolated.submit(state['main_agent_id'], 'Hello from an installed release')
         expect(isolated.turn(id)['output']).to eq('Contract test reply')
-        expect(isolated.calls.first['prompt']).to include(File.join(release, 'prompts/examples/jarvis-notes.html'))
+        example = isolated.calls.first['prompt'][/read the worked example at (.*?)\. It demonstrates/m, 1]
+        expect(example).not_to be_nil
+        expect(File.identical?(example, File.join(release, 'prompts/examples/jarvis-notes.html'))).to eq(true)
         script = File.join(release, 'generated-app.js')
         File.write(script, isolated.api('GET', '/workspace/app.js'))
         out, error, code = Contract.capture('node', '--check', script)

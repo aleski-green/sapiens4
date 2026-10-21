@@ -53,7 +53,7 @@ RSpec.describe 'Desktop updater process contracts', :macos do
     expect(Contract.http(installation.url + '/api/agents', 'POST', {name: 'TooSoon', role: 'Research'}).first).to eq(503)
     File.write(activation, '')
     Contract.wait { Contract.http(installation.url + '/api/health', 'GET')[1]['desktop_active'] }
-    expect(Contract.http(installation.url + '/api/state', 'GET')[1]['agents'].map { |a| a['name'] }).to eq(['SapiTheMain'])
+    expect(Contract.http(installation.url + '/api/state', 'GET')[1]['agents'].map { |a| a['name'] }).to eq(['ChiefSapi'])
   end
 
   it 'backs up a stopped installation and activates the candidate only after committing the new release' do

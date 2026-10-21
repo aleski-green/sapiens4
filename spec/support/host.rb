@@ -3,9 +3,10 @@ require_relative 'process'
 class Host
   attr_reader :root, :url, :environment, :provider, :process
 
-  def initialize(start: true, environment: {}, repo: Contract::ROOT)
+  def initialize(start: true, environment: {}, repo: Contract::ROOT, python: Contract::PYTHON)
     @directory = File.realpath(Dir.mktmpdir('sapiens-contract-'))
     @root, @repo = File.join(@directory, "workspace's é"), repo
+    @python = python
     FileUtils.mkdir_p(File.join(root, 'calls'))
     @provider = {}
     configure
@@ -32,7 +33,7 @@ class Host
   end
 
   def start
-    @process = Contract::Child.new(Contract::PYTHON, '-m', 'sapiens', '--port', '0',
+    @process = Contract::Child.new(@python, '-m', 'sapiens', '--port', '0',
       '--data-dir', root, '--desktop', env: environment, chdir: @repo)
     Contract.wait(description: 'host startup: ' + root) do
       match = @process.stdout.match(%r{Sapiens4: (http://127.0.0.1:\d+)})
@@ -101,6 +102,7 @@ class Host
     Contract.wait(description: 'all work to settle') do
       snapshot = state
       snapshot if snapshot['turns'].none? { |t| %w[queued running output_pending].include?(t['status']) } &&
+        snapshot.fetch('workloads', []).none? { |work| %w[Queued Running].include?(work['state']) } &&
         snapshot['groups'].all? { |g| g['requests'].all? { |r| r['settled'] } }
     end
   end

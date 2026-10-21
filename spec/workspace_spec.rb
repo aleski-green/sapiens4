@@ -17,8 +17,9 @@ RSpec.describe 'Workspace and memory contracts' do
     host.restart
     workspace = host.control(owner, 'workspace')
     expect(workspace['active_tab']).to eq(tab['id'])
-    expect(workspace['tabs'].first).to include('zoom' => 1.5, 'path' => file)
-    expect(workspace['bookmarks'].first['path']).to eq(file)
+    expect(workspace['tabs'].first).to include('zoom' => 1.5)
+    expect(File.identical?(workspace['tabs'].first['path'], file)).to eq(true)
+    expect(File.identical?(workspace['bookmarks'].first['path'], file)).to eq(true)
     host.control(owner, 'workspace_close', id: tab['id'])
     expect(File.read(file)).to eq("# Notes\n<script>literal</script>")
     expect(host.control(owner, 'workspace')['tabs'].size).to eq(1)
@@ -43,7 +44,9 @@ RSpec.describe 'Workspace and memory contracts' do
     File.write(file, 'Joke 😎 <script>literal</script>')
     tab = host.control(owner, 'workspace_open', path: file)['workspace']['tabs'].first
     path = "/api/agents/#{owner}/browser/#{tab['id']}/content"
-    expect(host.api('GET', path)).to include('content' => File.read(file), 'path' => file)
+    preview = host.api('GET', path)
+    expect(preview).to include('content' => File.read(file))
+    expect(File.identical?(preview['path'], file)).to eq(true)
     File.write(file, 'Updated')
     expect(host.api('GET', path)['content']).to eq('Updated')
     expect(host.request('GET', path.sub(owner, other)).first).to eq(404)
