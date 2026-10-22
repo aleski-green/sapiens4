@@ -18,7 +18,12 @@ window.SapiensConnections=(()=>{
   const menu=$('corpora-menu'),statusMenu=$('corpora-status-menu'),dialog=$('corpora-dialog');
   const selectedKey=()=>active?.key;
   const notify=()=>window.dispatchEvent(new Event('sapiens-connection-change'));
-  async function json(path,method='GET',data){const response=await fetch(path,{method,headers:{'Content-Type':'application/json','X-Sapiens-Local':'1'},...(data===undefined?{}:{body:JSON.stringify(data)}),signal:AbortSignal.timeout(20000)});const result=await response.json();if(!response.ok)throw new Error(result.error||'Request failed');return result;}
+  async function json(path,method='GET',data){
+    let response;
+    try{response=await fetch(path,{method,headers:{'Content-Type':'application/json','X-Sapiens-Local':'1'},...(data===undefined?{}:{body:JSON.stringify(data)}),signal:AbortSignal.timeout(20000)});}
+    catch(error){error.connectionFailure=true;throw error;}
+    const result=await response.json();if(!response.ok)throw Object.assign(new Error(result.error||'Request failed'),{status:response.status});return result;
+  }
   const client=record=>{
     // A cached page can resume before IndexedDB has restored its credentials.
     // Do not retain an unusable transport for the rest of that page's lifetime.
@@ -119,29 +124,66 @@ window.SapiensConnections=(()=>{
     }
     write('s4.switch.pending',null);
   }
-  async function enter(record){
+  // A disconnected host must not hold local navigation hostage. Keep its uncertain
+  // operations separate, and reconcile them before using that remote again.
+  function canDetach(record){
+    const pending=read('s4.lifecycle.pending',null),switching=read('s4.switch.pending',null);
+    return record?.location==='Remote'&&(!pending||pending.key===record.key)&&(!switching||
+      (switching.phase==='pausing'&&switching.from===record.key)||
+      (switching.phase==='activating'&&switching.to===record.key));
+  }
+  function deferRemote(record){
+    const pending=read('s4.lifecycle.pending',null),switching=read('s4.switch.pending',null);
+    if(pending||switching)write('s4.detached.'+record.key,{pending,switching});
+    write('s4.lifecycle.pending',null);write('s4.switch.pending',null);
+  }
+  async function reconcileDetached(record){
+    const deferred=read('s4.detached.'+record.key,null);if(!deferred)return;
+    write('s4.lifecycle.pending',deferred.pending);write('s4.switch.pending',deferred.switching);
+    try{await reconcile();write('s4.detached.'+record.key,null);}
+    finally{deferRemote(record);}
+  }
+  function offerLocal(record,previous){
+    show('Remote corpora unavailable',`<p>Could not confirm that ${escape(previous.name)} is paused. It may still be running on its host.</p><p>You can open ${escape(record.name)} on this device. The remote connection and its unfinished requests will be kept.</p><button id="open-local-anyway">Open local anyway</button> <button id="cancel-local-switch">Cancel</button>`);
+    $('cancel-local-switch').onclick=closeForm;
+    $('open-local-anyway').onclick=()=>{closeForm();enter(record,previous);};
+  }
+  async function enter(record,detached=null){
     if(busy||record.status==='archived')return;
     if(record.key===selectedKey()){menu.hidden=false;return;}
     busy=true;generation++;renderStatus();renderRows();
+    let leaving=false;
     try{
-      await reconcile();
-      // Both hosts are checked before changing either one's execution state.
+      // Verify the destination before offering recovery or changing either host.
       metadata(record,await request(record,'/api/corpora'));
-      if(active)metadata(active,await request(active,'/api/corpora'));
+      if(record.status==='archived')throw new Error('Restore this archived corpora before opening.');
+      leaving=true;
+      if(detached){
+        if(remote||record.location!=='Local'||active!==detached||!canDetach(detached))throw new Error('The connection changed. Choose the local corpora again.');
+        deferRemote(detached);
+      }else{
+        await reconcile();await reconcileDetached(record);
+        if(active)metadata(active,await request(active,'/api/corpora'));
+      }
       write('s4.switch.pending',{from:active?.key,to:record.key,phase:'pausing'});
-      if(active?.status==='archived'&&active.stopping)throw new Error('Work is still stopping. Try again shortly.');
-      if(active&&active.status!=='archived')await lifecycle(active,'pause');
+      if(!detached&&active?.status==='archived'&&active.stopping)throw new Error('Work is still stopping. Try again shortly.');
+      if(!detached&&active&&active.status!=='archived')await lifecycle(active,'pause');
+      leaving=false;
       write('s4.switch.pending',{from:active?.key,to:record.key,phase:'activating'});
       await lifecycle(record,'activate');
       const snapshot=await request(record,'/api/state');
       window.sapiensWorkspace?.save();active=record;write('s4.active',record.key);connected=true;
       write('s4.switch.pending',null);cache(snapshot);deliver(snapshot);menu.hidden=false;$('corpora-empty').hidden=true;
       write('s4.records',records);
-    }catch(e){error(e.message);}
+      if(detached)error(`Opened ${record.name}. ${detached.name} could not be paused and may still be running on its host.`);
+    }catch(e){
+      if(leaving&&!detached&&!remote&&record.location==='Local'&&canDetach(active)&&(e.connectionFailure||[410,502,503,504].includes(e.status)))offerLocal(record,active);
+      else error(e.message);
+    }
     finally{busy=false;renderRows();renderStatus();}
   }
   $('corpora-rows').onclick=event=>{const button=event.target.closest('button');if(button?.dataset.enter)enter(records.find(r=>r.key===button.dataset.enter));if(button?.dataset.edit)edit(records.find(r=>r.key===button.dataset.edit));if(button?.dataset.pairing)remoteControl(records.find(r=>r.key===button.dataset.pairing));};
-  statusMenu.onclick=async event=>{const action=event.target.closest('[data-lifecycle]')?.dataset.lifecycle;if(!action||busy)return;busy=true;renderStatus();try{await reconcile();await lifecycle(active,action);}catch(e){error(e.message);}finally{busy=false;statusMenu.hidden=true;renderStatus();}};
+  statusMenu.onclick=async event=>{const action=event.target.closest('[data-lifecycle]')?.dataset.lifecycle;if(!action||busy)return;busy=true;renderStatus();try{await reconcile();await reconcileDetached(active);await lifecycle(active,action);}catch(e){error(e.message);}finally{busy=false;statusMenu.hidden=true;renderStatus();}};
   function edit(record){
     show('Message to ChiefSapi',`<form id="chief-settings-form"><textarea name="message" aria-label="Message to ChiefSapi" rows="8" required></textarea><p class="corpora-feedback" role="status"></p><button type="submit">Send to ChiefSapi ↑</button></form>`);
     const form=$('chief-settings-form');form.elements.message.value=(record.settings_template||lastSnapshot?.corpora?.settings_template||'').replace(/\{(name|device|scope)\}/g,(_,field)=>record[field]||'');
@@ -150,7 +192,7 @@ window.SapiensConnections=(()=>{
       const button=form.querySelector('button'),feedback=form.querySelector('[role=status]');
       button.disabled=true;busy=true;generation++;renderStatus();renderRows();
       try{
-        await reconcile();
+        await reconcile();await reconcileDetached(record);
         let info=await request(record,'/api/corpora');metadata(record,info);
         if(info.status==='archived')throw new Error('Restore this archived corpora before sending. Your draft is kept here.');
         if(info.status==='paused'){feedback.textContent='Activating corpora…';info=await lifecycle(record,'activate');}

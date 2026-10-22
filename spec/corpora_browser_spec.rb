@@ -28,6 +28,41 @@ RSpec.describe 'Corpora workspace browser flows' do
       'notice' => 'This device is unreachable. Try again later.')
   end
 
+  it 'opens local corpora after explicit recovery from an unreachable current remote' do
+    result = probe('recover-offline')
+    expect(result).to include('offered' => true, 'before' => 'Studio', 'commandsBefore' => [],
+      'active' => 'Home', 'localStatus' => 'active', 'remoteStatus' => 'active',
+      'saved' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'commands' => [{'target' => 'Home', 'action' => 'activate'}])
+    expect(result['warning']).to include('may still be running')
+    expect(result['notice']).to include('Studio could not be paused')
+    expect(result['draft']).to eq('drafts' => {'chief-b' => 'Keep remote draft'})
+  end
+
+  it 'keeps the remote selected and performs no lifecycle writes when recovery is cancelled' do
+    expect(probe('recover-cancel')).to include('offered' => true, 'active' => 'Studio',
+      'localStatus' => 'paused', 'commands' => [])
+  end
+
+  it 'rechecks the local destination before recovering and preserves selection if it fails' do
+    expect(probe('recover-local-failed')).to include('offered' => true, 'active' => 'Studio',
+      'commands' => [], 'notice' => 'Local host unavailable')
+  end
+
+  it 'retains an uncertain remote pause across reload and reconciles it without replay before returning' do
+    result = probe('recover-lost-pause')
+    expect(result).to include('offered' => true, 'active' => 'Home', 'restored' => 'Home',
+      'localPaused' => 'paused', 'returned' => 'Studio', 'reconciled' => true,
+      'remaining' => nil, 'remotePauses' => 1)
+    expect(result.fetch('deferred').fetch('pending')).to include('action' => 'pause',
+      'key' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+  end
+
+  it 'does not bypass an unresolved local activation during remote recovery' do
+    expect(probe('recover-local-pending')).to include('offered' => false, 'active' => 'Studio',
+      'localStatus' => 'paused', 'commands' => [])
+  end
+
   it 'restores the saved selection, layout and draft before any host responds' do
     result = probe('restore')
     expect(result).to include('selected' => 'Home', 'status' => 'Connecting…')

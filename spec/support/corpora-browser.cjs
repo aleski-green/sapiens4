@@ -12,7 +12,7 @@ const c={...a,id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',name:'Second local',pair
 const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],turns:[]});
 (async()=>{
  const dom=new JSDOM(fs.readFileSync(path.join(root,'web/shell/index.html'),'utf8'),{url:'https://relay.example/workspace/',runScripts:'outside-only',pretendToBeVisual:true});
- const w=dom.window,d=w.document,calls=[],operations=new Map(),workers=[];let fail=false,credentialReads=0;let paired=true;
+ const w=dom.window,d=w.document,calls=[],operations=new Map(),workers=[];let fail=false,credentialReads=0;let paired=true;let losePause=false,failLocal=false;
  Object.defineProperty(w,'crypto',{value:webcrypto});w.AbortSignal=AbortSignal;w.Response=Response;
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
  w.confirm=()=>true;
@@ -38,8 +38,10 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
    const record=String(url).includes(a.id)?a:String(url).includes(c.id)?c:b;
    if(String(url).endsWith('/api/remote/revoke')){paired=false;return {ok:true,json:async()=>({revoked:true})};}
    if(String(url).endsWith('/api/remote'))return {ok:true,json:async()=>({paired:record===c&&paired,device_info:{name:'iPhone',platform:'iOS 26',client:'Home Screen app'},paired_at:1720000000,last_connected_at:1720003600,configured_relay:'https://relay.example'})};
+   if(failLocal&&record===a)throw new Error('Local host unavailable');
    if(fail&&record===b)throw new Error('This device is unreachable. Try again later.');
-   if(String(url).endsWith('/api/corpora/lifecycle')){if(scenario==='edit-activation-failed')return {ok:false,json:async()=>({error:'This device is unreachable. Try again later.'})};const data=JSON.parse(options.body);operations.set(data.operation,data);record.status=data.action==='pause'?'paused':'active';record.revision++;return {ok:true,json:async()=>({...record})};}
+   if(String(url).includes('/api/corpora/operations/'))return {ok:true,json:async()=>({applied:operations.has(String(url).split('/').pop()),corpora:{...record}})};
+   if(String(url).endsWith('/api/corpora/lifecycle')){if(scenario==='edit-activation-failed')return {ok:false,json:async()=>({error:'This device is unreachable. Try again later.'})};const data=JSON.parse(options.body);operations.set(data.operation,data);record.status=data.action==='pause'?'paused':'active';record.revision++;if(losePause&&record===b&&data.action==='pause'){losePause=false;fail=true;throw new Error('Pause response lost');}return {ok:true,json:async()=>({...record})};}
    if(String(url).endsWith('/api/state'))return {ok:true,json:async()=>snapshot(record)};
    if(String(url).includes('/api/agents/'))return {ok:true,json:async()=>({id:'message'})};
    return {ok:true,json:async()=>({...record})};
@@ -74,6 +76,10 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
    w.RemoteSession={list:()=>new Promise(resolve=>{releaseSession=()=>resolve([{relay:'https://relay.example',corpora:b}]);}),key:s=>s.corpora.id};
    w.RemoteTransport=class{constructor(session){this.session=session;transports.push(!!session);}async authenticate(){return this.session.corpora;}async fetch(){return {ok:true,json:async()=>snapshot(this.session.corpora)};}};
  }
+ if(scenario.startsWith('recover-')){
+   a.status='paused';b.status='active';
+   w.localStorage.setItem('s4.active',JSON.stringify(b.id));
+ }
  evaluate('remote-install');evaluate('relay-servers');evaluate('corpora');
  if(scenario==='resume-before-credentials'){
    try{await w.SapiensConnections.fetch('/api/state');}catch(e){earlyError=e.message;}
@@ -81,6 +87,39 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
  }
  for(let i=0;i<12;i++)await sleep();
  const click=selector=>d.querySelector(selector).click();
+ if(scenario.startsWith('recover-')){
+   const lost=scenario==='recover-lost-pause';losePause=lost;fail=!lost;
+   w.localStorage.setItem('s4.workspace.'+b.id,JSON.stringify({drafts:{'chief-b':'Keep remote draft'}}));
+   if(scenario==='recover-local-pending')w.localStorage.setItem('s4.lifecycle.pending',JSON.stringify({key:a.id,action:'activate',operation:'uncertain',expiresAt:Date.now()+30000}));
+   click('#corpora-picker');click('[data-enter="'+a.id+'"]');for(let i=0;i<20;i++)await sleep();
+   const out={offered:!!d.querySelector('#open-local-anyway'),warning:d.querySelector('#corpora-dialog-body').textContent,
+     before:w.SapiensConnections.active.name,commandsBefore:calls.filter(c=>c.url.endsWith('/lifecycle')).map(c=>c.data.action)};
+   if(out.offered){
+     if(scenario==='recover-cancel')click('#cancel-local-switch');
+     else{
+       failLocal=scenario==='recover-local-failed';
+       click('#open-local-anyway');for(let i=0;i<20;i++)await sleep();
+     }
+   }
+   Object.assign(out,{active:w.SapiensConnections.active.name,localStatus:a.status,remoteStatus:b.status,
+     notice:d.querySelector('#corpora-notice-text').textContent,commands:calls.filter(c=>c.url.endsWith('/lifecycle')).map(c=>({target:c.url.includes(a.id)?'Home':'Studio',action:c.data.action})),
+     draft:JSON.parse(w.localStorage.getItem('s4.workspace.'+b.id)),saved:JSON.parse(w.localStorage.getItem('s4.active')),
+     deferred:JSON.parse(w.localStorage.getItem('s4.detached.'+b.id))});
+   if(lost){
+     // Reload the connections controller using the same durable browser storage.
+     evaluate('corpora');for(let i=0;i<20;i++)await sleep();
+     out.restored=w.SapiensConnections.active.name;
+     // Local lifecycle remains usable while the remote pause is uncertain.
+     click('#corpora-notice-close');click('#connection-status');click('[data-lifecycle="pause"]');for(let i=0;i<20;i++)await sleep();
+     out.localPaused=a.status;
+     fail=false;click('#corpora-picker');click('[data-enter="'+b.id+'"]');for(let i=0;i<30;i++)await sleep();
+     out.returned=w.SapiensConnections.active.name;
+     out.reconciled=calls.some(c=>c.url.includes('/api/corpora/operations/'));
+     out.remaining=JSON.parse(w.localStorage.getItem('s4.detached.'+b.id));
+     out.remotePauses=calls.filter(c=>c.url.includes(b.id)&&c.data?.action==='pause').length;
+   }
+   console.log(JSON.stringify(out));dom.window.close();return;
+ }
  if(scenario==='pairing-setup'){
    await w.SapiensConnections.remoteControl(a,true);for(let i=0;i<8;i++)await sleep();
    const out={saved:!!d.querySelector('[data-remote-action="pair"]')};
