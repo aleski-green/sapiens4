@@ -373,8 +373,9 @@ older desktop that returns no identity cannot open the workspace.
 
 The corpora menu switches between remembered connections and remains open while
 the selected workspace comes forward. Selection changes only the interface;
-execution continues unchanged until Pause or Activate is explicitly chosen. An
-unreachable destination preserves the previous selection. Archived corpora
+execution continues unchanged until Pause or Activate is explicitly chosen. Saved
+snapshots open immediately in read-only mode until reconnection; without a snapshot,
+an unreachable destination preserves the previous selection. Archived corpora
 are paused and hidden by default. Editing opens a prefilled message to its ChiefSapi.
 Mobile and Linux offer remote corpora only; native macOS/Windows also create local
 corpora with separate data directories. Hosted account recovery, multi-host

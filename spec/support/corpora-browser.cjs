@@ -106,6 +106,21 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
  }else if(scenario==='pairing-only-remote'){
    click('#corpora-picker');for(let i=0;i<12;i++)await sleep();
    console.log(JSON.stringify({column:!d.querySelector('.corpora-remote-column').hidden,actions:d.querySelectorAll('[data-pairing]').length,requests:calls.filter(call=>call.url.endsWith('/api/remote')).length}));
+ }else if(scenario==='cached-offline'){
+   b.status='active';const cached=snapshot(b);cached.turns=[{id:'saved',output:'Saved remote reply'}];
+   w.localStorage.setItem('s4.snapshot.'+b.id,JSON.stringify(cached));
+   w.localStorage.setItem('s4.workspace.'+b.id,JSON.stringify({drafts:{'chief-b':'Unsent draft'}}));
+   let delivered;w.SapiensConnections.subscribe(value=>{delivered=value;});
+   fail=true;click('#corpora-picker');const before=calls.length;click('[data-enter="'+b.id+'"]');
+   const out={active:w.SapiensConnections.active.name,status:d.querySelector('#connection-label').textContent,
+     reply:delivered.turns[0]?.output,draft:delivered.preferences.drafts?.['chief-b'],requests:calls.length-before,
+     lifecycleDisabled:d.querySelector('#connection-status').disabled};
+   try{await w.SapiensConnections.fetch('/api/agents/chief-b/messages',{method:'POST',body:'{}'});}catch(e){out.writeError=e.message;}
+   out.writes=calls.slice(before).filter(c=>c.method!=='GET').length;
+   fail=false;const response=await w.SapiensConnections.fetch('/api/state');w.SapiensConnections.snapshot(await response.json());
+   out.reconnected=w.SapiensConnections.connected;out.liveStatus=d.querySelector('#connection-label').textContent;
+   out.writesAfterReconnect=calls.slice(before).filter(c=>c.method!=='GET').length;
+   console.log(JSON.stringify(out));
  }else if(['switch','unreachable','leave-unreachable'].includes(scenario)){
    fail=scenario==='unreachable';click('#corpora-picker');click('[data-enter="'+b.id+'"]');for(let i=0;i<15;i++)await sleep();
    let remoteRequests=0;

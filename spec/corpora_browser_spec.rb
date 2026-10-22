@@ -33,9 +33,16 @@ RSpec.describe 'Corpora workspace browser flows' do
       'notice' => 'This device is unreachable. Try again later.')
   end
 
+  it 'opens saved remote history immediately, blocks offline writes and reconnects without replaying them' do
+    expect(probe('cached-offline')).to include('active' => 'Studio', 'status' => 'Offline · Read only',
+      'reply' => 'Saved remote reply', 'draft' => 'Unsent draft', 'requests' => 0,
+      'lifecycleDisabled' => true, 'writeError' => 'Offline — read only.', 'writes' => 0,
+      'reconnected' => true, 'liveStatus' => 'Active', 'writesAfterReconnect' => 0)
+  end
+
   it 'restores the saved selection, layout and draft before any host responds' do
     result = probe('restore')
-    expect(result).to include('selected' => 'Home', 'status' => 'Connecting…')
+    expect(result).to include('selected' => 'Home', 'status' => 'Offline · Read only')
     expect(result['preferences']).to include('selected' => 'last-chat', 'drafts' => {'last-chat' => 'Keep this draft'},
       'panes' => {'chat' => true, 'sidebar' => false})
   end

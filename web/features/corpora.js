@@ -28,13 +28,14 @@ window.SapiensConnections=(()=>{
   };
   async function request(record,path,method='GET',data){
     if(!record)throw new Error('Connect a corpora first.');
+    if(record===active&&!connected&&method!=='GET')throw new Error('Offline — read only.');
     if(remote){const response=await client(record).fetch(path,{method,...(data===undefined?{}:{body:JSON.stringify(data)})});const value=await response.json();if(!response.ok)throw new Error(value.error||'Request failed');return value;}
     return json('/api/host/corpora/'+record.id+path,method,data);
   }
   function metadata(record,data){Object.assign(record,data);if(record===active)renderStatus();renderRows();}
   function renderStatus(){
     $('corpora-location').textContent=active?.location||'Remote';
-    $('connection-label').textContent=busy?'Connecting…':!active?'Not connected':!connected?'Connecting…':active.stopping?'Pausing…':({active:'Active',paused:'Paused',archived:'Archived'}[active.status]||'Active');
+    $('connection-label').textContent=busy?'Connecting…':!active?'Not connected':!connected?(lastSnapshot?.corpora.id===active.id?'Offline · Read only':'Connecting…'):active.stopping?'Pausing…':({active:'Active',paused:'Paused',archived:'Archived'}[active.status]||'Active');
     $('connection-status').dataset.online=String(connected&&!busy&&active?.status==='active');
     $('connection-status').disabled=!active||!connected||busy;
     $('connection-status').setAttribute('aria-expanded',String(!statusMenu.hidden));
@@ -124,8 +125,9 @@ window.SapiensConnections=(()=>{
     if(record.key===selectedKey()){menu.hidden=false;return;}
     busy=true;generation++;renderStatus();renderRows();
     try{
-      const snapshot=await request(record,'/api/state');metadata(record,snapshot.corpora);
-      window.sapiensWorkspace?.save();active=record;write('s4.active',record.key);connected=true;
+      const cached=read('s4.snapshot.'+record.key,null);
+      const snapshot=cached||await request(record,'/api/state');metadata(record,snapshot.corpora);
+      window.sapiensWorkspace?.save();active=record;write('s4.active',record.key);connected=!cached;
       cache(snapshot);deliver(snapshot);menu.hidden=false;$('corpora-empty').hidden=true;
       write('s4.records',records);
     }catch(e){error(e.message);}
@@ -274,8 +276,9 @@ window.SapiensConnections=(()=>{
       if(active){
         write('s4.active',active.key);
         const cached=read('s4.snapshot.'+active.key,null);if(!started&&cached)deliver(cached);
-        if(remote)metadata(active,await client(active).authenticate());
-        const snapshot=await request(active,'/api/state');metadata(active,snapshot.corpora);connected=true;$('corpora-startup-feedback').textContent='';cache(snapshot);deliver(snapshot);renderStatus();
+        const record=active,version=generation;
+        if(remote)await client(record).authenticate();
+        const snapshot=await request(record,'/api/state');if(record!==active||version!==generation)return;metadata(record,snapshot.corpora);connected=true;$('corpora-startup-feedback').textContent='';cache(snapshot);deliver(snapshot);renderStatus();
       }
     }catch(e){$('corpora-startup-feedback').textContent=e.message;renderStatus();if(!started)setTimeout(restore,3000);}
   }
@@ -295,7 +298,7 @@ window.SapiensConnections=(()=>{
   start();
   return {initial,remote,get active(){return active;},get connected(){return connected;},get busy(){return busy;},get generation(){return generation;},
     subscribe:fn=>{listener=fn;if(lastSnapshot)fn(lastSnapshot);},
-    async fetch(path,options={}){const record=active;if(!record||busy)throw new Error('Connecting…');const response=remote?await client(record).fetch(path,options):await fetch('/api/host/corpora/'+record.id+path,options);if(record!==active)throw new Error('Workspace changed');return response;},
+    async fetch(path,options={}){const record=active;if(!record||busy)throw new Error('Connecting…');if(!connected&&!['GET','HEAD'].includes((options.method||'GET').toUpperCase()))throw new Error('Offline — read only.');const response=remote?await client(record).fetch(path,options):await fetch('/api/host/corpora/'+record.id+path,options);if(record!==active)throw new Error('Workspace changed');return response;},
     snapshot:snapshot=>{if(snapshot.corpora.id!==active?.id)return;$('corpora-startup-feedback').textContent='';metadata(active,snapshot.corpora);connected=true;cache(snapshot);renderStatus();},
     offline:error=>{connected=false;if(error?.revoked||/revoked|another window/.test(error?.message||''))$('corpora-startup-feedback').textContent=error.message;renderStatus();},
     save:preferences=>{if(active)write('s4.workspace.'+active.key,preferences);},decorate,remoteControl,connectForm,
