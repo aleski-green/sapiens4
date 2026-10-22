@@ -114,7 +114,10 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
    fail=true;click('#corpora-picker');const before=calls.length;click('[data-enter="'+b.id+'"]');
    const out={active:w.SapiensConnections.active.name,status:d.querySelector('#connection-label').textContent,
      reply:delivered.turns[0]?.output,draft:delivered.preferences.drafts?.['chief-b'],requests:calls.length-before,
-     lifecycleDisabled:d.querySelector('#connection-status').disabled};
+     lifecycleDisabled:d.querySelector('#connection-status').disabled,
+     online:d.querySelector('#connection-status').dataset.online,
+     rowStatus:d.querySelector('[data-selected="true"] .corpora-state').textContent,
+     rowActive:d.querySelector('[data-selected="true"] .corpora-dot').dataset.active};
    try{await w.SapiensConnections.fetch('/api/agents/chief-b/messages',{method:'POST',body:'{}'});}catch(e){out.writeError=e.message;}
    out.writes=calls.slice(before).filter(c=>c.method!=='GET').length;
    fail=false;const response=await w.SapiensConnections.fetch('/api/state');w.SapiensConnections.snapshot(await response.json());

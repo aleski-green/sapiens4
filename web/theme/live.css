@@ -465,5 +465,5 @@ body.sapi-workspace .notes-wiki h1,body.sapi-workspace .notes-wiki h2 { font-fam
 :root body.sapi-workspace[data-mobile-ui] .activity-tab>.activity-toggle { width:28px;min-height:44px; }
 
 .connection-status { display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-size:11px;color:var(--muted); }
-.connection-dot { width:6px;height:6px;flex:none;border-radius:50%;background:#b98725; }
+.connection-dot { width:6px;height:6px;flex:none;border-radius:50%;background:#888; }
 .connection-status[data-online="true"] .connection-dot { background:#3b9b69; }

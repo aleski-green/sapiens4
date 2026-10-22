@@ -68,7 +68,7 @@ See [terminal commands and output formats](documentation/specs/CLI.md).
 
 The header corpora menu switches between local workspaces (Mac/Windows) and saved
 remote connections. Switching changes only the interface; Pause and Activate are
-separate controls. Saved snapshots open immediately as **Offline · Read only**
+separate controls. Saved snapshots open immediately as **Offline**
 until the host responds. Without a saved snapshot, an unreachable destination
 leaves the current selection open. Pause interrupts running work without replaying
 completed actions. Drafts and layout are remembered on the viewing device.

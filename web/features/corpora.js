@@ -35,18 +35,18 @@ window.SapiensConnections=(()=>{
   function metadata(record,data){Object.assign(record,data);if(record===active)renderStatus();renderRows();}
   function renderStatus(){
     $('corpora-location').textContent=active?.location||'Remote';
-    $('connection-label').textContent=busy?'Connecting…':!active?'Not connected':!connected?(lastSnapshot?.corpora.id===active.id?'Offline · Read only':'Connecting…'):active.stopping?'Pausing…':({active:'Active',paused:'Paused',archived:'Archived'}[active.status]||'Active');
+    $('connection-label').textContent=busy?'Connecting…':!active?'Not connected':!connected?'Offline':active.stopping?'Pausing…':({active:'Active',paused:'Paused',archived:'Archived'}[active.status]||'Active');
     $('connection-status').dataset.online=String(connected&&!busy&&active?.status==='active');
     $('connection-status').disabled=!active||!connected||busy;
     $('connection-status').setAttribute('aria-expanded',String(!statusMenu.hidden));
     statusMenu.innerHTML=active?.status==='archived'?'<span>Archived</span>':`<button type="button" data-lifecycle="pause" ${active?.status==='paused'?'disabled':''}>${active?.status==='paused'?'Paused ✓':'Pause'}</button><button type="button" data-lifecycle="activate" ${active?.status==='active'?'disabled':''}>${active?.status==='active'?'Active ✓':'Activate'}</button>`;
-    notify();
+    renderRows();notify();
   }
   function renderRows(){
     const hasLocal=!remote&&records.some(r=>r.location==='Local');
     menu.dataset.hasLocal=String(hasLocal);
     menu.querySelector('.corpora-remote-column').hidden=!hasLocal;
-    const rowsHTML=records.filter(r=>!r.archived&&r.status!=='archived'||$('corpora-archived').checked).map(r=>`<div class="corpora-record" data-selected="${r.key===selectedKey()}"><span class="corpora-location-cell">${escape(r.location)}</span><span class="corpora-name-cell"><button class="corpora-name" data-enter="${escape(r.key)}" ${r.status==='archived'||busy?'disabled':''} aria-pressed="${r.key===selectedKey()}">${escape(r.name)}</button><button class="corpora-edit" data-edit="${escape(r.key)}" ${busy?'disabled':''}>Edit</button></span><span class="corpora-state"><i class="corpora-dot" data-active="${r.status==='active'}"></i>${escape({active:'Active',paused:'Paused',archived:'Archived'}[r.status]||'Active')}</span><span class="corpora-device">${escape(r.device||'Host computer')}</span>${hasLocal?`<span class="corpora-pairing-cell">${r.location==='Local'?`<button data-pairing="${escape(r.key)}" ${busy?'disabled':''}>${r.paired?'Edit Pairing':'New Pairing'}</button>`:''}</span>`:''}</div>`).join('');
+    const rowsHTML=records.filter(r=>!r.archived&&r.status!=='archived'||$('corpora-archived').checked).map(r=>`<div class="corpora-record" data-selected="${r.key===selectedKey()}"><span class="corpora-location-cell">${escape(r.location)}</span><span class="corpora-name-cell"><button class="corpora-name" data-enter="${escape(r.key)}" ${r.status==='archived'||busy?'disabled':''} aria-pressed="${r.key===selectedKey()}">${escape(r.name)}</button><button class="corpora-edit" data-edit="${escape(r.key)}" ${busy?'disabled':''}>Edit</button></span><span class="corpora-state"><i class="corpora-dot" data-active="${r.status==='active'&&(r!==active||connected)}"></i>${escape(r===active&&!connected?'Offline':({active:'Active',paused:'Paused',archived:'Archived'}[r.status]||'Active'))}</span><span class="corpora-device">${escape(r.device||'Host computer')}</span>${hasLocal?`<span class="corpora-pairing-cell">${r.location==='Local'?`<button data-pairing="${escape(r.key)}" ${busy?'disabled':''}>${r.paired?'Edit Pairing':'New Pairing'}</button>`:''}</span>`:''}</div>`).join('');
     if($('corpora-rows').innerHTML!==rowsHTML)$('corpora-rows').innerHTML=rowsHTML;
     $('create-local-corpora').hidden=!localAvailable;
     $('manage-relay-servers').hidden=remote;
