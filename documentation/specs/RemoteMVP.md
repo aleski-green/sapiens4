@@ -372,9 +372,9 @@ by their existing desktop key. Update the desktop before using this client; an
 older desktop that returns no identity cannot open the workspace.
 
 The corpora menu switches between remembered connections and remains open while
-the selected workspace comes forward. Switching pauses the previous corpora before
-activating the target. An unreachable host preserves the previous selection;
-uncertain lifecycle writes are reconciled without replaying them. Archived corpora
+the selected workspace comes forward. Selection changes only the interface;
+execution continues unchanged until Pause or Activate is explicitly chosen. An
+unreachable destination preserves the previous selection. Archived corpora
 are paused and hidden by default. Editing opens a prefilled message to its ChiefSapi.
 Mobile and Linux offer remote corpora only; native macOS/Windows also create local
 corpora with separate data directories. Hosted account recovery, multi-host

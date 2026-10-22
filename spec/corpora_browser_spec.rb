@@ -18,49 +18,19 @@ RSpec.describe 'Corpora workspace browser flows' do
     expect(probe('pairing-only-remote')).to eq('column' => false, 'actions' => 0, 'requests' => 0)
   end
 
-  it 'pauses the previous corpora, activates the selected one and leaves the selector open' do
-    expect(probe('switch')).to include('active' => 'Studio', 'status' => 'Active', 'menuOpen' => true,
-      'commands' => [{'target' => 'Home', 'action' => 'pause'}, {'target' => 'Studio', 'action' => 'activate'}])
+  it 'switches the interface without changing either corpora’s execution state' do
+    expect(probe('switch')).to include('active' => 'Studio', 'status' => 'Paused', 'menuOpen' => true,
+      'commands' => [], 'states' => %w[active paused])
+  end
+
+  it 'returns to local immediately without contacting the unreachable previous remote' do
+    expect(probe('leave-unreachable')).to include('active' => 'Home', 'commands' => [],
+      'states' => %w[active paused], 'notice' => nil, 'remoteRequests' => 0)
   end
 
   it 'does not pause the current corpora or change selection if the target cannot be reached' do
     expect(probe('unreachable')).to include('active' => 'Home', 'commands' => [], 'menuOpen' => true,
       'notice' => 'This device is unreachable. Try again later.')
-  end
-
-  it 'opens local corpora after explicit recovery from an unreachable current remote' do
-    result = probe('recover-offline')
-    expect(result).to include('offered' => true, 'before' => 'Studio', 'commandsBefore' => [],
-      'active' => 'Home', 'localStatus' => 'active', 'remoteStatus' => 'active',
-      'saved' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-      'commands' => [{'target' => 'Home', 'action' => 'activate'}])
-    expect(result['warning']).to include('may still be running')
-    expect(result['notice']).to include('Studio could not be paused')
-    expect(result['draft']).to eq('drafts' => {'chief-b' => 'Keep remote draft'})
-  end
-
-  it 'keeps the remote selected and performs no lifecycle writes when recovery is cancelled' do
-    expect(probe('recover-cancel')).to include('offered' => true, 'active' => 'Studio',
-      'localStatus' => 'paused', 'commands' => [])
-  end
-
-  it 'rechecks the local destination before recovering and preserves selection if it fails' do
-    expect(probe('recover-local-failed')).to include('offered' => true, 'active' => 'Studio',
-      'commands' => [], 'notice' => 'Local host unavailable')
-  end
-
-  it 'retains an uncertain remote pause across reload and reconciles it without replay before returning' do
-    result = probe('recover-lost-pause')
-    expect(result).to include('offered' => true, 'active' => 'Home', 'restored' => 'Home',
-      'localPaused' => 'paused', 'returned' => 'Studio', 'reconciled' => true,
-      'remaining' => nil, 'remotePauses' => 1)
-    expect(result.fetch('deferred').fetch('pending')).to include('action' => 'pause',
-      'key' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
-  end
-
-  it 'does not bypass an unresolved local activation during remote recovery' do
-    expect(probe('recover-local-pending')).to include('offered' => false, 'active' => 'Studio',
-      'localStatus' => 'paused', 'commands' => [])
   end
 
   it 'restores the saved selection, layout and draft before any host responds' do

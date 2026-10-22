@@ -67,8 +67,9 @@ See [terminal commands and output formats](documentation/specs/CLI.md).
 [Setup, features, API and tests](documentation/reference.md)
 
 The header corpora menu switches between local workspaces (Mac/Windows) and saved
-remote connections. Switching pauses the previous corpora and activates the next;
-if a host cannot be reached, the current selection stays open. Pause interrupts
+remote connections. Switching changes only the interface; Pause and Activate are
+separate controls. If the selected host cannot be reached, the current selection
+stays open. Pause interrupts
 running work without replaying completed actions. Drafts and layout are remembered
 on the viewing device, with **Connecting…** shown during reconnect.
 
