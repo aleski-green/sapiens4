@@ -1,4 +1,3 @@
-// Group identity, shared activity, and revisioned work use the host's durable records.
 const groupColor = value => /^#[a-f0-9]{6}$/i.test(value) ? value : '#74b9ed';
 function groupAvatar(group, size='') {
   const colors=(group.stripes?.length?group.stripes:[group.color]).map(groupColor);
@@ -61,12 +60,12 @@ function renderGroupPanel(host) {
   host.innerHTML=`${group.archived?'<p class="group-banner">Archived · history is preserved. Restore this Group from settings to continue.</p>':''}<div class="day-divider">GROUP CONVERSATION</div>`;
   for(const message of group.messages) {
     const author=message.author==='admin'?null:agent(message.author);
-    host.insertAdjacentHTML('beforeend',`<div class="message ${author?'':'user'}"><div class="message-meta">${author?avatar(author,'mini'):'<span>↗</span>'}<strong>${author?mention(author.id):'Admin'}</strong><time>${esc(displayTime(message.created))}</time></div><div class="message-bubble">${formatText(message.text).split('\n\n').map(p=>`<p>${p.replace(/\n/g,'<br>')}</p>`).join('')}${message.attachments?.length?`<div class="message-attachments">${message.attachments.map(attachmentLabel).join('')}</div>`:''}${message.stale?'<small class="group-banner">Result from an earlier task revision · current work was preserved.</small>':''}</div></div>`);
+    host.insertAdjacentHTML('beforeend',`<div data-chat-key="${esc(message.id)}" class="message ${author?'':'user'}"><div class="message-meta">${author?avatar(author,'mini'):'<span>↗</span>'}<strong>${author?mention(author.id):'Admin'}</strong><time>${esc(displayTime(message.created))}</time></div><div class="message-bubble">${formatText(message.text).split('\n\n').map(p=>`<p>${p.replace(/\n/g,'<br>')}</p>`).join('')}${message.attachments?.length?`<div class="message-attachments">${message.attachments.map(attachmentLabel).join('')}</div>`:''}${message.stale?'<small class="group-banner">Result from an earlier task revision · current work was preserved.</small>':''}</div></div>`);
   }
   if(!group.messages.length)host.insertAdjacentHTML('beforeend',`<div class="empty">Message the Group to reach ${esc(agent(group.lead).name)}, or @mention a member.</div>`);
   for(const request of group.requests.filter(r=>['queued','running','failed','interrupted'].includes(r.status))) {
     const turn=live.turns.find(t=>t.id===request.id);
-    host.insertAdjacentHTML('beforeend',`<section class="live-status"><strong>${esc(agent(request.target).name)} · ${esc(statusNames[request.status]||request.status)}</strong>${turn&&blocksChat(turn)?`<div data-turn-progress="${esc(turn.id)}">${turnProgress(turn)}</div>`:''}${request.error?`<p>${esc(request.error)}</p>`:''}${groupCallControls(group,request)}</section>`);
+    host.insertAdjacentHTML('beforeend',`<section data-chat-key="request:${esc(request.id)}" class="live-status"><strong>${esc(agent(request.target).name)} · ${esc(statusNames[request.status]||request.status)}</strong>${turn&&blocksChat(turn)?`<div data-turn-progress="${esc(turn.id)}">${turnProgress(turn)}</div>`:''}${request.error?`<p>${esc(request.error)}</p>`:''}${groupCallControls(group,request)}</section>`);
   }
   renderAttachment();
 }
@@ -109,7 +108,6 @@ const workNavigation=[
       {id:'composer-workflow',label:'Workflow'},{id:'composer-routine',label:'Routine'},{id:'composer-call',label:'Call'}]}
   ]}
 ];
-// Index labels and paths once; rendering and selection share the same data.
 const workPaths={};
 function indexWorkNavigation(nodes,path=[]) {
   for(const node of nodes) {

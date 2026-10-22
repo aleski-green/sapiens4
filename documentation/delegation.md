@@ -109,7 +109,7 @@ editable state store.
 The small output-only YAML emitter supports exactly the JSON-shaped read model;
 keys and scalars are quoted to preserve ambiguous strings and untrusted text.
 There is no YAML parser or evaluator in the runtime and no additional production
-package dependency. Independent parser round-trip checks use PyYAML in tests.
+package dependency. RSpec parses exported tasks with Ruby's independent YAML parser.
 The browser inserts YAML task bodies with textContent, never HTML or Markdown.
 
 API additions:
@@ -124,17 +124,13 @@ API additions:
 
 ## Verification
 
-Run the Python suite and JavaScript checks from the repository root:
+Run RSpec from the repository root (see [Testing](testing.md) for setup):
 
 ```sh
-python3 -m pip install -r tests/requirements.txt
-python3 -m unittest discover -s tests -p 'test_*.py'
-node tests/chat_links.test.cjs
-node tests/workspace_merge.test.cjs
-node tests/tasks.test.cjs
+bundle exec rspec spec/workflow_spec.rb spec/groups_spec.rb spec/platform_spec.rb
 ```
 
-Delegation tests use deterministic providers and temporary state. They exercise
-real host, runner, SQLite/JSON recovery, prompt records/edits, creation authority,
+Delegation contracts use external provider executables and temporary state. They exercise
+the real service process, restart recovery, prompt records/edits, creation authority,
 referral loops, clarification, cancellation, and HTTP/YAML boundaries without
 paid model calls or access to live user data.

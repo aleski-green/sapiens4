@@ -1,0 +1,10 @@
+/* One installation screen, using the workspace theme on either mobile platform. */
+#mobile-install-gate{position:fixed;inset:0;z-index:60;display:grid;place-items:center;overflow:auto;padding:max(24px,env(safe-area-inset-top)) 24px max(24px,env(safe-area-inset-bottom));background:var(--sapi-bg);color:var(--sapi-ink)}
+.install-card{width:100%;max-width:360px;font:400 16px/1.5 var(--sapi-font)}
+.install-brand{display:block;color:var(--sapi-accent);font-size:24px;font-weight:600;letter-spacing:-1px;margin-bottom:40px}
+.install-card h1{font-size:28px;line-height:1.2;letter-spacing:-.8px;margin:0 0 12px}
+.install-card p,.install-card small{color:var(--sapi-muted)}
+.install-card p{margin:0 0 32px}.install-card ol{padding-left:24px;margin:0 0 32px}.install-card li{padding-left:8px;margin:24px 0}.install-card li::marker{color:var(--sapi-muted)}
+.install-card svg{width:18px;height:18px;vertical-align:-3px}.install-card strong{font-weight:550}.install-card small{display:block;font-size:14px;margin-top:4px}
+.install-card a{display:inline-flex;align-items:center;min-height:44px;color:var(--sapi-muted);text-underline-offset:4px}.install-card a:hover{color:var(--sapi-ink)}
+#install-app{display:block;width:100%;min-height:48px;margin-bottom:16px;border:1px solid var(--sapi-line);border-radius:10px;background:var(--sapi-surface);color:var(--sapi-ink);font:inherit;cursor:pointer}#install-app:hover{border-color:var(--sapi-accent)}

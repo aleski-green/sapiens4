@@ -66,6 +66,25 @@ See [terminal commands and output formats](documentation/specs/CLI.md).
 
 [Setup, features, API and tests](documentation/reference.md)
 
+The header corpora menu switches between local workspaces (Mac/Windows) and saved
+remote connections. Switching changes only the interface; Pause and Activate are
+separate controls. Saved snapshots open immediately as **Offline**
+until the host responds. Without a saved snapshot, an unreachable destination
+leaves the current selection open. Pause interrupts running work without replaying
+completed actions. Drafts and layout are remembered on the viewing device.
+
+On phones and tablets, add Sapiens4 to the Home Screen and open that app before
+choosing **Connect remote corpora**. Scan/upload or paste the invitation from the
+host's **Remote control** menu, then approve the matching code there. Linux and
+mobile clients offer remote corpora only. Each corpora trusts one remote device;
+adding a different corpora preserves the connections already saved on this client.
+
+**Edit** prepares a message for the selected corpora's ChiefSapi, with its name,
+device display name, and scope of work. ChiefSapi applies requested changes through
+the corpora API. Archived corpora are paused and hidden unless requested.
+
+[Remote control MVP: QR pairing and self-hosted encrypted relay](documentation/specs/RemoteMVP.md)
+
 [Contributing and code guidelines](CONTRIBUTING.md)
 
 

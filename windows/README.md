@@ -34,7 +34,7 @@ Build the portable desktop package:
 .\.build\Sapiens4-win-arm64\Sapiens4.exe
 ```
 
-The build downloads CPython 3.13.9 from python.org and verifies a pinned SHA-256. NuGet restores the pinned WebView2 SDK; WebView2 uses the locally installed Evergreen Runtime. To run a desktop development build, set `SAPIENS_PYTHON` to Python's full path and `SAPIENS_RUNTIME_DIR` to the repository root.
+The build downloads CPython 3.13.9 from python.org and verifies a pinned SHA-256. A build-time Python with pip installs CLI and encrypted remote-client dependencies as wheels for the selected architecture into the embedded runtime; the finished package needs no separate Python installation. Use `-BuildPython PATH` to select that build interpreter. The relay server's aiohttp dependency is separate. NuGet restores the pinned WebView2 SDK; WebView2 uses the locally installed Evergreen Runtime. To run a desktop development build, set `SAPIENS_PYTHON` to Python's full path and `SAPIENS_RUNTIME_DIR` to the repository root. An installed LLVM-MinGW Rust toolchain can be selected with `-BlindlyToolchain gnullvm`; MSVC remains the default.
 
 `AppIcon.ico` and `AppIconDark.ico` contain nine resolutions from 16 to 256 pixels, rendered from the SVG in `web/shell/bootstrap.js` with light and dark backgrounds. After changing that favicon, regenerate both with `node windows/icon.cjs` (requires the `sharp` Node package). Normal Windows builds embed the checked-in icons and do not need Node. Explorer and pinned shortcuts retain the default light icon; the running window switches icons with the app theme.
 
@@ -42,15 +42,18 @@ The build downloads CPython 3.13.9 from python.org and verifies a pinned SHA-256
 
 ```powershell
 $env:PYTHONUTF8 = '1'
-python -m pip install -r tests/requirements.txt
-python -m unittest discover -s tests -v
-dotnet build windows/Sapiens4.csproj -c Release
-.\windows\bin\Release\net10.0-windows\Sapiens4.exe --self-test navigation-results.json
+bundle install
+python -m pip install -r spec/requirements.txt
+npm ci --prefix tests --ignore-scripts
+dotnet build spec/support/windows/CodexFixture.csproj -o tmp/codex-fixture
+$env:SAPIENS_TEST_CODEX = (Resolve-Path tmp/codex-fixture/CodexFixture.exe).Path
+$env:SAPIENS_PYTHON = 'python'
+bundle exec rspec --tag '~windows'
 ```
 
 The executable also accepts `--smoke-report PATH --data-dir TEMP_DIRECTORY` to launch a real WebView2 window, verify the rendered app, save a JSON result and PNG, then close. Use an empty test data directory. The Blindly4 repository documents its permission-free and interactive integration suites.
 
-macOS-only tests remain in macOS/Linux CI. Symlink tests report a skip if Windows denies symlink creation; no system security settings are changed to run tests.
+The full CI run builds the portable desktop package, sets `SAPIENS_TEST_WINDOWS_PACKAGE`, and includes its native RSpec contract. See [Testing](../documentation/testing.md). macOS and POSIX-only cases are explicitly skipped on Windows; no security settings are changed to run tests.
 
 ## Desktop access
 

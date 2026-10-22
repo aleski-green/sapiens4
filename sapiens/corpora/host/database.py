@@ -1,4 +1,3 @@
-"""SQLite metadata, authoritative workloads, and durable conversation projections."""
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path

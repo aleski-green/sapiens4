@@ -55,9 +55,9 @@ The recorded Python executable must remain installed. The app is locally ad-hoc 
 ## Verification
 
 ```sh
-python3 -m unittest tests.test_desktop_updater -v
+bundle exec rspec spec/updater_spec.rb spec/platform_spec.rb
 codesign --verify --strict .build/macos/Sapiens4.app
 plutil -lint .build/macos/Sapiens4.app/Contents/Info.plist
 ```
 
-Tests cover notification-only checks, malformed remote revisions, waiting for work, failed builds, state backup/restore, committed-transaction recovery, refusing unrelated processes, atomic bundle exchange, and an actual temporary-port backend held until activation. The integration test uses isolated data and sends no agent prompts. A full GitHub update smoke check should also use a separate port and disposable data; never interrupt a user's active conversations just to test the updater.
+RSpec contracts cover notification-only checks, malformed revisions, waiting for active work, unrelated-app refusal, cache cleanup, failed builds, state backup/restore, committed-transaction recovery, atomic bundle recovery, and a real backend held until activation. They use temporary installations and mocked external build/model executables. See [test setup and coverage limits](../documentation/testing.md). A full GitHub update smoke check should also use a separate port and disposable data; never interrupt a user's active conversations just to test the updater.

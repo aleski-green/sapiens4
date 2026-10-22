@@ -1,4 +1,3 @@
-"""PR #16's Call/Triage/Delegation flow, without WorkGraph or timed activation."""
 from copy import deepcopy
 from hashlib import sha256
 import json
@@ -13,7 +12,6 @@ from sapiens.runtime.settings import execution_settings, model_defaults
 from sapiens.validation import APIError, sapi_name, text_field
 
 
-# Same state/event vocabulary as documentation/specs/WorkGraph.md, copied from PR #16.
 TRANSITIONS = {
     ('Assessing', 'FitsSpecialization'): 'ReadyToWork',
     ('Assessing', 'OutsideSpecialization'): 'ChiefTriage',
@@ -22,7 +20,6 @@ TRANSITIONS = {
     ('CreatingSapi', 'SpecialistCreated'): 'Assessing',
     ('ChiefTriage', 'RequestUnclear'): 'WaitingForAdmin',
     ('WaitingForAdmin', 'RequestClarified'): 'ChiefTriage',
-    # Chief's ability to work itself is specified in the PR's prose.
     ('ChiefTriage', 'FitsSpecialization'): 'ReadyToWork',
 }
 PROMPTS = {

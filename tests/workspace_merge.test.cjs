@@ -22,7 +22,7 @@ state.workspaces.a={tabs:[legacy],activeTab:legacy.id};context.syncWorkspace();a
 state.workspaces.a={tabs:[]};context.syncWorkspace();assert.equal(state.tabs.length,0);assert.equal(state.activeTab,null);
 const sourceAll=fs.readFileSync('web/features/workspaces.js','utf8'), dom={};
 context.esc=String;context.$=selector=>dom[selector] ||= {innerHTML:'',setAttribute(k,v){this[k]=v;},querySelector:()=>null};
-context.renderPanes=context.syncWorkspace;
+context.renderPanes=context.syncWorkspace;context.paneLimit=()=>3;
 vm.runInContext(sourceAll.slice(sourceAll.indexOf('const bookmarks ='),sourceAll.indexOf('function renderWorkspace()')),context);
 Object.assign(context.$('#browser-tabs'),{clientWidth:200,scrollWidth:400,children:[]});
 state.workspaces.a={tabs:[file,blank],activeTab:file.id,bookmarks:[{id:'saved',url:file.url}]};context.renderTabs();

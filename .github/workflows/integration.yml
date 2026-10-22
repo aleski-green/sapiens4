@@ -18,16 +18,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+          bundler-cache: true
       - name: Test dependencies
-        run: python -m pip install -r tests/requirements.txt
-      - name: Integration tests
-        run: python -m unittest discover -s tests -v
-      - name: Frontend regressions
         run: |
+          python -m pip install -r spec/requirements.txt
           npm ci --prefix tests --ignore-scripts
-          python -c 'from sapiens.corpora.host.assets import javascript; from pathlib import Path; Path("/tmp/sapiens4-app.js").write_text(javascript())'
-          node --check /tmp/sapiens4-app.js
-          for file in tests/*.test.cjs; do node "$file"; done
+      - name: Service, CLI, browser and platform contracts
+        env:
+          SAPIENS_PYTHON: python
+        run: bundle exec rspec
   blindly:
     runs-on: macos-latest
     steps:
@@ -47,13 +49,5 @@ jobs:
           bundle install
           bundle exec rspec
       - run: ./blindly4/.build/release/blindly4 schema
-      - name: Desktop navigation, readiness and update tests
-        run: |
-          swiftc macos/NavigationPolicy.swift macos/NavigationPolicyTests.swift -o /tmp/navigation-tests
-          /tmp/navigation-tests
-          swiftc macos/ServerReadiness.swift macos/ServerReadinessTests.swift -o /tmp/readiness-tests
-          /tmp/readiness-tests
-          swiftc macos/DesktopUpdate.swift macos/DesktopUpdateTests.swift -o /tmp/desktop-update-tests
-          /tmp/desktop-update-tests
       - name: Build macOS desktop app
         run: ./macos/build.sh

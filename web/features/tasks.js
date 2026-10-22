@@ -1,4 +1,3 @@
-// Task navigation is UI; each expanded task keeps its specification as YAML.
 const taskDocuments = new Map();
 const openTasks = new Set();
 const pastTaskStates = new Set(['Completed', 'Unresolved', 'Failed', 'Interrupted', 'Cancelled']);
@@ -111,7 +110,7 @@ function renderTasks(host) {
   if (cached?.revision === revision) { drawTasks(host, id, cached); return; }
   cached = {revision, rows:cached?.rows, pending:true};
   taskDocuments.set(id, cached); drawTasks(host, id, cached);
-  fetch(`/api/agents/${encodeURIComponent(id)}/tasks?format=json`, {signal:AbortSignal.timeout(15000)})
+  (typeof apiFetch === 'function' ? apiFetch : fetch)(`/api/agents/${encodeURIComponent(id)}/tasks?format=json`, {signal:AbortSignal.timeout(15000)})
     .then(async response => {
       if (!response.ok) throw new Error('Could not load tasks');
       return response.json();
@@ -140,6 +139,7 @@ function taskCallControls(host) {
     if (work.state !== 'WaitingForAdmin' || ![work.owner,work.origin.agent].includes(state.selected)) continue;
     const button = document.createElement('button');
     button.type = 'button'; button.className = 'button';
+    button.dataset.chatKey = 'clarify:' + work.id + ':' + work.owner + ':' + work.taskId;
     button.textContent = 'Answer Chief';
     button.addEventListener('click', () => {
       openChat(work.owner); clarificationWorkload = work;

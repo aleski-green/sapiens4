@@ -32,7 +32,6 @@ def install():
             if source.is_file() or source.is_symlink():
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target, follow_symlinks=False)
-        # Include the desktop sources before their first commit as well.
         shutil.copytree(ROOT / 'macos', release / 'macos', dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__'))
         binary = ROOT / 'blindly4/.build/release/blindly4'
         if not binary.is_file():

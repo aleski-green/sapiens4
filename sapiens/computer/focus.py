@@ -1,4 +1,3 @@
-"""Return to the CORPORA host after a bounded computer attempt."""
 from pathlib import Path
 import subprocess
 import sys

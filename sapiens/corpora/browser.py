@@ -1,4 +1,3 @@
-"""Per-Sapi browser tabs and bookmarks. Documents remain ordinary files."""
 from pathlib import Path
 from urllib.parse import urlsplit, unquote
 from urllib.request import url2pathname

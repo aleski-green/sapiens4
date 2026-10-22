@@ -2,11 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f1ede3">
+  <link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/app-icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><link rel="stylesheet" href="/corpora.css"><link rel="stylesheet" href="/remote-install.css">
   <title>sapi*4 ◠‿◠ AI — Workspace</title>
-  <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="/live.css">
-  <link rel="stylesheet" href="../assets/sapi-theme.css">
+  <link rel="stylesheet" href="/workspace/styles.css"><link rel="stylesheet" href="/live.css">
+  <link rel="stylesheet" href="/assets/sapi-theme.css">
 </head>
 <body class="sapi-workspace">
   <div class="app">
@@ -19,14 +20,26 @@
         <button class="pane-toggle" data-toggle-pane="workspace" aria-controls="workspace-panel" aria-pressed="true" aria-label="Hide workspace" title="Hide workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path class="pane-fill" d="M12 10h8v9h-8z"/></svg></button>
       </nav>
       <button class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme" title="Switch to dark theme">☾</button>
-      <button class="pill" id="autonomy-button"><span>✦</span> <span id="autonomy-label">Connecting…</span> <span>⌄</span></button>
-      <button class="user-avatar" id="profile-button" aria-label="Admin settings">Admin <span aria-hidden="true">⌄</span></button>
+      <button id="corpora-picker" class="connection-button" aria-controls="corpora-menu" aria-expanded="false"><span id="corpora-location">Local</span><svg class="activity-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true" focusable="false"><path d="m4.5 6.25 3.5 3.5 3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="connection-status connection-button" id="connection-status" aria-controls="corpora-status-menu" aria-expanded="false" aria-live="polite" data-online="false"><span class="connection-dot" aria-hidden="true"></span><span id="connection-label">Connecting…</span><svg class="activity-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true" focusable="false"><path d="m4.5 6.25 3.5 3.5 3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <section id="corpora-menu" class="corpora-popover" aria-label="Corpora" hidden>
+        <div class="corpora-menu-heading"><strong>Corpora</strong><button id="corpora-menu-close" aria-label="Close corpora menu">×</button></div>
+        <div class="corpora-columns"><span>Location</span><span>Name</span><span>Status</span><span>Device</span><span class="corpora-remote-column">Remote</span></div>
+        <div id="corpora-rows"></div>
+        <div class="corpora-actions"><button id="manage-relay-servers" hidden>Remote Control Relay Servers</button><button id="create-local-corpora" hidden>＋ Create new local corpora</button><button id="connect-remote-corpora">＋ Connect remote corpora</button></div>
+        <label class="corpora-archive-toggle"><input id="corpora-archived" type="checkbox"> Show archived corporas</label>
+      </section>
+      <div id="corpora-status-menu" class="corpora-popover status-popover" hidden></div>
     </header>
+    <section id="corpora-empty" class="corpora-empty" hidden><h1>Your corpora</h1><p>Connect to your Sapis on another computer.</p><button id="empty-connect-corpora">Connect remote corpora</button><button id="empty-create-corpora" hidden>Create local corpora</button></section>
+    <p id="corpora-startup-feedback" role="status"></p>
+    <!-- Previous cached clients bind this button; the current installer replaces the fallback. -->
+    <section id="mobile-install-gate" aria-label="Install Sapiens4" hidden><div class="install-card"><span class="install-brand">Sapiens4</span><h1>Add to Home Screen</h1><p>Install to connect your corpora.</p><button id="mobile-install-action" type="button">Show me how</button><a href="https://sapiens4.ai/help?q=add2homescreen" target="_blank" rel="noopener noreferrer">Need help? ↗</a></div></section>
     <div class="main-grid">
       <aside class="sidebar" id="chat-list-panel" aria-label="Chat list">
-        <div class="sidebar-heading"><h1>CORPORA<span id="agent-count">0</span></h1><button class="icon-button" id="add-agent" aria-label="Create through Chief">＋</button></div>
+        <div class="sidebar-heading"><h1 id="corpora-identity" class="corpora-identity">Connecting…</h1><span id="agent-count" aria-label="Sapi count">0</span><div class="sidebar-actions"><button class="icon-button" id="search-toggle" aria-label="Search Corpora" aria-controls="corpora-search" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button><button class="icon-button" id="add-agent" aria-label="Create through Chief">＋</button></div></div>
         <div class="scope-switch" aria-label="Agent views"><button data-scope="all" class="active">All</button><button data-scope="sapis">Sapis</button><button data-scope="groups">Groups</button></div>
-        <label class="search-field"><span aria-hidden="true">⌕</span><input id="agent-search" type="search" placeholder="Find a Sapi or Group…" aria-label="Search agents"><kbd>/</kbd></label>
+        <label class="search-field" id="corpora-search"><span aria-hidden="true">⌕</span><input id="agent-search" type="search" placeholder="Find a Sapi or Group…" aria-label="Search agents"><kbd>/</kbd></label>
         <div id="agent-list" class="agent-list"></div>
         <footer class="sidebar-bottom">
           <div class="resource-card"><button id="resource-button" class="resource-open" aria-label="Open shared computer"><span class="computer-icon" aria-hidden="true">▣</span><strong>SHARED COMPUTER</strong><span class="status-dot" id="resource-status"></span></button><small id="resource-owner">Connecting…</small></div>
@@ -61,7 +74,10 @@
   </div>
   <dialog id="modal" aria-labelledby="modal-title"><div class="modal-top"><span class="tiny-label" id="modal-eyebrow">SAPI WORKSPACE</span><button class="icon-button" id="close-modal" aria-label="Close dialog">×</button></div><div id="modal-content"></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="../assets/sapi-theme.js"></script>
-  <script src="app.js"></script>
+  <dialog id="corpora-dialog" aria-labelledby="corpora-dialog-title"><div class="corpora-menu-heading"><h2 id="corpora-dialog-title"></h2><button id="corpora-dialog-close" aria-label="Close">×</button></div><div id="corpora-dialog-body"></div></dialog>
+  <dialog id="corpora-notice" aria-label="Connection notice"><p id="corpora-notice-text"></p><button id="corpora-notice-close">OK</button></dialog>
+  <script src="/remote-vendor.js"></script><script src="/remote-code.js"></script><script src="/remote-session.js"></script><script src="/remote-transport.js"></script><script src="/remote-install.js"></script><script src="/remote-onboarding.js"></script><script src="/relay-servers.js"></script><script src="/corpora.js"></script>
+  <script src="/assets/sapi-theme.js"></script>
+  <script src="/workspace/app.js"></script>
 </body>
 </html>

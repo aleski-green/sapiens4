@@ -1,4 +1,3 @@
-"""Keyboard-first CORPORA commands, prompt and bounded observation."""
 from functools import lru_cache
 from importlib.util import find_spec
 import argparse, re, shlex, sys, time

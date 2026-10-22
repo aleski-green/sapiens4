@@ -5,7 +5,6 @@ button,input,textarea,select { font-family: inherit; }
 button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible { outline: 2px solid var(--sapi-violet); outline-offset: 3px; }
 
 
-/* Workspace: preserve the compact panel geometry and content type sizes. */
 .sapi-workspace h1,.sapi-workspace h2,.sapi-workspace h3 { font-family:var(--sapi-font); }
 .sapi-workspace .sidebar-heading h1,.sapi-workspace .tiny-label { font-family:var(--sapi-font); }
 .sapi-workspace .sidebar,.sapi-workspace .conversation,.sapi-workspace .workspace,.sapi-workspace .conversation-tabs,.sapi-workspace .workspace-footer,.sapi-workspace .sidebar-bottom { border-color:var(--sapi-line); }
@@ -36,7 +35,6 @@ button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,s
 @media(max-width:450px){.sapi-workspace .app-header{display:grid;grid-template-columns:1fr auto auto;grid-template-rows:28px 28px;height:72px;min-height:72px;gap:4px 7px;padding:6px 9px}.sapi-workspace .wordmark{grid-column:1;grid-row:1}.sapi-workspace .user-avatar{grid-column:3;grid-row:1}.sapi-workspace .pane-controls{grid-column:1;grid-row:2;margin:0;justify-self:start}.sapi-workspace .pill{grid-column:2 / 4;grid-row:2;justify-self:end;min-height:26px}}
 .sapi-workspace .icon-button{font-family:system-ui,sans-serif;font-size:20px;letter-spacing:-1px;line-height:1}
 
-/* Shared entity identities and navigable mentions. */
 .sapi-workspace .entity-mention{display:inline;padding:0;border:0;background:none;color:var(--sapi-violet);font:inherit;line-height:inherit;letter-spacing:inherit;text-align:left;text-decoration:underline;text-decoration-color:#b59bce;text-underline-offset:3px;text-decoration-thickness:1px;cursor:pointer;white-space:normal;overflow-wrap:anywhere;border-radius:0;box-shadow:none;text-transform:none}
 .sapi-workspace .entity-mention:hover{background:var(--sapi-purple-tint);color:var(--sapi-pink);filter:none;text-decoration-color:currentColor}
 .sapi-workspace .resource-card{display:block;padding:3px 2px;text-align:left;background:none}

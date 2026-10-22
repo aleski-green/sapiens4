@@ -4,7 +4,7 @@ const {window}=new JSDOM(fs.readFileSync('web/shell/index.html','utf8'),{url:'ht
 const sapi=(id,name)=>({id,name,kind:'sapi',face:'^_^',role:'Test',color:'#48c99c',lastActivity:1});
 const group={id:'g',name:'Researchers',kind:'group',lead:'a',members:['a','b'],stripes:['#48c99c'],face:'^_^',color:'#48c99c'};
 const initial={agents:[sapi('chief','Chief'),sapi('a','Lead'),sapi('b','Member'),sapi('out','Outside'),group],mainSapiId:'chief',selected:'chief',scope:'all',panel:'chat',panes:{},drafts:{},workspaces:{}};
-const ctx=vm.createContext({document:window.document,console,ResizeObserver:class{observe(){} disconnect(){}},setTimeout,clearTimeout,
+const ctx=vm.createContext({window,document:window.document,console,ResizeObserver:class{observe(){} disconnect(){}},setTimeout,clearTimeout,
  bootstrap:{creation_template:'create: sapi or group of sapis\nto work on: WORKFLOW'},makeInitialState:()=>initial,
  openNewTab:()=>{},setBrowserMenu:()=>{},renderTabs:()=>{},renderWorkspace:()=>{}});
 vm.runInContext(fs.readFileSync('web/shell/app.js','utf8'),ctx);

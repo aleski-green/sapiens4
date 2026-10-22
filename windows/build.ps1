@@ -2,7 +2,9 @@ param(
     [ValidateSet('win-x64','win-arm64')][string]$Runtime = "win-$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant())",
     [string]$OutputDirectory,
     [string]$BlindlySource = (Join-Path $PSScriptRoot '../blindly4'),
-    [string]$PythonArchive
+    [ValidateSet('msvc','gnullvm')][string]$BlindlyToolchain = 'msvc',
+    [string]$PythonArchive,
+    [string]$BuildPython = $(if ($env:SAPIENS_PYTHON) { $env:SAPIENS_PYTHON } else { 'python' })
 )
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -14,7 +16,7 @@ if (-not (Test-Path (Join-Path $BlindlySource 'windows/Cargo.toml'))) { throw 'I
 
 dotnet publish (Join-Path $PSScriptRoot 'Sapiens4.csproj') -c Release -r $Runtime --self-contained true -o $destination
 if ($LASTEXITCODE -ne 0) { throw 'Sapiens4 desktop build failed' }
-& (Join-Path $BlindlySource 'windows/build.ps1') -Runtime $Runtime
+& (Join-Path $BlindlySource 'windows/build.ps1') -Runtime $Runtime -Toolchain $BlindlyToolchain
 $blindlyOutput = Join-Path $payload 'blindly4/.build/windows'
 New-Item -ItemType Directory -Force -Path $blindlyOutput | Out-Null
 Copy-Item -LiteralPath (Join-Path $BlindlySource '.build/windows/blindly4.exe') -Destination $blindlyOutput -Force
@@ -44,6 +46,9 @@ if (-not $PythonArchive) {
 if ((Get-FileHash -LiteralPath $PythonArchive -Algorithm SHA256).Hash -ne $hash) { throw 'Embedded Python checksum mismatch' }
 Expand-Archive -LiteralPath $PythonArchive -DestinationPath (Join-Path $payload 'python') -Force
 [IO.File]::WriteAllText((Join-Path $payload 'python/python313._pth'), "python313.zip`n.`n..`nimport site`n", [Text.UTF8Encoding]::new($false))
+$wheelPlatform = if ($Runtime -eq 'win-arm64') { 'win_arm64' } else { 'win_amd64' }
+& $BuildPython -m pip install --disable-pip-version-check --only-binary=:all: --platform $wheelPlatform --python-version 3.13 --implementation cp --abi cp313 --upgrade --target (Join-Path $payload 'python/Lib/site-packages') -r (Join-Path $repo 'requirements-cli.txt') -r (Join-Path $repo 'sapiens/corpora/host/remote-client-requirements.txt')
+if ($LASTEXITCODE -ne 0) { throw 'Packaged Python dependencies failed' }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.md') -Destination (Join-Path $destination 'README.md') -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'terminal.cmd') -Destination (Join-Path $destination 'sapiens4.cmd') -Force
 Write-Host "Built $destination/Sapiens4.exe"

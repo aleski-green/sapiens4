@@ -32,7 +32,8 @@ Runtime accepts state and prepared context; it must not import CORPORA or deskto
 code. The host composes these responsibilities. Sapi persistence may use runtime
 contracts, but cannot import execution or host implementations. Keep shared file,
 clock, path, prompt and validation primitives independent of their consumers.
-The recursive checks in `tests/test_import_architecture.py` enforce these boundaries.
+Review changes against these boundaries; tests exercise public behavior rather
+than asserting the names, shape, or import graph of private implementation code.
 
 `sapiens/assets.py`, `service.py`, and `server.py` are public compatibility
 entrypoints for already-installed macOS updaters and rollback. Keep them as small
@@ -50,6 +51,38 @@ code. This includes system instructions, prompt prefixes/suffixes, reference
 wrappers, and installer model-check prompts. Dynamic values may be inserted using
 template placeholders; user messages, Notes contents, and generated state are data,
 not hardcoded prompts.
+
+## Tests: RSpec and observable behavior
+
+All automated test cases must be defined and run in **RSpec**, under `spec/`.
+Do not add Python tests, a Python test runner, or a Python bridge that exposes
+private application objects to Ruby. See [Testing](documentation/testing.md) for
+setup, the migration map, platform probes, and known coverage limits.
+
+Exercise real service, CLI, relay, installer, and desktop entrypoints. Assert
+HTTP responses, process output and exit codes, user-visible files, persistence,
+permissions, and recovery. Control the environment at external boundaries:
+model executables, network peers, build tools, and saved installation fixtures.
+Never contact a paid model or use the developer's live installation in tests.
+
+The purpose of using Ruby is to make implementation-coupled testing harder and
+keep product behavior explicit. Testing Python with Python is not inherently
+wrong; mocking internal classes, inspecting private state, and duplicating the
+implementation produce the coupling we are avoiding. A different test language
+does not make weak assertions meaningful.
+
+Name each independent behavior as an RSpec example. Use named case tables for
+validation variants and shared fixtures for setup. Combine steps when they form
+one contract, such as submit → fail → retry → restart; do not hide unrelated
+failures in a giant scenario. Keep all new behavior assertions in RSpec.
+JavaScript and native programs may supply browser/platform probes that Ruby
+cannot execute directly. Existing probes are invoked and checked by RSpec;
+do not create another independently run test suite.
+
+Run `bundle exec rspec` before submitting. Platform cases run on their matching
+CI runners; scheduling cases use real minute pulses and belong in the full run.
+Do not delete a behavioral guarantee merely because a private-method test is
+being removed: replace its observable contract or document the precise gap.
 
 
 ## Contribution licensing

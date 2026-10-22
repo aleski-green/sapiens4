@@ -1,0 +1,95 @@
+/* Shared corpora switcher; the same actions reflow on small screens. */
+[hidden]{display:none!important}
+.app-header{position:relative}
+.connection-button{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;min-height:44px;color:var(--muted);font:inherit;border:0;background:transparent;cursor:pointer}
+:root body.sapi-workspace .app-header .connection-button{font:400 12px/1.5 var(--sapi-font);letter-spacing:normal}
+.corpora-popover{position:absolute;z-index:35;right:14px;top:calc(100% + 4px);width:min(620px,calc(100vw - 28px));max-height:70dvh;overflow:auto;padding:16px;background:var(--sapi-bg);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 36px #0003}
+.corpora-menu-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.corpora-menu-heading button{min-width:44px;min-height:44px;background:transparent;border:0;color:var(--muted);font-size:23px}
+.corpora-columns,.corpora-record{display:grid;grid-template-columns:58px minmax(100px,1fr) 85px 85px;gap:12px;align-items:center}
+.corpora-popover[data-has-local=true]{width:min(760px,calc(100vw - 28px))}
+[data-has-local=true] :is(.corpora-columns,.corpora-record){grid-template-columns:58px minmax(100px,1fr) 85px 85px 100px}
+.corpora-pairing-cell button{min-height:44px;text-align:left;padding:6px;border:0;border-radius:6px;color:var(--muted);background:transparent;font:inherit;cursor:pointer}
+.corpora-pairing-cell button:not(:disabled):hover{color:var(--sapi-accent);background:var(--sapi-hover)}
+.pairing-corpora{color:var(--muted);margin-bottom:16px}
+.pairing-details{display:grid;grid-template-columns:110px minmax(0,1fr);gap:14px 16px;margin:16px 0 24px;font-size:14px}
+.pairing-details dt{color:var(--muted)}
+.pairing-details dd{margin:0;overflow-wrap:anywhere}
+.pairing-actions{display:flex;gap:10px;flex-wrap:wrap}
+#corpora-dialog .pairing-actions button:not(:disabled):hover{color:var(--sapi-accent);background:var(--sapi-hover)}
+.corpora-columns{font-size:12px;color:var(--muted);padding:8px}
+.corpora-record{padding:8px;border-radius:7px;font-size:13px}
+.corpora-record:hover,.corpora-record[data-selected=true]{background:var(--sapi-hover)}
+.corpora-name-cell{display:flex;gap:8px;align-items:center;min-width:0}
+.corpora-name{min-height:44px;text-align:left;overflow-wrap:anywhere;min-width:0;background:transparent;border:0;color:var(--ink);font:inherit;cursor:pointer}
+.corpora-record:hover .corpora-name{color:var(--sapi-accent)}
+.corpora-edit{flex:none;min-height:44px;background:transparent;border:0;color:var(--muted);cursor:pointer}
+.corpora-state{display:flex;align-items:center;gap:6px}
+.corpora-dot{width:6px;height:6px;flex:none;border-radius:50%;background:var(--muted)}
+.corpora-dot[data-active=true]{background:#72a884}
+.corpora-device{color:var(--muted);overflow-wrap:anywhere}
+.corpora-actions{border-block:1px solid var(--line);margin:12px 0;padding:10px 0}
+.corpora-actions button,.status-popover button{display:block;padding:12px 8px;width:100%;min-height:44px;text-align:left;border:0;color:var(--ink);background:transparent;font:inherit;cursor:pointer}
+.corpora-actions button:hover,.status-popover button:hover{background:var(--sapi-hover)}
+.corpora-archive-toggle{display:flex;align-items:center;gap:10px;min-height:44px;color:var(--muted);font-size:13px}
+.corpora-archive-toggle input{width:18px;height:18px}
+.status-popover{width:180px}
+#corpora-dialog,#corpora-notice{width:min(520px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;background:var(--sapi-bg);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:20px}
+#corpora-dialog::backdrop,#corpora-notice::backdrop{background:#0005}
+#corpora-dialog h2{font-size:20px;margin:0}
+#corpora-dialog label{display:block;margin:16px 0;font-size:14px}
+#corpora-dialog input:not([type=file]),#corpora-dialog textarea{display:block;width:100%;box-sizing:border-box;margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--sapi-bg);color:var(--ink);font:16px/1.5 var(--sapi-font);resize:vertical}
+#corpora-dialog button,#corpora-notice button,.corpora-empty button,#mobile-install-gate button{min-height:44px;padding:10px 16px;border:1px solid var(--line);border-radius:8px;background:var(--sapi-surface);color:var(--ink);font:inherit;cursor:pointer}
+#chief-settings-form>button[type=submit]{display:block;margin:12px auto 0 0;transition:background-color .15s,color .15s,border-color .15s}
+#chief-settings-form>button[type=submit]:not(:disabled):is(:hover,:focus-visible){background:var(--sapi-hover);color:var(--sapi-accent);border-color:var(--sapi-accent)}
+#corpora-dialog button:disabled{opacity:.5;cursor:default}
+#corpora-dialog video{width:100%;max-height:35dvh;object-fit:cover}
+#corpora-dialog canvas{max-width:100%;height:auto!important}
+#corpora-dialog .qr-upload{display:inline-block;padding:10px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
+.qr-upload input{max-width:100%;display:block}
+#confirmation-code{font-size:28px;letter-spacing:.06em;display:block;text-align:center;margin:20px 0}
+#corpora-startup-feedback:empty{display:none}
+#corpora-startup-feedback{padding:12px;color:var(--muted);margin:0}
+.corpora-empty{padding:40px 24px;text-align:center}
+.app:has(.corpora-empty:not([hidden])) .main-grid{display:none!important}
+@media(max-width:600px){
+ :root body.sapi-workspace .app-header{display:flex;flex-wrap:wrap;gap:4px;padding:6px 12px;min-height:56px}
+ .app-header .wordmark{order:0}.app-header #app-menu{order:1}.app-header #corpora-picker{order:2;margin-left:auto}.app-header #connection-status{order:3}
+ :root body.sapi-workspace[data-mobile-ui] .app-header .pane-controls{order:4;flex-basis:calc(100% - 52px);width:auto;margin-left:0;justify-content:flex-end}
+ .app-header .theme-toggle{order:5}
+ .connection-button{font-size:12px;gap:5px}
+ .corpora-popover{position:fixed;inset:auto 0 0;width:100%;max-height:65dvh;box-sizing:border-box;border-radius:16px 16px 0 0;padding:12px 16px max(12px,env(safe-area-inset-bottom))}
+ .corpora-popover[data-has-local=true]{width:100%}
+ .corpora-pairing-cell{grid-column:1 / -1;grid-row:3}
+ .corpora-pairing-cell:empty{display:none}
+ .corpora-columns{display:none}.corpora-record,[data-has-local=true] .corpora-record{grid-template-columns:minmax(0,1fr) auto;gap:0 12px;padding:10px}
+ .corpora-name-cell{grid-column:1;grid-row:1}.corpora-name{font-size:15px}.corpora-state{grid-column:2;grid-row:1}
+ .corpora-location-cell{grid-column:1;grid-row:2;font-size:12px;color:var(--muted)}.corpora-device{grid-column:2;grid-row:2;font-size:12px}
+ .status-popover{inset:auto 12px max(12px,env(safe-area-inset-bottom)) auto;width:180px;border-radius:12px}
+ #corpora-dialog{max-height:calc(var(--mobile-viewport-height,100dvh) - 24px);box-sizing:border-box}
+}
+
+@media(max-width:600px){
+ :root body.sapi-workspace[data-mobile-ui] .app-header .wordmark{font-size:17px}
+ :root body.sapi-workspace[data-mobile-ui] .app-header .pane-toggle{flex:0 0 44px}
+ :root body.sapi-workspace[data-mobile-ui] .app-header .pane-controls{background:transparent}
+}
+
+/* Relay catalogue: two rows remain visible; a third adds internal scrolling. */
+.relay-list{border:1px solid var(--line);border-radius:10px}
+.relay-scroll{max-height:250px;overflow-y:auto;overscroll-behavior:contain}
+.relay-row{position:relative;padding:12px;min-height:96px;box-sizing:border-box}
+.relay-row+.relay-row{border-top:1px solid var(--line)}
+.relay-row[data-current=true]{background:var(--sapi-hover)}
+#corpora-dialog .relay-row label{display:flex;align-items:center;gap:12px;margin:0;padding-right:64px}
+#corpora-dialog .relay-row input,#corpora-dialog .relay-check input{width:18px;height:18px;flex:none;margin:0;padding:0}
+.relay-row strong,.relay-row small{display:block;overflow-wrap:anywhere}
+.relay-row small,.relay-private{font-size:12px;color:var(--muted)}
+.relay-badge{position:absolute;right:12px;top:14px;font-size:11px;color:var(--muted)}
+.relay-row-actions{display:flex;gap:8px;margin:6px 0 0 30px}
+#corpora-dialog .relay-row-actions button{padding:4px 8px;min-height:32px;border:0;background:transparent;color:var(--muted);font-size:12px}
+#corpora-dialog .relay-check{display:flex;align-items:center;gap:10px}
+.relay-add{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:left}
+.relay-add small{font-size:11px;color:var(--muted)}
+.relay-warning{margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:8px;color:var(--muted);font-size:13px}
+#relay-editor textarea{font-family:monospace;font-size:13px}

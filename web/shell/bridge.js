@@ -1,10 +1,13 @@
-// Connect the workspace renderer to the local Sapiens4 API.
 let live = bootstrap;
-let online = true;
+let online = window.SapiensConnections ? SapiensConnections.connected : true;
 let refreshing = null;
 let saveTimer;
 let saving = false;
 let savedPreferences = '';
+let pendingChatPosition = bootstrap.preferences.chatPosition || null;
+let lastChatPosition = pendingChatPosition;
+let lastChatGeometry = null;
+let resumingChat = false, resumeChatFrame;
 const submitting = new Set();
 const expandedWarnings = new Set();
 const attachmentDrafts = bootstrap.attachment_drafts || {};
@@ -23,17 +26,56 @@ function preferences() {
     drafts:state.drafts,
     attachment_drafts:Object.fromEntries(Object.entries(attachmentDrafts).map(([id, items]) => [id, items.map(a => a.id)]))};
 }
+// Pixel offsets alone cannot survive the shortened offline transcript. Persist
+// a message identity and its position inside the viewport instead.
+function chatPosition() {
+  if (pendingChatPosition) return pendingChatPosition;
+  const viewport = $('#conversation-body');
+  if (state.panel !== 'chat' || chatView !== 'conversation') return null;
+  if (document.hidden || !viewport.clientHeight) return lastChatPosition;
+  const geometry = `${viewport.clientWidth}:${viewport.clientHeight}`;
+  // iOS reflows its app-switcher snapshot BEFORE visibilitychange. The resulting
+  // scroll event is not a reading gesture and must not replace the bookmark.
+  if (lastChatPosition?.selected === state.selected && lastChatGeometry && lastChatGeometry !== geometry) return lastChatPosition;
+  lastChatGeometry = geometry;
+  const top = viewport.getBoundingClientRect().top;
+  const node = [...viewport.children].find(node => node.dataset.chatKey && node.getBoundingClientRect().bottom > top);
+  return lastChatPosition = {selected:state.selected,
+    bottom:viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 2,
+    key:node?.dataset.chatKey,offset:node ? node.getBoundingClientRect().top - top : 0};
+}
+function restoreChatPosition() {
+  const saved = pendingChatPosition, viewport = $('#conversation-body');
+  if (!saved || document.hidden) return;
+  if (saved.selected !== state.selected || state.panel !== 'chat' || chatView !== 'conversation') {
+    pendingChatPosition = null;return;
+  }
+  if (!viewport.clientHeight) return;
+  const node = [...viewport.children].find(node => node.dataset.chatKey === saved.key);
+  // An older message may not exist in the offline cache. Keep the bookmark
+  // until live history arrives, without overwriting it with a clamped offset.
+  if (!saved.bottom && !node) return;
+  viewport.scrollTop = saved.bottom ? viewport.scrollHeight - viewport.clientHeight :
+    viewport.scrollTop + node.getBoundingClientRect().top - viewport.getBoundingClientRect().top - (saved.offset || 0);
+  lastChatPosition = saved;
+  lastChatGeometry = `${viewport.clientWidth}:${viewport.clientHeight}`;
+  if (!resumingChat) pendingChatPosition = null;
+}
+function workspacePreferences() {
+  return {...preferences(),workspaces:state.workspaces,scroll:$('#conversation-body').scrollTop,chatPosition:chatPosition()};
+}
 save = function() {
+  window.SapiensConnections?.save(workspacePreferences());
   clearTimeout(saveTimer);
   saveTimer = setTimeout(flushPreferences, 300);
 };
 async function flushPreferences() {
-  if (saving) return;
+  if (saving || !online || window.SapiensConnections?.busy) return;
   const value = JSON.stringify(preferences());
   if (value === savedPreferences) return;
   saving = true;
   try {
-    const sent = JSON.parse(value);
+    const sent = window.SapiensConnections ? {attachment_drafts:JSON.parse(value).attachment_drafts} : JSON.parse(value);
     const response = await api('/api/preferences', 'PUT', sent);
     receiveWorkspaces(response.preferences);
     savedPreferences = value;
@@ -98,6 +140,10 @@ function requestStatus(turn) {
 }
 
 function applySnapshot(snapshot) {
+  const identity=document.getElementById('corpora-identity');
+  if(identity && snapshot.corpora) {
+    identity.hidden=false;identity.textContent=snapshot.corpora.name;identity.title=snapshot.corpora.id;
+  }
   receiveWorkspaces(snapshot.preferences);
   live = snapshot;
   const old = new Map(state.agents.map(a => [a.id,a]));
@@ -135,40 +181,86 @@ function applySnapshot(snapshot) {
 }
 
 renderGlobal = function() {
-  $('#autonomy-label').textContent = online ? 'Connected' : 'Reconnecting…';
-  $('#autonomy-button').classList.toggle('live-disconnected', !online);
+  if(!window.SapiensConnections) {
+    $('#connection-label').textContent = `Local · ${online ? 'Online' : 'Reconnecting…'}`;
+    $('#connection-status').dataset.online = String(online);
+  }
   const owner = live.computer.owner;
   $('#resource-owner').textContent = owner ? `In use · ${agent(owner).name}` : live.computer.built ? 'Blindly4 · Available' : 'Blindly4 · Build required';
   $('#resource-status').classList.toggle('idle', !owner);
   $('#resource-status').classList.remove('paused');
 };
 
+window.addEventListener('sapiens-connection-change', () => {if(window.SapiensConnections)online=SapiensConnections.connected&&!SapiensConnections.busy;renderGlobal();renderAgentHeader();});
+
 renderAgentHeader = function() {
   const a = selected();
   const turn = a.kind==='group'?null:live.turns.find(j => j.agent === a.id && blocksChat(j));
-  $('#agent-heading').innerHTML = `${avatar(a,isMainSapi(a)?'large main-sapi-avatar':'large')}<div><div class="agent-title"><h2>${esc(a.name)}</h2>${a.kind==='group'?'':groupLabels(a)}</div><p class="agent-role">${esc(a.kind==='group'?a.description:a.role)}</p></div><button class="icon-button" data-action="agent-settings" aria-label="Sapi settings">···</button>`;
-  $('#message-input').placeholder = `Message ${a.name}…`;
+  $('#agent-heading').innerHTML = `${avatar(a,isMainSapi(a)?'large main-sapi-avatar':'large',true)}<div><div class="agent-title"><h2>${esc(a.name)}</h2>${a.kind==='group'?'':groupLabels(a)}</div><p class="agent-role">${esc(a.kind==='group'?a.description:a.role)}</p></div><button class="icon-button" data-action="agent-settings" aria-label="Sapi settings">···</button>`;
+  $('#message-input').placeholder = paneLimit()<3 ? 'Message…' : `Message ${a.name}…`;
+  $('#message-input').setAttribute('aria-label',`Message ${a.name}`);
+  resizeComposer();
   renderActivityNavigation();
   $('#attach-button').hidden = Boolean(a.archived);
-  $('.send-button').disabled = a.retired || a.archived || !online || submitting.has(a.id) || uploading > 0;
+  $('.send-button').disabled = a.retired || a.archived || live.corpora?.status==='paused' || live.corpora?.status==='archived' || !online || submitting.has(a.id) || uploading > 0;
 };
+
+// Keep existing messages mounted: clearing the scroll container interrupts iOS
+// momentum scrolling, even when scrollTop is restored in the same JavaScript turn.
+function commitChat(viewport, content, changedView, bottom, scroll, anchor) {
+  const latestChanged = changedView || !viewport.lastElementChild?.isEqualNode(content.lastElementChild);
+  const key = (node, index) => node.dataset.chatKey || node.className + ':' + index;
+  const existing = new Map([...viewport.children].map((node, index) => [key(node, index), node]));
+  const keep = new Set();
+  let changed = changedView;
+  let cursor = viewport.firstElementChild;
+  [...content.children].forEach((fresh, index) => {
+    const old = changedView ? null : existing.get(key(fresh, index));
+    const node = old?.isEqualNode(fresh) ? old : fresh;
+    if (old && node !== old) {
+      changed = true;
+      if (cursor === old) cursor = fresh;
+      old.replaceWith(fresh);
+    }
+    if (node !== cursor) {viewport.insertBefore(node, cursor);changed = true;}
+    cursor = node.nextElementSibling;
+    keep.add(node);
+  });
+  [...viewport.children].forEach(node => { if (!keep.has(node)) {node.remove();changed = true;} });
+  let target = scroll;
+  if (bottom && changed && latestChanged) target = viewport.scrollHeight - viewport.clientHeight;
+  else if (anchor?.node.isConnected) {
+    target = viewport.scrollTop + anchor.node.getBoundingClientRect().top - anchor.top;
+  }
+  // Writing scrollTop during every poll also cancels momentum in WebKit.
+  if (Math.abs(viewport.scrollTop - target) > 1) viewport.scrollTop = target;
+}
 
 let renderedConversation = '';
 renderConversation = function() {
-  const host = $('#conversation-body');
+  // Background layout is not a reading position. Reconcile the transcript when
+  // visible again, after the phone has restored its viewport.
+  if (document.hidden) return;
+  const viewport = $('#conversation-body');
   if(['tasks','notes'].includes(state.panel)){workView=state.panel==='notes'?'memo':'tasks';state.panel='work';}
-  host.classList.toggle('notes-view', state.panel === 'notes');
+  viewport.classList.toggle('notes-view', state.panel === 'notes');
   const turns = live.turns.filter(j => j.agent === state.selected);
   const key = state.selected + ':' + state.panel + ':'+(state.panel==='work'?workView:state.panel==='chat'?chatView:updatesView);
   const changedView = renderedConversation !== key;
+  if (changedView) lastChatGeometry = null;
   renderedConversation = key;
-  const scroll = changedView ? 0 : host.scrollTop;
-  const bottom = state.panel === 'chat' && (changedView || host.scrollHeight - host.scrollTop - host.clientHeight < 80);
+  const scroll = changedView ? 0 : viewport.scrollTop;
+  const bottom = state.panel === 'chat' && (changedView || viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80);
+  const firstVisible = !changedView && [...viewport.children].find(node => node.getBoundingClientRect().bottom > viewport.getBoundingClientRect().top);
+  const anchor = firstVisible ? {node:firstVisible,top:firstVisible.getBoundingClientRect().top} : null;
+  const chat = state.panel === 'chat' && chatView === 'conversation';
+  const host = chat ? document.createElement('div') : viewport;
+  const finish = () => { if (chat) {commitChat(viewport, host, changedView, bottom, scroll, anchor);restoreChatPosition();} };
   if(renderChatCollection(host)){renderAgentHeader();renderGlobal();return;}
-  if(selected().kind==='group') {renderGroupPanel(host);renderAgentHeader();renderGlobal();host.scrollTop=bottom?host.scrollHeight:scroll;return;}
+  if(selected().kind==='group') {renderGroupPanel(host);renderAgentHeader();renderGlobal();if(chat)finish();else if(changedView)viewport.scrollTop=0;return;}
   if(state.panel==='work' || state.panel==='updates') {renderWork(host);renderAgentHeader();renderGlobal();if(changedView)host.scrollTop=0;return;}
   if (state.panel === 'chat') {
-    originalConversation();
+    originalConversation(host);
     host.querySelectorAll('.message').forEach((node,i) => {
       const message=getMessages(state.selected)[i];
       if (message?.author) node.querySelector('.message-meta strong').textContent = agent(message.author).name;
@@ -196,7 +288,7 @@ renderConversation = function() {
     if (!getMessages(state.selected).length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
     const activeTurns = turns.filter(j => blocksChat(j) && (!j.batch_id || j.batch_id===j.id));
     for (const turn of activeTurns) {
-      host.insertAdjacentHTML('beforeend', `<section class="live-status"><div data-turn-progress="${esc(turn.id)}">${turnProgress(turn)}</div>${turnActions(turn)}</section>`);
+      host.insertAdjacentHTML('beforeend', `<section data-chat-key="progress:${esc(turn.id)}" class="live-status"><div data-turn-progress="${esc(turn.id)}">${turnProgress(turn)}</div>${turnActions(turn)}</section>`);
     }
   } else if (state.panel === 'tasks') {
     $('#composer-area').hidden = true;
@@ -206,7 +298,7 @@ renderConversation = function() {
     renderNotes(host);
   }
   renderAgentHeader(); renderGlobal();
-  host.scrollTop = bottom ? host.scrollHeight : scroll;
+  finish();
 };
 
 sendChat = async function(value) {
@@ -265,7 +357,7 @@ computerDialog = function() {
   modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : `Build required: run ${windows ? '.\\start.ps1' : './start.sh'}`}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Sapis share one computer. ${windows ? 'Windows UI Automation works with accessible apps on your desktop. Elevated apps and secure system dialogs cannot be controlled.' : 'macOS Accessibility access is required for desktop interaction; permission failures appear in chat.'}</p>`, 'BLINDLY4');
 };
 autonomyDialog = function() {
-  modal('Local workspace', '<p>Connected to your local Codex CLI. Talk to your Sapis in chat, manage their notes, and save documents in their workspaces.</p><p>Sapis can delegate explicit requests through Chief. Tasks shows specifications and results. Jobs and recurring work are inactive.</p><button type="button" class="button" id="edit-decision-prompts">Edit decision prompts</button>', 'SAPIENS4');
+  modal('Workspace & settings', '<p>Talk to your Sapis in chat, manage their notes, and save documents in their workspaces. Sapis can delegate requests through ChiefSapi.</p><p>Use the corpora menu to switch workspaces. Active and Paused describe execution on the host; Connecting means this device is restoring its connection.</p><button type="button" class="button" id="edit-decision-prompts">Edit decision prompts</button>', 'SAPIENS4');
   $('#edit-decision-prompts').addEventListener('click', editDecisionPrompts);
 };
 
@@ -291,8 +383,8 @@ document.addEventListener('submit', async e => {
 document.addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.id === 'profile-button' || b.id === 'app-menu') {
-    e.preventDefault(); e.stopImmediatePropagation(); autonomyDialog(); return;
+  if (b.id === 'app-menu') {
+    e.preventDefault(); e.stopImmediatePropagation(); appMenu(); return;
   }
   if (!b.dataset.liveTurn) return;
   e.preventDefault(); e.stopImmediatePropagation(); b.disabled = true;
@@ -386,10 +478,13 @@ $('#message-input').addEventListener('input', () => {state.drafts[state.selected
 
 async function refresh() {
   if (refreshing) return refreshing;
+  const connectionGeneration=window.SapiensConnections?.generation;
   refreshing = (async () => {
     try {
       const snapshot = await api('/api/state');
-      const changed = ['agents','groups','turns','computer','orchestration','activity','run_activity','workloads','pulses','routines','events'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k]));
+      if(connectionGeneration!==window.SapiensConnections?.generation)return;
+      window.SapiensConnections?.snapshot(snapshot);
+      const changed = ['corpora','agents','groups','turns','computer','orchestration','activity','run_activity','workloads','pulses','routines','events'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k]));
       const reconnected = !online;
       online = true;
       const tabsChanged = (snapshot.preferences.workspace_revision || 0) > workspaceRevision;
@@ -401,7 +496,8 @@ async function refresh() {
         if ($('#modal').open && $('#modal-title')?.textContent === 'Shared computer') computerDialog();
       }
     } catch (error) {
-      online = false; renderGlobal(); renderAgentHeader();
+      if(connectionGeneration!==window.SapiensConnections?.generation)return;
+      online = false; window.SapiensConnections?.offline(error); renderGlobal(); renderAgentHeader();
     } finally { refreshing = null; }
   })();
   return refreshing;
@@ -409,9 +505,75 @@ async function refresh() {
 applySnapshot(bootstrap);
 savedPreferences = JSON.stringify(preferences());
 render();
+if (!bootstrap.preferences.chatPosition && Number.isFinite(bootstrap.preferences.scroll)) {
+  $('#conversation-body').scrollTop = bootstrap.preferences.scroll;
+  save();
+}
 async function poll() {
   await refresh();
   updateProgress();
-  setTimeout(poll, online ? 750 : 2000);
+  setTimeout(poll, window.SapiensConnections?.remote ? 2000 : online ? 750 : 2000);
 }
 setTimeout(poll, 750);
+
+window.sapiensWorkspace = {save:()=>{
+  state.drafts[state.selected]=$('#message-input').value;
+  window.SapiensConnections?.save(workspacePreferences());
+}};
+// iOS can collapse/reflow a backgrounded web app before pagehide. Capture the
+// reading position while visible, rather than measuring that hidden layout.
+let scrollSaveTimer;
+$('#conversation-body').addEventListener('scroll',()=>{
+  if (document.hidden) return;
+  chatPosition();
+  clearTimeout(scrollSaveTimer);
+  scrollSaveTimer=setTimeout(()=>window.SapiensConnections?.save(workspacePreferences()),100);
+},{passive:true});
+// Explicit reading/navigation takes precedence over a bookmark awaiting history.
+for (const event of ['pointerdown','touchstart','wheel','keydown']) $('#conversation-body').addEventListener(event,()=>{pendingChatPosition=null;lastChatGeometry=null;},{passive:true});
+function suspendChat() {
+  cancelAnimationFrame(resumeChatFrame);
+  resumingChat = false;
+  pendingChatPosition = chatPosition();
+  window.sapiensWorkspace.save();
+}
+function resumeChat() {
+  if (document.hidden) return;
+  cancelAnimationFrame(resumeChatFrame);
+  resumingChat = true;
+  syncMobileViewport();
+  renderConversation();
+  // WebKit restores the scrolling layer after visibilitychange. Keep the
+  // bookmark through the first paint so that its scroll events cannot replace
+  // the user's position with the temporary foreground layout.
+  resumeChatFrame = requestAnimationFrame(() => {
+    restoreChatPosition();
+    resumeChatFrame = requestAnimationFrame(() => {
+      resumingChat = false;
+      restoreChatPosition();
+    });
+  });
+  refresh();
+}
+window.addEventListener('pagehide',suspendChat);
+window.addEventListener('pageshow',resumeChat);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)suspendChat();else resumeChat();});
+window.SapiensConnections?.subscribe(snapshot=>{
+  clearTimeout(saveTimer);
+  if (snapshot.corpora?.id === live.corpora?.id) {
+    // A cached workspace becoming live is a refresh, not navigation. Keep the
+    // chat, draft and reading position the user chose while reconnecting.
+    online=SapiensConnections.connected;
+    applySnapshot(snapshot);renderSidebar();renderConversation();renderTabs();renderWorkspace();renderGlobal();
+    return;
+  }
+  pendingChatPosition=snapshot.preferences.chatPosition || null;lastChatPosition=pendingChatPosition;
+  state=makeInitialState(snapshot);live=snapshot;online=SapiensConnections.connected;
+  workspaceRevision=snapshot.preferences.workspace_revision||0;
+  workspaceOwner=state.selected;renderedConversation='';search='';$('#agent-search').value='';
+  Object.keys(attachmentDrafts).forEach(key=>delete attachmentDrafts[key]);Object.assign(attachmentDrafts,snapshot.attachment_drafts||{});
+  $('#message-input').value=state.drafts[state.selected]||'';
+  applySnapshot(snapshot);savedPreferences=JSON.stringify(preferences());render();
+  if(!snapshot.preferences.chatPosition && Number.isFinite(snapshot.preferences.scroll))$('#conversation-body').scrollTop=snapshot.preferences.scroll;
+  save();
+});

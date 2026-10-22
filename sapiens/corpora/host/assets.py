@@ -7,17 +7,32 @@ SCRIPTS = ("shell/bootstrap.js", "shell/app.js", "features/names.js", "features/
            "features/workspaces.js", "features/groups.js", "shell/bridge.js")
 
 
+# Never expose Python sources, runtime data, or Git metadata.
+PUBLIC_ASSETS = {
+    **{'/' + name + '.js': ('text/javascript', 'features/' + name + '.js') for name in
+       ('corpora', 'relay-servers', 'remote-session', 'remote-transport', 'remote-code', 'remote-vendor', 'remote-onboarding', 'remote-install')},
+    '/corpora.css': ('text/css', 'theme/corpora.css'),
+    '/remote-install.css': ('text/css', 'theme/remote-install.css'),
+    '/manifest.webmanifest': ('application/manifest+json', 'shell/remote.webmanifest'),
+    **{f'/app-icon-{size}.png': ('image/png', f'shell/app-icon-{size}.png') for size in (180, 192, 512)},
+    '/sw.js': ('text/javascript', 'shell/sw.js'),
+    "/live.css": ("text/css", "theme/live.css"),
+    "/workspace/styles.css": ("text/css", "theme/styles.css"),
+    "/assets/sapi-theme.css": ("text/css", "theme/sapi-theme.css"),
+    "/assets/sapi-theme.js": ("text/javascript", "theme/sapi-theme.js"),
+}
+
 def javascript():
     source = "\n".join((WEB / name).read_text(encoding='utf-8') for name in SCRIPTS)
     return "(async () => {\n" + source + "\n})().catch(error => {\n" + """
-        document.body.replaceChildren();
+        // Preserve menus and saved workspace context on bootstrap failure.
         const panel = document.createElement('main');
         panel.style.cssText = 'padding:40px;font:16px monospace';
         const title = document.createElement('h1'); title.textContent = 'Sapiens4 could not connect';
         const detail = document.createElement('p'); detail.textContent = error.message;
         const retry = document.createElement('button'); retry.textContent = 'Retry connection';
         retry.onclick = () => location.reload();
-        panel.append(title, detail, retry); document.body.append(panel);
+        panel.append(title, detail, retry); document.getElementById("corpora-startup-feedback")?.replaceChildren(panel);
     });
     """
 
@@ -31,14 +46,7 @@ def asset(path):
         return "text/html; charset=utf-8", index().encode()
     if path == "/workspace/app.js":
         return "text/javascript; charset=utf-8", javascript().encode()
-    # Never expose Python sources, runtime data, or Git metadata.
-    files = {
-        "/live.css": ("text/css", "theme/live.css"),
-        "/workspace/styles.css": ("text/css", "theme/styles.css"),
-        "/assets/sapi-theme.css": ("text/css", "theme/sapi-theme.css"),
-        "/assets/sapi-theme.js": ("text/javascript", "theme/sapi-theme.js"),
-    }
-    if path in files:
-        mime, name = files[path]
+    if path in PUBLIC_ASSETS:
+        mime, name = PUBLIC_ASSETS[path]
         return mime + "; charset=utf-8", (WEB / name).read_bytes()
     return None

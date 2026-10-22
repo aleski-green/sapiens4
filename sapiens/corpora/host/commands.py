@@ -1,4 +1,3 @@
-"""Validated team and workspace operations for conversational Sapis."""
 import json
 import sys
 
@@ -65,7 +64,7 @@ class Orchestration:
         with self.service._lock:
             agent = self.service._agent(agid)
             op = data.get("op")
-            fields = {"batch": {"operations"}, "status": {'target'},
+            fields = {"corpora_get": set(), "corpora_update": {"name", "device", "scope", "revision", "archived"}, "batch": {"operations"}, "status": {'target'},
                       "delegate": {'decision'},
                       "routines": set(), "routine_create": {"minutes", "prompt"},
                       "routine_update": {"id", "minutes", "prompt"},
@@ -88,6 +87,11 @@ class Orchestration:
                 raise APIError(400, "Unknown operation or field")
             if op not in {'status', 'workspace'} and not op.startswith('workspace_'):
                 self.service.lifecycle.require_active(agent)
+            if op in {'corpora_get', 'corpora_update'}:
+                if agid != self.service.registry.main:
+                    raise APIError(403, 'Only ChiefSapi can change corpora settings')
+                return (self.service.corpora_identity() if op == 'corpora_get' else
+                        self.service.corpora_settings.update({k: v for k, v in data.items() if k != 'op'}))
             if op == 'batch':
                 operations = data.get('operations')
                 if not isinstance(operations, list) or not 1 <= len(operations) <= 20:

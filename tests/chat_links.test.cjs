@@ -36,7 +36,7 @@ sandbox.state.agents.push({id:'retired',name:'Old',retired:true});assert.equal(r
 sandbox.state.agents.push({id:'other',name:'Nova'});assert.equal(render('@Nova'),'@Nova');sandbox.state.agents.pop();
 const app=fs.readFileSync('web/shell/app.js','utf8'), host={innerHTML:''};
 Object.assign(sandbox,{$:()=>host,selected:()=>({id:'sapi'}),getMessages:()=>[{role:'assistant',time:'now',text:`[PDF](<${report}>)\n\n${citation}`}],avatar:()=>'',renderAttachment:()=>{}});
-vm.runInContext(app.slice(app.indexOf('function renderConversation()'),app.indexOf('const actions =')),sandbox);sandbox.renderConversation();
+vm.runInContext(app.slice(app.indexOf('function renderConversation('),app.indexOf('const actions =')),sandbox);sandbox.renderConversation();
 assert.equal((host.innerHTML.match(/data-file-link=/g)||[]).length,1);assert.doesNotMatch(host.innerHTML,/:codex-file-citation/);
 console.log('Chat links and local filepath references passed');
 const bridge=fs.readFileSync('web/shell/bridge.js','utf8');

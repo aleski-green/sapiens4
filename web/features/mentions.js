@@ -86,7 +86,7 @@ document.addEventListener('click',async e => {
   const choice=e.target.closest('[data-mention-choice]');
   if (choice) { e.preventDefault();e.stopImmediatePropagation();chooseMention(Number(choice.dataset.mentionChoice));return; }
   const pageLink=e.target.closest('a.chat-link');
-  if(pageLink && window.webkit?.messageHandlers?.browser){
+  if(pageLink && window.webkit?.messageHandlers?.browser && window.SapiensConnections?.active?.location!=='Remote'){
     e.preventDefault();e.stopImmediatePropagation();browserAction('open',{url:pageLink.href});return;
   }
   const fileLink=e.target.closest('[data-file-link]');

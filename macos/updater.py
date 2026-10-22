@@ -146,6 +146,8 @@ def healthy():
 
 
 def busy(state):
+    if 'host_busy' in state:
+        return bool(state['host_busy'])
     return bool(state.get('computer', {}).get('owner')) or any(
         j.get('status') in {'queued', 'running'} for j in state.get('turns', state.get('jobs', []))) or any(
         r.get('status') in {'queued', 'running'} for g in state.get('groups', []) for r in g.get('requests', []))
@@ -439,6 +441,8 @@ def serve(manager, root, activation):
         # that raced with the idle check. Never interrupt its API calls.
         service._stopping.set()
         service._queue.put(None)
+        if getattr(server, 'registry', None):
+            server.registry.prepare_stop()
         def drain():
             if service.worker:
                 service.worker.join()

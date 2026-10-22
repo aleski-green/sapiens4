@@ -1,4 +1,3 @@
-"""Chat batches, per-kind slots, and FIFO output publication through Pulse."""
 from copy import deepcopy
 import json
 import logging
