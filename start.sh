@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")"
-git submodule update --init --recursive -- blindly4
+git submodule update --init --recursive
 if [ "$(uname -s)" = Darwin ]; then
   ./blindly4/macos/build.sh
 else

@@ -1,6 +1,11 @@
 #!/bin/sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+# Installed older updaters fetch only Blindly4 before invoking this script.
+if [ ! -f "$ROOT/libs4/web/remote-vendor.js" ]; then
+  git -C "$ROOT" submodule update --init --recursive -- libs4
+  test -f "$ROOT/libs4/web/remote-vendor.js"
+fi
 PYTHON=${SAPIENS_PYTHON:-$(command -v python3)}
 BUILD="$ROOT/.build/macos"
 APP="$BUILD/Sapiens4.app"
@@ -30,10 +35,11 @@ info['SapiensDesktopRevision'] = subprocess.check_output(['git', 'rev-parse', 'H
 (contents / 'Resources' / 'Launcher.plist').write_bytes(plistlib.dumps(dict(Repository=root, Python=python, Path=path, **({'ManagedHome': os.environ['SAPIENS_DESKTOP_HOME']} if os.environ.get('SAPIENS_DESKTOP_HOME') else {}))))
 PY
 cp "$ROOT/macos/updater.py" "$APP/Contents/Resources/updater.py"
-mkdir -p "$APP/Contents/Resources/Licenses/Blindly4"
+mkdir -p "$APP/Contents/Resources/Licenses/Blindly4" "$APP/Contents/Resources/Licenses/Libs4"
 cp "$ROOT/license/LICENSE.md" "$ROOT/license/LICENSING.md" "$APP/Contents/Resources/Licenses/"
 cp "$ROOT/README.md" "$APP/Contents/Resources/README.md"
 cp "$ROOT/blindly4/license/LICENSE.md" "$APP/Contents/Resources/Licenses/Blindly4/"
 cp "$ROOT/blindly4/README.md" "$APP/Contents/Resources/Licenses/Blindly4/README.md"
+cp "$ROOT/libs4/license/"* "$APP/Contents/Resources/Licenses/Libs4/"
 codesign --force --sign - "$APP"
 printf 'Built: %s\n' "$APP"
