@@ -19,11 +19,46 @@ struct BrowserTests {
         }
         wait { done }; return result
     }
+    // Interactive native fixture for RSpec's external Blindly4 contract. It loads the
+    // real workspace UI against an isolated host; stdin controls only window geometry.
+    static func accessibilityApp(_ origin: URL) {
+        let app = NSApplication.shared; app.setActivationPolicy(.accessory)
+        let browser = Browser(origin: origin)
+        let config = WKWebViewConfiguration()
+        config.userContentController.add(browser, name: "browser")
+        let shell = WKWebView(frame: NSRect(x: 0, y: 0, width: 1180, height: 820), configuration: config)
+        browser.shell = shell
+        let container = NSView(frame: shell.frame)
+        container.addSubview(shell)
+        let window = NSWindow(contentRect: shell.frame, styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.title = "Sapiens4 accessibility fixture"; window.contentView = container
+        window.center(); window.makeKeyAndOrderFront(nil); app.activate(ignoringOtherApps: true)
+        shell.load(URLRequest(url: origin.appendingPathComponent("workspace/")))
+        DispatchQueue.global().async {
+            while let line = readLine() {
+                guard let data = line.data(using: .utf8), let size = try? JSONSerialization.jsonObject(with: data) as? [String: Double],
+                      let width = size["width"], let height = size["height"] else { continue }
+                DispatchQueue.main.async {
+                    window.setContentSize(NSSize(width: width, height: height))
+                    // A top inset simulates the desktop update banner above the shell.
+                    shell.frame = NSRect(x: 0, y: 0, width: width, height: height - (size["top"] ?? 0))
+                }
+            }
+            DispatchQueue.main.async { app.terminate(nil) }
+        }
+        DispatchQueue.main.async { print("READY"); fflush(stdout) }
+        withExtendedLifetime(browser) { app.run() }
+    }
     static func main() throws {
+        if CommandLine.arguments.count == 3 && CommandLine.arguments[1] == "--accessibility" {
+            accessibilityApp(URL(string: CommandLine.arguments[2])!); return
+        }
         let app = NSApplication.shared; app.setActivationPolicy(.accessory)
         let shell = WKWebView(frame: NSRect(x:0,y:0,width:1000,height:800))
         let window = NSWindow(contentRect:shell.frame,styleMask:[.titled],backing:.buffered,defer:false)
-        window.contentView = shell
+        let container = NSView(frame: shell.frame)
+        container.addSubview(shell)
+        window.contentView = container
         shell.loadHTMLString("<script>window.events=[];window.sapiensBrowserEvent=e=>events.push(e)</script>",baseURL:nil)
         wait { !shell.isLoading && shell.url != nil }
         let browser = Browser(); browser.shell = shell

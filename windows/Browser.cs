@@ -19,8 +19,16 @@ internal static class Navigation
     }
 }
 
-internal sealed class Browser(Form form, WebView2 shell, Host host) : IDisposable
+internal sealed class Browser : IDisposable
 {
+    readonly Form form;
+    readonly WebView2 shell;
+    readonly Host host;
+    internal Browser(Form form, WebView2 shell, Host host)
+    {
+        this.form = form; this.shell = shell; this.host = host;
+        shell.LocationChanged += PositionGuest;
+    }
     sealed class Tab(string owner, string id, WebView2 view)
     {
         internal string Owner = owner, Id = id, Seq = "", Error = "";
@@ -166,22 +174,34 @@ internal sealed class Browser(Form form, WebView2 shell, Host host) : IDisposabl
                     }
                 }
             }
-            foreach (string key in tabs.Keys.Except(live).ToArray()) { tabs[key].View.Dispose(); tabs.Remove(key); }
+            foreach (string key in tabs.Keys.Except(live).ToArray())
+            {
+                if (tabs[key].View.ContainsFocus) shell.Focus();
+                tabs[key].View.Dispose(); tabs.Remove(key);
+            }
             string? active = message.GetProperty("active").GetString();
             foreach (var entry in tabs)
-                entry.Value.View.Visible = message.GetProperty("visible").GetBoolean() && entry.Key == owner + "/" + active;
-            if (message.GetProperty("visible").GetBoolean() && tabs.TryGetValue(owner + "/" + active, out var current))
             {
-                var rect = message.GetProperty("rect");
-                double scale = form.DeviceDpi / 96.0 * shell.ZoomFactor;
-                int Coordinate(string name) => (int)Math.Clamp(rect.GetProperty(name).GetDouble() * scale, 0, 20000);
-                current.View.Bounds = new Rectangle(Coordinate("x"), Coordinate("y"), Coordinate("width"), Coordinate("height"));
-                current.View.Visible = true; current.View.BringToFront();
+                bool visible = message.GetProperty("visible").GetBoolean() && entry.Key == owner + "/" + active;
+                if (!visible && entry.Value.View.ContainsFocus) shell.Focus();
+                entry.Value.View.Visible = visible;
             }
+            PositionGuest(null, EventArgs.Empty);
         }
         finally { synchronization.Release(); }
     }
+    void PositionGuest(object? sender, EventArgs e)
+    {
+        if (disposed || latest.ValueKind != JsonValueKind.Object || !latest.GetProperty("visible").GetBoolean() ||
+            !tabs.TryGetValue(owner + "/" + latest.GetProperty("active").GetString(), out var current)) return;
+        var rect = latest.GetProperty("rect");
+        double scale = form.DeviceDpi / 96.0 * shell.ZoomFactor;
+        int Coordinate(string name) => (int)Math.Clamp(rect.GetProperty(name).GetDouble() * scale, 0, 20000);
+        Point origin = form.PointToClient(shell.PointToScreen(Point.Empty));
+        current.View.Bounds = new Rectangle(origin.X + Coordinate("x"), origin.Y + Coordinate("y"), Coordinate("width"), Coordinate("height"));
+        current.View.Visible = true; current.View.BringToFront();
+    }
     internal bool HasGuestTitle(string title) => tabs.Values.Any(t => !t.View.IsDisposed && t.View.CoreWebView2.DocumentTitle == title);
     internal IEnumerable<WebView2> Views => tabs.Values.Select(tab => tab.View);
-    public void Dispose() { disposed = true; foreach (var tab in tabs.Values) tab.View.Dispose(); tabs.Clear(); }
+    public void Dispose() { disposed = true; shell.LocationChanged -= PositionGuest; foreach (var tab in tabs.Values) tab.View.Dispose(); tabs.Clear(); }
 }

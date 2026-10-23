@@ -93,7 +93,7 @@ final class Browser: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         sync(data)
     }
     func sync(_ data: [String: Any]) {
-        guard let shell, let workspaces = data["workspaces"] as? [String: [String: Any]] else { return }
+        guard let shell, let container = shell.superview, let workspaces = data["workspaces"] as? [String: [String: Any]] else { return }
         dark = data["dark"] as? Bool == true
         owner = data["owner"] as? String ?? ""
         let activeKey = owner + ":" + (data["active"] as? String ?? "")
@@ -111,7 +111,10 @@ final class Browser: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
                 if fresh {
                     tabs[key] = tab
                     tab.view.navigationDelegate = self; tab.view.uiDelegate = self
-                    tab.view.isHidden = true; shell.addSubview(tab.view)
+                    // WKWebView exposes its web document as its accessibility subtree, hiding
+                    // native guest subviews. Keep guests beside the shell in its container.
+                    tab.view.isHidden = true
+                    container.addSubview(tab.view, positioned: .above, relativeTo: shell)
                     tab.observations = [
                         tab.view.observe(\.title, options: [.new]) { [weak self, weak tab] _, _ in if let tab { self?.report(tab) } },
                         tab.view.observe(\.url, options: [.new]) { [weak self, weak tab] _, _ in if let tab { self?.report(tab) } }
@@ -137,19 +140,31 @@ final class Browser: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
                         }
                     }
                 }
-                tab.view.isHidden = key != activeKey || !visible
+                let hidden = key != activeKey || !visible
+                if hidden { returnFocusToShell(from: tab.view) }
+                tab.view.isHidden = hidden
             }
         }
         for key in Array(tabs.keys) where !alive.contains(key) {
-            tabs[key]?.view.stopLoading(); tabs[key]?.view.removeFromSuperview(); tabs.removeValue(forKey: key)
+            if let view = tabs[key]?.view {
+                returnFocusToShell(from: view)
+                view.stopLoading(); view.removeFromSuperview()
+            }
+            tabs.removeValue(forKey: key)
         }
         active = tabs[activeKey]
         if let rect = data["rect"] as? [String: Double], data["visible"] as? Bool == true,
            let x = rect["x"], let y = rect["y"], let width = rect["width"], let height = rect["height"],
            width > 0, height > 0 {
-            active?.view.frame = NSRect(x: x, y: shell.isFlipped ? y : shell.bounds.height - y - height, width: width, height: height)
+            let rect = NSRect(x: x, y: shell.isFlipped ? y : shell.bounds.height - y - height, width: width, height: height)
+            active?.view.frame = container.convert(rect, from: shell)
             active?.view.isHidden = false
         }
+    }
+    private func returnFocusToShell(from view: WKWebView) {
+        guard let shell, let window = view.window, let responder = window.firstResponder as? NSView,
+              responder === view || responder.isDescendant(of: view) else { return }
+        window.makeFirstResponder(shell)
     }
     func load(_ url: URL, in tab: BrowserTab) {
         tab.document = nil; tab.requested = url; tab.awaitingCommit = true

@@ -49,7 +49,7 @@ bundle exec rspec --tag '~windows'
 
 For the packaged desktop contract, first run `windows/build.ps1`, set
 `SAPIENS_TEST_WINDOWS_PACKAGE` to the resulting package directory, and run the
-full suite. The Windows CI matrix performs this for x64 and ARM64. The launcher
+full suite. Validate x64 and ARM64 packages on their matching systems. The launcher
 inherits standard streams and starts Ruby as a child so the real Windows Job
 Object still owns and cancels the provider process tree.
 
@@ -116,3 +116,22 @@ exist. The current transport rejects interrupted requests instead of automatical
 replaying writes; the regression contract checks that no write is replayed.
 Browser probes simulate mobile installation state and Android's install event;
 physical Android installation and keyboard behavior still require a device run.
+
+### Native workspace accessibility
+
+On a macOS desktop with Accessibility permission for the invoking terminal, run
+`SAPIENS_TEST_BLINDLY4=/absolute/path/to/blindly4 bundle exec rspec spec/workspace_accessibility_spec.rb`.
+This opt-in contract uses the real WebKit workspace against an isolated host and
+local player fixtures. It checks AX discovery and pressing, selected-tab isolation,
+focus after closing/hiding a guest, window resizing and the shell's update-banner
+inset. It never opens the user's installation or an external video service.
+Without the environment variable these desktop-input cases are pending; the
+regular WebKit navigation/isolation probe still runs in `platform_spec.rb`.
+
+On Windows with .NET 10, WebView2 and an unlocked desktop, set
+`$env:SAPIENS_TEST_BLINDLY4` to the built, unchanged Windows Blindly4 executable
+and run the same spec. Its three scenarios are shared with macOS; the Windows
+fixture runs the production Sapiens4 window and host against temporary data.
+It also verifies the native window title. UIA document roles differ from macOS,
+and the expandable workspace menu uses a click at its accessible bounds because
+Chromium does not expose an InvokePattern for that button.
