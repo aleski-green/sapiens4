@@ -29,7 +29,8 @@ internal sealed class MainWindow : Form
     readonly string? smokeReport;
     internal MainWindow(string[] args)
     {
-        Text = ""; AccessibleName = "Sapiens4"; Width = 1440; Height = 960; MinimumSize = new Size(860, 600); StartPosition = FormStartPosition.CenterScreen;
+        // Blindly's Win32 discovery requires a non-empty native window title.
+        Text = "Sapiens4"; AccessibleName = "Sapiens4"; Width = 1440; Height = 960; MinimumSize = new Size(860, 600); StartPosition = FormStartPosition.CenterScreen;
         Icon = windowTheme.LightIcon;
         string? Option(string name) { int index = Array.IndexOf(args, name); return index >= 0 && index + 1 < args.Length ? args[index + 1] : null; }
         host = new Host(Option("--data-dir"), Option("--runtime-dir"));

@@ -8,7 +8,7 @@ Chat uses your authenticated Codex CLI 0.156.1 or newer. The desktop app's insta
 
 User data is stored at `%LOCALAPPDATA%\Sapiens4`, separately from the application files. The native window supports Chat, Notes, attachments, tasks and per-Sapi browser tabs, bookmarks and zoom. Browser websites have separate profiles and no access to the desktop app bridge. Closing the app stops its local server and cancels active model processes; saved conversations remain recoverable.
 
-The Windows executable, taskbar and window use the workspace logo. The native title bar shows only the icon; the Sapiens4 name appears once in the app header. The browser favicon and running window icon use a dark background in dark mode and a light background in light mode. The native title bar follows the same theme, including when the workspace is hidden. Windows 11 also matches the header's background and text colors. Browser blank pages and plain-text documents follow the app theme; websites receive the same light/dark preference and retain their own styles.
+The Windows executable, taskbar and window use the workspace logo. The native title bar displays `Sapiens4` so Win32 tools, including Blindly, can discover the window and request a normal foreground return. A blank native caption is excluded by Blindly's current window discovery even when the accessibility name is present. This title does not bypass Windows foreground restrictions or any input guard. The browser favicon and running window icon use a dark background in dark mode and a light background in light mode. The native title bar follows the same theme, including when the workspace is hidden. Windows 11 also matches the header's background and text colors. Browser blank pages and plain-text documents follow the app theme; websites receive the same light/dark preference and retain their own styles.
 
 The first build is unsigned. No automatic updater or installer is included: replace the extracted application directory to update it, keeping the data directory intact.
 
@@ -55,8 +55,36 @@ The executable also accepts `--smoke-report PATH --data-dir TEMP_DIRECTORY` to l
 
 The full CI run builds the portable desktop package, sets `SAPIENS_TEST_WINDOWS_PACKAGE`, and includes its native RSpec contract. See [Testing](../documentation/testing.md). macOS and POSIX-only cases are explicitly skipped on Windows; no security settings are changed to run tests.
 
+### Window-title fix validation (2026-10-14)
+
+The Windows x64 package with the native-title fix compiled successfully. Its new
+self-test reads the actual Win32 caption without showing the window or starting
+the host. Execution of this rebuilt package remains unverified on the reporting
+laptop: Windows Application event 1026 reported that Application Control blocked
+`Sapiens4.dll` with error `0x800711C7` before startup. No security policy was changed.
+The new self-test and the native Sapiens-to-Chrome-to-Sapiens foreground sequence
+still need execution on a machine that permits the build.
+
+Before the title change, the UTF-8-fixed build passed 20 focused Python tests,
+18 desktop self-tests, and the live WebView2 smoke test (including native/group
+browser checks and 12 theme checks). These earlier results do not validate the
+new title test or establish reliable unattended foreground activation.
+
 ## Desktop access
 
 Blindly4 uses native Windows UI Automation and SendInput. Its command interface retains AX-style role names for compatibility. Desktop commands require an unlocked interactive session, exposed accessibility controls and matching privilege levels. Elevated apps and secure desktops are not supported. Draft guards fail closed when a control cannot expose its exact value. Serialize complete desktop workflows.
 
 Overrides: `SAPIENS_DATA_DIR`, `SAPIENS_BLINDLY_BINARY`, `SAPIENS_CODEX_BINARY`, `SAPIENS_CODEX_MODEL`, `SAPIENS_CODEX_REASONING_EFFORT`. The desktop uses a free loopback port and saves it in the data directory for the terminal client.
+
+The managed computer helper emits UTF-8 on stdout and stderr, including when
+started from a shell whose default Python pipe encoding is a legacy code page.
+Do not strip Unicode characters from application labels to work around encoding
+errors. `tests/test_computer_encoding.py` covers this boundary without desktop input.
+
+Windows can refuse a background process's foreground-activation request. This is
+different from a missing accessibility permission. For a user-requested web task,
+the supported `blindly open --url <task-url>` command can open the intended page;
+then freshly verify the application, URL and foreground PID before input. Opening
+a URL does not guarantee focus. If input is still blocked, stop and ask the user
+to bring the target forward and leave it active. Never disable the foreground or
+draft guards, and do not count a completed model reply as a completed UI task.
