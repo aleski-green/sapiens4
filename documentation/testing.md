@@ -116,3 +116,14 @@ exist. The current transport rejects interrupted requests instead of automatical
 replaying writes; the regression contract checks that no write is replayed.
 Browser probes simulate mobile installation state and Android's install event;
 physical Android installation and keyboard behavior still require a device run.
+
+### Native workspace accessibility
+
+On a macOS desktop with Accessibility permission for the invoking terminal, run
+`SAPIENS_TEST_BLINDLY4=/absolute/path/to/blindly4 bundle exec rspec spec/workspace_accessibility_spec.rb`.
+This opt-in contract uses the real WebKit workspace against an isolated host and
+local player fixtures. It checks AX discovery and pressing, selected-tab isolation,
+focus after closing/hiding a guest, window resizing and the shell's update-banner
+inset. It never opens the user's installation or an external video service.
+Without the environment variable these desktop-input cases are pending; the
+regular WebKit navigation/isolation probe still runs in `platform_spec.rb`.
