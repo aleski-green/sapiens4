@@ -1,6 +1,6 @@
 # Sapiens4 for Windows
 
-This modified fork adds Windows support to Sapiens4 while retaining the macOS app. The package includes Sapiens4 and Blindly4 licensing documents in `license/` and `runtime/blindly4/license/`; see those files for their respective terms.
+This modified fork adds Windows support to Sapiens4 while retaining the macOS app. The package includes Sapiens4, Blindly4 and libs4 licensing documents in `license/`, `runtime/blindly4/license/` and `runtime/libs4/license/`; see those files for their respective terms.
 
 Extract the whole portable package, then double-click **Sapiens4.exe**. Use `win-arm64` on ARM PCs or `win-x64` on Intel/AMD PCs. The package contains Python, .NET and Blindly4; it does not require WSL or administrator access. Requires Windows 10/11 and Microsoft Edge WebView2 Runtime (included with Windows 11; install the Evergreen Runtime from Microsoft on systems without it).
 

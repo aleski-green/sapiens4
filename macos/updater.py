@@ -206,16 +206,16 @@ class Manager:
 
     def prepare(self, sha):
         destination = self.home / 'releases' / (sha + '-' + uuid.uuid4().hex[:8])
-        self.status('preparing', 'Downloading main and Blindly4…')
+        self.status('preparing', 'Downloading main and dependencies…')
         command(['git', 'clone', '--no-checkout', '--single-branch', '--branch', 'main', UPSTREAM, str(destination)], timeout=600)
         command(['git', 'checkout', '--detach', sha], cwd=destination)
         self.status('preparing', 'Checking Codex CLI, login and model access…')
         command([sys.executable, '-m', 'sapiens.preflight'], cwd=destination, timeout=180)
-        command(['git', 'submodule', 'update', '--init', '--recursive', '--', 'blindly4'], cwd=destination, timeout=900)
+        command(['git', 'submodule', 'update', '--init', '--recursive'], cwd=destination, timeout=900)
         self.status('preparing', 'Building Blindly4…')
         env = swift_environment()
         build_blindly(destination, env)
-        command([sys.executable, '-c', 'from sapiens.assets import index,javascript; index(); javascript(); from sapiens.service import Service'], cwd=destination)
+        command([sys.executable, '-c', 'from sapiens.assets import asset,index,javascript; index(); javascript(); asset("/remote-vendor.js"); from sapiens.service import Service'], cwd=destination)
         release = dict(root=str(destination), sha=sha)
         if (destination / 'macos/build.sh').is_file() and self.config.get('app'):
             self.status('preparing', 'Building the updated desktop app…')

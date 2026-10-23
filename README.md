@@ -38,7 +38,11 @@ III. Decisiveness: to maintain its own integrity, hold qualified opinions and do
 Windows UI Automation support are described in [Windows setup](windows/README.md).
 Extract a package and run `Sapiens4.exe`, or run `.\start.ps1 -Open` from source.
 
-The runtime and UI live in this repo; Blindly4 is the only submodule.
+The runtime and UI live in this repo. Blindly4 provides native computer access;
+[libs4](https://github.com/aleski-green/libs4) provides the prebuilt third-party
+browser libraries. Both are pinned Git submodules. Existing checkouts can fetch
+them with `git submodule update --init --recursive`; Node.js is not needed to run
+the application or build the relay image.
 
 Source startup requires Python 3.9+, Git and authenticated Codex CLI 0.156.1+.
 Blindly4 source builds require stable Rust. On macOS, it requires macOS 13+,

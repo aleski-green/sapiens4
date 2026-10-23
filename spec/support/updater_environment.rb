@@ -13,6 +13,7 @@ class UpdaterEnvironment
     git('clone', '--quiet', '--shared', Contract::ROOT, @upstream)
     git('-C', @upstream, 'checkout', '-B', 'main')
     git('clone', '--quiet', '--shared', @upstream, @old_root)
+    %w[web license].each { |folder| FileUtils.cp_r(File.join(Contract::ROOT, 'libs4', folder), File.join(@old_root, 'libs4')) }
     old_sha = git('-C', @old_root, 'rev-parse', 'HEAD').strip
     File.write(File.join(@upstream, 'fixture-revision'), 'new release')
     git('-C', @upstream, 'add', 'fixture-revision')
@@ -34,7 +35,8 @@ class UpdaterEnvironment
     end
     FileUtils.cp(File.join(Contract::ROOT, 'blindly4', 'macos/build.sh'), File.join(root, 'blindly-build.sh'))
     @environment = host.environment.merge('PATH' => tools + File::PATH_SEPARATOR + ENV.fetch('PATH'),
-      'SAPIENS_BUILD_ENV' => root, 'SAPIENS_FIXTURE_UPSTREAM' => @upstream, 'SAPIENS_REAL_GIT' => `command -v git`.strip)
+      'SAPIENS_BUILD_ENV' => root, 'SAPIENS_FIXTURE_UPSTREAM' => @upstream, 'SAPIENS_REAL_GIT' => `command -v git`.strip,
+      'SAPIENS_FIXTURE_LIBS' => File.join(Contract::ROOT, 'libs4'))
     configure
   end
   def git(*args)

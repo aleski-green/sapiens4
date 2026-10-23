@@ -27,7 +27,7 @@ RSpec.describe 'Desktop updater process contracts', :macos do
     expect(Dir[File.join(installation.home, 'releases', '*')].size).to eq(1)
   end
 
-  [:model, :compiler, :sdk, :schema].each do |failure|
+  [:model, :compiler, :sdk, :schema, :vendor].each do |failure|
     it "preserves the running release and data when #{failure} preparation fails" do
       installation.start
       before = Contract.http(installation.url + '/api/health', 'GET')[1]
@@ -36,10 +36,12 @@ RSpec.describe 'Desktop updater process contracts', :macos do
       installation.configure(build_failure: true) if failure == :compiler
       installation.configure(sdk_failure: true) if failure == :sdk
       installation.configure(schema_failure: true) if failure == :schema
+      installation.configure(missing_vendor: true) if failure == :vendor
       _, _, code = installation.run('update')
       expect(code).to eq(1)
       expect(installation.status['message']).to include('Fixture Rust compiler source error') if failure == :compiler
       expect(installation.status['message']).to include('Fixture schema failed') if failure == :schema
+      expect(installation.status['message']).to include('remote-vendor.js') if failure == :vendor
       expect(installation.current).to eq(installation.old)
       expect(Contract.http(installation.url + '/api/health', 'GET')[1]).to eq(before)
       expect(File.read(File.join(installation.data, 'keep.txt'))).to eq('Saved user work')
@@ -66,6 +68,8 @@ RSpec.describe 'Desktop updater process contracts', :macos do
     expect(installation.status['phase']).to eq('current')
     Contract.wait { Contract.http(installation.url + '/api/health', 'GET')[1]['desktop_active'] }
     expect(Contract.http(installation.url + '/api/state', 'GET')[1]['corpora']).to eq(state['corpora'])
+    expect(Contract.http(installation.url + '/remote-vendor.js', 'GET')[1]).to eq(
+      File.binread(File.join(Contract::ROOT, 'libs4/web/remote-vendor.js')))
     expect(File.read(File.join(installation.data, 'artifact.txt'))).to eq('Saved result')
     backups = Dir[File.join(installation.home, 'backups', '*', 'artifact.txt')]
     expect(backups.size).to eq(1)

@@ -19,6 +19,8 @@ APP = Path.home() / 'Applications/Sapiens4.app'
 
 def install():
     # Do this before creating release pointers or touching an existing install.
+    if not (ROOT / 'libs4/web/remote-vendor.js').is_file():
+        raise RuntimeError('Initialize dependencies with git submodule update --init --recursive before installing')
     subprocess.run([sys.executable, '-m', 'sapiens.preflight'], cwd=ROOT, check=True, timeout=180)
     HOME.mkdir(parents=True, exist_ok=True, mode=0o700)
     config_path = HOME / 'config.json'

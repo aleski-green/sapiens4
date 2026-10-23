@@ -8,7 +8,7 @@ under test, and the requirements file installs its runtime dependencies only.
 ## Run
 
 Use Ruby 3.4, Python 3.11 or newer, and Node.js 20 or newer. Initialize the
-Blindly4 submodule before running desktop/updater cases.
+Blindly4 and libs4 submodules before running the suite.
 
 ```sh
 git submodule update --init --recursive

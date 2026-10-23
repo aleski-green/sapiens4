@@ -31,7 +31,7 @@ The updater builds Blindly4 with Rust and checks its command schema. It probes
 installed macOS SDKs for the Swift desktop build without changing system
 developer-tool settings. Build failures leave the running version intact.
 
-1. Download the advertised main revision into a new release directory, verify Codex version/login/model access, fetch the pinned Blindly4 submodule, and build Blindly4. If main includes the compatible desktop build, build and validate that bundle too. Build failures leave the running version alone.
+1. Download the advertised main revision into a new release directory, verify Codex version/login/model access, fetch the pinned Blindly4 and libs4 submodules, and build Blindly4. Validate the shipped browser assets. If main includes the compatible desktop build, build and validate that bundle too. Build failures leave the running version alone.
 2. Wait until active and queued work finishes. The update helper can continue waiting if the desktop window closes. Reopening the app shows its persisted progress; an installation lock prevents overlapping updates.
 3. Gracefully stop the owned local backend, retaining its existing data directory. A managed backend keeps host-control available while any run that raced with the idle check finishes. No force kill is used.
 4. Back up the complete stopped state directory, including SQLite/WAL files, AgentPy state, preferences, artifacts and logs.

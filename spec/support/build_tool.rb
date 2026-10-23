@@ -6,9 +6,16 @@ name = File.basename($PROGRAM_NAME)
 case name
 when 'git'
   if ARGV.first == 'submodule'
-    FileUtils.mkdir_p('blindly4/macos')
-    FileUtils.cp(File.join(root, 'blindly-build.sh'), 'blindly4/macos/build.sh')
-    File.chmod(0755, 'blindly4/macos/build.sh')
+    modules = ARGV.include?('--') ? ARGV.drop(ARGV.index('--') + 1) : %w[blindly4 libs4]
+    if modules.include?('blindly4')
+      FileUtils.mkdir_p('blindly4/macos')
+      FileUtils.cp(File.join(root, 'blindly-build.sh'), 'blindly4/macos/build.sh')
+      File.chmod(0755, 'blindly4/macos/build.sh')
+    end
+    if modules.include?('libs4') && !config['missing_vendor']
+      FileUtils.mkdir_p('libs4')
+      %w[web license].each { |folder| FileUtils.cp_r(File.join(ENV.fetch('SAPIENS_FIXTURE_LIBS'), folder), 'libs4') }
+    end
   elsif ARGV.first == 'ls-remote' && config['revision']
     puts config['revision'] + "\trefs/heads/main"
   else

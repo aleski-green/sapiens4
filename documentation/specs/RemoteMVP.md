@@ -336,16 +336,19 @@ reporting remain desktop-only.
 ## Development and validation
 
 ```sh
+git submodule update --init --recursive
 bundle install
 python3 -m pip install -r spec/requirements.txt
 npm ci --prefix tests --ignore-scripts
-node tests/build_remote.cjs
 bundle exec rspec spec/remote_spec.rb spec/platform_spec.rb
 ```
 
-The vendor bundle is checked in so users do not need Node to run the relay. Rebuild
-it with the pinned dependencies in `tests/package-lock.json`; dependency licenses
-are recorded in `license/REMOTE_DEPENDENCIES.txt`.
+The vendor bundle is checked into the pinned `libs4` submodule so users do not
+need Node to run the relay. To rebuild it, run `npm ci --prefix libs4 --ignore-scripts`
+and `npm run --prefix libs4 build`. Commit changes in libs4, then update its
+submodule pin here. Dependency licenses are in `libs4/license/REMOTE_DEPENDENCIES.txt`.
+Initialize the submodules before building the Docker image; it includes the
+prebuilt bundle and license notices without copying npm dependencies.
 
 Tests cover real QR generation/decoding, upload-driven browser pairing, shared CORPORA mounting, encrypted API and image
 responses, route restrictions, Python/JavaScript crypto interoperability, HTTP pairing/approval,
