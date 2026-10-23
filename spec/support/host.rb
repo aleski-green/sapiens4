@@ -3,10 +3,11 @@ require_relative 'process'
 class Host
   attr_reader :root, :url, :environment, :provider, :process
 
-  def initialize(start: true, environment: {}, repo: Contract::ROOT, python: Contract::PYTHON)
+  def initialize(start: true, environment: {}, repo: Contract::ROOT, python: Contract::PYTHON, command: nil)
     @directory = File.realpath(Dir.mktmpdir('sapiens-contract-'))
     @root, @repo = File.join(@directory, "workspace's é"), repo
     @python = python
+    @command = command
     FileUtils.mkdir_p(File.join(root, 'calls'))
     @provider = {}
     configure
@@ -33,7 +34,7 @@ class Host
   end
 
   def start
-    @process = Contract::Child.new(@python, '-m', 'sapiens', '--port', '0',
+    @process = Contract::Child.new(*(@command || [@python, '-m', 'sapiens']), '--port', '0',
       '--data-dir', root, '--desktop', env: environment, chdir: @repo)
     Contract.wait(description: 'host startup: ' + root) do
       match = @process.stdout.match(%r{Sapiens4: (http://127.0.0.1:\d+)})

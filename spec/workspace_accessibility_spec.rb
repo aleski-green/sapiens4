@@ -1,35 +1,50 @@
 require_relative 'support/host'
 
-RSpec.describe 'Native workspace accessibility', :macos do
+RSpec.describe 'Native workspace accessibility' do
   before(:all) do
-    skip 'Requires macOS and SAPIENS_TEST_BLINDLY4 with Accessibility permission' unless
-      RUBY_PLATFORM.include?('darwin') && ENV['SAPIENS_TEST_BLINDLY4']
+    skip 'Requires macOS or Windows and SAPIENS_TEST_BLINDLY4 with accessibility access' unless
+      (RUBY_PLATFORM.include?('darwin') || Gem.win_platform?) && ENV['SAPIENS_TEST_BLINDLY4']
     @build = Dir.mktmpdir('sapiens accessibility ')
-    @binary = File.join(@build, 'browser-probe')
-    out, error, code = Contract.capture('xcrun', 'swiftc', '-framework', 'Cocoa', '-framework', 'WebKit',
-      'macos/Browser.swift', 'macos/BrowserTests.swift', '-o', @binary, timeout: 90)
+    if Gem.win_platform?
+      @binary = File.join(@build, 'Probe.exe')
+      out, error, code = Contract.capture('dotnet', 'build', 'spec/support/windows_accessibility/Probe.csproj',
+        '-o', @build, timeout: 90)
+    else
+      @binary = File.join(@build, 'browser-probe')
+      out, error, code = Contract.capture('xcrun', 'swiftc', '-framework', 'Cocoa', '-framework', 'WebKit',
+        'macos/Browser.swift', 'macos/BrowserTests.swift', '-o', @binary, timeout: 90)
+    end
     raise out + error unless code == 0
   end
 
   after(:all) { FileUtils.remove_entry(@build) if @build }
 
   before do
-    @host = Host.new
+    @host = Gem.win_platform? ? Host.new(command: [@binary, '--runtime-dir', Contract::ROOT]) : Host.new
     @owner = chief
     @tab = open_player('First')
-    @app = Contract::Child.new(@binary, '--accessibility', host.url)
-    Contract.wait(description: 'native fixture startup') { @app.stdout.include?('READY') }
+    @app = Gem.win_platform? ? host.process : Contract::Child.new(@binary, '--accessibility', host.url)
+    if Gem.win_platform?
+      expect(@app.stdout.lines.map(&:strip)).to include('TITLE: Sapiens4')
+    else
+      Contract.wait(description: 'native fixture startup') { @app.stdout.include?('READY') }
+    end
     control('activate')
     find_control('Play First')
   end
 
   after do
-    @app&.close
+    @app&.close unless Gem.win_platform?
     @host&.close
   end
 
   def control(command, *args)
-    out, error, code = Contract.capture(ENV.fetch('SAPIENS_TEST_BLINDLY4'), command, '--pid', @app.pid.to_s, *args)
+    out, error, code = Contract.wait(description: "stable accessibility #{command}") do
+      result = Contract.capture(ENV.fetch('SAPIENS_TEST_BLINDLY4'), command, '--pid', @app.pid.to_s, *args)
+      # UIA elements can disappear while a WebView loads/closes. Retry reads only.
+      result unless Gem.win_platform? && %w[tree focused].include?(command) &&
+        result[2] != 0 && result[0].match?(/0x80040201|0x00000000/)
+    end
     expect(code).to eq(0), out + error
     JSON.parse(out)
   end
@@ -49,9 +64,17 @@ RSpec.describe 'Native workspace accessibility', :macos do
     Contract.wait(description: "accessible #{title}") { tree.find { |n| n['title'] == title } }
   end
 
+  def web_area_role; Gem.win_platform? ? 'AXTextArea' : 'AXWebArea'; end
+
   def press(title)
     node = find_control(title)
-    control('press', '--path', node.fetch('path'))
+    if Gem.win_platform? && title == 'Workspace options'
+      # Chromium exposes this expandable button without UIA InvokePattern.
+      control('click', '--x', (node['position']['x'] + node['size']['width'] / 2).to_i.to_s,
+        '--y', (node['position']['y'] + node['size']['height'] / 2).to_i.to_s)
+    else
+      control('press', '--path', node.fetch('path'))
+    end
   end
 
   def open_player(name)
@@ -65,7 +88,7 @@ RSpec.describe 'Native workspace accessibility', :macos do
   end
 
   it 'exposes the guest player alongside the shell and performs its accessible Play action' do
-    expect(tree.count { |n| n['role'] == 'AXWebArea' }).to eq(2)
+    expect(tree.count { |n| n['role'] == web_area_role }).to eq(2)
     press('Play First')
     expect(find_control('Pause First')['role']).to eq('AXButton')
   end
@@ -85,7 +108,7 @@ RSpec.describe 'Native workspace accessibility', :macos do
     expect(control('focused')['title']).not_to eq('First input')
     expect(tree.map { |n| n['title'] }).not_to include('Play First')
     host.control(@owner, 'workspace_close', id: second)
-    Contract.wait { tree.count { |n| n['role'] == 'AXWebArea' } == 1 }
+    Contract.wait { tree.count { |n| n['role'] == web_area_role } == 1 }
   end
 
   it 'keeps the guest aligned after resizing with a shell inset and hides it behind workspace menus' do

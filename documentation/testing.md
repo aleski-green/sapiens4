@@ -127,3 +127,11 @@ focus after closing/hiding a guest, window resizing and the shell's update-banne
 inset. It never opens the user's installation or an external video service.
 Without the environment variable these desktop-input cases are pending; the
 regular WebKit navigation/isolation probe still runs in `platform_spec.rb`.
+
+On Windows with .NET 10, WebView2 and an unlocked desktop, set
+`$env:SAPIENS_TEST_BLINDLY4` to the built, unchanged Windows Blindly4 executable
+and run the same spec. Its three scenarios are shared with macOS; the Windows
+fixture runs the production Sapiens4 window and host against temporary data.
+It also verifies the native window title. UIA document roles differ from macOS,
+and the expandable workspace menu uses a click at its accessible bounds because
+Chromium does not expose an InvokePattern for that button.
