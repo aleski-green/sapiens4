@@ -79,8 +79,8 @@ JavaScript and native programs may supply browser/platform probes that Ruby
 cannot execute directly. Existing probes are invoked and checked by RSpec;
 do not create another independently run test suite.
 
-Run `bundle exec rspec` before submitting. Platform cases run on their matching
-CI runners; scheduling cases use real minute pulses and belong in the full run.
+Run `bundle exec rspec` locally before submitting. Run platform cases on their
+matching operating systems; scheduling cases use real minute pulses and belong in the full run.
 Do not delete a behavioral guarantee merely because a private-method test is
 being removed: replace its observable contract or document the precise gap.
 

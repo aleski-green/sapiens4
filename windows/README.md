@@ -53,7 +53,7 @@ bundle exec rspec --tag '~windows'
 
 The executable also accepts `--smoke-report PATH --data-dir TEMP_DIRECTORY` to launch a real WebView2 window, verify the rendered app, save a JSON result and PNG, then close. Use an empty test data directory. The Blindly4 repository documents its permission-free and interactive integration suites.
 
-The full CI run builds the portable desktop package, sets `SAPIENS_TEST_WINDOWS_PACKAGE`, and includes its native RSpec contract. See [Testing](../documentation/testing.md). macOS and POSIX-only cases are explicitly skipped on Windows; no security settings are changed to run tests.
+To include the native RSpec contract in a local run, build the portable desktop package and set `SAPIENS_TEST_WINDOWS_PACKAGE` to its directory. See [Testing](../documentation/testing.md). macOS and POSIX-only cases are explicitly skipped on Windows; no security settings are changed to run tests.
 
 ## Desktop access
 

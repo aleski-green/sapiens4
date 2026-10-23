@@ -49,7 +49,7 @@ bundle exec rspec --tag '~windows'
 
 For the packaged desktop contract, first run `windows/build.ps1`, set
 `SAPIENS_TEST_WINDOWS_PACKAGE` to the resulting package directory, and run the
-full suite. The Windows CI matrix performs this for x64 and ARM64. The launcher
+full suite. Validate x64 and ARM64 packages on their matching systems. The launcher
 inherits standard streams and starts Ruby as a child so the real Windows Job
 Object still owns and cancels the provider process tree.
 
