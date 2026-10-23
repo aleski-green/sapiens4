@@ -39,7 +39,7 @@ function pixels(text){
   const video=d.querySelector('video');Object.defineProperties(video,{readyState:{value:2},videoWidth:{value:image.width},videoHeight:{value:image.height}});video.play=async()=>{};
   d.querySelector('#scan-qr').click();resolveCamera(stream());await sleep();await sleep();out.camera=paired[1];out.cameraStopped=video.srcObject===null&&d.querySelector('#scanner').hidden;
   Object.defineProperty(file,'files',{value:[{size:11*1024*1024}],configurable:true});file.dispatchEvent(new w.Event('change'));await sleep();out.largeImage=message;
-  w.RemoteVendor.jsQR=()=>({data:'x'.repeat(4097)});d.querySelector('#scan-qr').click();resolveCamera(stream());await sleep();out.largePayload=message;out.pairs=paired.length;
+  w.RemoteVendor={...w.RemoteVendor,jsQR:()=>({data:'x'.repeat(4097)})};d.querySelector('#scan-qr').click();resolveCamera(stream());await sleep();out.largePayload=message;out.pairs=paired.length;
   d.querySelector('#scan-qr').click();flow.dispose();resolveCamera(stream());await sleep();out.disposedStops=stops;
   out.expected=invitation;
  }else{
