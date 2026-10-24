@@ -46,7 +46,9 @@ RSpec.describe 'Remote app installation guidance' do
     status, script = relay.request('GET', '/sw.js')
     expect(status).to eq(200)
     expect(script).to match(/sapiens-shell-[0-9a-f]{16}/)
-    paths = script.match(/const ASSETS=\[([^\]]+)\]/)[1].scan(/'([^']+)'/).flatten
+    out, error, code = Contract.capture('node', 'spec/support/shell-update.cjs')
+    expect(code).to eq(0), error
+    paths = JSON.parse(out).fetch('success').fetch('assets')
     expect(paths).to include('/', '/workspace/app.js', '/corpora.js', '/corpora.css')
     paths.each do |path|
       expect(path).not_to start_with('/api/')

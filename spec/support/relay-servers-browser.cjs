@@ -2,10 +2,11 @@
 const fs=require('node:fs'),path=require('node:path'),{webcrypto}=require('node:crypto');
 const {JSDOM}=require('../../libs4/node_modules/jsdom');
 const root=path.resolve(__dirname,'../..'),url=process.argv[2],scenario=process.argv[3];
-const wait=async fn=>{for(let i=0;i<250;i++){if(fn())return;await new Promise(r=>setTimeout(r,20));}throw new Error('Browser action timed out');};
+let debug=()=>'';
+const wait=async fn=>{for(let i=0;i<250;i++){if(fn())return;await new Promise(r=>setTimeout(r,20));}throw new Error('Browser action timed out: '+debug());};
 (async()=>{
  const dom=new JSDOM(fs.readFileSync(path.join(root,'web/shell/index.html'),'utf8'),{url:url+'/workspace/',runScripts:'outside-only',pretendToBeVisual:true});
- const w=dom.window,d=w.document,writes=[];let hostLoaded=false;
+ const w=dom.window,d=w.document,writes=[];debug=()=>d.querySelector('#corpora-dialog-body').textContent;let hostLoaded=false;
  Object.defineProperty(w,'crypto',{value:webcrypto});w.AbortSignal=AbortSignal;
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
  w.matchMedia=()=>({matches:false,addEventListener(){}});

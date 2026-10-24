@@ -1,0 +1,182 @@
+[
+  {
+    "id": "workspace_keyboard.test.cjs:22:1",
+    "expression": "window.document.querySelector('#workspace-panel').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:26:2",
+    "expression": "event.defaultPrevented",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:27:3",
+    "expression": "window.document.querySelector('#workspace-panel').hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:28:4",
+    "expression": "window.document.querySelector('#browser-address-form').hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:29:5",
+    "expression": "window.document.activeElement.id",
+    "matcher": "equal",
+    "expected": "browser-address"
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:30:6",
+    "expression": "state.activeTab",
+    "matcher": "equal",
+    "expected": "tab-test"
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:31:7",
+    "expression": "requests.length",
+    "matcher": "equal",
+    "expected": 2
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:32:8",
+    "expression": "requests[0][2].op",
+    "matcher": "equal",
+    "expected": "workspace_open"
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:22:1",
+    "expression": "window.document.querySelector('#workspace-panel').hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:26:2",
+    "expression": "event.defaultPrevented",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:27:3",
+    "expression": "window.document.querySelector('#workspace-panel').hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:28:4",
+    "expression": "window.document.querySelector('#browser-address-form').hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:29:5",
+    "expression": "window.document.activeElement.id",
+    "matcher": "equal",
+    "expected": "browser-address"
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:30:6",
+    "expression": "state.activeTab",
+    "matcher": "equal",
+    "expected": "tab-test"
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:31:7",
+    "expression": "requests.length",
+    "matcher": "equal",
+    "expected": 0
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:22:1",
+    "expression": "window.document.querySelector('#workspace-panel').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:26:2",
+    "expression": "event.defaultPrevented",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:27:3",
+    "expression": "window.document.querySelector('#workspace-panel').hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:28:4",
+    "expression": "window.document.querySelector('#browser-address-form').hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:29:5",
+    "expression": "window.document.activeElement.id",
+    "matcher": "equal",
+    "expected": "browser-address"
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:30:6",
+    "expression": "state.activeTab",
+    "matcher": "equal",
+    "expected": "tab-test"
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:31:7",
+    "expression": "requests.length",
+    "matcher": "equal",
+    "expected": 2
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:32:8",
+    "expression": "requests[0][2].op",
+    "matcher": "equal",
+    "expected": "workspace_open"
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:22:1",
+    "expression": "window.document.querySelector('#workspace-panel').hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:26:2",
+    "expression": "event.defaultPrevented",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:27:3",
+    "expression": "window.document.querySelector('#workspace-panel').hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:28:4",
+    "expression": "window.document.querySelector('#browser-address-form').hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:29:5",
+    "expression": "window.document.activeElement.id",
+    "matcher": "equal",
+    "expected": "browser-address"
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:30:6",
+    "expression": "state.activeTab",
+    "matcher": "equal",
+    "expected": "tab-test"
+  },
+  {
+    "id": "workspace_keyboard.test.cjs:31:7",
+    "expression": "requests.length",
+    "matcher": "equal",
+    "expected": 0
+  }
+]

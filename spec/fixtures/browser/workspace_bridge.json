@@ -1,0 +1,68 @@
+[
+  {
+    "id": "workspace_bridge.test.cjs:17:1",
+    "expression": "request.owner",
+    "matcher": "equal",
+    "expected": "sapi_one"
+  },
+  {
+    "id": "workspace_bridge.test.cjs:18:2",
+    "expression": "request.directory",
+    "matcher": "equal",
+    "expected": "C:\\Users\\Test user\\مرحبا"
+  },
+  {
+    "id": "workspace_bridge.test.cjs:19:3",
+    "expression": "request.pickFile",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "workspace_bridge.test.cjs:17:1",
+    "expression": "request.owner",
+    "matcher": "equal",
+    "expected": "sapi_one"
+  },
+  {
+    "id": "workspace_bridge.test.cjs:18:2",
+    "expression": "request.directory",
+    "matcher": "equal",
+    "expected": "/Users/Test user/مرحبا"
+  },
+  {
+    "id": "workspace_bridge.test.cjs:19:3",
+    "expression": "request.pickFile",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "workspace_bridge.test.cjs:23:4",
+    "expression": "messages.at(-1).directory",
+    "matcher": "equal",
+    "expected": "C:\\Groups\\Shared files"
+  },
+  {
+    "id": "workspace_bridge.test.cjs:24:5",
+    "expression": "messages.at(-1).owner",
+    "matcher": "equal",
+    "expected": "group_test"
+  },
+  {
+    "id": "workspace_bridge.test.cjs:26:6",
+    "expression": "messages.at(-1).dark",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "workspace_bridge.test.cjs:27:7",
+    "expression": "messages.at(-1).background",
+    "matcher": "equal",
+    "expected": "#212121"
+  },
+  {
+    "id": "workspace_bridge.test.cjs:28:8",
+    "expression": "messages.at(-1).foreground",
+    "matcher": "equal",
+    "expected": "#ececec"
+  }
+]

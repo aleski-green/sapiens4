@@ -1,0 +1,263 @@
+[
+  {
+    "id": "groups.dom.test.cjs:23:1",
+    "expression": "host.querySelector('script')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.dom.test.cjs:24:2",
+    "expression": "host.querySelector('button').textContent",
+    "matcher": "equal",
+    "expected": "Research <script>★"
+  },
+  {
+    "id": "groups.dom.test.cjs:25:3",
+    "expression": "host.querySelector('button').dataset.agent",
+    "matcher": "equal",
+    "expected": "group_1"
+  },
+  {
+    "id": "groups.dom.test.cjs:26:4",
+    "expression": "ctx.groupAvatar(group)",
+    "matcher": "match",
+    "expected": {
+      "source": "#48c99c 0% 50%,#74b9ed 50% 100%",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.dom.test.cjs:29:5",
+    "expression": "host.querySelectorAll('.group-chip').length",
+    "matcher": "equal",
+    "expected": 11
+  },
+  {
+    "id": "groups.dom.test.cjs:31:6",
+    "expression": "host.querySelector('button').textContent",
+    "matcher": "equal",
+    "expected": "R★"
+  },
+  {
+    "id": "groups.dom.test.cjs:32:7",
+    "expression": "host.querySelector('i')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.dom.test.cjs:33:8",
+    "expression": "host.querySelector('button').getAttribute('aria-label')",
+    "matcher": "equal",
+    "expected": "Research <script> · Lead"
+  },
+  {
+    "id": "groups.dom.test.cjs:34:9",
+    "expression": "ctx.actions['create-group']",
+    "matcher": "equal",
+    "expected": {
+      "type": "undefined"
+    }
+  },
+  {
+    "id": "groups.dom.test.cjs:40:10",
+    "expression": "calls.at(-1).path",
+    "matcher": "equal",
+    "expected": "/api/groups/group_1"
+  },
+  {
+    "id": "groups.dom.test.cjs:40:11",
+    "expression": "calls.at(-1).method",
+    "matcher": "equal",
+    "expected": "PUT"
+  },
+  {
+    "id": "groups.dom.test.cjs:40:12",
+    "expression": "[...calls.at(-1).data.members]",
+    "matcher": "deepEqual",
+    "expected": [
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "groups.dom.test.cjs:44:13",
+    "expression": "host.querySelector('.group-roster')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.dom.test.cjs:44:14",
+    "expression": "host.querySelectorAll('.message').length",
+    "matcher": "equal",
+    "expected": 2
+  },
+  {
+    "id": "groups.dom.test.cjs:44:15",
+    "expression": "host.querySelector('script')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.dom.test.cjs:45:16",
+    "expression": "host.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "earlier task revision",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.dom.test.cjs:45:17",
+    "expression": "host.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Member answer",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.dom.test.cjs:50:18",
+    "expression": "calls.at(-1).method",
+    "matcher": "equal",
+    "expected": "PUT"
+  },
+  {
+    "id": "groups.dom.test.cjs:50:19",
+    "expression": "calls.at(-1).data.revision",
+    "matcher": "equal",
+    "expected": 7
+  },
+  {
+    "id": "groups.dom.test.cjs:50:20",
+    "expression": "calls.at(-1).data.title",
+    "matcher": "equal",
+    "expected": "Edited"
+  },
+  {
+    "id": "groups.dom.test.cjs:53:21",
+    "expression": "[...nav.querySelectorAll('[data-activity-panel=work]')].map(b=>b.textContent)",
+    "matcher": "deepEqual",
+    "expected": [
+      "Memo",
+      "Tasks",
+      "Call",
+      "Backlog",
+      "Automated",
+      "Automation",
+      "Routines",
+      "Workflows",
+      "Composers"
+    ]
+  },
+  {
+    "id": "groups.dom.test.cjs:54:22",
+    "expression": "nav.querySelector('[data-panel=work]')",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.dom.test.cjs:55:23",
+    "expression": "host.querySelector('.personal-work-tabs')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.dom.test.cjs:56:24",
+    "expression": "host.querySelector('.task-row').open",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.dom.test.cjs:58:25",
+    "expression": "host.querySelector('.task-row').open",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.dom.test.cjs:60:26",
+    "expression": "host.textContent",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "Shared task",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.dom.test.cjs:62:27",
+    "expression": "host.querySelector('#work-content').textContent",
+    "matcher": "equal",
+    "expected": "Memo"
+  },
+  {
+    "id": "groups.dom.test.cjs:64:28",
+    "expression": "host.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.dom.test.cjs:64:29",
+    "expression": "window.document.querySelector('[data-new-group-task]')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.dom.test.cjs:65:30",
+    "expression": "host.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Shared task",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.dom.test.cjs:65:31",
+    "expression": "host.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Researcher",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.dom.test.cjs:66:32",
+    "expression": "host.textContent",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "Shared task",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.dom.test.cjs:66:33",
+    "expression": "host.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Personal tasks",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.dom.test.cjs:68:34",
+    "expression": "window.document.querySelector('#composer-area').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.dom.test.cjs:68:35",
+    "expression": "host.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "history is preserved",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.dom.test.cjs:69:36",
+    "expression": "refreshed",
+    "matcher": "equal",
+    "expected": 2
+  }
+]

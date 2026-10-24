@@ -12,7 +12,7 @@ RSpec.describe 'Native workspace accessibility' do
     else
       @binary = File.join(@build, 'browser-probe')
       out, error, code = Contract.capture('xcrun', 'swiftc', '-framework', 'Cocoa', '-framework', 'WebKit',
-        'macos/Browser.swift', 'macos/BrowserTests.swift', '-o', @binary, timeout: 90)
+        'macos/Browser.swift', 'macos/BrowserProbe.swift', '-o', @binary, timeout: 90)
     end
     raise out + error unless code == 0
   end
@@ -85,6 +85,29 @@ RSpec.describe 'Native workspace accessibility' do
       <input aria-label="#{name} input">
     HTML
     host.control(@owner, 'workspace_open', path: path)['workspace']['active_tab']
+  end
+
+  it 'toggles the compiled shell theme through its accessible control' do
+    button = Contract.wait(description: 'theme toggle') do
+      tree.find { |node| ['Switch to dark theme', 'Switch to light theme'].include?(node['title']) }
+    end
+    original = button.fetch('title')
+    changed = original == 'Switch to dark theme' ? 'Switch to light theme' : 'Switch to dark theme'
+    press(original)
+    expect(%w[AXButton AXCheckBox]).to include(find_control(changed)['role'])
+    expect(tree.map { |node| node['title'] }).not_to include(original)
+    press(changed)
+    expect(%w[AXButton AXCheckBox]).to include(find_control(original)['role'])
+  end
+
+  it 'hides and restores the native guest when the compiled panel control is toggled' do
+    press('Hide workspace')
+    Contract.wait { tree.count { |node| node['role'] == web_area_role } == 1 }
+    expect(tree.map { |node| node['title'] }).not_to include('Play First')
+    expect(%w[AXButton AXCheckBox]).to include(find_control('Show workspace')['role'])
+    press('Show workspace')
+    expect(find_control('Play First')['role']).to eq('AXButton')
+    expect(tree.count { |node| node['role'] == web_area_role }).to eq(2)
   end
 
   it 'exposes the guest player alongside the shell and performs its accessible Play action' do

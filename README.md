@@ -63,7 +63,7 @@ For a dedicated macOS window and Dock icon, see [the desktop app](macos/README.m
 
 [Architecture notation and analysis](documentation/haskell-notation-specs/SapiensSpecNotation.md) · [Haskell specification](documentation/haskell-notation-specs/SapiensSpecNotation.hs) · [System Pulsation](documentation/haskell-notation-specs/SystemPulsation.hs) · [WorkGraph design](documentation/specs/WorkGraph.md)
 
-[Setup, features, API and tests](documentation/reference.md)
+[Setup, features, API and tests](documentation/reference.md) · [PureScript UI migration](documentation/purescript-ui.md)
 
 The header corpora menu switches between local workspaces (Mac/Windows) and saved
 remote connections. Switching changes only the interface; Pause and Activate are

@@ -1,0 +1,500 @@
+[
+  {
+    "id": "notes.test.cjs:15:1",
+    "expression": "decode(html)",
+    "matcher": "equal",
+    "expected": "facts:\n  enabled: true\n  count: 42\n  text: \"Admin\"\n  details: |\n    # not a comment\n    inner: still text\nnext: null\n"
+  },
+  {
+    "id": "notes.test.cjs:16:2",
+    "expression": "html",
+    "matcher": "match",
+    "expected": {
+      "source": "class=\"syntax-(key|keyword)\"",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:17:3",
+    "expression": "html",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<svg|<div",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:15:1",
+    "expression": "decode(html)",
+    "matcher": "equal",
+    "expected": "def check(page):\n    # inspect\n    return page is not None\n"
+  },
+  {
+    "id": "notes.test.cjs:16:2",
+    "expression": "html",
+    "matcher": "match",
+    "expected": {
+      "source": "class=\"syntax-(key|keyword)\"",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:17:3",
+    "expression": "html",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<svg|<div",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:15:1",
+    "expression": "decode(html)",
+    "matcher": "equal",
+    "expected": "data Outcome = Done | Failed\nrecipe :: Call -> Outcome\n-- descriptive only\n"
+  },
+  {
+    "id": "notes.test.cjs:16:2",
+    "expression": "html",
+    "matcher": "match",
+    "expected": {
+      "source": "class=\"syntax-(key|keyword)\"",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:17:3",
+    "expression": "html",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<svg|<div",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:15:1",
+    "expression": "decode(html)",
+    "matcher": "equal",
+    "expected": "<div class=\"preview\"><svg viewBox=\"0 0 10 10\"></svg></div>"
+  },
+  {
+    "id": "notes.test.cjs:16:2",
+    "expression": "html",
+    "matcher": "match",
+    "expected": {
+      "source": "class=\"syntax-(key|keyword)\"",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:17:3",
+    "expression": "html",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<svg|<div",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:19:4",
+    "expression": "render(cases.yaml)",
+    "matcher": "match",
+    "expected": {
+      "source": "class=\"syntax-string\">    # not a comment<\\/span>",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:20:5",
+    "expression": "render(cases.yaml)",
+    "matcher": "match",
+    "expected": {
+      "source": "class=\"syntax-key\">next<\\/span>",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "<script>alert(1)</script>"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "<img src=x onerror=alert(1)>"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "\"😎\"\r\n"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": {
+      "type": "text",
+      "length": 70000,
+      "sha256": "bca09f4a757d5571c7d9f3341d4301f3c391c090826acc1a3013c6bcb7c01722"
+    }
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "<script>alert(1)</script>"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "<img src=x onerror=alert(1)>"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "\"😎\"\r\n"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": {
+      "type": "text",
+      "length": 70000,
+      "sha256": "bca09f4a757d5571c7d9f3341d4301f3c391c090826acc1a3013c6bcb7c01722"
+    }
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "<script>alert(1)</script>"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "<img src=x onerror=alert(1)>"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "\"😎\"\r\n"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": {
+      "type": "text",
+      "length": 70000,
+      "sha256": "bca09f4a757d5571c7d9f3341d4301f3c391c090826acc1a3013c6bcb7c01722"
+    }
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "<script>alert(1)</script>"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "<img src=x onerror=alert(1)>"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "\"😎\"\r\n"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": {
+      "type": "text",
+      "length": 70000,
+      "sha256": "bca09f4a757d5571c7d9f3341d4301f3c391c090826acc1a3013c6bcb7c01722"
+    }
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "<script>alert(1)</script>"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "<img src=x onerror=alert(1)>"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "\"😎\"\r\n"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": {
+      "type": "text",
+      "length": 70000,
+      "sha256": "bca09f4a757d5571c7d9f3341d4301f3c391c090826acc1a3013c6bcb7c01722"
+    }
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "<script>alert(1)</script>"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "<img src=x onerror=alert(1)>"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": "\"😎\"\r\n"
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.test.cjs:23:6",
+    "expression": "decode(render(text,language))",
+    "matcher": "equal",
+    "expected": {
+      "type": "text",
+      "length": 70000,
+      "sha256": "bca09f4a757d5571c7d9f3341d4301f3c391c090826acc1a3013c6bcb7c01722"
+    }
+  },
+  {
+    "id": "notes.test.cjs:24:7",
+    "expression": "render(text,language)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<script|<img",
+      "flags": ""
+    }
+  }
+]
