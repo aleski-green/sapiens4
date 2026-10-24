@@ -17,6 +17,10 @@ if (-not (Test-Path (Join-Path $repo 'libs4/web/remote-vendor.js'))) { throw 'In
 
 dotnet publish (Join-Path $PSScriptRoot 'Sapiens4.csproj') -c Release -r $Runtime --self-contained true -o $destination
 if ($LASTEXITCODE -ne 0) { throw 'Sapiens4 desktop build failed' }
+foreach ($obsolete in @('runtime/sapiens', 'runtime/prompts', 'runtime/web', 'runtime/sapiens4', 'sapiens4.cmd')) {
+    $path = Join-Path $destination $obsolete
+    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+}
 & (Join-Path $BlindlySource 'windows/build.ps1') -Runtime $Runtime -Toolchain $BlindlyToolchain
 $blindlyOutput = Join-Path $payload 'blindly4/.build/windows'
 New-Item -ItemType Directory -Force -Path $blindlyOutput | Out-Null
@@ -40,9 +44,7 @@ foreach ($folder in @('sapiens','prompts','web')) {
         Copy-Item -LiteralPath $file.FullName -Destination $target -Force
     }
 }
-Copy-Item -LiteralPath (Join-Path $repo 'sapiens4') -Destination (Join-Path $payload 'sapiens4') -Force
 
 & (Join-Path $repo 'libs4/python/package-windows.ps1') -Runtime $Runtime -TargetDirectory (Join-Path $payload 'python') -PythonArchive $PythonArchive -BuildPython $BuildPython
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.md') -Destination (Join-Path $destination 'README.md') -Force
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'terminal.cmd') -Destination (Join-Path $destination 'sapiens4.cmd') -Force
 Write-Host "Built $destination/Sapiens4.exe"

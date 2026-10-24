@@ -14,7 +14,7 @@ Blindly4 and libs4 submodules before running the suite.
 git submodule update --init --recursive
 ruby libs4/ruby/bundle.rb install
 python3 -m venv libs4/python/.venv
-libs4/python/.venv/bin/python -m pip install -r libs4/python/test-requirements.txt
+libs4/python/.venv/bin/python -m pip install -r libs4/python/remote-requirements.txt
 npm ci --prefix libs4 --ignore-scripts
 ruby libs4/ruby/bundle.rb exec rspec
 ```
@@ -72,11 +72,8 @@ cover several former methods.
 | Groups | `groups_spec.rb`: routing isolation, roles, membership limits, task revisions, late results, archive/restore, attachments |
 | Notes, workspace, text previews | `workspace_spec.rb`: scoped files, unsafe URLs, stale navigation, persistent tabs, memo context and migration |
 | Routines and lifecycle events | `scheduling_spec.rb`: real scheduling, overdue admission, pause/resume, run limit, ownership, event attribution and no duplicate polling events |
-| CLI | `cli_spec.rb`: real processes and a POSIX terminal against a controlled HTTP peer; output, clarification, draft/history navigation, completion, observer detachment, errors and no write retries |
 | Remote pairing, encryption, relay and setup | `remote_spec.rb`: real host and relay, independent NaCl peer, WebSocket replay/ack, approval failure and expiry, saved QR/setup, discovery lifecycle, allowlists, tampering, revocation and private-state boundaries |
-| Preflight | `preflight_spec.rb`: external executable discovery, version/login/model failures and isolated read-only model probe |
-| Runtime distribution | `distribution_spec.rb`: source-only release boot, actual provider call, generated frontend syntax; updater cases also exercise legacy public entrypoints |
-| Desktop updater | `updater_spec.rb`: real CLI against temporary releases, mocked external build tools, activation barrier, waiting for work, unrelated-app refusal, cache cleanup, preparation failure, backups, commit/rollback journals and atomic bundle recovery |
+| Runtime distribution | `distribution_spec.rb`: source-only release boot, actual provider call, generated frontend syntax, and a signed macOS build retaining the selected data path |
 | Native/browser integration and computer presentation | `platform_spec.rb`: existing DOM and native platform probes, real WebKit connected to the HTTP service, packaged Windows checks |
 
 ## Deliberately changed coverage
@@ -85,17 +82,11 @@ Import-graph, folder-count, private helper, mocked method-call-count and exact
 internal object-layout assertions were retired. Those checks constrained a
 particular implementation rather than demonstrating a service contract.
 
-Process crash and persisted-journal scenarios cover recovery outcomes. They do
-not force every instruction-level crash window previously injected by patching
-`_sync`, nor do they prove all arbitrary crash interleavings. Exact remaining
-timeout arguments between decision nodes and arbitrary synthetic pulse-clock
-jitter are also no longer inspected. The suite does not wait thirty minutes to
+Process crash scenarios cover chat recovery outcomes, but do not prove all
+arbitrary crash interleavings. Exact remaining timeout arguments between decision
+nodes and arbitrary synthetic pulse-clock jitter are also no longer inspected. The suite does not wait thirty minutes to
 exhaust the model deadline. These are explicit limits, not claims of identical
 line or branch coverage.
-
-The real terminal case verifies navigation, draft restoration and intentional
-submission. Exact per-cell colors and cursor layout on a narrow terminal are
-not asserted by this migration.
 
 Existing JavaScript and Swift/C# harnesses remain platform probes called from
 RSpec. Some legacy probes still contain their original assertions. New behavior
@@ -127,7 +118,7 @@ On a macOS desktop with Accessibility permission for the invoking terminal, run
 `SAPIENS_TEST_BLINDLY4=/absolute/path/to/blindly4 ruby libs4/ruby/bundle.rb exec rspec spec/workspace_accessibility_spec.rb`.
 This opt-in contract uses the real WebKit workspace against an isolated host and
 local player fixtures. It checks AX discovery and pressing, selected-tab isolation,
-focus after closing/hiding a guest, window resizing and the shell's update-banner
+focus after closing/hiding a guest, window resizing and a shell
 inset. It never opens the user's installation or an external video service.
 Without the environment variable these desktop-input cases are pending; the
 regular WebKit navigation/isolation probe still runs in `platform_spec.rb`.

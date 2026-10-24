@@ -112,8 +112,4 @@ class Host
   end
   def release(gate = 'released'); File.write(File.join(root, gate), '') if root && File.directory?(root); end
   def workspace(owner); control(owner, 'status').fetch('notes').fetch('workspace'); end
-  def cli(*args, input: '', timeout: 30, env: {})
-    Contract.capture(Contract::PYTHON, File.join(@repo, 'sapiens4'), '--url', url, *args,
-      env: environment.merge(env), input: input, timeout: timeout)
-  end
 end

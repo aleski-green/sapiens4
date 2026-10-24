@@ -9,7 +9,6 @@ from sapiens.corpora.host.assets import index, javascript
 from sapiens.paths import ROOT
 from sapiens.corpora.host.server import Server
 from sapiens.corpora.host.service import Service
-from sapiens.files import atomic_json
 
 
 def main():
@@ -27,8 +26,6 @@ def main():
         service.close()
         raise
     service.start()  # Recovered chat turns need the host-control endpoint attached first.
-    if args.desktop:
-        atomic_json(service.root / 'config.json', {'port': server.server_port})
     url = f"http://127.0.0.1:{server.server_port}/workspace/"
     print(f"Sapiens4: {url}\nUI database: {service.store.path}", flush=True)
 

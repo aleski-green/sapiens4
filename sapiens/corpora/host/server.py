@@ -111,10 +111,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(*registry.route(parts[4], self.command, target + ('?' + query if query else ''), data))
             raise APIError(404, 'Not found')
         if self.command == 'GET':
-            if path == '/api/state' and self.server.registry:
-                snapshot = self.server.service.snapshot()
-                snapshot['host_busy'] = self.server.registry.busy(snapshot)
-                return self._send(200, snapshot)
             if path == '/api/remote':
                 return self._send(200, self.server.remote.status())
             if path in {'/', '/remote/', '/remote'}:

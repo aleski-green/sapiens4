@@ -24,7 +24,7 @@ cd sapiens4
 .\start.ps1 -Open
 ```
 
-`start.ps1` builds Blindly4 and starts the web UI on port 4174. `-SkipBuild` reuses an existing binary. `sapiens4.cmd status` and other terminal commands work with the running app. Interactive terminal mode additionally requires `pip install -r libs4/python/cli-requirements.txt` in a regular Python installation.
+`start.ps1` builds Blindly4 and starts the web UI on port 4174. `-SkipBuild` reuses an existing binary.
 
 Build the portable desktop package:
 
@@ -43,7 +43,7 @@ The build downloads CPython 3.13.9 from python.org and verifies a pinned SHA-256
 ```powershell
 $env:PYTHONUTF8 = '1'
 ruby libs4/ruby/bundle.rb install
-python -m pip install -r libs4/python/test-requirements.txt
+python -m pip install -r libs4/python/remote-requirements.txt
 npm ci --prefix libs4 --ignore-scripts
 dotnet build spec/support/windows/CodexFixture.csproj -o tmp/codex-fixture
 $env:SAPIENS_TEST_CODEX = (Resolve-Path tmp/codex-fixture/CodexFixture.exe).Path
@@ -59,4 +59,4 @@ To include the native RSpec contract in a local run, build the portable desktop 
 
 Blindly4 uses native Windows UI Automation and SendInput. Its command interface retains AX-style role names for compatibility. Desktop commands require an unlocked interactive session, exposed accessibility controls and matching privilege levels. Elevated apps and secure desktops are not supported. Draft guards fail closed when a control cannot expose its exact value. Serialize complete desktop workflows.
 
-Overrides: `SAPIENS_DATA_DIR`, `SAPIENS_BLINDLY_BINARY`, `SAPIENS_CODEX_BINARY`, `SAPIENS_CODEX_MODEL`, `SAPIENS_CODEX_REASONING_EFFORT`. The desktop uses a free loopback port and saves it in the data directory for the terminal client.
+Overrides: `SAPIENS_DATA_DIR`, `SAPIENS_BLINDLY_BINARY`, `SAPIENS_CODEX_BINARY`, `SAPIENS_CODEX_MODEL`, `SAPIENS_CODEX_REASONING_EFFORT`. The desktop uses a free loopback port.

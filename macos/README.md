@@ -1,63 +1,58 @@
 # Sapiens4 for macOS
 
-An AppKit/WebKit window with its own Dock icon and managed updates. Requires macOS 13+, installed Command Line Tools, stable Rust, Python 3.9+, Git and authenticated Codex CLI 0.156.1 or newer. No full Xcode installation or extra Python packages are needed. Set up the repository and build Blindly4 first using the normal project setup.
+An AppKit/WebKit window with a Dock icon. Requires macOS 13+, Command Line Tools,
+stable Rust, Python 3.9+, Git and authenticated Codex CLI 0.156.1 or newer.
 
-## Install
+## Build and open
 
 From the repository root:
 
 ```sh
-python3 macos/install.py
-open "$HOME/Applications/Sapiens4.app"
+git submodule update --init --recursive
+./blindly4/macos/build.sh
+./macos/build.sh
+open .build/macos/Sapiens4.app
 ```
 
-Before making installation changes, the installer checks Codex's version,
-login and a real **GPT-6 Sol / high** request (or the configured Sapiens4
-overrides). This small model check runs in an isolated temporary directory with
-a read-only sandbox. Failure leaves an existing installation and data intact.
-You can run it independently with `python3 -m sapiens.preflight`.
+Set `SAPIENS_PYTHON` to choose Python. The build records that executable, PATH,
+repository location and data directory. Keep the checkout and Python in place.
+The app starts the local backend when needed; closing or quitting its window
+leaves the backend running so conversations can finish. It installs no login item.
+Right-click the Dock icon → Options → Keep in Dock.
 
-Run the installer with the Python runtime you want the app to use. It records that executable and PATH. Closing or quitting the desktop window leaves the server running so active conversations can finish. Right-click the Dock icon → Options → Keep in Dock. The server starts when the app opens; this does not install a login item.
+Data defaults to the checkout's `.sapiens4` directory. Set `SAPIENS_DATA_DIR` when
+building to retain an existing data location. The backend log is
+`desktop-server.log` inside that directory. Builds do not move or delete data.
 
-For an unmanaged development launcher without update controls, run `./macos/build.sh`; its output is `.build/macos/Sapiens4.app`. Set `SAPIENS_PYTHON` to choose its runtime.
+## Manual version changes
 
-## Updates
+Desktop update checks, update controls, managed installation, and automatic
+backup/rollback are removed. Build and open each new version manually. The
+app is locally ad-hoc signed, not notarized or portable.
 
-The managed app checks `https://github.com/aleski-green/sapiens4.git`, branch `main`, at launch and every hour while the app is running and the Mac is awake. Checking and up-to-date states use no workspace space. An available update shows a compact banner with **Update now** and **Dismiss**; dismissing it stays effective for that revision across checks and launches. Installation progress stays visible until completion, and errors have a dismissible retry banner. **Sapiens4 → Check for Updates…** remains available for manual checks and reveals a previously dismissed update. The Dock uses one static bundle icon with no update badge or runtime icon replacement. Checks do not automatically apply updates.
-
-Click **Update now** once:
-
-The updater builds Blindly4 with Rust and checks its command schema. It probes
-installed macOS SDKs for the Swift desktop build without changing system
-developer-tool settings. Build failures leave the running version intact.
-
-1. Download the advertised main revision into a new release directory, verify Codex version/login/model access, fetch the pinned Blindly4 and libs4 submodules, and build Blindly4. Validate the shipped browser assets. If main includes the compatible desktop build, build and validate that bundle too. Build failures leave the running version alone.
-2. Wait until active and queued work finishes. The update helper can continue waiting if the desktop window closes. Reopening the app shows its persisted progress; an installation lock prevents overlapping updates.
-3. Gracefully stop the owned local backend, retaining its existing data directory. A managed backend keeps host-control available while any run that raced with the idle check finishes. No force kill is used.
-4. Back up the complete stopped state directory, including SQLite/WAL files, AgentPy state, preferences, artifacts and logs.
-5. Start the candidate with its worker and workspace requests held. Verify the local health response and the candidate process identity. Only commit the new release and enable chat processing after verification. The desktop window waits for backend activation before loading or reloading the workspace, so it cannot get stuck showing the temporary verification response.
-6. Restore the previous code and saved state if startup fails before commit. Incomplete transactions are recovered at the next launch/update. Failed candidate state is retained for diagnosis. Recovery clears the rollback journal before restarting workers, so a later helper crash cannot replay that backup over new work. After chat processing has been enabled, automatic data rollback is deliberately avoided because conversations may already have produced external effects.
-7. When main contains desktop sources, atomically exchange the desktop bundles, retain the previous bundle, and show a notice to quit and reopen when convenient. Updates never close or relaunch the desktop automatically. The candidate, staged copy, and installed bundle must pass signature, revision, installation-home, and executable checks. Failed post-exchange verification restores the previous bundle. The desktop revision is recorded separately after both the verified bundle and update helper are installed. Update checks also compare the actual installed revision against the saved record. If this step fails, checking for updates offers **Update now** again even if the backend already matches main. Retrying that revision only installs the desktop app; it does not stop the backend or restore its state. Until those sources land on main, backend/Blindly4 updates preserve the installed wrapper.
-
-The status bar shows the target commit. Checks compare exact revisions, so a rewritten main is also offered as an update. There is no forced reset or deletion of the development checkout. Updates execute code from the configured upstream after your click, using your normal account permissions.
-
-## Locations and preservation
-
-- App: `~/Applications/Sapiens4.app`
-- Managed releases, current-version pointer, update status, backups and logs: `~/Library/Application Support/Sapiens4/`
-- Data: the existing repository's `.sapiens4` directory, recorded explicitly in the managed `config.json`. Keeping this path preserves existing absolute artifact references. It is outside all replaceable release directories. Do not delete or move that data directory.
-- Logs: managed `desktop-server.log` and `updater.log`.
-
-The first install snapshots the current checkout and pinned Blindly4 submodule into an independent release. A server already running from the original checkout is reused until the first approved update or a later cold start. Reinstallation preserves the managed release pointer and saved data. After every managed app launch and successful installation or update, generated build files are removed from the original source checkout and all managed releases. Cleanup covers compiler module caches, Swift object files and build metadata, and generated desktop icon files. App bundles, Blindly executables (including SwiftPM aliases), source files, saved data, browser sessions, releases and backups are retained. Cleanup never follows directory symlinks and a cleanup failure is logged without blocking startup or an otherwise successful update. Failed installations retain their build files until the next successful install/update or launch. This does not clear global system caches or automatically delete test reports and screenshots.
-
-The recorded Python executable must remain installed. The app is locally ad-hoc signed, not notarized or portable. Native file selection, normal editing shortcuts and external links are supported. Chat links open in native workspace tabs; other shell links open in the default browser. Workspace WebKit tabs do not inherit browser sign-ins. Tabs support URLs, local files, bookmarks, back/forward, reload and per-tab zoom. Plain text follows the app theme, using black in dark mode. The Dock icon is rendered from the exact favicon SVG in `web/shell/bootstrap.js`.
-
-## Verification
+For an existing managed installation, first let active work finish, quit the old
+app, and gracefully stop its backend before opening the replacement. Reuse the
+exact data directory recorded by the old installation:
 
 ```sh
-ruby libs4/ruby/bundle.rb exec rspec spec/updater_spec.rb spec/platform_spec.rb
-codesign --verify --strict .build/macos/Sapiens4.app
-plutil -lint .build/macos/Sapiens4.app/Contents/Info.plist
+SAPIENS_DATA_DIR="$(python3 -c 'import json,pathlib; print(json.loads((pathlib.Path.home()/"Library/Application Support/Sapiens4/config.json").read_text())["data"])')" ./macos/build.sh
+open .build/macos/Sapiens4.app
 ```
 
-RSpec contracts cover notification-only checks, malformed revisions, waiting for active work, unrelated-app refusal, cache cleanup, failed builds, state backup/restore, committed-transaction recovery, atomic bundle recovery, and a real backend held until activation. They use temporary installations and mocked external build/model executables. See [test setup and coverage limits](../documentation/testing.md). A full GitHub update smoke check should also use a separate port and disposable data; never interrupt a user's active conversations just to test the updater.
+Keep the old data directory and backups. The new build does not read or modify
+old managed releases, and an old Dock shortcut still opens the old app; pin the
+new app instead. Never run two backends against the same data directory.
+
+## Workspace and verification
+
+Native tabs support links, local files, bookmarks, back/forward, reload and zoom.
+WebKit tabs keep their own browser sessions. File selection, editing shortcuts,
+external links, themes and the favicon-derived Dock icon remain available.
+
+```sh
+ruby libs4/ruby/bundle.rb exec rspec spec/distribution_spec.rb spec/platform_spec.rb
+codesign --verify --strict .build/macos/Sapiens4.app
+```
+
+Tests use temporary data and controlled model executables; see
+[coverage and platform requirements](../documentation/testing.md).

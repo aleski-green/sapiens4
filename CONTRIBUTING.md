@@ -35,10 +35,8 @@ clock, path, prompt and validation primitives independent of their consumers.
 Review changes against these boundaries; tests exercise public behavior rather
 than asserting the names, shape, or import graph of private implementation code.
 
-`sapiens/assets.py`, `service.py`, and `server.py` are public compatibility
-entrypoints for already-installed macOS updaters and rollback. Keep them as small
-re-exports; new code imports `corpora/host/` directly. Persistent `agentpy/` data
-paths remain unchanged even though the old Python package is removed.
+Import host modules from `sapiens/corpora/host/` directly. Persistent `agentpy/`
+data paths remain unchanged even though the old Python package is removed.
 
 ## Third-party dependencies
 
@@ -56,7 +54,7 @@ directory as separate, descriptively named `.md` files, such as
 
 Application code must load these files instead of embedding prompt text in source
 code. This includes system instructions, prompt prefixes/suffixes, reference
-wrappers, and installer model-check prompts. Dynamic values may be inserted using
+wrappers. Dynamic values may be inserted using
 template placeholders; user messages, Notes contents, and generated state are data,
 not hardcoded prompts.
 
@@ -67,10 +65,10 @@ Do not add Python tests, a Python test runner, or a Python bridge that exposes
 private application objects to Ruby. See [Testing](documentation/testing.md) for
 setup, the migration map, platform probes, and known coverage limits.
 
-Exercise real service, CLI, relay, installer, and desktop entrypoints. Assert
+Exercise real service, relay, build, and desktop entrypoints. Assert
 HTTP responses, process output and exit codes, user-visible files, persistence,
 permissions, and recovery. Control the environment at external boundaries:
-model executables, network peers, build tools, and saved installation fixtures.
+model executables, network peers, and saved installation fixtures.
 Never contact a paid model or use the developer's live installation in tests.
 
 The purpose of using Ruby is to make implementation-coupled testing harder and

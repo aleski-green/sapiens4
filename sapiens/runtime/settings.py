@@ -10,7 +10,6 @@ import sys
 from sapiens.runtime.contracts import RUN_TIMEOUT_SECONDS
 
 
-MIN_CODEX_VERSION = (0, 156, 1)
 DEFAULT_MODEL = 'gpt-6-sol'
 DEFAULT_REASONING = 'high'
 
