@@ -1,0 +1,266 @@
+[
+  {
+    "id": "notes.dom.test.cjs:13:1",
+    "expression": "root.querySelector('.memo-header h1')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "notes.dom.test.cjs:14:2",
+    "expression": "root.querySelector('h2').textContent",
+    "matcher": "equal",
+    "expected": "Topic"
+  },
+  {
+    "id": "notes.dom.test.cjs:15:3",
+    "expression": "root.querySelector('blockquote').textContent",
+    "matcher": "equal",
+    "expected": "Recorded evidence."
+  },
+  {
+    "id": "notes.dom.test.cjs:16:4",
+    "expression": "root.querySelector('.memo-avatar').textContent",
+    "matcher": "equal",
+    "expected": "(¬o¬)"
+  },
+  {
+    "id": "notes.dom.test.cjs:17:5",
+    "expression": "root.querySelector('.memo-avatar').style.backgroundColor",
+    "matcher": "equal",
+    "expected": "rgb(219, 208, 247)"
+  },
+  {
+    "id": "notes.dom.test.cjs:18:6",
+    "expression": "root.querySelector('.memo-infobox').textContent.includes(value)",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "notes.dom.test.cjs:18:6",
+    "expression": "root.querySelector('.memo-infobox').textContent.includes(value)",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "notes.dom.test.cjs:18:6",
+    "expression": "root.querySelector('.memo-infobox').textContent.includes(value)",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "notes.dom.test.cjs:19:7",
+    "expression": "root.querySelector('time').dateTime",
+    "matcher": "equal",
+    "expected": "2026-10-01T20:30:00+00:00"
+  },
+  {
+    "id": "notes.dom.test.cjs:20:8",
+    "expression": "root.querySelector('.memo-meta').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Created at not recorded",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.dom.test.cjs:21:9",
+    "expression": "root.querySelector('[data-note-anchor]').dataset.noteAnchor",
+    "matcher": "equal",
+    "expected": "note-source"
+  },
+  {
+    "id": "notes.dom.test.cjs:22:10",
+    "expression": "root.querySelector('img').getAttribute('src')",
+    "matcher": "equal",
+    "expected": "/api/agents/sapi_test/notes?image=image.png"
+  },
+  {
+    "id": "notes.dom.test.cjs:23:11",
+    "expression": "root.querySelector('script,[onclick],[href^=\"javascript:\"]')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "notes.dom.test.cjs:25:12",
+    "expression": "root.querySelector('details')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "notes.dom.test.cjs:26:13",
+    "expression": "root.querySelector('pre')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "notes.dom.test.cjs:27:14",
+    "expression": "root.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Admin requested a white background",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.dom.test.cjs:28:15",
+    "expression": "root.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Exact font is unknown",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.dom.test.cjs:29:16",
+    "expression": "root.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "A literal line.\\nAnother line.",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.dom.test.cjs:30:17",
+    "expression": "root.querySelector('#note-fact')",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "notes.dom.test.cjs:32:18",
+    "expression": "root.querySelector('.memo-stub')",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "notes.dom.test.cjs:33:19",
+    "expression": "root.querySelector('.memo-toc')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "notes.dom.test.cjs:34:20",
+    "expression": "root.textContent",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "\\*\\*\\*",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.dom.test.cjs:35:21",
+    "expression": "root.querySelector('#note-topic')",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "notes.dom.test.cjs:36:22",
+    "expression": "()=>render(wrap('<p id=\"about\">Duplicate</p>'))",
+    "matcher": "throws",
+    "expected": {
+      "source": "unique",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.dom.test.cjs:37:23",
+    "expression": "()=>render('<section id=\"content\"></section>')",
+    "matcher": "throws",
+    "expected": {
+      "source": "three sections",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.dom.test.cjs:40:24",
+    "expression": "root.querySelector('pre code').textContent",
+    "matcher": "equal",
+    "expected": "&anchor [one, two]"
+  },
+  {
+    "id": "notes.dom.test.cjs:43:25",
+    "expression": "root.querySelector('#'+a.dataset.noteAnchor)",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "notes.dom.test.cjs:43:25",
+    "expression": "root.querySelector('#'+a.dataset.noteAnchor)",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "notes.dom.test.cjs:43:25",
+    "expression": "root.querySelector('#'+a.dataset.noteAnchor)",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "notes.dom.test.cjs:43:25",
+    "expression": "root.querySelector('#'+a.dataset.noteAnchor)",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "notes.dom.test.cjs:43:25",
+    "expression": "root.querySelector('#'+a.dataset.noteAnchor)",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "notes.dom.test.cjs:43:25",
+    "expression": "root.querySelector('#'+a.dataset.noteAnchor)",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "notes.dom.test.cjs:46:26",
+    "expression": "groupMemo.querySelector('img').getAttribute('src')",
+    "matcher": "equal",
+    "expected": "/api/groups/group_test/notes?image=chart.png"
+  },
+  {
+    "id": "notes.dom.test.cjs:47:27",
+    "expression": "groupMemo.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Group ID",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.dom.test.cjs:51:28",
+    "expression": "root.querySelector('.memo-infobox').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "ChiefFull nameTest SapiRole1st directorAssistsAdmin",
+      "flags": ""
+    }
+  },
+  {
+    "id": "notes.dom.test.cjs:52:29",
+    "expression": "root.querySelector('.memo-toc a').textContent",
+    "matcher": "equal",
+    "expected": "Working with Admin"
+  },
+  {
+    "id": "notes.dom.test.cjs:53:30",
+    "expression": "root.querySelector('.citation')",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "notes.dom.test.cjs:54:31",
+    "expression": "root.querySelector('.references')",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "notes.dom.test.cjs:64:32",
+    "expression": "workMemo.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Shared navigation preserves personal Memo",
+      "flags": ""
+    }
+  }
+]

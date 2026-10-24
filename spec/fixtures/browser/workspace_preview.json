@@ -1,0 +1,80 @@
+[
+  {
+    "id": "workspace_preview.test.cjs:14:1",
+    "expression": "requests.length",
+    "matcher": "equal",
+    "expected": 1
+  },
+  {
+    "id": "workspace_preview.test.cjs:14:2",
+    "expression": "requests[0].url",
+    "matcher": "match",
+    "expected": {
+      "source": "sapi_one\\/browser\\/file1\\/content",
+      "flags": ""
+    }
+  },
+  {
+    "id": "workspace_preview.test.cjs:16:3",
+    "expression": "pre.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "<script>",
+      "flags": ""
+    }
+  },
+  {
+    "id": "workspace_preview.test.cjs:16:4",
+    "expression": "pre.querySelector('script')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "workspace_preview.test.cjs:17:5",
+    "expression": "requests.length",
+    "matcher": "equal",
+    "expected": 1
+  },
+  {
+    "id": "workspace_preview.test.cjs:17:6",
+    "expression": "window.document.querySelector('.workspace-text')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "workspace_preview.test.cjs:18:7",
+    "expression": "pre.textContent",
+    "matcher": "equal",
+    "expected": "Joke one\nJoke two"
+  },
+  {
+    "id": "workspace_preview.test.cjs:20:8",
+    "expression": "window.document.querySelector('.workspace-text').textContent",
+    "matcher": "equal",
+    "expected": "Other file"
+  },
+  {
+    "id": "workspace_preview.test.cjs:21:9",
+    "expression": "window.document.querySelector('.workspace-text').textContent",
+    "matcher": "equal",
+    "expected": "File not found"
+  },
+  {
+    "id": "workspace_preview.test.cjs:22:10",
+    "expression": "requests.length",
+    "matcher": "equal",
+    "expected": 5
+  },
+  {
+    "id": "workspace_preview.test.cjs:23:11",
+    "expression": "window.document.querySelector('#workspace-content').textContent",
+    "matcher": "equal",
+    "expected": ""
+  },
+  {
+    "id": "workspace_preview.test.cjs:23:12",
+    "expression": "requests.length",
+    "matcher": "equal",
+    "expected": 5
+  }
+]

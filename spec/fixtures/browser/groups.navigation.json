@@ -1,0 +1,2819 @@
+[
+  {
+    "id": "groups.navigation.test.cjs:17:2",
+    "expression": "initial.scope",
+    "matcher": "equal",
+    "expected": "groups"
+  },
+  {
+    "id": "groups.navigation.test.cjs:17:3",
+    "expression": "initial.groupView",
+    "matcher": "equal",
+    "expected": "g"
+  },
+  {
+    "id": "groups.navigation.test.cjs:18:4",
+    "expression": "window.document.querySelector('[data-scope=groups].group-open')",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:19:5",
+    "expression": "[...window.document.querySelectorAll('.agent-row')].map(e=>e.dataset.agent)",
+    "matcher": "deepEqual",
+    "expected": [
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "groups.navigation.test.cjs:20:6",
+    "expression": "window.document.querySelectorAll('.group-roster').length",
+    "matcher": "equal",
+    "expected": 0
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:21:7",
+    "expression": "initial.selected",
+    "matcher": "equal",
+    "expected": "g"
+  },
+  {
+    "id": "groups.navigation.test.cjs:21:8",
+    "expression": "initial.groupView",
+    "matcher": "equal",
+    "expected": "g"
+  },
+  {
+    "id": "groups.navigation.test.cjs:23:9",
+    "expression": "draft.value",
+    "matcher": "equal",
+    "expected": "@Member "
+  },
+  {
+    "id": "groups.navigation.test.cjs:24:10",
+    "expression": "window.document.querySelector('.agent-row-copy p').textContent",
+    "matcher": "equal",
+    "expected": "Lead · Test"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:26:11",
+    "expression": "draft.value",
+    "matcher": "equal",
+    "expected": "@Lead Review this"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:27:12",
+    "expression": "draft.value",
+    "matcher": "equal",
+    "expected": "@Lead Review this"
+  },
+  {
+    "id": "groups.navigation.test.cjs:28:13",
+    "expression": "initial.drafts.g",
+    "matcher": "equal",
+    "expected": "@Lead Review this"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:31:14",
+    "expression": "initial.selected",
+    "matcher": "equal",
+    "expected": "b"
+  },
+  {
+    "id": "groups.navigation.test.cjs:31:15",
+    "expression": "initial.groupView",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:31:16",
+    "expression": "initial.scope",
+    "matcher": "equal",
+    "expected": "all"
+  },
+  {
+    "id": "groups.navigation.test.cjs:31:17",
+    "expression": "initial.panel",
+    "matcher": "equal",
+    "expected": "chat"
+  },
+  {
+    "id": "groups.navigation.test.cjs:32:18",
+    "expression": "initial.drafts.g",
+    "matcher": "equal",
+    "expected": "@Lead Review this"
+  },
+  {
+    "id": "groups.navigation.test.cjs:32:19",
+    "expression": "draft.value",
+    "matcher": "equal",
+    "expected": ""
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:34:20",
+    "expression": "initial.selected",
+    "matcher": "equal",
+    "expected": "a"
+  },
+  {
+    "id": "groups.navigation.test.cjs:34:21",
+    "expression": "initial.groupView",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:34:22",
+    "expression": "initial.scope",
+    "matcher": "equal",
+    "expected": "all"
+  },
+  {
+    "id": "groups.navigation.test.cjs:37:23",
+    "expression": "window.document.querySelector('.group-chip').textContent",
+    "matcher": "equal",
+    "expected": "R★"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:38:24",
+    "expression": "initial.selected",
+    "matcher": "equal",
+    "expected": "chief"
+  },
+  {
+    "id": "groups.navigation.test.cjs:38:25",
+    "expression": "initial.groupView",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:38:26",
+    "expression": "initial.scope",
+    "matcher": "equal",
+    "expected": "groups"
+  },
+  {
+    "id": "groups.navigation.test.cjs:39:27",
+    "expression": "[...window.document.querySelectorAll('.agent-row')].map(e=>e.dataset.agent)",
+    "matcher": "deepEqual",
+    "expected": [
+      "g"
+    ]
+  },
+  {
+    "id": "groups.navigation.test.cjs:40:28",
+    "expression": "window.document.querySelector('.group-row .group-chip').textContent",
+    "matcher": "equal",
+    "expected": "2"
+  },
+  {
+    "id": "groups.navigation.test.cjs:41:29",
+    "expression": "window.document.querySelector('.group-row small')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:42:30",
+    "expression": "window.document.querySelector('[data-action=archived-groups]')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:43:31",
+    "expression": "initial.selected",
+    "matcher": "equal",
+    "expected": "chief"
+  },
+  {
+    "id": "groups.navigation.test.cjs:43:32",
+    "expression": "initial.scope",
+    "matcher": "equal",
+    "expected": "all"
+  },
+  {
+    "id": "groups.navigation.test.cjs:43:33",
+    "expression": "initial.groupView",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:43:31",
+    "expression": "initial.selected",
+    "matcher": "equal",
+    "expected": "chief"
+  },
+  {
+    "id": "groups.navigation.test.cjs:43:32",
+    "expression": "initial.scope",
+    "matcher": "equal",
+    "expected": "sapis"
+  },
+  {
+    "id": "groups.navigation.test.cjs:43:33",
+    "expression": "initial.groupView",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:44:34",
+    "expression": "initial.selected",
+    "matcher": "equal",
+    "expected": "g"
+  },
+  {
+    "id": "groups.navigation.test.cjs:44:35",
+    "expression": "initial.groupView",
+    "matcher": "equal",
+    "expected": "g"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:46:36",
+    "expression": "initial.selected",
+    "matcher": "equal",
+    "expected": "chief"
+  },
+  {
+    "id": "groups.navigation.test.cjs:46:37",
+    "expression": "initial.scope",
+    "matcher": "equal",
+    "expected": "all"
+  },
+  {
+    "id": "groups.navigation.test.cjs:46:38",
+    "expression": "input.value",
+    "matcher": "equal",
+    "expected": "create: sapi or group of sapis\nto work on: WORKFLOW"
+  },
+  {
+    "id": "groups.navigation.test.cjs:47:39",
+    "expression": "input.value.slice(input.selectionStart,input.selectionEnd)",
+    "matcher": "equal",
+    "expected": "WORKFLOW"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:48:40",
+    "expression": "input.value",
+    "matcher": "equal",
+    "expected": "My unfinished request"
+  },
+  {
+    "id": "groups.navigation.test.cjs:49:41",
+    "expression": "window.document.querySelector('#live-agent-form')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:51:42",
+    "expression": "initial.scope",
+    "matcher": "equal",
+    "expected": "all"
+  },
+  {
+    "id": "groups.navigation.test.cjs:51:43",
+    "expression": "window.document.querySelector('[data-scope=groups]').disabled",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:52:44",
+    "expression": "initial.scope",
+    "matcher": "equal",
+    "expected": "all"
+  },
+  {
+    "id": "groups.navigation.test.cjs:53:45",
+    "expression": "window.document.querySelector('[data-scope=groups]').disabled",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:61:46",
+    "expression": "initial.panel",
+    "matcher": "equal",
+    "expected": "work"
+  },
+  {
+    "id": "groups.navigation.test.cjs:61:47",
+    "expression": "window.document.querySelector('[data-activity-view=tasks]').getAttribute('aria-pressed')",
+    "matcher": "equal",
+    "expected": "true"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:62:48",
+    "expression": "initial.panel",
+    "matcher": "equal",
+    "expected": "chat"
+  },
+  {
+    "id": "groups.navigation.test.cjs:62:49",
+    "expression": "input.value",
+    "matcher": "equal",
+    "expected": "Add New Task: TODO"
+  },
+  {
+    "id": "groups.navigation.test.cjs:62:50",
+    "expression": "input.value.slice(input.selectionStart,input.selectionEnd)",
+    "matcher": "equal",
+    "expected": "TODO"
+  },
+  {
+    "id": "groups.navigation.test.cjs:62:51",
+    "expression": "initial.drafts[id]",
+    "matcher": "equal",
+    "expected": "Add New Task: TODO"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:63:52",
+    "expression": "input.value",
+    "matcher": "equal",
+    "expected": "Keep this\n\nAdd New Task: TODO"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:64:53",
+    "expression": "window.document.querySelector('select[data-work-filter]')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:66:54",
+    "expression": "window.document.querySelectorAll('[data-panel]').length",
+    "matcher": "equal",
+    "expected": 3
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:67:55",
+    "expression": "menu.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:68:56",
+    "expression": "window.document.querySelector('#activity-work-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:68:57",
+    "expression": "menu.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:69:58",
+    "expression": "window.document.querySelector('#activity-automation-menu').hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:70:59",
+    "expression": "menu.querySelector('.activity-submenu .activity-submenu')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:71:60",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Agentic is not available",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:72:61",
+    "expression": "window.document.querySelector('#activity-work-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "No (planned|paused) routines",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:86:68",
+    "expression": "window.document.querySelector('#activity-viewbar').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Automation \\/ Routines \\/Scheduled",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:87:69",
+    "expression": "window.document.querySelector('#activity-viewbar').querySelectorAll('button[data-activity-menu]').length",
+    "matcher": "equal",
+    "expected": 2
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:89:70",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "No planned routines",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:91:71",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "No paused routines",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:92:72",
+    "expression": "initial.panel",
+    "matcher": "equal",
+    "expected": "chat"
+  },
+  {
+    "id": "groups.navigation.test.cjs:92:73",
+    "expression": "input.value",
+    "matcher": "equal",
+    "expected": "Add New Scheduled Routine:\nFrequency: every XXX minutes\nExecute: PROMPT"
+  },
+  {
+    "id": "groups.navigation.test.cjs:92:74",
+    "expression": "input.value.slice(input.selectionStart,input.selectionEnd)",
+    "matcher": "equal",
+    "expected": "XXX"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:93:75",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:96:76",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:96:76",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:98:77",
+    "expression": "window.document.querySelector('[data-activity-view=memo]').getAttribute('aria-pressed')",
+    "matcher": "equal",
+    "expected": "true"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:99:78",
+    "expression": "initial.panel",
+    "matcher": "equal",
+    "expected": "chat"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:100:79",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Pins are not available",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:102:80",
+    "expression": "window.document.activeElement.dataset.activityView",
+    "matcher": "equal",
+    "expected": "pins"
+  },
+  {
+    "id": "groups.navigation.test.cjs:103:81",
+    "expression": "window.document.querySelector('#activity-chat-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:104:82",
+    "expression": "input.value",
+    "matcher": "equal",
+    "expected": "Keep this draft\n\nFeedback: "
+  },
+  {
+    "id": "groups.navigation.test.cjs:104:83",
+    "expression": "initial.drafts[id]",
+    "matcher": "equal",
+    "expected": "Keep this draft\n\nFeedback: "
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:105:84",
+    "expression": "window.document.querySelector('[data-activity-view=tasks]').getAttribute('aria-pressed')",
+    "matcher": "equal",
+    "expected": "true"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:61:46",
+    "expression": "initial.panel",
+    "matcher": "equal",
+    "expected": "work"
+  },
+  {
+    "id": "groups.navigation.test.cjs:61:47",
+    "expression": "window.document.querySelector('[data-activity-view=tasks]').getAttribute('aria-pressed')",
+    "matcher": "equal",
+    "expected": "true"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:62:48",
+    "expression": "initial.panel",
+    "matcher": "equal",
+    "expected": "chat"
+  },
+  {
+    "id": "groups.navigation.test.cjs:62:49",
+    "expression": "input.value",
+    "matcher": "equal",
+    "expected": "Add New Task: TODO"
+  },
+  {
+    "id": "groups.navigation.test.cjs:62:50",
+    "expression": "input.value.slice(input.selectionStart,input.selectionEnd)",
+    "matcher": "equal",
+    "expected": "TODO"
+  },
+  {
+    "id": "groups.navigation.test.cjs:62:51",
+    "expression": "initial.drafts[id]",
+    "matcher": "equal",
+    "expected": "Add New Task: TODO"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:63:52",
+    "expression": "input.value",
+    "matcher": "equal",
+    "expected": "Keep this\n\nAdd New Task: TODO"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:64:53",
+    "expression": "window.document.querySelector('select[data-work-filter]')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:66:54",
+    "expression": "window.document.querySelectorAll('[data-panel]').length",
+    "matcher": "equal",
+    "expected": 3
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:67:55",
+    "expression": "menu.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:68:56",
+    "expression": "window.document.querySelector('#activity-work-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:68:57",
+    "expression": "menu.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:69:58",
+    "expression": "window.document.querySelector('#activity-automation-menu').hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:70:59",
+    "expression": "menu.querySelector('.activity-submenu .activity-submenu')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:71:60",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Agentic is not available",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:72:61",
+    "expression": "window.document.querySelector('#activity-work-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "No (planned|paused) routines",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:77:62",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:63",
+    "expression": "window.document.querySelector('#activity-category-menu')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:78:64",
+    "expression": "dropdown.hidden",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:80:65",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:81:66",
+    "expression": "window.document.querySelector('#activity-category-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:82:67",
+    "expression": "window.document.querySelectorAll('[id]').length",
+    "matcher": "unique",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:86:68",
+    "expression": "window.document.querySelector('#activity-viewbar').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Automation \\/ Routines \\/Scheduled",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:87:69",
+    "expression": "window.document.querySelector('#activity-viewbar').querySelectorAll('button[data-activity-menu]').length",
+    "matcher": "equal",
+    "expected": 2
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:89:70",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "No planned routines",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:91:71",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "No paused routines",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:92:72",
+    "expression": "initial.panel",
+    "matcher": "equal",
+    "expected": "chat"
+  },
+  {
+    "id": "groups.navigation.test.cjs:92:73",
+    "expression": "input.value",
+    "matcher": "equal",
+    "expected": "Add New Scheduled Routine:\nFrequency: every XXX minutes\nExecute: PROMPT"
+  },
+  {
+    "id": "groups.navigation.test.cjs:92:74",
+    "expression": "input.value.slice(input.selectionStart,input.selectionEnd)",
+    "matcher": "equal",
+    "expected": "XXX"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:93:75",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:96:76",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:96:76",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "not available yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:98:77",
+    "expression": "window.document.querySelector('[data-activity-view=memo]').getAttribute('aria-pressed')",
+    "matcher": "equal",
+    "expected": "true"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:99:78",
+    "expression": "initial.panel",
+    "matcher": "equal",
+    "expected": "chat"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:100:79",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Pins are not available",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:102:80",
+    "expression": "window.document.activeElement.dataset.activityView",
+    "matcher": "equal",
+    "expected": "pins"
+  },
+  {
+    "id": "groups.navigation.test.cjs:103:81",
+    "expression": "window.document.querySelector('#activity-chat-menu').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:104:82",
+    "expression": "input.value",
+    "matcher": "equal",
+    "expected": "Keep this draft\n\nFeedback: "
+  },
+  {
+    "id": "groups.navigation.test.cjs:104:83",
+    "expression": "initial.drafts[id]",
+    "matcher": "equal",
+    "expected": "Keep this draft\n\nFeedback: "
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:105:84",
+    "expression": "window.document.querySelector('[data-activity-view=tasks]').getAttribute('aria-pressed')",
+    "matcher": "equal",
+    "expected": "true"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:112:85",
+    "expression": "row",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:113:86",
+    "expression": "row.querySelector('.task-title').textContent",
+    "matcher": "equal",
+    "expected": "Compare <products>"
+  },
+  {
+    "id": "groups.navigation.test.cjs:114:87",
+    "expression": "row.querySelector('code').textContent",
+    "matcher": "equal",
+    "expected": "@routine_sch_00013"
+  },
+  {
+    "id": "groups.navigation.test.cjs:116:88",
+    "expression": "window.document.querySelector('.task-row')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:116:89",
+    "expression": "row.open",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:118:90",
+    "expression": "initial.panel",
+    "matcher": "equal",
+    "expected": "chat"
+  },
+  {
+    "id": "groups.navigation.test.cjs:119:91",
+    "expression": "initial.selected",
+    "matcher": "equal",
+    "expected": "b"
+  },
+  {
+    "id": "groups.navigation.test.cjs:120:92",
+    "expression": "input.value",
+    "matcher": "equal",
+    "expected": "Existing draft\n\n@routine_sch_00013\nRun it now."
+  },
+  {
+    "id": "groups.navigation.test.cjs:121:93",
+    "expression": "initial.drafts.b",
+    "matcher": "equal",
+    "expected": "Existing draft\n\n@routine_sch_00013\nRun it now."
+  },
+  {
+    "id": "groups.navigation.test.cjs:122:94",
+    "expression": "ctx.live.routines[0].runCount",
+    "matcher": "equal",
+    "expected": {
+      "type": "undefined"
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:125:95",
+    "expression": "initial.panel",
+    "matcher": "equal",
+    "expected": "chat"
+  },
+  {
+    "id": "groups.navigation.test.cjs:126:96",
+    "expression": "input.value",
+    "matcher": "equal",
+    "expected": "Edit @routine_sch_00013 ( Compare <products> )\nEdit Frequency (prev every 2 minutes): new every XXX minutes\nEdit Execution Prompt as: Compare A and B.\nKeep details."
+  },
+  {
+    "id": "groups.navigation.test.cjs:127:97",
+    "expression": "input.value.slice(input.selectionStart,input.selectionEnd)",
+    "matcher": "equal",
+    "expected": "XXX"
+  },
+  {
+    "id": "groups.navigation.test.cjs:128:98",
+    "expression": "row.querySelector('.task-reference').textContent",
+    "matcher": "equal",
+    "expected": "@routine_sch_000130/1000"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:131:99",
+    "expression": "initial.panel",
+    "matcher": "equal",
+    "expected": "chat"
+  },
+  {
+    "id": "groups.navigation.test.cjs:132:100",
+    "expression": "input.value",
+    "matcher": "equal",
+    "expected": "Pause Schedule Riutine\n@routine_sch_00013"
+  },
+  {
+    "id": "groups.navigation.test.cjs:133:101",
+    "expression": "ctx.live.routines[0].paused",
+    "matcher": "equal",
+    "expected": {
+      "type": "undefined"
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:136:102",
+    "expression": "window.document.querySelector('.task-row')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:139:103",
+    "expression": "row.querySelector('.task-state').textContent",
+    "matcher": "equal",
+    "expected": "Paused"
+  },
+  {
+    "id": "groups.navigation.test.cjs:140:104",
+    "expression": "row.querySelector('.task-reference').textContent",
+    "matcher": "equal",
+    "expected": "@routine_sch_000131000/1000"
+  },
+  {
+    "id": "groups.navigation.test.cjs:141:105",
+    "expression": "row.querySelector('[data-pause-routine]')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:142:106",
+    "expression": "row.querySelector('[data-edit-routine]')",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:144:107",
+    "expression": "input.value",
+    "matcher": "equal",
+    "expected": "Resume Scheduled Routine\n@routine_sch_00013"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "tasks"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "tasks"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "tasks"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "tasks"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "routine-scheduled"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "tasks"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Executed"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "memo"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "routine-scheduled"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:175:110",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "memo"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "tasks"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "tasks"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "tasks"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "tasks"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "routine-scheduled"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "tasks"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Executed"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "memo"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "routine-scheduled"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:175:110",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "memo"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "memo"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "memo"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "memo"
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "tasks"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Planned"
+  },
+  {
+    "id": "groups.navigation.test.cjs:186:111",
+    "expression": "window.document.querySelector('.task-title').textContent",
+    "matcher": "equal",
+    "expected": "Compare <choices>"
+  },
+  {
+    "id": "groups.navigation.test.cjs:187:112",
+    "expression": "window.document.querySelector('.task-state').textContent",
+    "matcher": "equal",
+    "expected": "Running"
+  },
+  {
+    "id": "groups.navigation.test.cjs:188:113",
+    "expression": "window.document.querySelector('choices')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:190:114",
+    "expression": "window.document.querySelector('.task-row').open",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "tasks"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Executed"
+  },
+  {
+    "id": "groups.navigation.test.cjs:192:115",
+    "expression": "window.document.querySelector('.task-result').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Member result",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "tasks"
+  },
+  {
+    "id": "groups.navigation.test.cjs:152:109",
+    "expression": "window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim()",
+    "matcher": "equal",
+    "expected": "Executed"
+  },
+  {
+    "id": "groups.navigation.test.cjs:194:116",
+    "expression": "window.document.querySelector('.task-error').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Provider failed",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:196:117",
+    "expression": "ctx.groupCallTasks(group).length",
+    "matcher": "equal",
+    "expected": 1
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:151:108",
+    "expression": "vm.runInContext('workView',ctx)",
+    "matcher": "equal",
+    "expected": "memo"
+  },
+  {
+    "id": "groups.navigation.test.cjs:198:118",
+    "expression": "window.document.querySelector('#conversation-body').textContent",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "Compare <choices>|Member result",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:203:119",
+    "expression": "updatesMenu.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Events",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:203:120",
+    "expression": "updatesMenu.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "Records",
+      "flags": ""
+    }
+  },
+  {
+    "id": "groups.navigation.test.cjs:204:121",
+    "expression": "updatesMenu.querySelector('button[disabled]').textContent",
+    "matcher": "equal",
+    "expected": "Records"
+  },
+  {
+    "id": "groups.navigation.test.cjs:205:122",
+    "expression": "updatesMenu.querySelector('[data-activity-view=pulses]')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "groups.navigation.test.cjs:16:1",
+    "expression": "e",
+    "matcher": "ok",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:208:123",
+    "expression": "window.document.querySelector('#activity-viewbar').hidden",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "groups.navigation.test.cjs:209:124",
+    "expression": "window.document.querySelector('#activity-viewbar').textContent",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "Latest 100",
+      "flags": ""
+    }
+  }
+]

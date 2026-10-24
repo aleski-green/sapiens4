@@ -409,7 +409,7 @@ updated private relay connection file and pair again after changing hostnames;
 browser trust does not transfer across origins.
 
 The relay serves a standalone web app manifest and 180/192/512-pixel icons derived
-from the existing workspace favicon in `web/shell/bootstrap.js`. The **Add to Home
+from the existing workspace favicon in `web/shell/favicon.svg`. The **Add to Home
 Screen** card opens the browser's installation prompt when available, otherwise a
 three-page guide. In Safari, use Share (inside the page menu in the compact layout), choose
 **Add to Home Screen**, leave **Open as Web App** on, and tap **Add**. The app opens

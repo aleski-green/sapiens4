@@ -16,7 +16,7 @@ async function boot(snapshot){
  host.getBoundingClientRect=()=>({top:0,bottom:200});
  w.HTMLElement.prototype.getBoundingClientRect=function(){const i=[...host.children].indexOf(this);return {top:i*100-position,bottom:(i+1)*100-position};};
  w.SapiensConnections={initial:Promise.resolve(snapshot),connected:true,generation:0,remote:true,save:p=>{saved=JSON.parse(JSON.stringify(p));},snapshot(){},subscribe:fn=>{subscriber=fn;fn(snapshot);},fetch:async()=>({ok:true,json:async()=>full})};
- await w.eval('(async()=>{'+scripts+'})()');
+ w.eval(scripts);await w.SapiensReady;
  return {dom,w,d,host,layout,get saved(){return saved;},live(){subscriber({...full,preferences:saved});},bookmark(){w.dispatchEvent(new w.Event('pagehide'));},visible(){const n=[...host.children].find(n=>n.dataset.chatKey&&n.getBoundingClientRect().bottom>0);return {text:n?.textContent,offset:n?.getBoundingClientRect().top};}};
 }
 (async()=>{

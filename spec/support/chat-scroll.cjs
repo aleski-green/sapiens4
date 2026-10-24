@@ -22,7 +22,7 @@ const copy=()=>JSON.parse(JSON.stringify(snapshot));
  w.SapiensConnections={initial:Promise.resolve(copy()),connected:true,generation:0,remote:true,active:{location:'Remote'},save(){},snapshot(){},
    subscribe(fn){subscriber=fn;fn(copy());},fetch:async()=>({ok:true,json:async()=>copy()})};
  const scripts=[...read('sapiens/corpora/host/assets.py').split('SCRIPTS = (')[1].split(')')[0].matchAll(/"([^"]+\.js)"/g)].map(m=>read('web/'+m[1])).join('\n');
- await w.eval('(async()=>{'+scripts+'})()');
+ w.eval(scripts);await w.SapiensReady;
  const host=d.querySelector('#conversation-body');
  // Layout boundary: JSDOM has no layout. Simulate fixed-height rows and count
  // scroll writes separately from the real browser visual check.

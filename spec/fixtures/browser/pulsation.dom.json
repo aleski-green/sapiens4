@@ -1,0 +1,107 @@
+[
+  {
+    "id": "pulsation.dom.test.cjs:16:1",
+    "expression": "host.querySelectorAll('details').length",
+    "matcher": "equal",
+    "expected": 2
+  },
+  {
+    "id": "pulsation.dom.test.cjs:17:2",
+    "expression": "host.querySelector('pre')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "pulsation.dom.test.cjs:19:3",
+    "expression": "JSON.parse(row.querySelector('pre').textContent).frequency",
+    "matcher": "equal",
+    "expected": "bph60"
+  },
+  {
+    "id": "pulsation.dom.test.cjs:20:4",
+    "expression": "host.querySelector('details')",
+    "matcher": "identity",
+    "expected": null
+  },
+  {
+    "id": "pulsation.dom.test.cjs:22:5",
+    "expression": "host.querySelector('[data-event=\"1\"]').open",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "pulsation.dom.test.cjs:23:6",
+    "expression": "host.querySelectorAll('pre').length",
+    "matcher": "equal",
+    "expected": 1
+  },
+  {
+    "id": "pulsation.dom.test.cjs:24:7",
+    "expression": "host.querySelector('time').textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "09 Oct \\d{2}:10 00s \\.047",
+      "flags": ""
+    }
+  },
+  {
+    "id": "pulsation.dom.test.cjs:25:8",
+    "expression": "host.textContent",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "PRIVATE MESSAGE",
+      "flags": ""
+    }
+  },
+  {
+    "id": "pulsation.dom.test.cjs:26:9",
+    "expression": "host.textContent",
+    "matcher": "match",
+    "expected": {
+      "source": "No events yet",
+      "flags": ""
+    }
+  },
+  {
+    "id": "pulsation.dom.test.cjs:28:10",
+    "expression": "host.querySelector('img')",
+    "matcher": "equal",
+    "expected": null
+  },
+  {
+    "id": "pulsation.dom.test.cjs:29:11",
+    "expression": "host.querySelectorAll('details').length",
+    "matcher": "equal",
+    "expected": 100
+  },
+  {
+    "id": "pulsation.dom.test.cjs:30:12",
+    "expression": "host.querySelectorAll('details').length",
+    "matcher": "equal",
+    "expected": 1
+  },
+  {
+    "id": "pulsation.dom.test.cjs:30:13",
+    "expression": "host.querySelector('details').open",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "pulsation.dom.test.cjs:33:14",
+    "expression": "window.document.querySelector('.send-button').disabled",
+    "matcher": "equal",
+    "expected": false
+  },
+  {
+    "id": "pulsation.dom.test.cjs:34:15",
+    "expression": "window.document.querySelector('.send-button').disabled",
+    "matcher": "equal",
+    "expected": true
+  },
+  {
+    "id": "pulsation.dom.test.cjs:43:16",
+    "expression": "ctx.state.messages.a.filter(m=>m.role==='assistant').map(m=>m.text).join(',')",
+    "matcher": "equal",
+    "expected": "Earlier,Later"
+  }
+]

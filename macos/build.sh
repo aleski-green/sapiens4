@@ -13,15 +13,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$BUILD/AppIcon.iconset
 "$PYTHON" -c 'import sys; assert sys.version_info >= (3, 9), "Python 3.9+ required"'
 xcrun swiftc -module-cache-path "$BUILD/module-cache" -O -framework Cocoa -framework WebKit "$ROOT/macos/Sapiens4.swift" "$ROOT/macos/Browser.swift" "$ROOT/macos/NavigationPolicy.swift" "$ROOT/macos/ServerReadiness.swift" -o "$APP/Contents/MacOS/Sapiens4"
 xcrun swiftc -module-cache-path "$BUILD/module-cache" -framework Cocoa "$ROOT/macos/icon.swift" -o "$BUILD/make-icon"
-# Extract the browser favicon so the desktop icon cannot drift from its source.
-"$PYTHON" - "$ROOT/web/shell/bootstrap.js" "$BUILD/favicon.svg" <<'PYICON'
-import pathlib, re, sys
-source = pathlib.Path(sys.argv[1]).read_text()
-match = re.search(r"encodeURIComponent\('(<svg[^\n]+</svg>)'\)", source)
-if not match:
-    raise SystemExit("Workspace favicon SVG was not found in web/shell/bootstrap.js")
-pathlib.Path(sys.argv[2]).write_text(match.group(1))
-PYICON
+# The web bundle and native icons share one SVG asset.
+cp "$ROOT/web/shell/favicon.svg" "$BUILD/favicon.svg"
 "$BUILD/make-icon" "$BUILD/AppIcon.iconset" "$BUILD/favicon.svg"
 iconutil -c icns "$BUILD/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
 "$PYTHON" - "$APP" "$ROOT" "$PYTHON" "$PATH" <<'PY'

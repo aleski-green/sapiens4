@@ -15,7 +15,8 @@ git submodule update --init --recursive
 ruby libs4/ruby/bundle.rb install
 python3 -m venv libs4/python/.venv
 libs4/python/.venv/bin/python -m pip install -r libs4/python/remote-requirements.txt
-npm ci --prefix libs4 --ignore-scripts
+npm ci --prefix libs4
+node web/shell/build.cjs
 ruby libs4/ruby/bundle.rb exec rspec
 ```
 
@@ -88,10 +89,23 @@ nodes and arbitrary synthetic pulse-clock jitter are also no longer inspected. T
 exhaust the model deadline. These are explicit limits, not claims of identical
 line or branch coverage.
 
-Existing JavaScript and Swift/C# harnesses remain platform probes called from
-RSpec. Some legacy probes still contain their original assertions. New behavior
-cases and assertions belong in RSpec; runtime-specific helpers should expose
-actions and observations. Blindly4 is an external Rust submodule with its own permission-free RSpec
+PureScript browser assets are rebuilt by `node web/shell/build.cjs`; the compiler,
+Spago, package set, and dependency lockfile live in `libs4`. The full RSpec run
+checks that a fresh build matches the checked-in assets. Release runtime startup
+does not require Node.js or the compiler.
+
+`panes_spec.rb` and `tasks_browser_spec.rb` now own all expectations from the former
+`panes.test.cjs` and `tasks.test.cjs`. Their Node helpers only perform browser
+actions and report DOM/network observations. `theme_spec.rb` exercises stored and
+system preferences, inaccessible storage, accessible toggles, and repeated loading.
+
+The remaining ten legacy browser contracts are now `ui_contracts_spec.rb`, with
+named expected values/patterns in `spec/fixtures/browser/` and observation-only
+Node helpers. Native Swift/C# probes report decisions, DOM values and window
+observations for `platform_spec.rb` and `windows_package_spec.rb`. No legacy
+assertion runner remains outside RSpec. See `purescript-ui.md` for migration details.
+
+Blindly4 is an external Rust submodule with its own permission-free RSpec
 contracts. Build it with `./blindly4/macos/build.sh`, then run its suite from
 `blindly4/` with `BLINDLY4_BIN=.build/release/blindly4 bundle exec rspec`.
 

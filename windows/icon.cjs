@@ -5,9 +5,7 @@ const path = require('node:path');
 const sharp = require('../libs4/node_modules/sharp');
 
 (async () => {
-  const source = fs.readFileSync(path.join(__dirname, '../web/shell/bootstrap.js'), 'utf8');
-  const svg = source.match(/encodeURIComponent\('(<svg.*?<\/svg>)'\)/)?.[1];
-  if (!svg) throw new Error('Workspace favicon SVG not found');
+  const svg = fs.readFileSync(path.join(__dirname, '../web/shell/favicon.svg'), 'utf8');
   const sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256];
   for (const [name, artwork] of [['AppIcon.ico', svg], ['AppIconDark.ico', svg.replace('fill="#fff"', 'fill="#171717"')]]) {
     const frames = await Promise.all(sizes.map(size => sharp(Buffer.from(artwork), { density: 768 }).resize(size, size).png().toBuffer()));

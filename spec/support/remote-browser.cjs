@@ -21,8 +21,8 @@ function pixels(text){
   let requested=[],released=[];
   w.presentMemo=()=>{};w.SapiensConnections={fetch:async uri=>{requested.push(uri);return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'image/png'}});}};
   w.URL.createObjectURL=()=> 'blob:note';w.URL.revokeObjectURL=url=>released.push(url);
-  w.eval(fs.readFileSync(path.join(__dirname,'../../web/features/notes.js'),'utf8'));
-  const root=w.notesWiki('<section id="about"></section><section id="map"></section><section id="content"><img src="photo.png"></section>','/Notes.html','chief');
+  w.eval(fs.readFileSync(path.join(__dirname,'../../web/shell/components.js'),'utf8'));w.SapiensComponents.notes();
+  const root=w.SapiensUI.notesWiki('<section id="about"></section><section id="map"></section><section id="content"><img src="photo.png"></section>','/Notes.html','chief');
   await sleep();const image=root.querySelector('img');out.src=image.src;image.dispatchEvent(new w.Event('load'));out.requested=requested;out.released=released;
  }else if(process.argv[2]==='scanner'){
   let message='',paired=[],stops=0,resolveCamera,revoked=0;
@@ -67,6 +67,11 @@ function pixels(text){
   const sending=client.fetch('/api/agents/chief/messages',{method:'POST',body:JSON.stringify({text:'Private command'})});await sleep();out.encrypted=!JSON.stringify(posted.at(-1).frame).includes('Private command');out.message=posted.at(-1).message.data;
   reply({status:202,mime:'application/json',body:{id:'turn'}});out.sent=(await sending).status;
   const image=client.fetch('/api/agents/chief/notes?image=a.png');await sleep();reply({status:200,mime:'image/png',binary:true,body:b64([1,2,3])});out.image=Array.from(new Uint8Array(await (await image).arrayBuffer()));
+  const beforeAbort=posted.length,alreadyAborted=new w.AbortController();alreadyAborted.abort();
+  out.abortedBefore=await client.fetch('/api/state',{signal:alreadyAborted.signal}).catch(error=>error.name);
+  out.abortedBeforeRequests=posted.length-beforeAbort;
+  const inFlight=new w.AbortController(),abortedRequest=client.fetch('/api/state',{signal:inFlight.signal}).catch(error=>error.name);
+  await sleep();inFlight.abort();reply({status:200,mime:'application/json',body:{}});out.abortedAfter=await abortedRequest;
   out.badResponses=[];
   for(const result of [{status:999},{status:200,binary:true,body:'!'}]){const call=client.fetch('/api/state').catch(e=>e.message);await sleep();reply(result);out.badResponses.push(typeof await call==='string');}
   const resumed=client.authenticate().catch(e=>e.message);await sleep();out.resume={op:posted.at(-1).message.op,key:posted.at(-1).frame.sender===b64(saved.keys.publicKey)};

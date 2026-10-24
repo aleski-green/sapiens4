@@ -28,6 +28,7 @@ RSpec.describe 'Workspace remote client regression contracts' do
     expect(result).to include('unapproved' => 0, 'encrypted' => true, 'sent' => 202, 'image' => [1, 2, 3],
       'badResponses' => [true, true], 'replayed' => false, 'browserStorage' => 0, 'corruptRemaining' => 0)
     expect(result['message']).to eq('text' => 'Private command')
+    expect(result).to include('abortedBefore' => 'AbortError', 'abortedBeforeRequests' => 0, 'abortedAfter' => 'AbortError')
     expect(result['saved']).to include('secret' => nil, 'sameKey' => true)
     expect(result['resume']).to eq('op' => 'resume', 'key' => true)
     expect(result['identityError']).to include('identity changed')

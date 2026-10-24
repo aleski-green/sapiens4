@@ -84,12 +84,12 @@ const snapshot=record=>({corpora:{...record},preferences:{},agents:[],groups:[],
  if(scenario==='pairing-setup'){
    await w.SapiensConnections.remoteControl(a,true);for(let i=0;i<8;i++)await sleep();
    const out={saved:!!d.querySelector('[data-remote-action="pair"]')};
-   pairFailure=true;click('[data-remote-action="pair"]');await sleep();await poll();out.error=d.querySelector('#remote-host-feedback').textContent;
+   pairFailure=true;click('[data-remote-action="pair"]');await sleep();await poll();await sleep();await sleep();out.error=d.querySelector('#remote-host-feedback').textContent;
    pairFailure=false;click('[data-remote-action="pair"]');for(let i=0;i<8;i++)await sleep();out.invitation={download:d.querySelector('#download-pair-qr')?.href,link:d.querySelector('#remote-host-content a[target]')?.href,expiry:d.querySelector('#remote-host-content').textContent.includes('Expires')};
    click('[data-remote-action="link"]');out.invitation.pairingLink=d.querySelector('#host-pair-link').value;
-   pairData.pending={peer:'phone'};await poll();out.noCodeDisabled=d.querySelector('[data-remote-action="approve"]').disabled;
-   pairData.pending.confirmation_code='CwnX · eCGC';await poll();out.code=d.querySelector('#remote-host-content strong').textContent;click('[data-remote-action="approve"]');await sleep();
-   delete pairData.pending;pairData.invitation.expires=0;await poll();out.expiredQR=!!d.querySelector('canvas');
+   pairData.pending={peer:'phone'};await poll();await sleep();await sleep();out.noCodeDisabled=d.querySelector('[data-remote-action="approve"]').disabled;
+   pairData.pending.confirmation_code='CwnX · eCGC';await poll();await sleep();await sleep();out.code=d.querySelector('#remote-host-content strong').textContent;click('[data-remote-action="approve"]');await sleep();
+   delete pairData.pending;pairData.invitation.expires=0;await poll();await sleep();await sleep();out.expiredQR=!!d.querySelector('canvas');
    click('[data-remote-action="revoke"]');await sleep();click('[data-remote-action="pair"]');await sleep();
    out.writes=calls.filter(c=>c.method==='POST').map(c=>({path:c.url.split('/api/remote')[1],data:c.data}));
    console.log(JSON.stringify(out));dom.window.close();return;

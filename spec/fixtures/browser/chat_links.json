@@ -1,0 +1,332 @@
+[
+  {
+    "id": "chat_links.test.cjs:8:1",
+    "expression": "value",
+    "matcher": "match",
+    "expected": {
+      "source": "target=\"_blank\"",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:8:2",
+    "expression": "value",
+    "matcher": "match",
+    "expected": {
+      "source": "rel=\"noopener noreferrer\"",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:9:3",
+    "expression": "value",
+    "matcher": "match",
+    "expected": {
+      "source": ">github.com · agentpy_spec_human.md ↗<\\/a>",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:11:4",
+    "expression": "value",
+    "matcher": "match",
+    "expected": {
+      "source": "data-file-link=\"\\/Users\\/Admin\\/My files\\/proposal.md\"",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:11:5",
+    "expression": "value",
+    "matcher": "match",
+    "expected": {
+      "source": ">Proposal<\\/button>",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:12:6",
+    "expression": "render('@art-md0016 and @art-md0016:old')",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "data-artifact-link",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:13:7",
+    "expression": "render('@art-md0016:wrong')",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "data-artifact-link",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:14:8",
+    "expression": "render('@task-x0012 and @create-or-find-one')",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "data-task-link",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:15:9",
+    "expression": "render('[Bad](javascript:alert(1))')",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<a ",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:16:10",
+    "expression": "render('<img src=x onerror=alert(1)>')",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:17:11",
+    "expression": "render('`https://example.com`')",
+    "matcher": "equal",
+    "expected": "<code>https://example.com</code>"
+  },
+  {
+    "id": "chat_links.test.cjs:18:12",
+    "expression": "render('[Reference](https://example.com/docs)')",
+    "matcher": "match",
+    "expected": {
+      "source": ">Reference ↗<\\/a>",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:19:13",
+    "expression": "render('https://example.com/Nova')",
+    "matcher": "match",
+    "expected": {
+      "source": "<a ",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:19:14",
+    "expression": "render('https://example.com/Nova')",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<button",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:20:15",
+    "expression": "render('https://example.com/a_(b).')",
+    "matcher": "match",
+    "expected": {
+      "source": "href=\"https:\\/\\/example.com\\/a_\\(b\\)\"",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:21:16",
+    "expression": "render('**Admin**')",
+    "matcher": "match",
+    "expected": {
+      "source": "<strong>Admin<\\/strong>",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:23:17",
+    "expression": "render(citation)",
+    "matcher": "match",
+    "expected": {
+      "source": "data-file-link=\"\\/Users\\/Admin\\/My files\\/sapi_team.pdf\">sapi_team.pdf<\\/button>",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:26:18",
+    "expression": "(html.match(/data-file-link=/g)||[]).length",
+    "matcher": "equal",
+    "expected": 1
+  },
+  {
+    "id": "chat_links.test.cjs:26:19",
+    "expression": "html",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": ":codex-file-citation",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:26:18",
+    "expression": "(html.match(/data-file-link=/g)||[]).length",
+    "matcher": "equal",
+    "expected": 1
+  },
+  {
+    "id": "chat_links.test.cjs:26:19",
+    "expression": "html",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": ":codex-file-citation",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:26:18",
+    "expression": "(html.match(/data-file-link=/g)||[]).length",
+    "matcher": "equal",
+    "expected": 1
+  },
+  {
+    "id": "chat_links.test.cjs:26:19",
+    "expression": "html",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": ":codex-file-citation",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:28:20",
+    "expression": "render('`'+citation+'`')",
+    "matcher": "equal",
+    "expected": "<code>:codex-file-citation{path=&quot;/Users/Admin/My files/sapi_team.pdf&quot; purpose=&quot;output&quot;}</code>"
+  },
+  {
+    "id": "chat_links.test.cjs:29:21",
+    "expression": "render(':codex-file-citation{path=\"javascript:alert(1)\"}')",
+    "matcher": "equal",
+    "expected": ":codex-file-citation{path=&quot;javascript:alert(1)&quot;}"
+  },
+  {
+    "id": "chat_links.test.cjs:30:22",
+    "expression": "render(':codex-file-citation{purpose=\"output\"}')",
+    "matcher": "equal",
+    "expected": ":codex-file-citation{purpose=&quot;output&quot;}"
+  },
+  {
+    "id": "chat_links.test.cjs:31:23",
+    "expression": "render(String.raw`:codex-file-citation{purpose=\"output\" path=\"/tmp/sapi\\_team.pdf\"}`)",
+    "matcher": "match",
+    "expected": {
+      "source": "data-file-link=\"\\/tmp\\/sapi_team.pdf\"",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:32:24",
+    "expression": "render(':codex-file-citation{path=\"file:///tmp/report.pdf\"}')",
+    "matcher": "match",
+    "expected": {
+      "source": "data-file-link=\"file:\\/\\/\\/tmp\\/report.pdf\"",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:33:25",
+    "expression": "render(':codex-file-citation{path=\"/tmp/<img src=x onerror=alert(1)>.pdf\"}')",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "<img",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:34:26",
+    "expression": "render(String.raw`:codex-file-citation{path=\"/tmp/a\\\"b.pdf\"}`)",
+    "matcher": "match",
+    "expected": {
+      "source": "data-file-link=\"\\/tmp\\/a&quot;b.pdf\"",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:35:27",
+    "expression": "render('@Old')",
+    "matcher": "equal",
+    "expected": "<button type=\"button\" class=\"entity-mention\" data-mention=\"retired\" aria-label=\"Open chat with Old\">@Old</button>"
+  },
+  {
+    "id": "chat_links.test.cjs:36:28",
+    "expression": "render('@Nova')",
+    "matcher": "equal",
+    "expected": "@Nova"
+  },
+  {
+    "id": "chat_links.test.cjs:40:29",
+    "expression": "(host.innerHTML.match(/data-file-link=/g)||[]).length",
+    "matcher": "equal",
+    "expected": 1
+  },
+  {
+    "id": "chat_links.test.cjs:40:30",
+    "expression": "host.innerHTML",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": ":codex-file-citation",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:47:31",
+    "expression": "sandbox.turnProgress(current,65000)",
+    "matcher": "match",
+    "expected": {
+      "source": "Waiting for model · 64s",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:48:32",
+    "expression": "sandbox.turnProgress(current,65000)",
+    "matcher": "match",
+    "expected": {
+      "source": "No recent update · 63s",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:49:33",
+    "expression": "sandbox.turnProgress(current,65000)",
+    "matcher": "match",
+    "expected": {
+      "source": "&lt;completed&gt;",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:50:34",
+    "expression": "sandbox.turnProgress({...current,id:'retry'},65000)",
+    "matcher": "doesNotMatch",
+    "expected": {
+      "source": "completed",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:52:35",
+    "expression": "sandbox.turnProgress(current,65000)",
+    "matcher": "match",
+    "expected": {
+      "source": "Stopping",
+      "flags": ""
+    }
+  },
+  {
+    "id": "chat_links.test.cjs:54:36",
+    "expression": "sandbox.turnProgress(current,65000)",
+    "matcher": "match",
+    "expected": {
+      "source": "Disconnected",
+      "flags": ""
+    }
+  }
+]

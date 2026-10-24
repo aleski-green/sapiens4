@@ -2,9 +2,7 @@
 from sapiens.paths import ROOT
 
 WEB = ROOT / "web"
-SCRIPTS = ("shell/bootstrap.js", "shell/app.js", "features/names.js", "features/notes.js",
-           "features/mentions.js", "features/tasks.js",
-           "features/workspaces.js", "features/groups.js", "shell/bridge.js")
+SCRIPTS = ("shell/application.js",)
 
 
 # Never expose Python sources, runtime data, or Git metadata.
@@ -24,18 +22,7 @@ PUBLIC_ASSETS = {
 }
 
 def javascript():
-    source = "\n".join((WEB / name).read_text(encoding='utf-8') for name in SCRIPTS)
-    return "(async () => {\n" + source + "\n})().catch(error => {\n" + """
-        // Preserve menus and saved workspace context on bootstrap failure.
-        const panel = document.createElement('main');
-        panel.style.cssText = 'padding:40px;font:16px monospace';
-        const title = document.createElement('h1'); title.textContent = 'Sapiens4 could not connect';
-        const detail = document.createElement('p'); detail.textContent = error.message;
-        const retry = document.createElement('button'); retry.textContent = 'Retry connection';
-        retry.onclick = () => location.reload();
-        panel.append(title, detail, retry); document.getElementById("corpora-startup-feedback")?.replaceChildren(panel);
-    });
-    """
+    return "\n".join((WEB / name).read_text(encoding='utf-8') for name in SCRIPTS)
 
 
 def index():
