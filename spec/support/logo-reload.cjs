@@ -1,6 +1,6 @@
 // Exercise the shipped click handler at the service-worker/navigation boundary.
 const fs=require('node:fs'),vm=require('node:vm');
-const {JSDOM}=require('../../tests/node_modules/jsdom');
+const {JSDOM}=require('../../libs4/node_modules/jsdom');
 const scenario=process.argv[2];
 const dom=new JSDOM(fs.readFileSync('web/shell/index.html','utf8'),{url:'https://relay.example/beta'});
 const w=dom.window,d=w.document,events=[];

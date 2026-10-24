@@ -1,6 +1,6 @@
-// Install DOM test support with: npm install --prefix tests
+// Install DOM test support with: npm ci --prefix libs4 --ignore-scripts
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
-const {JSDOM} = require('jsdom');
+const {JSDOM} = require('../libs4/node_modules/jsdom');
 const {window} = new JSDOM('<!doctype html><body></body>', {url:'http://localhost/'});
 const sandbox = {document:window.document, XMLSerializer:window.XMLSerializer, URL, console,
   esc: value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))};

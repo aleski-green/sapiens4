@@ -7,10 +7,10 @@
     <Nullable>enable</Nullable>
     <StartupObject>SapiensDesktop.AccessibilityProbe</StartupObject>
   </PropertyGroup>
+  <Import Project="../../../libs4/dotnet/WebView2.props" />
   <ItemGroup>
     <Compile Include="../../../windows/*.cs" />
     <EmbeddedResource Include="../../../windows/AppIcon.ico" LogicalName="Sapiens4.AppIcon.Light" />
     <EmbeddedResource Include="../../../windows/AppIconDark.ico" LogicalName="Sapiens4.AppIcon.Dark" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
   </ItemGroup>
 </Project>

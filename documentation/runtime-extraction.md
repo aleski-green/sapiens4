@@ -2,7 +2,8 @@
 
 # Runtime source boundaries
 
-Sapiens4 owns the code it executes. Blindly4 remains its only Git submodule.
+Sapiens4 owns its application code. Blindly4 was the only Git submodule at
+extraction time; libs4 now separately holds the bundled third-party browser libraries.
 
 | Source | Runtime code retained here |
 | --- | --- |

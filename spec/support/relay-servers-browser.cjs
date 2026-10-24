@@ -1,6 +1,6 @@
 // Drive the shipped selector against a real isolated host; assertions live in RSpec.
 const fs=require('node:fs'),path=require('node:path'),{webcrypto}=require('node:crypto');
-const {JSDOM}=require('../../tests/node_modules/jsdom');
+const {JSDOM}=require('../../libs4/node_modules/jsdom');
 const root=path.resolve(__dirname,'../..'),url=process.argv[2],scenario=process.argv[3];
 const wait=async fn=>{for(let i=0;i<250;i++){if(fn())return;await new Promise(r=>setTimeout(r,20));}throw new Error('Browser action timed out');};
 (async()=>{

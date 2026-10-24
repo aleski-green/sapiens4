@@ -1,8 +1,7 @@
 // Exercise the shipped browser transport against the real relay and host.
-const {JSDOM}=require('../../tests/node_modules/jsdom');
-const {IDBFactory}=require('../../tests/node_modules/fake-indexeddb');
-const nacl=require('../../tests/node_modules/tweetnacl');
-const WebSocket=require('../../tests/node_modules/ws');
+const {JSDOM}=require('../../libs4/node_modules/jsdom');
+const {IDBFactory}=require('../../libs4/node_modules/fake-indexeddb');
+const WebSocket=require('../../libs4/node_modules/ws');
 const {webcrypto}=require('node:crypto');
 const fs=require('node:fs'),path=require('node:path'),readline=require('node:readline');
 let dom,w,client,otherClient,progress;
@@ -11,7 +10,8 @@ async function run(data){
   dom=new JSDOM('',{url:data.invitation.relay,runScripts:'outside-only'});w=dom.window;
   Object.defineProperty(w.navigator,'userAgent',{value:'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)'});Object.defineProperty(w.navigator,'standalone',{value:true});
   Object.defineProperty(w,'crypto',{value:webcrypto});Object.defineProperty(w,'isSecureContext',{value:true});
-  w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;w.Uint8Array=Uint8Array;w.Response=Response;w.indexedDB=new IDBFactory();w.RemoteVendor={nacl};
+  w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;w.Uint8Array=Uint8Array;w.Response=Response;w.indexedDB=new IDBFactory();
+  w.eval(fs.readFileSync(path.join(__dirname,'../../libs4/web/remote-vendor.js'),'utf8'));
   w.fetch=(url,options)=>fetch(new URL(url,data.invitation.relay),options);
   w.WebSocket=class extends WebSocket{constructor(url){super(url,{origin:data.invitation.relay});}};
   for(const name of ['remote-code','remote-session','remote-transport'])w.eval(fs.readFileSync(path.join(__dirname,'../../web/features',name+'.js'),'utf8'));

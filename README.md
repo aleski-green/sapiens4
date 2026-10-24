@@ -38,7 +38,11 @@ III. Decisiveness: to maintain its own integrity, hold qualified opinions and do
 Windows UI Automation support are described in [Windows setup](windows/README.md).
 Extract a package and run `Sapiens4.exe`, or run `.\start.ps1 -Open` from source.
 
-The runtime and UI live in this repo; Blindly4 is the only submodule.
+The runtime and UI live in this repo. Blindly4 provides native computer access;
+[libs4](https://github.com/aleski-green/libs4) owns third-party dependencies,
+lockfiles, and prebuilt browser libraries. Both are pinned Git submodules. Existing checkouts can fetch
+them with `git submodule update --init --recursive`; Node.js is not needed to run
+the application or build the relay image.
 
 Source startup requires Python 3.9+, Git and authenticated Codex CLI 0.156.1+.
 Blindly4 source builds require stable Rust. On macOS, it requires macOS 13+,
@@ -56,11 +60,6 @@ cd sapiens4
 Open http://127.0.0.1:4174/workspace/.
 
 For a dedicated macOS window and Dock icon, see [the desktop app](macos/README.md).
-
-For a keyboard-only terminal connected to the same running app, install terminal support with
-`python3 -m pip install --user -r requirements-cli.txt`, then run `./sapiens4`.
-Use `./sapiens4 status`, `./sapiens4 show`, or `./sapiens4 help` for individual commands.
-See [terminal commands and output formats](documentation/specs/CLI.md).
 
 [Architecture notation and analysis](documentation/haskell-notation-specs/SapiensSpecNotation.md) · [Haskell specification](documentation/haskell-notation-specs/SapiensSpecNotation.hs) · [System Pulsation](documentation/haskell-notation-specs/SystemPulsation.hs) · [WorkGraph design](documentation/specs/WorkGraph.md)
 

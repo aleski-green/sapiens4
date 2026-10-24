@@ -3,3 +3,11 @@
 !sapiens/
 !web/
 !license/
+!libs4/
+libs4/**
+!libs4/web/
+!libs4/web/**
+!libs4/license/
+!libs4/license/**
+!libs4/python/
+!libs4/python/*-requirements.txt

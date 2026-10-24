@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-const {JSDOM}=require('jsdom');
+const {JSDOM}=require('../libs4/node_modules/jsdom');
 const {window}=new JSDOM(fs.readFileSync('web/shell/index.html','utf8'),{url:'http://localhost'});
 const sapi=(id,name)=>({id,name,kind:'sapi',face:'^_^',role:'Test',color:'#48c99c',lastActivity:1});
 const group={id:'g',name:'Researchers',kind:'group',lead:'a',members:['a','b'],stripes:['#48c99c'],face:'^_^',color:'#48c99c'};

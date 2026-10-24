@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-const {JSDOM}=require('jsdom');
+const {JSDOM}=require('../libs4/node_modules/jsdom');
 const {window}=new JSDOM(fs.readFileSync('web/shell/index.html','utf8'));
 let now=10000,requests=[];
 const tab={id:'file1',path:'/tmp/jokes.txt',title:'jokes.txt',url:'file:///tmp/jokes.txt',command:{seq:'1'},zoom:1};

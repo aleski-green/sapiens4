@@ -220,22 +220,6 @@ class HostRegistry:
                     self.pair_clients[identity].revoke()
             return self.pending[identity].copy()
 
-    def busy(self, primary):
-        with self.lock:
-            for service in self.services.values():
-                snapshot = primary if service is self.server.service else service.snapshot()
-                statuses = {'queued', 'running', 'output_pending'} if snapshot['corpora']['status'] == 'active' else {'running'}
-                if (snapshot['computer']['owner'] or any(turn['status'] in statuses for turn in snapshot['turns']) or
-                    any(request['status'] in statuses for group in snapshot['groups'] for request in group['requests'])):
-                    return True
-            return False
-
-    def prepare_stop(self):
-        with self.lock:
-            for service in self.services.values():
-                service._stopping.set()
-                service._queue.put(None)
-
     def close(self):
         self.closed = True
         for client in [*self.clients.values(), *self.pair_clients.values()]:

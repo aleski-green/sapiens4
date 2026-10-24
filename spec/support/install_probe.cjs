@@ -1,6 +1,6 @@
 // Observe the shipped installation screen; assertions live in RSpec.
 const fs=require('node:fs'),path=require('node:path');
-const {JSDOM}=require('../../tests/node_modules/jsdom');
+const {JSDOM}=require('../../libs4/node_modules/jsdom');
 const root=path.join(__dirname,'../..'),[platform,mode='browser']=process.argv.slice(2);
 const dom=new JSDOM(fs.readFileSync(path.join(root,'web/shell/index.html'),'utf8'),{url:'https://relay.example/ios',runScripts:'outside-only'});
 const w=dom.window,d=w.document;

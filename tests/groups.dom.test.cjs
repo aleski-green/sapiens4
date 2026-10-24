@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-const {JSDOM}=require('jsdom');
+const {JSDOM}=require('../libs4/node_modules/jsdom');
 const {window}=new JSDOM('<body><nav class="conversation-tabs"></nav><div id="conversation-body"></div><div id="composer-area"></div><div id="dialog"></div></body>',{url:'http://localhost'});
 const sapi=(id,name)=>({id,name,kind:'sapi',color:'#48c99c',face:'◠‿◠'});
 const members=[sapi('a','Lead'),sapi('b','Researcher')];

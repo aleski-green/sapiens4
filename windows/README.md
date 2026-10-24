@@ -1,6 +1,6 @@
 # Sapiens4 for Windows
 
-This modified fork adds Windows support to Sapiens4 while retaining the macOS app. The package includes Sapiens4 and Blindly4 licensing documents in `license/` and `runtime/blindly4/license/`; see those files for their respective terms.
+This modified fork adds Windows support to Sapiens4 while retaining the macOS app. The package includes Sapiens4, Blindly4 and libs4 licensing documents in `license/`, `runtime/blindly4/license/` and `runtime/libs4/license/`; see those files for their respective terms.
 
 Extract the whole portable package, then double-click **Sapiens4.exe**. Use `win-arm64` on ARM PCs or `win-x64` on Intel/AMD PCs. The package contains Python, .NET and Blindly4; it does not require WSL or administrator access. Requires Windows 10/11 and Microsoft Edge WebView2 Runtime (included with Windows 11; install the Evergreen Runtime from Microsoft on systems without it).
 
@@ -24,7 +24,7 @@ cd sapiens4
 .\start.ps1 -Open
 ```
 
-`start.ps1` builds Blindly4 and starts the web UI on port 4174. `-SkipBuild` reuses an existing binary. `sapiens4.cmd status` and other terminal commands work with the running app. Interactive terminal mode additionally requires `pip install -r requirements-cli.txt` in a regular Python installation.
+`start.ps1` builds Blindly4 and starts the web UI on port 4174. `-SkipBuild` reuses an existing binary.
 
 Build the portable desktop package:
 
@@ -42,13 +42,13 @@ The build downloads CPython 3.13.9 from python.org and verifies a pinned SHA-256
 
 ```powershell
 $env:PYTHONUTF8 = '1'
-bundle install
-python -m pip install -r spec/requirements.txt
-npm ci --prefix tests --ignore-scripts
+ruby libs4/ruby/bundle.rb install
+python -m pip install -r libs4/python/remote-requirements.txt
+npm ci --prefix libs4 --ignore-scripts
 dotnet build spec/support/windows/CodexFixture.csproj -o tmp/codex-fixture
 $env:SAPIENS_TEST_CODEX = (Resolve-Path tmp/codex-fixture/CodexFixture.exe).Path
 $env:SAPIENS_PYTHON = 'python'
-bundle exec rspec --tag '~windows'
+ruby libs4/ruby/bundle.rb exec rspec --tag '~windows'
 ```
 
 The executable also accepts `--smoke-report PATH --data-dir TEMP_DIRECTORY` to launch a real WebView2 window, verify the rendered app, save a JSON result and PNG, then close. Use an empty test data directory. The Blindly4 repository documents its permission-free and interactive integration suites.
@@ -59,4 +59,4 @@ To include the native RSpec contract in a local run, build the portable desktop 
 
 Blindly4 uses native Windows UI Automation and SendInput. Its command interface retains AX-style role names for compatibility. Desktop commands require an unlocked interactive session, exposed accessibility controls and matching privilege levels. Elevated apps and secure desktops are not supported. Draft guards fail closed when a control cannot expose its exact value. Serialize complete desktop workflows.
 
-Overrides: `SAPIENS_DATA_DIR`, `SAPIENS_BLINDLY_BINARY`, `SAPIENS_CODEX_BINARY`, `SAPIENS_CODEX_MODEL`, `SAPIENS_CODEX_REASONING_EFFORT`. The desktop uses a free loopback port and saves it in the data directory for the terminal client.
+Overrides: `SAPIENS_DATA_DIR`, `SAPIENS_BLINDLY_BINARY`, `SAPIENS_CODEX_BINARY`, `SAPIENS_CODEX_MODEL`, `SAPIENS_CODEX_REASONING_EFFORT`. The desktop uses a free loopback port.

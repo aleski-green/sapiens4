@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-const {JSDOM}=require('jsdom');
+const {JSDOM}=require('../libs4/node_modules/jsdom');
 
 async function check(modifier,existing=false) {
   const {window}=new JSDOM(fs.readFileSync('web/shell/index.html','utf8'));

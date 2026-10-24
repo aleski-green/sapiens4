@@ -5,9 +5,9 @@
 Requires Python 3.9+, Git and authenticated Codex CLI 0.156.1 or newer. Blindly4
 requires stable Rust to build; macOS needs macOS 13+, Command Line Tools and
 Accessibility permission. The core host has no third-party Python dependencies;
-terminal and remote features have optional dependencies. Tests use RSpec and
-Ruby's independent YAML parser; see [Testing](testing.md). The only Git submodule
-is `blindly4`.
+remote features have optional dependencies. Tests use RSpec and
+Ruby's independent YAML parser; see [Testing](testing.md). Git submodules are
+`blindly4` for native computer access and `libs4` for prebuilt browser dependencies.
 
 ```sh
 git submodule update --init --recursive
@@ -15,15 +15,12 @@ codex login
 ./start.sh --open
 ```
 
-The local UI is at `http://127.0.0.1:4174/workspace/`. For a dedicated window and
-managed updates, see [the macOS app](../macos/README.md).
+The local UI is at `http://127.0.0.1:4174/workspace/`. For a dedicated window, see [the macOS app](../macos/README.md).
 
-Sapiens4 uses `gpt-6-sol` with `high` reasoning by default. Every Sapi call has one 30-minute execution limit, shared across its decision steps. Normal mode uses `high`; Deep work in Sapi settings → Profile uses `xhigh` with the same time limit. Legacy saved timeout values are ignored, and the CLI has no separate observation cutoff. Environment overrides:
+Sapiens4 uses `gpt-6-sol` with `high` reasoning by default. Every Sapi call has one 30-minute execution limit, shared across its decision steps. Normal mode uses `high`; Deep work in Sapi settings → Profile uses `xhigh` with the same time limit. Legacy saved timeout values are ignored. Environment overrides:
 `SAPIENS_CODEX_MODEL`, `SAPIENS_CODEX_REASONING_EFFORT`, and `SAPIENS_CODEX_BINARY`.
 Without a binary override, the host selects the newest working CLI among PATH
 and the installed Codex/ChatGPT app bundles. Global Codex configuration is unchanged.
-The installer and updater test the selected version, login and actual model access
-before activation. `python3 -m sapiens.preflight` runs the same isolated check.
 
 ## Chat and Notes
 
@@ -184,7 +181,7 @@ Profile includes work mode and per-call timeout. Context, Usage and legacy budge
 Limits remain visible but disabled. Sapiens does not cache recent tool results,
 collect token usage, or enforce local weekly/call budgets or tool-count caps.
 Model calls are bounded by the selected mode and can be stopped manually.
-The installer connection check and individual I/O operations still have timeouts;
+Individual I/O operations still have timeouts;
 input validation, bounded UI reads and chat-history retention remain in place.
 Model instructions are loaded from the repository's `prompts/*.md` files.
 Mode/timeout edits use `run-settings.json`; legacy `execution.json` is read only
@@ -194,8 +191,9 @@ for mode and timeout when no newer settings exist, leaving old budget data intac
 
 Source ownership is described in [CONTRIBUTING.md](../CONTRIBUTING.md). The old
 `agentpy` Python package is removed; its name remains in persistent paths for
-compatibility. This source refactor needs no data migration. Installed desktop
-updaters retain their existing import entrypoints and rollback behavior.
+compatibility. Removing desktop updates and the terminal client needs no data
+migration. Desktop versions are installed manually; see [macOS setup](../macos/README.md)
+for switching an existing managed installation while retaining its data.
 
 All persistent data lives in the configured `.sapiens4` directory:
 
@@ -212,8 +210,6 @@ All persistent data lives in the configured `.sapiens4` directory:
 Upgrades copy old chat/computer history into the new conversation projection.
 Legacy job/task/memory, usage/cache files and SQL tables remain as archives, but
 removed flows and old scheduling manifests are never loaded for execution.
-The managed updater backs up the entire stopped data directory before switching
-versions and checks both old job-based and new turn-based busy states.
 Do not delete the data directory or use only its SQLite file as a full backup.
 
 ## HTTP API
@@ -243,16 +239,16 @@ A supplied Origin must match the loopback Host. Unknown routes return 404.
 ## Tests
 
 ```sh
-bundle install
-python3 -m pip install -r spec/requirements.txt
-npm ci --prefix tests --ignore-scripts
-SAPIENS_PYTHON=python3 bundle exec rspec
+ruby libs4/ruby/bundle.rb install
+python3 -m pip install -r libs4/python/remote-requirements.txt
+npm ci --prefix libs4 --ignore-scripts
+SAPIENS_PYTHON=python3 ruby libs4/ruby/bundle.rb exec rspec
 ```
 
 RSpec contracts use temporary data and external provider fixtures. Coverage includes chat
 recovery, parallel runners, notes isolation/model edits, legacy migration without
 resuming removed flows, rejection of removed routes/commands, computer
-ownership, browser persistence, source-only distribution and managed updater rollback.
+ownership, browser persistence, source-only distribution and desktop builds.
 See [the migration map and coverage limits](testing.md).
 
 The Memo tab renders one scrolling wiki article with a Sapi infobox, contents and

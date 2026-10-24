@@ -12,7 +12,7 @@ RSpec.describe 'Browser and native platform probes' do
     end
   end
 
-  %w[NavigationPolicy ServerReadiness DesktopUpdate].each do |name|
+  %w[NavigationPolicy ServerReadiness].each do |name|
     it "passes the native #{name} probe", :macos do
       skip 'macOS native integration' unless RUBY_PLATFORM.include?('darwin')
       Dir.mktmpdir('sapiens native ') do |folder|

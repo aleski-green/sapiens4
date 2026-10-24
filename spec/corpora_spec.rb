@@ -83,20 +83,6 @@ RSpec.describe 'Corpora lifecycle and device registry', :host do
     expect(host.api('GET', route + '/api/state')['corpora']['status']).to eq('paused')
   end
 
-  it 'reports work in a second local corpora to the desktop updater' do
-    next unless host.api('GET', '/api/host')['local_available']
-    host.configure(block: true)
-    created = host.api('POST', '/api/host/local', {name: 'Background', scope: 'Test updater admission'}, status: 201)
-    route = "/api/host/corpora/#{created['id']}"
-    metadata = host.api('PUT', route + '/api/corpora/lifecycle', action: 'activate', revision: created['revision'], operation: SecureRandom.uuid)
-    host.api('POST', route + "/api/agents/#{created['chief_id']}/messages", {text: 'Stay busy until paused'}, status: 202)
-    Contract.wait { host.calls.any? }
-    expect(host.state['turns']).to be_empty
-    expect(host.state['host_busy']).to eq(true)
-    host.api('PUT', route + '/api/corpora/lifecycle', action: 'pause', revision: metadata['revision'], operation: SecureRandom.uuid)
-    Contract.wait { !host.state['host_busy'] }
-  end
-
   it 'pairs a native remote connection, persists it and routes only to its authenticated corpora' do
     relay = Relay.new
     other = Host.new

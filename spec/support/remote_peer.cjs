@@ -1,6 +1,6 @@
 const readline = require('node:readline');
-const nacl = require('../../tests/node_modules/tweetnacl');
-const WebSocket = require('../../tests/node_modules/ws');
+const nacl = require('../../libs4/node_modules/tweetnacl');
+const WebSocket = require('../../libs4/node_modules/ws');
 const bytes = value => new Uint8Array(Buffer.from(value, 'base64'));
 const b64 = value => Buffer.from(value).toString('base64');
 const peers = new Map();

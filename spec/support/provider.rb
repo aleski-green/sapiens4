@@ -9,7 +9,6 @@ if ARGV.include?('--version')
   puts config.fetch('version', 'codex-cli 0.158.0')
   exit
 end
-exit(config.fetch('login_exit', 0)) if ARGV.first == 'login'
 
 text = STDIN.read
 context = text.include?("\nContext:\n") ? JSON.parse(text.split("\nContext:\n", 2).last) : {}
@@ -60,9 +59,7 @@ defaults = {
   'CreatingSapi' => {event: 'SapiSpecified', name: 'NewResearcher', role: 'Research'}
 }
 reply = rule.fetch('response') do
-  if ARGV.include?('--ephemeral')
-    config.fetch('preflight_reply', 'SAPIENS_PREFLIGHT_OK')
-  elsif defaults[node]
+  if defaults[node]
     defaults[node].merge(reason: 'Based on the supplied request.', evidence: ['Fixture evidence.'])
   else
     'Contract test reply'

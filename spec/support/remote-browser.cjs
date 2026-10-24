@@ -1,13 +1,14 @@
 // Current transport and QR capture, with deterministic browser/platform boundaries.
 const fs=require('node:fs'),path=require('node:path'),{webcrypto}=require('node:crypto');
-const {JSDOM}=require('../../tests/node_modules/jsdom'),{IDBFactory}=require('../../tests/node_modules/fake-indexeddb');
-const nacl=require('../../tests/node_modules/tweetnacl'),jsQR=require('../../tests/node_modules/jsqr'),QRCode=require('../../tests/node_modules/qrcode');
+const {JSDOM}=require('../../libs4/node_modules/jsdom'),{IDBFactory}=require('../../libs4/node_modules/fake-indexeddb');
+const nacl=require('../../libs4/node_modules/tweetnacl'),QRCode=require('../../libs4/node_modules/qrcode');
 const sleep=()=>new Promise(r=>setTimeout(r,0)),b64=b=>Buffer.from(b).toString('base64'),bytes=b=>new Uint8Array(Buffer.from(b,'base64'));
 const dom=new JSDOM('<button id="scan-qr"></button><input id="qr-file" type="file"><div id="scanner" hidden><video id="qr-camera"></video><button id="stop-scan"></button></div>',{url:'https://relay.example',runScripts:'outside-only'}),w=dom.window,d=w.document;
 const desktop=nacl.box.keyPair(),corpora={id:'12345678-1234-4234-8234-123456789abc',name:'Studio'};
 const invitation={v:'sapiens-remote-box-v1',relay:w.location.origin,room:'r'.repeat(43),token:'t'.repeat(43),secret:'s'.repeat(43),desktop:b64(desktop.publicKey),expires:Math.floor(Date.now()/1000)+3600};
 Object.defineProperty(w,'crypto',{value:webcrypto});Object.defineProperty(w,'isSecureContext',{value:true});
-w.RemoteVendor={nacl,jsQR,QRCode};w.indexedDB=new IDBFactory();w.Uint8Array=Uint8Array;w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;w.Response=Response;
+w.indexedDB=new IDBFactory();w.Uint8Array=Uint8Array;w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;w.Response=Response;
+w.eval(fs.readFileSync(path.join(__dirname,'../../libs4/web/remote-vendor.js'),'utf8'));
 for(const name of ['remote-code','remote-session','remote-transport','remote-onboarding'])w.eval(fs.readFileSync(path.join(__dirname,'../../web/features',name+'.js'),'utf8'));
 function pixels(text){
  const qr=QRCode.create(text,{errorCorrectionLevel:'M'}),scale=5,margin=4,size=(qr.modules.size+margin*2)*scale,data=new Uint8ClampedArray(size*size*4).fill(255);
@@ -38,7 +39,7 @@ function pixels(text){
   const video=d.querySelector('video');Object.defineProperties(video,{readyState:{value:2},videoWidth:{value:image.width},videoHeight:{value:image.height}});video.play=async()=>{};
   d.querySelector('#scan-qr').click();resolveCamera(stream());await sleep();await sleep();out.camera=paired[1];out.cameraStopped=video.srcObject===null&&d.querySelector('#scanner').hidden;
   Object.defineProperty(file,'files',{value:[{size:11*1024*1024}],configurable:true});file.dispatchEvent(new w.Event('change'));await sleep();out.largeImage=message;
-  w.RemoteVendor.jsQR=()=>({data:'x'.repeat(4097)});d.querySelector('#scan-qr').click();resolveCamera(stream());await sleep();out.largePayload=message;out.pairs=paired.length;
+  w.RemoteVendor={...w.RemoteVendor,jsQR:()=>({data:'x'.repeat(4097)})};d.querySelector('#scan-qr').click();resolveCamera(stream());await sleep();out.largePayload=message;out.pairs=paired.length;
   d.querySelector('#scan-qr').click();flow.dispose();resolveCamera(stream());await sleep();out.disposedStops=stops;
   out.expected=invitation;
  }else{

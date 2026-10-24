@@ -2,6 +2,10 @@ param([switch]$Open, [int]$Port = 4174, [string]$DataDir = (Join-Path $PSScriptR
 $ErrorActionPreference = 'Stop'
 Push-Location $PSScriptRoot
 try {
+    if (-not (Test-Path ./libs4/web/remote-vendor.js)) {
+        git submodule update --init --recursive -- libs4
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot initialize libs4' }
+    }
     if (-not $SkipBuild) {
         if (-not (Test-Path ./blindly4/windows/Cargo.toml)) {
             git submodule update --init --recursive -- blindly4
