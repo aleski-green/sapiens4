@@ -12,22 +12,26 @@ Blindly4 and libs4 submodules before running the suite.
 
 ```sh
 git submodule update --init --recursive
-bundle install
-python3 -m pip install -r spec/requirements.txt
-npm ci --prefix tests --ignore-scripts
-SAPIENS_PYTHON=python3 bundle exec rspec
+ruby libs4/ruby/bundle.rb install
+python3 -m venv libs4/python/.venv
+libs4/python/.venv/bin/python -m pip install -r libs4/python/test-requirements.txt
+npm ci --prefix libs4 --ignore-scripts
+ruby libs4/ruby/bundle.rb exec rspec
 ```
 
-Set `SAPIENS_PYTHON` to an absolute virtual-environment interpreter when needed.
+The Bundler wrapper keeps gems under `libs4/ruby/.gems` and uses the Python
+environment under libs4 when present. Set `SAPIENS_PYTHON` to override it.
+On Windows, create the same environment with `python -m venv libs4/python/.venv`
+and install through `libs4/python/.venv/Scripts/python.exe` instead.
 Tests never use a real Codex login: a temporary executable implements the model
 CLI protocol. Every service example has its own data directory, including spaces,
 an apostrophe and Unicode, and a random loopback port. Failed assertions still
 shut down owned processes. Timeouts terminate their remaining descendants.
 
 ```sh
-bundle exec rspec spec/workflow_spec.rb
-bundle exec rspec --tag '~slow'       # quick iteration; not the complete check
-bundle exec rspec --seed 12345        # reproduce an ordering failure
+ruby libs4/ruby/bundle.rb exec rspec spec/workflow_spec.rb
+ruby libs4/ruby/bundle.rb exec rspec --tag '~slow'       # quick iteration; not the complete check
+ruby libs4/ruby/bundle.rb exec rspec --seed 12345        # reproduce an ordering failure
 ```
 
 The full suite includes real minute-based scheduling. There is no accelerated
@@ -44,7 +48,7 @@ running the suite:
 dotnet build spec/support/windows/CodexFixture.csproj -o tmp/codex-fixture
 $env:SAPIENS_TEST_CODEX = (Resolve-Path tmp/codex-fixture/CodexFixture.exe).Path
 $env:SAPIENS_PYTHON = 'python'
-bundle exec rspec --tag '~windows'
+ruby libs4/ruby/bundle.rb exec rspec --tag '~windows'
 ```
 
 For the packaged desktop contract, first run `windows/build.ps1`, set
@@ -120,7 +124,7 @@ physical Android installation and keyboard behavior still require a device run.
 ### Native workspace accessibility
 
 On a macOS desktop with Accessibility permission for the invoking terminal, run
-`SAPIENS_TEST_BLINDLY4=/absolute/path/to/blindly4 bundle exec rspec spec/workspace_accessibility_spec.rb`.
+`SAPIENS_TEST_BLINDLY4=/absolute/path/to/blindly4 ruby libs4/ruby/bundle.rb exec rspec spec/workspace_accessibility_spec.rb`.
 This opt-in contract uses the real WebKit workspace against an isolated host and
 local player fixtures. It checks AX discovery and pressing, selected-tab isolation,
 focus after closing/hiding a guest, window resizing and the shell's update-banner

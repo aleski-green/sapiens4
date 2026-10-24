@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-const {JSDOM}=require('jsdom');
+const {JSDOM}=require('../libs4/node_modules/jsdom');
 const {window}=new JSDOM('<div id="composer-area"></div><div id="updates"></div><div id="agent-heading"></div><textarea id="message-input"></textarea><button id="attach-button"></button><button class="send-button"></button>');
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const event={id:1,timestamp:'2026-10-09T09:10:00.047Z',actor:'system',entity:'a',event:'pulse.dispatched',agency:'chatInput',details:{frequency:'bph60',slot:1}};

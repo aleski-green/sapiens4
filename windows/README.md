@@ -24,7 +24,7 @@ cd sapiens4
 .\start.ps1 -Open
 ```
 
-`start.ps1` builds Blindly4 and starts the web UI on port 4174. `-SkipBuild` reuses an existing binary. `sapiens4.cmd status` and other terminal commands work with the running app. Interactive terminal mode additionally requires `pip install -r requirements-cli.txt` in a regular Python installation.
+`start.ps1` builds Blindly4 and starts the web UI on port 4174. `-SkipBuild` reuses an existing binary. `sapiens4.cmd status` and other terminal commands work with the running app. Interactive terminal mode additionally requires `pip install -r libs4/python/cli-requirements.txt` in a regular Python installation.
 
 Build the portable desktop package:
 
@@ -42,13 +42,13 @@ The build downloads CPython 3.13.9 from python.org and verifies a pinned SHA-256
 
 ```powershell
 $env:PYTHONUTF8 = '1'
-bundle install
-python -m pip install -r spec/requirements.txt
-npm ci --prefix tests --ignore-scripts
+ruby libs4/ruby/bundle.rb install
+python -m pip install -r libs4/python/test-requirements.txt
+npm ci --prefix libs4 --ignore-scripts
 dotnet build spec/support/windows/CodexFixture.csproj -o tmp/codex-fixture
 $env:SAPIENS_TEST_CODEX = (Resolve-Path tmp/codex-fixture/CodexFixture.exe).Path
 $env:SAPIENS_PYTHON = 'python'
-bundle exec rspec --tag '~windows'
+ruby libs4/ruby/bundle.rb exec rspec --tag '~windows'
 ```
 
 The executable also accepts `--smoke-report PATH --data-dir TEMP_DIRECTORY` to launch a real WebView2 window, verify the rendered app, save a JSON result and PNG, then close. Use an empty test data directory. The Blindly4 repository documents its permission-free and interactive integration suites.

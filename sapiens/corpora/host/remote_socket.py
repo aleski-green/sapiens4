@@ -14,7 +14,7 @@ from sapiens.corpora.host.remote_pairing import MAX_FRAME
 class SocketClient:
     def __init__(self, config):
         if websocket is None:
-            raise ValueError('Install remote-requirements.txt for WebSocket support')
+            raise ValueError('Install libs4/python/remote-requirements.txt for WebSocket support')
         relay = config['relay']
         url = ('wss' if relay.startswith('https:') else 'ws') + relay[relay.index(':'):] + '/api/socket'
         self.socket = websocket.create_connection(url, timeout=5, origin=relay, redirect_limit=0)

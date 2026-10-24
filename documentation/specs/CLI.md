@@ -7,11 +7,11 @@ Status: working first version on `sapiens4-cli`. Uses the running CORPORA host a
 From the checkout:
 
 ```sh
-python3 -m pip install --user -r requirements-cli.txt
+python3 -m pip install --user -r libs4/python/cli-requirements.txt
 ./sapiens4
 ```
 
-A terminal opens an interactive prompt with a short About section and aggregate live stats: host/provider, active/retired Sapi counts, running/queued/waiting work and upcoming/past task counts. Startup does not list Sapis, task bodies or conversations; request those through commands. With redirected stdin, no arguments prints status once. Use `./sapiens4 shell` to explicitly select the prompt. Python 3.9+ and a running CORPORA host are required. Interactive input uses `prompt_toolkit` from `requirements-cli.txt` to handle colored prompts, wrapping, completion and history together; no build step is required. One-shot commands and redirected shell input do not require that package.
+A terminal opens an interactive prompt with a short About section and aggregate live stats: host/provider, active/retired Sapi counts, running/queued/waiting work and upcoming/past task counts. Startup does not list Sapis, task bodies or conversations; request those through commands. With redirected stdin, no arguments prints status once. Use `./sapiens4 shell` to explicitly select the prompt. Python 3.9+ and a running CORPORA host are required. Interactive input uses `prompt_toolkit` from `libs4/python/cli-requirements.txt` to handle colored prompts, wrapping, completion and history together; no build step is required. One-shot commands and redirected shell input do not require that package.
 
 The client discovers the port from the managed app's configuration, falling back to 4174. Override with `SAPIENS4_URL` or `--url http://127.0.0.1:PORT`. Requests remain loopback-only, bypass proxies, reject redirects and preserve the API's local JSON headers.
 

@@ -1,3 +1,0 @@
-# Optional remote control dependencies (desktop and relay).
--r remote-client-requirements.txt
-aiohttp==3.13.5

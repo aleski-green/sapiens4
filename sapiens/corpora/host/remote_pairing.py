@@ -36,7 +36,7 @@ def unb64(value, length=None):
 
 def keypair():
     if not available():
-        raise ValueError('Install sapiens/corpora/host/remote-requirements.txt to enable remote access')
+        raise ValueError('Install libs4/python/remote-requirements.txt to enable remote access')
     key = PrivateKey.generate()
     return b64(key), b64(key.public_key)
 

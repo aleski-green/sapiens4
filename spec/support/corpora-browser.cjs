@@ -1,7 +1,7 @@
 // Browser probe: RSpec owns the assertions; this reports rendered behavior.
 const fs=require('node:fs'),path=require('node:path');
-const {JSDOM}=require('../../tests/node_modules/jsdom');
-const {IDBFactory}=require('../../tests/node_modules/fake-indexeddb');
+const {JSDOM}=require('../../libs4/node_modules/jsdom');
+const {IDBFactory}=require('../../libs4/node_modules/fake-indexeddb');
 const {webcrypto}=require('node:crypto');
 const root=path.resolve(__dirname,'../..'),scenario=process.argv[2];
 const sleep=()=>new Promise(resolve=>setTimeout(resolve,0));

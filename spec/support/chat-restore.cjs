@@ -1,6 +1,6 @@
 // Real workspace boot/reconnect with layout supplied by the browser boundary.
 const fs=require('node:fs'),path=require('node:path');
-const {JSDOM}=require('../../tests/node_modules/jsdom');
+const {JSDOM}=require('../../libs4/node_modules/jsdom');
 const root=path.resolve(__dirname,'../..'),read=name=>fs.readFileSync(path.join(root,name),'utf8');
 const scripts=[...read('sapiens/corpora/host/assets.py').split('SCRIPTS = (')[1].split(')')[0].matchAll(/"([^"]+\.js)"/g)].map(m=>read('web/'+m[1])).join('\n');
 const turns=Array.from({length:30},(_,i)=>({id:'turn-'+i,agent:'chief',flow:'chat',status:'done',created:`2026-10-01T00:${String(i).padStart(2,'0')}:00Z`,input:'Question '+i,output:'Answer '+i,output_at:`2026-10-01T00:${String(i).padStart(2,'0')}:01Z`}));

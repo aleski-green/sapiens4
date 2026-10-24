@@ -1,7 +1,7 @@
 // Exercise the shipped browser transport against the real relay and host.
-const {JSDOM}=require('../../tests/node_modules/jsdom');
-const {IDBFactory}=require('../../tests/node_modules/fake-indexeddb');
-const WebSocket=require('../../tests/node_modules/ws');
+const {JSDOM}=require('../../libs4/node_modules/jsdom');
+const {IDBFactory}=require('../../libs4/node_modules/fake-indexeddb');
+const WebSocket=require('../../libs4/node_modules/ws');
 const {webcrypto}=require('node:crypto');
 const fs=require('node:fs'),path=require('node:path'),readline=require('node:readline');
 let dom,w,client,otherClient,progress;

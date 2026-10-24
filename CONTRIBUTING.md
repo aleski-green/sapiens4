@@ -40,6 +40,14 @@ entrypoints for already-installed macOS updaters and rollback. Keep them as smal
 re-exports; new code imports `corpora/host/` directly. Persistent `agentpy/` data
 paths remain unchanged even though the old Python package is removed.
 
+## Third-party dependencies
+
+Keep dependency manifests, lockfiles, vendored libraries, package caches and
+installed test dependencies in the `libs4` submodule. Sapiens4 owns application
+and test source, with explicit imports into libs4. Do not add a root Gemfile,
+package manifest, requirements file, or checked-in third-party build output.
+Update dependencies in libs4 first, then advance its submodule pin here.
+
 ## Hardcoded model prompts
 
 All hardcoded model prompts must live in the repository's root `prompts/`
@@ -79,7 +87,7 @@ JavaScript and native programs may supply browser/platform probes that Ruby
 cannot execute directly. Existing probes are invoked and checked by RSpec;
 do not create another independently run test suite.
 
-Run `bundle exec rspec` locally before submitting. Run platform cases on their
+Run `ruby libs4/ruby/bundle.rb exec rspec` locally before submitting. Run platform cases on their
 matching operating systems; scheduling cases use real minute pulses and belong in the full run.
 Do not delete a behavioral guarantee merely because a private-method test is
 being removed: replace its observable contract or document the precise gap.

@@ -1,6 +1,6 @@
 // Runs the shipped workspace with fixture API responses; RSpec owns assertions.
 const fs=require('node:fs'),path=require('node:path');
-const {JSDOM}=require('../../tests/node_modules/jsdom');
+const {JSDOM}=require('../../libs4/node_modules/jsdom');
 const root=path.resolve(__dirname,'../..');
 const read=name=>fs.readFileSync(path.join(root,name),'utf8');
 const sapi=(id,name)=>({id,name,created:'2026-10-01T00:00:00Z',role:'Test',face:'^_^',color:'#48c99c'});

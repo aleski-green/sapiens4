@@ -55,7 +55,7 @@ The recorded Python executable must remain installed. The app is locally ad-hoc 
 ## Verification
 
 ```sh
-bundle exec rspec spec/updater_spec.rb spec/platform_spec.rb
+ruby libs4/ruby/bundle.rb exec rspec spec/updater_spec.rb spec/platform_spec.rb
 codesign --verify --strict .build/macos/Sapiens4.app
 plutil -lint .build/macos/Sapiens4.app/Contents/Info.plist
 ```

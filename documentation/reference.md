@@ -243,10 +243,10 @@ A supplied Origin must match the loopback Host. Unknown routes return 404.
 ## Tests
 
 ```sh
-bundle install
-python3 -m pip install -r spec/requirements.txt
-npm ci --prefix tests --ignore-scripts
-SAPIENS_PYTHON=python3 bundle exec rspec
+ruby libs4/ruby/bundle.rb install
+python3 -m pip install -r libs4/python/test-requirements.txt
+npm ci --prefix libs4 --ignore-scripts
+SAPIENS_PYTHON=python3 ruby libs4/ruby/bundle.rb exec rspec
 ```
 
 RSpec contracts use temporary data and external provider fixtures. Coverage includes chat

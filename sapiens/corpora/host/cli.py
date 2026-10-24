@@ -169,7 +169,7 @@ def shell(options, client, renderer):
                       f"Work: {stats['running']} running | {stats['queued']} queued | {len(stats['waiting'])} waiting for you\n"
                       f"Tasks: {sum(t['state'] not in PAST for t in tasks)} upcoming | {sum(t['state'] in PAST for t in tasks)} past")
     except ClientError as error: renderer.emit(error=error)
-    require(not sys.stdin.isatty() or find_spec('prompt_toolkit') is not None, 'Install terminal support: python3 -m pip install --user -r requirements-cli.txt')
+    require(not sys.stdin.isatty() or find_spec('prompt_toolkit') is not None, 'Install terminal support: python3 -m pip install --user -r libs4/python/cli-requirements.txt')
     def complete(text):
         match = re.fullmatch(r'(?:sapiens4\s+)?(call|show|chat)\s+@([^\n]*)', text)
         if match and (not selected or match[1] == 'chat'):

@@ -25,7 +25,7 @@ Install the optional remote dependencies into the Python environment
 used to start Sapiens4:
 
 ```sh
-python3 -m pip install -r sapiens/corpora/host/remote-requirements.txt
+python3 -m pip install -r libs4/python/remote-requirements.txt
 python3 -m sapiens --port 4174 --open
 ```
 
@@ -337,10 +337,10 @@ reporting remain desktop-only.
 
 ```sh
 git submodule update --init --recursive
-bundle install
-python3 -m pip install -r spec/requirements.txt
-npm ci --prefix tests --ignore-scripts
-bundle exec rspec spec/remote_spec.rb spec/platform_spec.rb
+ruby libs4/ruby/bundle.rb install
+python3 -m pip install -r libs4/python/test-requirements.txt
+npm ci --prefix libs4 --ignore-scripts
+ruby libs4/ruby/bundle.rb exec rspec spec/remote_spec.rb spec/platform_spec.rb
 ```
 
 The vendor bundle is checked into the pinned `libs4` submodule so users do not

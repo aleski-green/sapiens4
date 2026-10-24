@@ -1,7 +1,7 @@
 // Current transport and QR capture, with deterministic browser/platform boundaries.
 const fs=require('node:fs'),path=require('node:path'),{webcrypto}=require('node:crypto');
-const {JSDOM}=require('../../tests/node_modules/jsdom'),{IDBFactory}=require('../../tests/node_modules/fake-indexeddb');
-const nacl=require('../../tests/node_modules/tweetnacl'),QRCode=require('../../tests/node_modules/qrcode');
+const {JSDOM}=require('../../libs4/node_modules/jsdom'),{IDBFactory}=require('../../libs4/node_modules/fake-indexeddb');
+const nacl=require('../../libs4/node_modules/tweetnacl'),QRCode=require('../../libs4/node_modules/qrcode');
 const sleep=()=>new Promise(r=>setTimeout(r,0)),b64=b=>Buffer.from(b).toString('base64'),bytes=b=>new Uint8Array(Buffer.from(b,'base64'));
 const dom=new JSDOM('<button id="scan-qr"></button><input id="qr-file" type="file"><div id="scanner" hidden><video id="qr-camera"></video><button id="stop-scan"></button></div>',{url:'https://relay.example',runScripts:'outside-only'}),w=dom.window,d=w.document;
 const desktop=nacl.box.keyPair(),corpora={id:'12345678-1234-4234-8234-123456789abc',name:'Studio'};

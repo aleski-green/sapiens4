@@ -121,7 +121,7 @@ class RemoteBridge:
 
     def create(self, data):
         if websocket is None:
-            raise ValueError('Install remote-requirements.txt to enable WebSocket remote access')
+            raise ValueError('Install libs4/python/remote-requirements.txt to enable WebSocket remote access')
         if data.get('local') is True:
             data = local_connection()
             if not data:

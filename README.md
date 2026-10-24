@@ -39,8 +39,8 @@ Windows UI Automation support are described in [Windows setup](windows/README.md
 Extract a package and run `Sapiens4.exe`, or run `.\start.ps1 -Open` from source.
 
 The runtime and UI live in this repo. Blindly4 provides native computer access;
-[libs4](https://github.com/aleski-green/libs4) provides the prebuilt third-party
-browser libraries. Both are pinned Git submodules. Existing checkouts can fetch
+[libs4](https://github.com/aleski-green/libs4) owns third-party dependencies,
+lockfiles, and prebuilt browser libraries. Both are pinned Git submodules. Existing checkouts can fetch
 them with `git submodule update --init --recursive`; Node.js is not needed to run
 the application or build the relay image.
 
@@ -62,7 +62,7 @@ Open http://127.0.0.1:4174/workspace/.
 For a dedicated macOS window and Dock icon, see [the desktop app](macos/README.md).
 
 For a keyboard-only terminal connected to the same running app, install terminal support with
-`python3 -m pip install --user -r requirements-cli.txt`, then run `./sapiens4`.
+`python3 -m pip install --user -r libs4/python/cli-requirements.txt`, then run `./sapiens4`.
 Use `./sapiens4 status`, `./sapiens4 show`, or `./sapiens4 help` for individual commands.
 See [terminal commands and output formats](documentation/specs/CLI.md).
 

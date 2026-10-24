@@ -1,8 +1,8 @@
 // Regenerate the checked-in Windows icon from the same SVG used by the web/macOS app.
-// Requires Node.js and sharp (npm install --no-save sharp).
+// Requires Node.js and sharp (npm ci --prefix libs4 --ignore-scripts).
 const fs = require('node:fs');
 const path = require('node:path');
-const sharp = require('sharp');
+const sharp = require('../libs4/node_modules/sharp');
 
 (async () => {
   const source = fs.readFileSync(path.join(__dirname, '../web/shell/bootstrap.js'), 'utf8');
