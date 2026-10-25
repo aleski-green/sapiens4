@@ -1,5 +1,5 @@
 
-/* Shared visual system, adapted from sapiens4.ai for working interfaces. */
+
 body { color: var(--sapi-ink); background: var(--sapi-bg); font-family: var(--sapi-font); }
 button,input,textarea,select { font-family: inherit; }
 button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible { outline: 2px solid var(--sapi-violet); outline-offset: 3px; }
@@ -46,7 +46,7 @@ button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,s
 .sapi-workspace .resource-card #resource-owner .entity-mention{font-size:inherit}
 @media(max-width:600px){.sapi-workspace .resource-card{display:flex;align-items:center;gap:8px}.sapi-workspace .resource-open{width:auto;gap:6px;flex:0 0 auto}.sapi-workspace .resource-open .status-dot{display:none}.sapi-workspace .resource-card #resource-owner{font-size:11px;flex:1;margin:0}.sapi-workspace .resource-open strong{font-size:9px}}
 
-/* Browser shell: no app content styling crosses into guest documents. */
+
 .sapi-workspace .workspace{background:var(--sapi-bg)}
 .sapi-workspace .workspace-content{position:relative;display:flex;flex:1;min-height:0;padding:0;overflow:hidden;background:var(--sapi-white)}
 .sapi-workspace .workspace-owner{display:flex;align-items:baseline;gap:5px;font-size:12px;min-width:0;overflow-wrap:anywhere}

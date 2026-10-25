@@ -14,6 +14,19 @@ RSpec.describe 'Navigating work', :desktop do
     desktop.press(name)
   end
 
+  it 'retains the chosen appearance and an unsent message after reloading' do
+    start_desktop
+    label = desktop.label(desktop.find(/Switch to (dark|light) theme/, role: 'AXButton'))
+    action = label[/Switch to (?:dark|light) theme/]
+    changed = action.include?('dark') ? 'Switch to light theme' : 'Switch to dark theme'
+    desktop.fill('Message ChiefSapi', 'Draft with a saved appearance')
+    desktop.press(action)
+    desktop.see(changed)
+    desktop.reload
+    desktop.see(changed)
+    expect(desktop.find('Message ChiefSapi')['value']).to eq('Draft with a saved appearance')
+  end
+
   it 'lets a person send a message and read the reply' do
     start_desktop
     desktop.fill('Message ChiefSapi', 'Hello from the workspace')

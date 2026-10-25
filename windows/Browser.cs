@@ -13,7 +13,7 @@ internal static class Navigation
     {
         if (value == "about:blank") return true;
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.UserInfo.Length > 0) return false;
-        if (uri.IsFile) return uri.IsLoopback; // Local drives only, never UNC shares.
+        if (uri.IsFile) return uri.IsLoopback;
         if (uri.Scheme is not ("http" or "https")) return false;
         return origin == null || uri.Port != origin.Port || !uri.IsLoopback;
     }
@@ -43,16 +43,7 @@ internal sealed class Browser : IDisposable
     bool dark;
     Color background = Color.White, foreground = Color.FromArgb(32, 32, 32);
 
-    string DocumentTheme => $$"""
-        (() => {
-          // Authored HTML keeps its own styles; only browser-owned blank/text pages get a canvas.
-          if (location.href !== 'about:blank' && !['text/plain','application/json','application/xml','text/xml'].includes(document.contentType)) return false;
-          let style = document.getElementById('sapiens-document-theme');
-          if (!style) { style = document.createElement('style'); style.id = 'sapiens-document-theme'; document.documentElement.append(style); }
-          style.textContent = {{JsonSerializer.Serialize($"html,body{{background:{ColorTranslator.ToHtml(background)};color:{ColorTranslator.ToHtml(foreground)};color-scheme:{(dark ? "dark" : "light")}}}pre{{white-space:pre-wrap;overflow-wrap:anywhere}}")}};
-          return true;
-        })();
-        """;
+    Task<string>? guestScript;
 
     async Task ApplyTheme(Tab tab)
     {
@@ -61,10 +52,10 @@ internal sealed class Browser : IDisposable
     }
     async Task ApplyDocumentTheme(Tab tab)
     {
-        bool managed = await tab.View.CoreWebView2.ExecuteScriptAsync(DocumentTheme) == "true";
+        guestScript ??= File.ReadAllTextAsync(Path.Combine(host.RuntimeDirectory, ".build", "web", "guest.js"));
+        string settings = JsonSerializer.Serialize(new { dark, background = ColorTranslator.ToHtml(background), foreground = ColorTranslator.ToHtml(foreground) });
+        bool managed = await tab.View.CoreWebView2.ExecuteScriptAsync((await guestScript) + $";window.sapiensDocumentTheme({settings})") == "true";
         if (disposed || tab.View.IsDisposed) return;
-        // Unstyled HTML assumes black text on a white canvas. Its own CSS/color-scheme
-        // paints over this fallback when the page supports a dark appearance.
         tab.View.DefaultBackgroundColor = managed ? background : Color.White;
     }
 
@@ -86,7 +77,6 @@ internal sealed class Browser : IDisposable
     {
         var view = new WebView2 { Visible = false, DefaultBackgroundColor = background };
         form.Controls.Add(view);
-        // Per-owner profiles keep websites separate from the trusted app and other Sapis.
         string profile = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(owner)));
         var environment = await CoreWebView2Environment.CreateAsync(null, Path.Combine(host.DataDirectory, "WebView2", "Guests", profile));
         await view.EnsureCoreWebView2Async(environment);

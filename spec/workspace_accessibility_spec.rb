@@ -42,6 +42,15 @@ RSpec.describe 'Working with browser tabs and documents', :desktop do
     desktop.see('Pause First')
   end
 
+  it 'opens a new address from the keyboard while the workspace menu is open' do
+    desktop.click('Workspace options')
+    desktop.see('Open file…')
+    desktop.key(Gem.win_platform? ? 'control+l' : 'command+l')
+    desktop.fill('URL or file path', @pages.url + '/second')
+    desktop.press('Open address')
+    expect(desktop.see('Play Second')).not_to include('Play First')
+  end
+
   it 'preserves a bookmark after reload and opens it after closing the tab' do
     desktop.press('Bookmark First player')
     desktop.see('Unbookmark First player')

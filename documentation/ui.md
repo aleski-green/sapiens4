@@ -1,134 +1,100 @@
-# UI model, views and effects
+# PureScript / Halogen UI
 
-The workspace now has a single state writer: `dispatchUI`. Feature handlers send
-messages to a pure `updateUI(model, action) -> [model, commands]`. The runtime
-commits the returned model before interpreting commands. This is preparation for
-an incremental PureScript/Halogen or Elm migration, with JavaScript still serving
-as the current implementation language.
+The application UI is compiled PureScript using Halogen. `Sapiens.Main` mounts a
+Halogen component; typed actions update its model through `HalogenM`. Rendering
+produces `ComponentHTML`, with keyed conversations and framework event handlers.
+There is no handwritten JavaScript application or parallel DOM rendering runtime.
 
-The boundary follows [Elm's model/update/commands architecture](https://guide.elm-lang.org/effects/)
-and [Halogen's separation of rendering and effectful evaluation](https://purescript-halogen.github.io/purescript-halogen/guide/03-Performing-Effects.html).
-No compiler or dependency pin changes in this step.
+## Responsibilities
 
-## Modules and ownership
-
-| Module | Responsibility | Migration destination |
-| --- | --- | --- |
-| `shell/ui.js` | Navigation tree, valid activity states, pane transitions | Pure navigation types and functions |
-| `shell/model.js` | Initial state, snapshot projection, roster, composer, document lifecycle | Model, Action/Msg, update, JSON decoders |
-| `shell/view.js` | Task rows, task history and shared personal/group transcript as HTML values | Halogen `ComponentHTML` or Elm `Html Msg` |
-| `shell/app.js` | Dispatch, command interpreter, mounting and input adapters | Runtime/effect interpreter, component wiring |
-| `shell/bridge.js` | Snapshot polling, persistence, chat reconciliation and lifecycle | Subscriptions, effects, browser adapter |
-| `features/*` | Feature presentation, scoped dialogs and platform adapters | Subsequent components or foreign adapters |
-
-Workspace state contains the host snapshot, projected agents/messages, selection,
-activity, panes, drafts, workspace tabs, document requests, disclosure state and
-composer state. There is no second mutable `live` snapshot, task cache or send set.
-Rendering no longer changes selection, roster scope or workspace state.
-
-The model contains plain data. It does not contain elements, promises, callbacks,
-network clients or native handles. Snapshot projection mutates only newly created
-local arrays/records; previous models and incoming snapshots are not modified.
-Clock and connectivity arrive as explicit input messages.
-
-## Messages and effects
-
-| Message family | Inputs and behavior |
+| Collection | Responsibility |
 | --- | --- |
-| Select / Scope / Navigate / Filter / Search | Validate navigation, retain drafts, choose a roster and activity |
-| Pane / Viewport / Home | Project pane visibility with desktop/phone limits and recency |
-| Snapshot / Reset / Workspaces | Accept host state; Reset starts a new corpora epoch |
-| Draft / Expand | Store composer text and disclosure state |
-| Send / MessageSent / MessageFailed | Capture a submission, prevent duplicate sends, retain newer drafts on completion |
-| Clarify / Uploading / Attachment | Compose clarification and attachments without direct model mutation |
-| RetryDocument / DocumentReceived | Explicit retry and response acceptance by request identity |
-| Connection / Clock | Inputs from runtime subscriptions |
+| `web/shell` | Typed navigation, model, actions, component lifecycle, common HTML, effects and build entrypoints |
+| `web/features` | Conversations, task history, Memo, native workspaces, dialogs, corpora and encrypted remote sessions |
+| `web/theme` | Shared styles and responsive layout |
 
-Commands describe loading a document, sending a message, saving preferences,
-notification and UI adapter work. `performUI` owns their effects. Command results
-re-enter the model through messages. Unknown action/command tags throw;
-JavaScript does **not** provide compile-time exhaustiveness or effect typing.
-Some region-render commands remain transitional: a typed framework's renderer
-will replace them, while focus, clipboard, persistence and native calls stay effects.
+`Navigation` defines closed pane, activity, view, scope and period types. `Model`
+owns drafts, attachments, navigation, documents, workspace state and dialog state.
+`Action` describes user input and asynchronous results. `App` handles the shell,
+with corpora and dialog evaluation in their respective feature modules. Views are
+pure functions of the current model. Foreign handles and disposers live separately
+in the connection runtime.
 
-Navigation is validated by `activityState`: each panel admits its own views and
-filters, Group-only Deleted cannot leak into personal tasks, and old Notes/Tasks
-preferences decode to Work. The same navigation tree supplies labels and paths.
+Host protocol payloads remain JSON at the boundary. Navigation, dialog kinds,
+actions and resource lifecycles are algebraic types; this does not claim that every
+host record has a checked PureScript schema. Task/Memo decoders validate their
+required shapes before accepting a successful response.
 
-## Shared document lifecycle
+## Asynchronous behavior
 
-Task history and Memo use one parameterized resource state, corresponding to:
+Documents use `RemoteData a`: NotAsked, Loading with an optional previous value,
+Ready, or Failed. Each request carries its corpora epoch, sequence, resource key,
+revision and path. A late response can update only its matching request and epoch.
+Failures remain stable until explicit retry. A document can finish while another
+view is selected without changing that view.
 
-```purescript
-data RemoteData a
-  = Loading Request (Maybe a)
-  | Ready Request a
-  | Failed Request String
+Send completion captures its owner, epoch, submitted text and attachments. It
+clears only unchanged submitted text and sent attachments, preserving a newer
+draft. Dialog results carry dialog identities. Native browser reports are queued
+and serialized, and workspace revisions reject stale snapshots. Corpora changes
+start a new epoch and restore preferences from that corpora's local cache.
+
+Halogen manages rendering and subscriptions. The application disposes global
+listeners, remote clients and camera resources when unmounted. PureScript also
+owns relay authentication, encrypted request routing, reconnect handling,
+invitation validation, local persistence and service-worker cache policy.
+
+## Foreign interfaces
+
+`libs4/purescript/src/Libs4/Browser.purs` declares the shared browser interface.
+Its JavaScript foreign implementation supplies browser/native APIs, JSON I/O,
+cryptographic library calls, DOM measurements, file selection and inert markup
+parsing. It does not contain application navigation, dialog, rendering or protocol
+logic. Third-party sources, package manifests, lockfiles, installed packages and
+caches stay in libs4. License notices remain intact.
+
+Memo markup is parsed inertly and rendered through PureScript's tag and attribute
+allowlist. Authenticated images are loaded separately. Native guest WebViews keep
+their origin and privilege isolation; their blank/text styling is compiled from
+`Sapiens.Guest`. The native hosts retain only callback invocation strings for
+crossing the WebView boundary. They do not embed UI JavaScript programs.
+
+Browsers still execute generated JavaScript. Removing handwritten JavaScript
+application source does not remove the compiler output or necessary foreign and
+vendor code. Generated bundles live under `.build/web`, outside version control.
+
+## Build and distribution
+
+With Node.js 22.5+, npm and Python available:
+
+```sh
+git submodule update --init --recursive
+python3 web/shell/build.py
 ```
 
-This is a type sketch for the migration, not a compiled dependency. A request has
-`kind`, owner, revision, corpora epoch and sequence. `currentDocument` projects the
-required resource from the model; `loadDocument` emits a command only when its
-revision changes or the person explicitly retries. Decoders check response data
-before it can enter Ready.
+The build installs the pinned PureScript compiler, Spago and esbuild from libs4,
+compiles the application and emits `app.js`, `sw.js` and `guest.js`. A source
+fingerprint skips unchanged builds. No compiler or npm installation is needed to
+run a completed package. Source startup and platform packaging invoke this build;
+the relay image uses a separate Node build stage.
 
-A response can commit only to its current request and epoch. It can finish while
-the person is elsewhere, but only the currently selected document is rendered.
-No request retains a mount. This covers leaving and returning, changing views,
-retries, newer revisions and switching corpora. Failure is stable until retry;
-it does not cause an automatic request loop. Memo now has the same retry behavior
-as task history.
+## Verification and size
 
-Send completion also carries its captured epoch and owner. It removes only the
-attachments sent and clears only the unchanged submitted text, preserving a new
-draft typed while confirmation is pending.
+RSpec exercises public HTTP/process contracts and drives the shipped desktop UI
+through Blindly4. Tests contain no JavaScript execution or private DOM assertions.
+Coverage includes navigation, documents, late responses, retries, drafts, reading
+position, Groups, corpora lifecycle, encrypted pairing and native browser tabs.
+See [testing](testing.md) for platform requirements and remaining real-device gaps.
 
-## Views and adapters
+Measure source with `o200k_base`, counting each UTF-8 file independently and
+including whitespace. Compare the prior UI JavaScript to the PureScript modules,
+and report new shared foreign bindings separately and in the total. Exclude
+compiler output and third-party source. Types, explicit effects and error handling
+may increase source size even when duplicated rendering machinery is removed.
 
-Personal and Group transcripts share one projection. Warnings, author names,
-attachments and progress are part of that value, replacing render-then-patch
-passes over message nodes. Task/routine rows share a view function. Dynamic text
-is escaped; rich chat text passes through the existing formatter explicitly.
+Compared with `d4ae491` using `o200k_base` (per UTF-8 source file):
 
-DOM mounting and interaction are runtime responsibilities. Task mounts retain
-focus/disclosures when their data has not changed. Chat retains its keyed
-reconciliation and reading-position adapter, including the iOS foreground handling.
-Memo sanitization, image loading, native browser geometry, file previews, file
-selection and clipboard access remain browser/platform adapters. Their safety
-boundaries and the native guest-webview isolation are retained.
-
-## Migration readiness
-
-The workspace core is ready for a **staged migration**, starting with task/Memo
-state and the composer. The whole frontend is not yet a typed Halogen/Elm program.
-
-1. Translate the model records and closed message/resource variants; add checked
-   decoders for the complete host snapshot. Preserve request epochs and sequences.
-2. Replace task/transcript HTML projections with typed HTML and native framework
-   event handlers. Run the same accessibility scenarios during the replacement.
-3. Interpret commands using Halogen effects/FFI or Elm commands/ports. Replace
-   polling and browser lifecycle listeners with managed subscriptions.
-4. Migrate the remaining settings, navigation menus and connection dialogs as
-   components. Keep transport/crypto, sanitized rich Memo and native guest views
-   behind explicit foreign adapters until they have separate migration coverage.
-
-Do not build a second virtual-DOM framework or simulate a type system in JavaScript
-just to imitate syntax. The useful preparation is explicit data ownership, pure
-transitions/projections and named effect boundaries. Type safety and framework
-lifecycle management come with the actual migration.
-
-## Behavior and size checks
-
-RSpec drives the shipped app through Blindly4 and the real service. It does not
-import these functions, execute test JavaScript or assert DOM details. Coverage
-includes navigation, saved history, retry, late task/Memo responses, corpora
-switching, unsent drafts, a new draft during send confirmation, reading position,
-Group isolation, remote reconnection and native workspaces. See
-[testing](testing.md) for real-device gaps and commands.
-
-Compare exact source snapshots with `o200k_base`, summing tokens per UTF-8 file,
-including comments and whitespace. Report owned UI JavaScript separately from all
-owned code plus tests; exclude dependencies and generated/binary files. Also
-report physical lines. Moving functions between files must not count as savings.
-Migration preparation can trade removed duplication for an explicit model, so a
-large compression percentage should not be assumed from architecture alone.
+| Source | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| UI application source | 47,142 | 59,872 | +27.0% |
+| UI plus new shared bindings | 47,142 | 64,175 | +36.13% |

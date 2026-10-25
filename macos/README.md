@@ -1,7 +1,7 @@
 # Sapiens4 for macOS
 
 An AppKit/WebKit window with a Dock icon. Requires macOS 13+, Command Line Tools,
-stable Rust, Python 3.9+, Git and authenticated Codex CLI 0.156.1 or newer.
+stable Rust, Python 3.9+, Node.js 22.5+, npm, Git and authenticated Codex CLI 0.156.1 or newer.
 
 ## Build and open
 

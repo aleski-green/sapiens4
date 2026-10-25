@@ -48,8 +48,6 @@ internal sealed class MainWindow : Form
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.AreHostObjectsAllowed = false;
             browser = new Browser(this, shell, host);
-            string origin = JsonSerializer.Serialize(host.Origin!.GetLeftPart(UriPartial.Authority));
-            await core.AddScriptToExecuteOnDocumentCreatedAsync($"if(location.origin==={origin}){{window.webkit={{messageHandlers:{{browser:{{postMessage:data=>chrome.webview.postMessage(data)}}}}}};}}");
             core.NavigationStarting += (_, e) => { if (!Navigation.Trusted(e.Uri, host.Origin)) e.Cancel = true; };
             core.NewWindowRequested += (_, e) => { e.Handled = true; if (Navigation.Guest(e.Uri, host.Origin)) _ = browser.Open(e.Uri); };
             core.WebMessageReceived += async (_, e) => {

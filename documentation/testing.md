@@ -5,22 +5,23 @@ public HTTP, the encrypted relay protocol, or native accessibility through
 Blindly4. They do not import application modules, call UI functions, evaluate
 JavaScript, inspect DOM nodes/CSS, or replace browser APIs. There are no JavaScript
 test files or JavaScript snippets hidden in native probes. Production browser
-adapters still run the application's own JavaScript normally.
+adapters run compiled PureScript/Halogen and the shared foreign bindings.
 
 ## Run
 
-Use Ruby 3.4 and Python 3.11 or newer. Initialize the pinned submodules:
+Use Ruby 3.4, Python 3.11+, Node.js 22.5+ and npm. Initialize the pinned submodules:
 
 ```sh
 git submodule update --init --recursive
 ruby libs4/ruby/bundle.rb install
 python3 -m venv libs4/python/.venv
 libs4/python/.venv/bin/python -m pip install -r libs4/python/remote-requirements.txt
+python3 web/shell/build.py
 ruby libs4/ruby/bundle.rb exec rspec
 ```
 
 The wrapper keeps gems and the Python environment in libs4. Set `SAPIENS_PYTHON`
-to override the interpreter. Node and npm are not needed to run these tests.
+to override the interpreter. Node and npm build the UI and validate clean source releases.
 Every service scenario uses temporary data, a loopback port and a controlled
 external model executable; tests never use a real model login or existing corpora.
 
