@@ -51,24 +51,6 @@ function groupCallControls(group, request) {
   if(!['queued','running','failed','interrupted'].includes(request.status))return '';
   return `<div class="actions">${['failed','interrupted'].includes(request.status)&&!request.task&&!group.archived?`<button class="button" data-group-call="retry" data-group="${esc(group.id)}" data-call="${esc(request.id)}">Retry</button>`:''}<button class="button" data-group-call="cancel" data-group="${esc(group.id)}" data-call="${esc(request.id)}">${request.status==='running'?'Stop':request.status==='queued'?'Cancel':'Dismiss'}</button></div>`;
 }
-function renderGroupPanel(host) {
-  const group=selected();
-  host.classList.remove('notes-view');
-  $('#composer-area').hidden=state.panel!=='chat'||group.archived;
-  if(state.panel==='updates'){renderUpdates(host,group);return;}
-  if(state.panel!=='chat') {renderWork(host);return;}
-  host.innerHTML=`${group.archived?'<p class="group-banner">Archived · history is preserved. Restore this Group from settings to continue.</p>':''}<div class="day-divider">GROUP CONVERSATION</div>`;
-  for(const message of group.messages) {
-    const author=message.author==='admin'?null:agent(message.author);
-    host.insertAdjacentHTML('beforeend',`<div data-chat-key="${esc(message.id)}" class="message ${author?'':'user'}"><div class="message-meta">${author?avatar(author,'mini'):'<span>↗</span>'}<strong>${author?mention(author.id):'Admin'}</strong><time>${esc(displayTime(message.created))}</time></div><div class="message-bubble">${formatText(message.text).split('\n\n').map(p=>`<p>${p.replace(/\n/g,'<br>')}</p>`).join('')}${message.attachments?.length?`<div class="message-attachments">${message.attachments.map(attachmentLabel).join('')}</div>`:''}${message.stale?'<small class="group-banner">Result from an earlier task revision · current work was preserved.</small>':''}</div></div>`);
-  }
-  if(!group.messages.length)host.insertAdjacentHTML('beforeend',`<div class="empty">Message the Group to reach ${esc(agent(group.lead).name)}, or @mention a member.</div>`);
-  for(const request of group.requests.filter(r=>['queued','running','failed','interrupted'].includes(r.status))) {
-    const turn=live.turns.find(t=>t.id===request.id);
-    host.insertAdjacentHTML('beforeend',`<section data-chat-key="request:${esc(request.id)}" class="live-status"><strong>${esc(agent(request.target).name)} · ${esc(statusNames[request.status]||request.status)}</strong>${turn&&blocksChat(turn)?`<div data-turn-progress="${esc(turn.id)}">${turnProgress(turn)}</div>`:''}${request.error?`<p>${esc(request.error)}</p>`:''}${groupCallControls(group,request)}</section>`);
-  }
-  renderAttachment();
-}
 function groupCallTasks(group) {
   const states={queued:'Queued',running:'Running',output_pending:'Running',done:'Completed',warning:'Completed',failed:'Failed',interrupted:'Interrupted',cancelled:'Cancelled'};
   return (group.requests||[]).filter(r=>!r.task).slice().reverse().map(r=>{
@@ -80,13 +62,12 @@ function groupCallTasks(group) {
 }
 function defaultWorkActivity() {
   const group=selected().kind==='group'?selected():null;
-  const states=group?groupCallTasks(group).map(t=>t.state):(live.workloads||[]).filter(w=>!w.origin?.group&&w.participants.includes(state.selected)).map(w=>w.state);
+  const states=group?groupCallTasks(group).map(t=>t.state):(state.snapshot.workloads||[]).filter(w=>!w.origin?.group&&w.participants.includes(state.selected)).map(w=>w.state);
   for(const task of group?.tasks||[])if(!task.deleted)states.push(task.state==='done'?'Completed':'Queued');
   if(states.some(status=>!pastTaskStates.has(status)))return {view:'tasks'};
-  if((live.routines||[]).some(r=>r.owner===state.selected&&!r.paused))return {view:'routine-scheduled'};
+  if((state.snapshot.routines||[]).some(r=>r.owner===state.selected&&!r.paused))return {view:'routine-scheduled'};
   return states.length?{view:'tasks',period:'past'}:{view:'memo'};
 }
-const openGroupTasks=new Set();
 const activityChevron = sideways => `<svg class="activity-chevron${sideways?' sideways':''}" viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true" focusable="false"><path d="m4.5 6.25 3.5 3.5 3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 function closeActivityMenus() {
   document.querySelectorAll('.activity-menu').forEach(menu=>menu.hidden=true);
@@ -139,7 +120,7 @@ function prepareActivityFeedback() {
   const input=$('#message-input');
   // Preserve an unfinished request; feedback is a draft and is never auto-sent.
   input.value=input.value?input.value+'\n\nFeedback: ':'Feedback: ';
-  state.drafts ??= {};state.drafts[state.selected]=input.value;
+  saveDraft();
   input.focus();input.setSelectionRange(input.value.length,input.value.length);save();
 }
 document.addEventListener('click',e=>{
@@ -181,46 +162,34 @@ const taskStateLabel={backlog:'Backlog',in_progress:'In progress',done:'Done'};
 function groupTaskCard(group, task) {
   const running=group.requests.some(r=>r.task===task.id&&['queued','running'].includes(r.status));
   const results=task.results.map(r=>`<div class="group-task-result"><strong>${esc(agent(r.author).name)}${r.stale?' · Earlier revision':''}</strong><div>${formatText(r.text||r.error||'No reply saved.')}</div></div>`).join('');
-  return `<details class="task-row group-task" data-open-group-task="${esc(task.id)}" ${openGroupTasks.has(task.id)?'open':''}><summary class="task-summary"><span class="task-row-copy"><span class="task-title">${esc(task.title)}</span><span class="task-meta">${esc(agent(task.assignee).name)} · ${task.deleted?'Deleted':taskStateLabel[task.state]}</span></span><span class="task-chevron" aria-hidden="true">›</span></summary><div class="task-content">${task.body?`<div class="group-task-body">${formatText(task.body)}</div>`:''}
+  return `<details class="task-row group-task" data-open-group-task="${esc(task.id)}" ${state.expanded['group-task:'+task.id]?'open':''}><summary class="task-summary"><span class="task-row-copy"><span class="task-title">${esc(task.title)}</span><span class="task-meta">${esc(agent(task.assignee).name)} · ${task.deleted?'Deleted':taskStateLabel[task.state]}</span></span><span class="task-chevron" aria-hidden="true">›</span></summary><div class="task-content">${task.body?`<div class="group-task-body">${formatText(task.body)}</div>`:''}
     <div class="actions">${!group.archived?`<button class="button" data-group-task="${esc(task.id)}" data-group="${esc(group.id)}">${task.deleted?'Restore / edit':'Edit'}</button>${!task.deleted?`<button class="button" data-task-run="${esc(task.id)}" data-group="${esc(group.id)}" ${running?'disabled':''}>${running?'Running / queued':task.state==='done'?'Run again':'Run task'}</button>`:''}`:''}</div>
     ${results?`<details><summary>Results · ${task.results.length}</summary>${results}</details>`:''}${task.history.length?`<details><summary>Change history · ${task.history.length}</summary>${task.history.slice().reverse().map(h=>`<div class="group-task-result"><strong>${esc(h.title)}</strong><p>${esc(agent(h.assignee).name)} · ${taskStateLabel[h.state]}${h.deleted?' · Deleted':''}</p><p>${esc(h.body)}</p></div>`).join('')}</details>`:''}</div></details>`;
 }
 function renderScheduledRoutines(host) {
-  const routines=(live.routines||[]).filter(r=>r.owner===state.selected);
-  const key=JSON.stringify([state.selected,state.period,routines]);
-  if(host.firstElementChild?.taskViewKey===key)return;
-  const view=element('section','task-browser');view.taskViewKey=key;
-  const list=element('div','task-list');
+  const routines=(state.snapshot.routines||[]).filter(r=>r.owner===state.selected);
   const planned=state.period==='upcoming';
-  list.setAttribute('aria-label',`${planned?'Planned':'Paused'} scheduled routines`);
   const rows=routines.filter(r=>Boolean(r.paused)!==planned).map(r=>({id:r.id,title:r.title,state:r.paused?'Paused':'Planned',owner:r.owner,sender:r.owner,
     reference:'@'+r.id,editRoutine:r.id,routineAction:r.paused?'resume':'pause',runCount:r.runCount||0,
     meta:`Every ${r.minutes} minutes${r.paused?'':` · ${new Date(r.nextDue).toLocaleString()}`}`,
     body:`Frequency: every ${r.minutes} minutes\nExecute: ${r.prompt}`}));
-  if(!rows.length){
-    const empty=element('div','task-empty');
-    empty.append(element('p','',planned?'No planned routines':'No paused routines'),
-      element('small','',planned?'Create a scheduled routine through chat.':'Paused routines will appear here.'));
-    list.append(empty);
-  }else rows.forEach(row=>list.append(taskRow(row,state.selected)));
-  view.append(list);host.replaceChildren(view);
+  mountHTML(host,`<section class="task-browser"><div class="task-list" aria-label="${planned?'Planned':'Paused'} scheduled routines">${rows.length?rows.map(row=>taskRow(row,state.selected)).join(''):emptyTasks(planned?'No planned routines':'No paused routines',planned?'Create a scheduled routine through chat.':'Paused routines will appear here.')}</div></section>`,JSON.stringify([state.selected,state.period,rows]));
 }
 function workDraft(preset, placeholder) {
   dispatchUI({type:'Navigate',panel:'chat'});
   const input=$('#message-input'),start=input.value.length+(input.value?2:0);
   input.value=input.value?input.value+'\n\n'+preset:preset;
-  state.drafts ??= {};state.drafts[state.selected]=input.value;
+  saveDraft();
   input.focus();
   const at=placeholder?preset.indexOf(placeholder):-1;
   input.setSelectionRange(at<0?input.value.length:start+at,at<0?input.value.length:start+at+placeholder.length);
   save();
 }
 function renderGroupTasks(host, group) {
-  host.querySelectorAll('[data-open-group-task]').forEach(row=>row.open?openGroupTasks.add(row.dataset.openGroupTask):openGroupTasks.delete(row.dataset.openGroupTask));
   host.innerHTML=`<section class="group-work"><div class="group-task-list">${group.tasks.filter(t=>state.view!=='tasks-automated'||t.taskType==='automated').filter(t=>state.period==='deleted'?t.deleted:!t.deleted&&(state.period==='past'?t.state==='done':t.state!=='done')).map(t=>groupTaskCard(group,t)).join('')}</div></section>`;
   const list=host.querySelector('.group-task-list');
   if(state.view!=='tasks-automated'&&state.period!=='deleted')for(const task of groupCallTasks(group)) {
-    if(pastTaskStates.has(task.state)===(state.period==='past'))list.append(taskRow(task,group.id));
+    if(pastTaskStates.has(task.state)===(state.period==='past'))list.insertAdjacentHTML('beforeend',taskRow(task,group.id));
   }
   if(!list.children.length)list.innerHTML='<p class="empty">No tasks here yet.</p>';
 }
@@ -246,7 +215,7 @@ function eventTimestamp(value) {
 function renderUpdates(host) {
   $('#composer-area').hidden=true;
   host.classList.remove('notes-view');
-  const events=(live.events?.[state.selected]||[]).slice(0,100);
+  const events=(state.snapshot.events?.[state.selected]||[]).slice(0,100);
   const name=id=>id==='admin'?'Admin':id==='system'?'System':id==='corpora'?'Corpora':state.agents.find(a=>a.id===id)?.name||(id.startsWith('routine_sch_')?'@'+id:id);
   const key=JSON.stringify([state.selected,events.map(e=>e.id),state.agents.map(a=>[a.id,a.name])]);
   if(host.dataset.events===key&&host.querySelector('.event-log'))return;
@@ -294,18 +263,18 @@ document.addEventListener('click',async e=>{
     workDraft(scheduled?'Add New Scheduled Routine:\nFrequency: every XXX minutes\nExecute: PROMPT':'Add New Task: TODO',scheduled?'XXX':'TODO');return;
   }
   if(d.runRoutine) {
-    const r=(live.routines||[]).find(r=>r.id===d.runRoutine&&r.owner===state.selected);
+    const r=(state.snapshot.routines||[]).find(r=>r.id===d.runRoutine&&r.owner===state.selected);
     if(r)workDraft(`@${r.id}\nRun it now.`);
     return;
   }
   if(d.editRoutine) {
-    const r=(live.routines||[]).find(r=>r.id===d.editRoutine&&r.owner===state.selected);
+    const r=(state.snapshot.routines||[]).find(r=>r.id===d.editRoutine&&r.owner===state.selected);
     if(r)workDraft(`Edit @${r.id} ( ${r.title} )\nEdit Frequency (prev every ${r.minutes} minutes): new every XXX minutes\nEdit Execution Prompt as: ${r.prompt}`,'XXX');
     return;
   }
   if(d.pauseRoutine||d.resumeRoutine) {
     const id=d.pauseRoutine||d.resumeRoutine;
-    if((live.routines||[]).some(r=>r.id===id&&r.owner===state.selected))
+    if((state.snapshot.routines||[]).some(r=>r.id===id&&r.owner===state.selected))
       workDraft(`${d.pauseRoutine?'Pause Schedule Riutine':'Resume Scheduled Routine'}\n@${id}`);
     return;
   }
@@ -325,5 +294,5 @@ document.addEventListener('click',async e=>{
 
 document.addEventListener('toggle',e=>{
   const id=e.target.dataset?.openGroupTask;
-  if(id&&e.target.isConnected)e.target.open?openGroupTasks.add(id):openGroupTasks.delete(id);
+  if(id&&e.target.isConnected)dispatchUI({type:'Expand',key:'group-task:'+id,open:e.target.open});
 },true);

@@ -218,20 +218,20 @@ function presentMemo(root, profile, metadata, turnCount) {
     const p = element('p', 'memo-stub', 'This Memo is a stub. No populated memory entries have been saved yet.'); content.prepend(p);
   }
 }
-function notesInfo(id) {return agent(id).kind==='group'?agent(id).notes:live.orchestration[id].notes;}
+function notesInfo(id) {return agent(id).kind==='group'?agent(id).notes:state.snapshot.orchestration[id].notes;}
+// Sanitized rich Memo is an opaque view adapter, fed by decoded RemoteData.
 function renderNotes(host) {
-  const id = state.selected, info = notesInfo(id), profile = agent(id);
-  const turns = live.turns.filter(turn => profile.kind==='group'?turn.group===id:turn.agent===id).length;
-  const key = JSON.stringify([id,info.revision,profile.name,profile.role,profile.face,profile.color,turns]);
-  if (host.dataset.notes === key && host.querySelector('.notes-wiki')) return;
-  if (host.dataset.notesPending === key) return;
-  const previousScroll = host.dataset.notesOwner === id ? host.querySelector('.notes-wiki')?.scrollTop || 0 : 0;
-  if (!host.querySelector('.notes-wiki') || host.dataset.notesOwner !== id) host.replaceChildren();
-  host.dataset.notesPending = key; host.dataset.notesOwner = id;
-  api('/api/' + (profile.kind==='group'?'groups':'agents') + '/' + id + '/notes').then(row => {
-    if (state.selected !== id || !['notes','work'].includes(state.panel) || !host.isConnected || notesInfo(id).revision !== info.revision || host.dataset.notesPending !== key) return;
-    host.replaceChildren(notesWiki(row.content, row.path, id, profile, row.metadata || info, turns)); host.dataset.notes = key;
-    host.querySelector('.notes-wiki').scrollTop = previousScroll;
-  }).catch(error => {if (state.selected === id && ['notes','work'].includes(state.panel) && host.dataset.notesPending === key) host.textContent = error.message;})
-    .finally(() => {if (host.dataset.notesPending === key) delete host.dataset.notesPending;});
+  const id=state.selected,info=notesInfo(id),profile=agent(id),data=state.documents['memo:'+id];
+  const turns=state.snapshot.turns.filter(t=>profile.kind==='group'?t.group===id:t.agent===id).length;
+  const key=JSON.stringify([data,profile.name,profile.role,profile.face,profile.color,turns]);
+  if(host.dataset.notes===key)return;
+  const scroll=host.querySelector('.notes-wiki')?.scrollTop||0;
+  host.dataset.notes=key;
+  if(data?.type==='Failed'){host.replaceChildren(element('p','empty',data.error),element('button','button','Try again',{'data-retry-document':'memo:'+id}));return;}
+  if(!data?.value){host.textContent='Loading Memo…';return;}
+  try {
+    const row=data.value;
+    host.replaceChildren(notesWiki(row.content,row.path,id,profile,row.metadata||info,turns));
+    host.querySelector('.notes-wiki').scrollTop=scroll;
+  } catch(error) {host.textContent=error.message;}
 }

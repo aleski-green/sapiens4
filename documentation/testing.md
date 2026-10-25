@@ -65,7 +65,7 @@ pending on Windows; the other desktop scenarios share the native driver.
 
 | Behavior | Scenarios |
 | --- | --- |
-| Sending messages, saved task history, Memo, late task replies, retry, drafts, search, per-person workspace | `ui_state_spec.rb`, through Blindly4 and the real service |
+| Sending messages, saved task history, Memo, late task/Memo replies, retry, drafts during send confirmation, search, per-person workspace | `ui_state_spec.rb`, through Blindly4 and the real service |
 | Incoming replies while composing or reading older messages | `chat_scroll_spec.rb`, using native input and accessible on-screen positions |
 | Shared group messages, personal-chat isolation and Group-only task filters | `groups_browser_spec.rb` |
 | Creating/switching corpora, pause/resume, preserving drafts and execution state | `corpora_browser_spec.rb` |

@@ -1,13 +1,13 @@
-function formatMentions(value) {
+function formatMentions(value,model=state) {
   const text = String(value ?? '');
-  const entities = [...state.agents].sort((a,b) => b.name.length-a.name.length);
+  const entities = [...model.agents].sort((a,b) => b.name.length-a.name.length);
   if (!entities.length) return esc(text);
   const names = [...new Set(entities.map(e => e.name))].map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   const pattern = new RegExp(`(?<![\\p{L}\\p{N}_@.-])@?(?:${names.join('|')})(?![\\p{L}\\p{N}_@:-])`, 'gu');
   let result='', cursor=0;
   for (const match of text.matchAll(pattern)) {
     const candidates = entities.filter(e => e.name === match[0].replace(/^@/,''));
-    result += esc(text.slice(cursor,match.index)) + (candidates.length === 1 ? mention(candidates[0].id) : esc(match[0]));
+    result += esc(text.slice(cursor,match.index)) + (candidates.length === 1 ? mention(candidates[0].id,model) : esc(match[0]));
     cursor=match.index+match[0].length;
   }
   return result + esc(text.slice(cursor));
@@ -27,17 +27,17 @@ function chatLink(destination, label) {
   }
   return `<a class="chat-link" href="${esc(url.href)}" title="${esc(destination)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`;
 }
-formatText = function(value) {
+function formatText(value,model=state) {
   const text = String(value ?? '');
   const tokens = /\[([^\]\n]+)\]\((?:<([^>\n]+)>|((?:[^()\s]|\([^()\s]*\))+))\)|https?:\/\/[^\s<>]+|`([^`\n]+)`|\*\*([^*\n]+)\*\*|:codex-file-citation\{((?:[^{}"\n]|"(?:\\.|[^"\\\n])*")*)\}/g;
   const matches = [...text.matchAll(tokens)];
   const files = new Set(matches.filter(m => m[1] !== undefined).map(m => m[2] || m[3]));
   let output = '', cursor = 0;
   for (const match of matches) {
-    output += formatMentions(text.slice(cursor,match.index));
+    output += formatMentions(text.slice(cursor,match.index),model);
     if (match[1] !== undefined) output += chatLink(match[2] || match[3], match[1]);
     else if (match[4] !== undefined) output += `<code>${esc(match[4])}</code>`;
-    else if (match[5] !== undefined) output += `<strong>${formatMentions(match[5])}</strong>`;
+    else if (match[5] !== undefined) output += `<strong>${formatMentions(match[5],model)}</strong>`;
     else if (match[6] !== undefined) {
       const path = /(?:^|\s)path="((?:\\.|[^"\\])*)"/.exec(match[6])?.[1]?.replace(/\\([\\_"])/g, '$1');
       if (!path || !/^(\/|file:\/\/)/.test(path)) output += esc(match[0]);
@@ -50,7 +50,7 @@ formatText = function(value) {
     }
     cursor = match.index + match[0].length;
   }
-  return output + formatMentions(text.slice(cursor));
+  return output + formatMentions(text.slice(cursor),model);
 };
 let mentionRange = null, mentionChoices = [], mentionIndex = 0;
 function closeMentions() {
@@ -79,7 +79,7 @@ function chooseMention(index) {
   const entity=mentionChoices[index], range=mentionRange, input=$('#message-input');
   if (!entity || !range) return;
   input.setRangeText(`@${entity.name} `,range.start,range.end,'end');
-  state.drafts[state.selected]=input.value;save();closeMentions();input.focus();
+  saveDraft();closeMentions();input.focus();
 }
 document.addEventListener('input',e => { if(e.target.id==='message-input') updateMentions(); });
 document.addEventListener('click',async e => {

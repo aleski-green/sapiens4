@@ -1,12 +1,6 @@
 // Browser state has one writer: the host API. Native views report live navigation.
-let workspaceRevision = bootstrap.preferences.workspace_revision || 0;
 let editingAddress = null;
-function receiveWorkspaces(prefs) {
-  if ((prefs.workspace_revision || 0) <= workspaceRevision) return;
-  workspaceRevision = prefs.workspace_revision;
-  state.workspaces = prefs.workspaces || {};
-  syncWorkspace();
-}
+function receiveWorkspaces(preferences) {dispatchUI({type:'Workspaces',preferences});}
 function browserDestination(value) {
   return /^(https?:|file:|about:)/i.test(value) ? {url:value} : {path:value};
 }
@@ -55,8 +49,7 @@ function renderTabs() {
   layoutTabs();
 }
 function renderWorkspace() {
-  syncWorkspace();
-  $('#workspace-owner').innerHTML=`${mention(workspaceOwner)}<span>’s browser</span>`;
+  $('#workspace-owner').innerHTML=`${mention(state.selected)}<span>’s browser</span>`;
   const t=state.tabs.find(t=>t.id===state.activeTab);
   $('#browser-address-form').hidden=!!t && t.url!=='about:blank' && editingAddress!==t.id;
   if (document.activeElement!==$('#browser-address')) $('#browser-address').value=t?.path || (t?.url==='about:blank'?'':t?.url) || '';
@@ -132,7 +125,7 @@ $('#browser-address-form').addEventListener('submit',async e=>{
 });
 $('#add-tab').addEventListener('click',openNewTab);
 $('#open-file').addEventListener('click',()=>{
-  const bridge=window.webkit?.messageHandlers?.browser, directory=selected().kind==='group'?selected().workspace:live.orchestration[state.selected].notes.path.replace(/[\\/][^\\/]+$/, '');
+  const bridge=window.webkit?.messageHandlers?.browser, directory=selected().kind==='group'?selected().workspace:state.snapshot.orchestration[state.selected].notes.path.replace(/[\\/][^\\/]+$/, '');
   setBrowserMenu();
   if(nativeWorkspaceAvailable())bridge.postMessage({pickFile:true,owner:state.selected,directory});else {editingAddress=state.activeTab;renderWorkspace();$('#browser-address').value=directory+'/';$('#browser-address').focus();}
 });

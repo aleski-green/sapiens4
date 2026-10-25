@@ -29,17 +29,3 @@ async function api(path, method = 'GET', data) {
   return result;
 }
 const bootstrap = window.SapiensConnections ? await SapiensConnections.initial : await api('/api/state');
-function makeInitialState(data) {
-  const prefs = data.preferences;
-  const agents = data.agents.map(a => ({...a, kind:'sapi', scope:'personal', status:'online',
-    autonomy:'assist', preview:'Ready for your message.', lastActivity:Date.parse(a.created), unread:false}));
-  agents.push(...(data.groups || []));
-  const selected = agents.some(a => a.id === prefs.selected && !a.retired) ? prefs.selected : agents[0].id;
-  const workspaces = prefs.workspaces || {};
-  const ws = workspaces[selected] || {tabs:[]};
-  return {agents, mainSapiId:agents[0].id, selected, scope:agents.find(a=>a.id===selected)?.kind==='group'?'groups':prefs.scope || 'all',
-    groupView:prefs.groupView || (agents.find(a=>a.id===selected)?.kind==='group'?selected:null),
-    ...activityState(prefs.panel,prefs.view,prefs.period,agents.find(a=>a.id===selected)?.kind==='group'),search:'', mode:'assist', panes:{sidebar:true,chat:true,workspace:true,...prefs.panes},
-    tabs:ws.tabs, activeTab:ws.activeTab || ws.tabs[0]?.id || null, workspaces,
-    drafts:prefs.drafts || {}, messages:{}};
-}

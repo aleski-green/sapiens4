@@ -16,18 +16,18 @@ function nameSuggestions() {
   return `<div class="name-suggestions" id="name-help" aria-label="Suggested names">${suggestedNames().map(name => `<button type="button" class="button" data-use-name="${esc(name)}">${esc(name)}</button>`).join('')}<button type="button" class="icon-button" data-more-names="true" aria-label="More name suggestions">↻</button></div>`;
 }
 function managerOptions(a) {
-  if (a.id === live.main_agent_id) return '<div class="settings-row"><span>Main orchestrator</span></div>';
-  const info = live.orchestration[a.id];
+  if (a.id === state.snapshot.main_agent_id) return '<div class="settings-row"><span>Main orchestrator</span></div>';
+  const info = state.snapshot.orchestration[a.id];
   const allowed = state.agents.filter(candidate => {
     if (candidate.retired || candidate.kind==='group') return false;
     let id = candidate.id;
     while (id) {
       if (id === a.id) return false;
-      id = live.orchestration[id]?.manager;
+      id = state.snapshot.orchestration[id]?.manager;
     }
     return true;
   });
-  return `<label>Manager<select name="manager">${allowed.map(s => `<option value="${esc(s.id)}" ${s.id === info.manager ? 'selected' : ''}>${esc(s.name)}${s.id === live.main_agent_id ? ' · Main orchestrator' : ''}</option>`).join('')}</select></label>`;
+  return `<label>Manager<select name="manager">${allowed.map(s => `<option value="${esc(s.id)}" ${s.id === info.manager ? 'selected' : ''}>${esc(s.name)}${s.id === state.snapshot.main_agent_id ? ' · Main orchestrator' : ''}</option>`).join('')}</select></label>`;
 }
 document.addEventListener('click', e => {
   const b = e.target.closest('button');

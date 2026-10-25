@@ -1,5 +1,5 @@
-let live = bootstrap;
-let online = window.SapiensConnections ? SapiensConnections.connected : true;
+dispatchUI({type:'Connection',online:window.SapiensConnections?SapiensConnections.connected:true});
+dispatchUI({type:'Clock',now:Date.now()});
 let refreshing = null;
 let saveTimer;
 let saving = false;
@@ -8,23 +8,14 @@ let pendingChatPosition = bootstrap.preferences.chatPosition || null;
 let lastChatPosition = pendingChatPosition;
 let lastChatGeometry = null;
 let resumingChat = false, resumeChatFrame;
-const submitting = new Set();
-const expandedWarnings = new Set();
-const attachmentDrafts = bootstrap.attachment_drafts || {};
-let uploading = 0;
 const nameRule = /^[A-Z][A-Za-z0-9_.:#+|()&$^\-]*$/;
 const nameHelp = 'Start with A–Z. Letters, numbers, and - _ . : # + | ( ) & $ ^ are allowed. No spaces.';
-const attention = new Set(['failed','interrupted','conflict']);
-const blocksChat = turn => ['queued','running','output_pending'].includes(turn.status);
-const statusNames = {output_pending:'Awaiting output pulse',queued:'Queued',running:'Running',done:'Completed',warning:'Warning',failed:'Failed',
-  interrupted:'Interrupted',conflict:'Needs review',cancelled:'Dismissed'};
 const displayTime = value => new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-const originalConversation = renderConversation;
 
 function preferences() {
   return {selected:state.selected,panel:state.panel,scope:state.scope,groupView:state.groupView,panes:state.panes,
     drafts:state.drafts,
-    attachment_drafts:Object.fromEntries(Object.entries(attachmentDrafts).map(([id, items]) => [id, items.map(a => a.id)]))};
+    attachment_drafts:Object.fromEntries(Object.entries(state.composer.attachments).map(([id, items]) => [id, items.map(a => a.id)]))};
 }
 // Pixel offsets alone cannot survive the shortened offline transcript. Persist
 // a message identity and its position inside the viewport instead.
@@ -64,13 +55,13 @@ function restoreChatPosition() {
 function workspacePreferences() {
   return {...preferences(),view:state.view,period:state.period,workspaces:state.workspaces,scroll:$('#conversation-body').scrollTop,chatPosition:chatPosition()};
 }
-save = function() {
+function save() {
   window.SapiensConnections?.save(workspacePreferences());
   clearTimeout(saveTimer);
   saveTimer = setTimeout(flushPreferences, 300);
 };
 async function flushPreferences() {
-  if (saving || !online || window.SapiensConnections?.busy) return;
+  if (saving || !state.online || window.SapiensConnections?.busy) return;
   const value = JSON.stringify(preferences());
   if (value === savedPreferences) return;
   saving = true;
@@ -86,28 +77,12 @@ async function flushPreferences() {
     if (JSON.stringify(preferences()) !== savedPreferences) saveTimer = setTimeout(flushPreferences, 2000);
   }
 }
-getMessages = id => state.messages[id] || [];
-
-function turnActions(turn) {
-  if (turn.status === 'running') return `<div class="actions"><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}" ${!online || (live.run_activity?.[turn.batch_id || turn.id] || live.activity?.[turn.agent])?.stopping ? 'disabled' : ''}>Stop</button><small>Already completed actions are not undone.</small></div>`;
-  if (attention.has(turn.status)) return `<div class="actions"><button class="button" data-live-turn="retry" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Retry</button><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Dismiss</button></div>`;
-  if (turn.status === 'queued') return `<div class="actions"><button class="button" data-live-turn="cancel" data-id="${esc(turn.id)}" data-owner="${esc(turn.agent)}">Cancel queued turn</button></div>`;
-  return '';
-}
-
-function turnProgress(turn, now = Date.now()) {
-  const current = live.run_activity?.[turn.batch_id || turn.id] || live.activity?.[turn.agent];
-  const a = current?.turn === turn.id ? current : {};
-  const elapsed = Math.max(0, Math.floor((now - (a.started || Date.parse(turn.created))) / 1000));
-  const quiet = Math.max(0, Math.floor((now - (a.updated || a.started || now)) / 1000));
-  const phase = !online ? 'Disconnected' : a.stopping ? 'Stopping…' : turn.status === 'output_pending' ? 'Awaiting output pulse' : turn.status === 'queued' ? 'Queued' : a.phase || 'Starting model';
-  const detail = a.tool ? `Current tool: ${a.tool}` : a.last_action ? `Last completed action: ${a.last_action}` : '';
-  return `<strong>${esc(phase)} · ${elapsed}s</strong><p>${esc(detail)}</p>${quiet >= 60 ? `<small>No recent update · ${quiet}s since last activity</small>` : ''}`;
-}
+const getMessages = id => state.messages[id] || [];
 
 function updateProgress() {
+  dispatchUI({type:'Clock',now:Date.now()});
   $$('[data-turn-progress]').forEach(node => {
-    const turn = live.turns.find(t => t.id === node.dataset.turnProgress);
+    const turn = state.snapshot.turns.find(t => t.id === node.dataset.turnProgress);
     if (turn) node.innerHTML = turnProgress(turn);
   });
 }
@@ -116,94 +91,43 @@ document.addEventListener('click', e => {
   const button = e.target.closest('[data-warning-toggle]');
   if (!button) return;
   const id = button.dataset.warningToggle;
-  const expanded = !expandedWarnings.has(id);
-  if (expanded) expandedWarnings.add(id); else expandedWarnings.delete(id);
+  const expanded = !state.expanded['warning:'+id];
+  dispatchUI({type:'Expand',key:'warning:'+id,open:expanded});
   button.setAttribute('aria-expanded', String(expanded));
   document.getElementById(button.getAttribute('aria-controls')).hidden = !expanded;
 });
 
-function chatResult(turn) {
-  const text = turn.output || '';
-  if (turn.status !== 'warning') return {text};
-  // Only split the host-generated limit notice; preserve ordinary Sapi answers.
-  const notice = /^Warning — partial result\.\n\n(Saved: [\s\S]+?)\n\n(The (?:tool|time) limit was reached after [\s\S]+)$/.exec(text);
-  return {text:notice ? notice[1] : text, warning:notice ? notice[2] : turn.error || 'Partial result; review before relying on it.'};
-}
-
-function requestStatus(turn) {
-  if (!attention.has(turn.status) && turn.status !== 'cancelled') return null;
-  const error = turn.error || '';
-  const reason = /TimeoutError|time limit|exceeded \d+(?:\.\d+)?s/i.test(error) ? 'Timed out' :
-    /tool-step limit|tool limit/i.test(error) ? 'Tool limit reached' : null;
-  return {label: reason ? reason + (turn.status === 'cancelled' ? ' · Dismissed' : '') : statusNames[turn.status],
-    detail: error.split('\n')[0] || (turn.status === 'cancelled' ? 'This request was dismissed.' : 'This request needs attention.')};
-}
-
 function applySnapshot(snapshot) {
-  const identity=document.getElementById('corpora-identity');
-  if(identity && snapshot.corpora) {
-    identity.hidden=false;identity.textContent=snapshot.corpora.name;identity.title=snapshot.corpora.id;
-  }
-  receiveWorkspaces(snapshot.preferences);
-  live = snapshot;
-  const old = new Map(state.agents.map(a => [a.id,a]));
-  state.agents = snapshot.agents.map(a => ({...old.get(a.id),...a,kind:'sapi',scope:'personal',
-    autonomy:'assist',status:'online',lastActivity:Date.parse(a.created),preview:'Ready for your message.'}));
-  state.messages = {};
-  for (const turn of snapshot.turns) {
-    if(turn.group) continue;
-    const messages = state.messages[turn.agent] ||= [];
-    const timestamp = Date.parse(turn.created);
-    if (['chat','computer'].includes(turn.flow)) messages.push({role:'user',author:turn.origin?.caller,text:turn.input,time:displayTime(turn.created),timestamp,attachments:turn.attachments,requestTurn:turn});
-    if (['chat','computer'].includes(turn.flow) && ['done','warning'].includes(turn.status) && turn.output !== null) {
-      messages.push({role:'assistant',...chatResult(turn),time:displayTime(turn.output_at || turn.created),timestamp:Date.parse(turn.output_at || turn.created),outputOrder:turn.output_order,turnId:turn.id});
-    }
-    const a = state.agents.find(a => a.id === turn.agent);
-    if (a && (['chat','computer'].includes(turn.flow))) {
-      a.lastActivity = timestamp;
-      a.preview = (['done','warning'].includes(turn.status) && turn.output !== null ? chatResult(turn).text : turn.input).replace(/\s+/g,' ').slice(0,150);
-    }
-    if (a && turn.status === 'running') a.status = 'busy';
-  }
-  for(const group of snapshot.groups || []) {
-    state.agents.push({...group,status:group.requests.some(r=>r.status==='running')?'busy':'online',lastActivity:Date.parse(group.updated),preview:group.messages.at(-1)?.text || group.description || 'Shared workspace'});
-    state.messages[group.id]=group.messages.map(m=>({role:m.author==='admin'?'user':'assistant',author:m.author==='admin'?null:m.author,text:m.text,time:displayTime(m.created),timestamp:Date.parse(m.created)}));
-  }
-  delegationMessages(snapshot);
-  for (const messages of Object.values(state.messages)) messages.sort((a,b)=>a.timestamp-b.timestamp || (a.outputOrder || 0)-(b.outputOrder || 0));
-  if (!state.agents.some(a => a.id === state.selected) ||
-      (agent(state.selected).retired && !old.get(state.selected)?.retired)) {
-    state.drafts[state.selected] = $('#message-input').value;
-    state.selected = snapshot.main_agent_id;
-    Object.assign(state,activityState(state.panel,state.view,state.period));
-    $('#message-input').value = state.drafts[state.selected] || '';
-    renderTabs(); renderWorkspace();
-  }
+  const identity=$('#corpora-identity');
+  if(identity&&snapshot.corpora){identity.hidden=false;identity.textContent=snapshot.corpora.name;identity.title=snapshot.corpora.id;}
+  const previous=state.selected;
+  dispatchUI({type:'Snapshot',snapshot});
+  if(previous!==state.selected){syncComposer();renderTabs();renderWorkspace();}
 }
 
-renderGlobal = function() {
+function renderGlobal() {
   if(!window.SapiensConnections) {
-    $('#connection-label').textContent = `Local · ${online ? 'Online' : 'Reconnecting…'}`;
-    $('#connection-status').dataset.online = String(online);
+    $('#connection-label').textContent = `Local · ${state.online ? 'Online' : 'Reconnecting…'}`;
+    $('#connection-status').dataset.online = String(state.online);
   }
-  const owner = live.computer.owner;
-  $('#resource-owner').textContent = owner ? `In use · ${agent(owner).name}` : live.computer.built ? 'Blindly4 · Available' : 'Blindly4 · Build required';
+  const owner = state.snapshot.computer.owner;
+  $('#resource-owner').textContent = owner ? `In use · ${agent(owner).name}` : state.snapshot.computer.built ? 'Blindly4 · Available' : 'Blindly4 · Build required';
   $('#resource-status').classList.toggle('idle', !owner);
   $('#resource-status').classList.remove('paused');
 };
 
-window.addEventListener('sapiens-connection-change', () => {if(window.SapiensConnections)online=SapiensConnections.connected&&!SapiensConnections.busy;renderGlobal();renderAgentHeader();});
+window.addEventListener('sapiens-connection-change', () => {if(window.SapiensConnections)dispatchUI({type:'Connection',online:SapiensConnections.connected&&!SapiensConnections.busy});renderGlobal();renderAgentHeader();});
 
-renderAgentHeader = function() {
+function renderAgentHeader() {
   const a = selected();
-  const turn = a.kind==='group'?null:live.turns.find(j => j.agent === a.id && blocksChat(j));
+  const turn = a.kind==='group'?null:state.snapshot.turns.find(j => j.agent === a.id && blocksChat(j));
   $('#agent-heading').innerHTML = `${avatar(a,isMainSapi(a)?'large main-sapi-avatar':'large',true)}<div><div class="agent-title"><h2>${esc(a.name)}</h2>${a.kind==='group'?'':groupLabels(a)}</div><p class="agent-role">${esc(a.kind==='group'?a.description:a.role)}</p></div><button class="icon-button" data-action="agent-settings" aria-label="Sapi settings">···</button>`;
   $('#message-input').placeholder = paneLimit()<3 ? 'Message…' : `Message ${a.name}…`;
   $('#message-input').setAttribute('aria-label',`Message ${a.name}`);
   resizeComposer();
   renderActivityNavigation();
   $('#attach-button').hidden = Boolean(a.archived);
-  $('.send-button').disabled = a.retired || a.archived || live.corpora?.status==='paused' || live.corpora?.status==='archived' || !online || submitting.has(a.id) || uploading > 0;
+  $('.send-button').disabled = a.retired || a.archived || state.snapshot.corpora?.status==='paused' || state.snapshot.corpora?.status==='archived' || !state.online || state.composer.sending[a.id] || state.composer.uploading > 0;
 };
 
 // Keep existing messages mounted: clearing the scroll container interrupts iOS
@@ -238,13 +162,12 @@ function commitChat(viewport, content, changedView, bottom, scroll, anchor) {
 }
 
 let renderedConversation = '';
-renderConversation = function() {
+function renderConversation() {
   // Background layout is not a reading position. Reconcile the transcript when
   // visible again, after the phone has restored its viewport.
   if (document.hidden) return;
   const viewport = $('#conversation-body');
   viewport.classList.toggle('notes-view', state.panel === 'notes');
-  const turns = live.turns.filter(j => j.agent === state.selected);
   const key = state.selected + ':' + state.panel + ':'+state.view;
   const changedView = renderedConversation !== key;
   if (changedView) lastChatGeometry = null;
@@ -257,82 +180,31 @@ renderConversation = function() {
   const host = chat ? document.createElement('div') : viewport;
   const finish = () => { if (chat) {commitChat(viewport, host, changedView, bottom, scroll, anchor);restoreChatPosition();} };
   if(renderChatCollection(host)){renderAgentHeader();renderGlobal();return;}
-  if(selected().kind==='group') {renderGroupPanel(host);renderAgentHeader();renderGlobal();if(chat)finish();else if(changedView)viewport.scrollTop=0;return;}
   if(state.panel==='work' || state.panel==='updates') {renderWork(host);renderAgentHeader();renderGlobal();if(changedView)host.scrollTop=0;return;}
-  if (state.panel === 'chat') {
-    originalConversation(host);
-    host.querySelectorAll('.message').forEach((node,i) => {
-      const message=getMessages(state.selected)[i];
-      if (message?.author) node.querySelector('.message-meta strong').textContent = agent(message.author).name;
-      if (message?.delegation && message.requestTurn && blocksChat(message.requestTurn)) node.querySelector('.message-bubble').insertAdjacentHTML('beforeend', turnActions(message.requestTurn));
-      const request = message?.requestTurn, requestState = request && requestStatus(request);
-      if (requestState) {
-        const key = `request-${request.id}`, expanded = expandedWarnings.has(key);
-        node.querySelector('.message-meta').insertAdjacentHTML('beforeend', `<button type="button" class="warning-badge" data-warning-toggle="${esc(key)}" aria-expanded="${expanded}" aria-controls="${esc(key)}">${esc(requestState.label)}</button>`);
-        node.querySelector('.message-bubble').insertAdjacentHTML('afterbegin', `<div class="warning-details" id="${esc(key)}" ${expanded ? '' : 'hidden'}><p>${esc(requestState.detail)}</p><p>No final reply was saved for this request.</p>${turnActions(request)}</div>`);
-      }
-      if (message?.warning) {
-        node.classList.add('warning-message');
-        const expanded = expandedWarnings.has(message.turnId);
-        node.querySelector('.message-meta').insertAdjacentHTML('beforeend', `<button type="button" class="warning-badge" data-warning-toggle="${esc(message.turnId)}" aria-expanded="${expanded}" aria-controls="warning-${esc(message.turnId)}">Warning</button>`);
-        node.querySelector('.message-bubble').insertAdjacentHTML('afterbegin', `<div class="warning-details" id="warning-${esc(message.turnId)}" ${expanded ? '' : 'hidden'}>${esc(message.warning)}</div>`);
-      }
-    });
-    const humanMessages = getMessages(state.selected).filter(m => m.role === 'user');
-    host.querySelectorAll('.message.user').forEach((node, i) => {
-      node.querySelector('.message-meta strong').textContent = humanMessages[i]?.author ? agent(humanMessages[i].author).name : 'Admin';
-      const attachments = humanMessages[i]?.attachments || [];
-      if (attachments.length) node.querySelector('.message-bubble').insertAdjacentHTML('beforeend', `<div class="message-attachments">${attachments.map(attachmentLabel).join('')}</div>`);
-    });
-    taskCallControls(host);
-    if (!getMessages(state.selected).length) host.insertAdjacentHTML('beforeend', '<div class="empty">Start a conversation.</div>');
-    const activeTurns = turns.filter(j => blocksChat(j) && (!j.batch_id || j.batch_id===j.id));
-    for (const turn of activeTurns) {
-      host.insertAdjacentHTML('beforeend', `<section data-chat-key="progress:${esc(turn.id)}" class="live-status"><div data-turn-progress="${esc(turn.id)}">${turnProgress(turn)}</div>${turnActions(turn)}</section>`);
-    }
-  }
+  $('#composer-area').hidden=!!selected().archived;
+  host.innerHTML=conversationView(state);
+  if(selected().kind!=='group')taskCallControls(host);renderAttachment();
 
   renderAgentHeader(); renderGlobal();
   finish();
 };
 
-sendChat = async function(value) {
-  const text = value.trim();
-  const id = state.selected;
-  const attachments = [...(attachmentDrafts[id] || [])];
-  if ((!text && !attachments.length) || submitting.has(id) || uploading) return;
-  submitting.add(id); renderAgentHeader();
-  try {
-    if(selected().kind==='group') await api(`/api/groups/${id}/messages`, 'POST', {text,attachments:attachments.map(a=>a.id)});
-    else await api(`/api/agents/${id}/messages`, 'POST', {text,attachments:attachments.map(a => a.id),
-      ...(clarificationWorkload?.owner === id ? {workload:clarificationWorkload.id} : {})});
-    clarificationWorkload = null;
-    attachmentDrafts[id] = (attachmentDrafts[id] || []).filter(a => !attachments.some(sent => sent.id === a.id));
-    renderAttachment();
-    if (state.drafts[id]?.trim() === text) state.drafts[id] = '';
-    if (state.selected === id && $('#message-input').value.trim() === text) {
-      $('#message-input').value = ''; state.drafts[id] = '';
-    }
-    closeMentions(); save();
-    await refresh();
-  } catch (error) { toast(error.message); }
-  finally { submitting.delete(id); renderAgentHeader(); }
-};
+function sendChat(value) {dispatchUI({type:'Send',value});}
 
-addAgent = function() {
+function addAgent() {
   leaveGroup('all');
   const input=$('#message-input');
   if(!input.value.trim())input.value=bootstrap.creation_template;
-  state.drafts[state.mainSapiId]=input.value;
+  saveDraft();
   input.focus();
   const start=input.value.indexOf('WORKFLOW');
   if(start>=0)input.setSelectionRange(start,start+8);
   save();
 };
-agentSettings = function() {
+function agentSettings() {
   const a = selected();
   if(a.kind==='group'){groupDialog(a);return;}
-  const execution = live.orchestration[a.id].execution;
+  const execution = state.snapshot.orchestration[a.id].execution;
   modal(`${a.name} settings`, `<form id="live-settings-form" data-id="${esc(a.id)}" class="form-stack">
     <div class="settings-tabs" role="tablist" aria-label="Sapi settings">${[['profile','Profile'],['context','Context'],['usage','Usage'],['limits','Limits']].map(([key,label],i)=>`<button type="button" role="tab" id="settings-tab-${key}" aria-controls="settings-panel-${key}" aria-selected="${i===0}" tabindex="${i===0?0:-1}" ${i ? 'disabled aria-disabled="true" title="Inactive"' : ''}>${label}</button>`).join('')}</div>
     <section class="settings-panel form-stack" role="tabpanel" id="settings-panel-profile" aria-labelledby="settings-tab-profile" data-settings-panel="profile">
@@ -347,11 +219,11 @@ agentSettings = function() {
     <button type="submit" class="button primary">Save</button></form>`, 'SAPIENS4');
 };
 actions['agent-settings'] = agentSettings;
-computerDialog = function() {
-  const windows = live.computer.platform === 'win32';
-  modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${live.computer.built ? 'Blindly4 is built' : `Build required: run ${windows ? '.\\start.ps1' : './start.sh'}`}</span><span class="tag">${live.computer.owner ? `In use · ${esc(agent(live.computer.owner).name)}` : 'Available'}</span></div><p>Sapis share one computer. ${windows ? 'Windows UI Automation works with accessible apps on your desktop. Elevated apps and secure system dialogs cannot be controlled.' : 'macOS Accessibility access is required for desktop interaction; permission failures appear in chat.'}</p>`, 'BLINDLY4');
+function computerDialog() {
+  const windows = state.snapshot.computer.platform === 'win32';
+  modal('Shared computer', `<p>Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.</p><div class="settings-row"><span>${state.snapshot.computer.built ? 'Blindly4 is built' : `Build required: run ${windows ? '.\\start.ps1' : './start.sh'}`}</span><span class="tag">${state.snapshot.computer.owner ? `In use · ${esc(agent(state.snapshot.computer.owner).name)}` : 'Available'}</span></div><p>Sapis share one computer. ${windows ? 'Windows UI Automation works with accessible apps on your desktop. Elevated apps and secure system dialogs cannot be controlled.' : 'macOS Accessibility access is required for desktop interaction; permission failures appear in chat.'}</p>`, 'BLINDLY4');
 };
-autonomyDialog = function() {
+function autonomyDialog() {
   modal('Workspace & settings', '<p>Talk to your Sapis in chat, manage their notes, and save documents in their workspaces. Sapis can delegate requests through ChiefSapi.</p><p>Use the corpora menu to switch workspaces. Active and Paused describe execution on the host; Connecting means this device is restoring its connection.</p><button type="button" class="button" id="edit-decision-prompts">Edit decision prompts</button>', 'SAPIENS4');
   $('#edit-decision-prompts').addEventListener('click', editDecisionPrompts);
 };
@@ -394,22 +266,21 @@ function attachmentLabel(item) {
   const label = `${item.kind === 'filepath' ? 'Filepath' : item.kind[0].toUpperCase() + item.kind.slice(1)} · ${item.name}`;
   return item.kind === 'link' ? `<a class="attachment-item" href="${esc(item.value)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>` : `<span class="attachment-item" title="${esc(item.value)}">${esc(label)}</span>`;
 }
-renderAttachment = function() {
-  const items = attachmentDrafts[state.selected] || [];
+function renderAttachment() {
+  const items = state.composer.attachments[state.selected] || [];
   $('#attachment-chip').innerHTML = items.map(a => `<div class="attachment-chip">${attachmentLabel(a)}<button type="button" data-remove-upload="${esc(a.id)}" aria-label="Remove ${esc(a.name)}">×</button></div>`).join('');
 };
 function attachmentMenu() {
   modal('Attach', `<div class="attachment-menu">${['image','document','link','filepath'].map(kind => `<button class="button" data-attachment-kind="${kind}">${kind === 'filepath' ? 'Filepath' : kind[0].toUpperCase() + kind.slice(1)}</button>`).join('')}</div>`, 'CHAT');
 }
-async function saveAttachment(id, data) {
-  if ((attachmentDrafts[id] || []).length >= 8) throw new Error('Attach up to 8 items per message.');
+async function saveAttachment(id, data, epoch=state.epoch) {
+  if(epoch!==state.epoch)return;
+  if ((state.composer.attachments[id] || []).length >= 8) throw new Error('Attach up to 8 items per message.');
   const item = await api(`/api/${id.startsWith('group_')?'groups':'agents'}/${id}/attachments`, 'POST', data);
-  (attachmentDrafts[id] ||= []).push(item);
-  if (state.selected === id) renderAttachment();
-  save();
+  dispatchUI({type:'Attachment',id,item,epoch});
 }
 async function pickAttachment(kind) {
-  const id = state.selected;
+  const id=state.selected,epoch=state.epoch;
   if (kind === 'link' || kind === 'filepath') {
     modal(kind === 'link' ? 'Add link' : 'Add filepath', `<form id="attachment-reference-form" data-id="${esc(id)}" data-kind="${kind}" class="form-stack"><label>${kind === 'link' ? 'Link' : 'Local filepath'}<input name="value" type="${kind === 'link' ? 'url' : 'text'}" placeholder="${kind === 'link' ? 'https://…' : '/Users/…/file.pdf'}" required maxlength="4096"></label><button class="button primary">Attach</button></form>`, 'CHAT');
     return;
@@ -419,8 +290,8 @@ async function pickAttachment(kind) {
   input.accept = kind === 'image' ? 'image/png,image/jpeg,image/gif,image/webp' : '.pdf,.txt,.md,.csv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.rtf,.odt';
   input.addEventListener('change', async () => {
     const file = input.files[0];
-    if (!file) return;
-    uploading++; renderAgentHeader();
+    if(!file||epoch!==state.epoch)return;
+    dispatchUI({type:'Uploading',delta:1});
     try {
       if (file.size > 10 * 1024 * 1024) throw new Error('Files must be 10 MB or smaller.');
       const data = await new Promise((resolve, reject) => {
@@ -429,10 +300,10 @@ async function pickAttachment(kind) {
         reader.onerror = () => reject(new Error('Could not read this file.'));
         reader.readAsDataURL(file);
       });
-      await saveAttachment(id, {kind,name:file.name,data});
+      await saveAttachment(id, {kind,name:file.name,data},epoch);
       closeModal();
     } catch (error) { toast(error.message); }
-    finally { uploading--; renderAgentHeader(); }
+    finally {if(state.epoch===epoch)dispatchUI({type:'Uploading',delta:-1});}
   }, {once:true});
   input.click();
 }
@@ -444,8 +315,7 @@ document.addEventListener('click', e => {
     if (b.id === 'attach-button') attachmentMenu();
     else if (b.dataset.attachmentKind) pickAttachment(b.dataset.attachmentKind);
     else {
-      attachmentDrafts[state.selected] = (attachmentDrafts[state.selected] || []).filter(a => a.id !== b.dataset.removeUpload);
-      renderAttachment(); save();
+      dispatchUI({type:'Attachment',id:state.selected,remove:b.dataset.removeUpload});
     }
   }
 }, true);
@@ -469,7 +339,7 @@ $('.wordmark').addEventListener('click', () => {
 });
 
 $('#message-input').value = state.drafts[state.selected] || '';
-$('#message-input').addEventListener('input', () => {state.drafts[state.selected] = $('#message-input').value; save();});
+$('#message-input').addEventListener('input',()=>saveDraft());
 
 async function refresh() {
   if (refreshing) return refreshing;
@@ -479,10 +349,10 @@ async function refresh() {
       const snapshot = await api('/api/state');
       if(connectionGeneration!==window.SapiensConnections?.generation)return;
       window.SapiensConnections?.snapshot(snapshot);
-      const changed = ['corpora','agents','groups','turns','computer','orchestration','activity','run_activity','workloads','pulses','routines','events'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(live[k]));
-      const reconnected = !online;
-      online = true;
-      const tabsChanged = (snapshot.preferences.workspace_revision || 0) > workspaceRevision;
+      const changed = ['corpora','agents','groups','turns','computer','orchestration','activity','run_activity','workloads','pulses','routines','events'].some(k => JSON.stringify(snapshot[k]) !== JSON.stringify(state.snapshot[k]));
+      const reconnected = !state.online;
+      dispatchUI({type:'Connection',online:true});
+      const tabsChanged = (snapshot.preferences.workspace_revision || 0) > state.workspaceRevision;
       applySnapshot(snapshot);
       if (tabsChanged) {renderTabs(); renderWorkspace();}
       else refreshWorkspacePreview();
@@ -492,7 +362,7 @@ async function refresh() {
       }
     } catch (error) {
       if(connectionGeneration!==window.SapiensConnections?.generation)return;
-      online = false; window.SapiensConnections?.offline(error); renderGlobal(); renderAgentHeader();
+      dispatchUI({type:'Connection',online:false}); window.SapiensConnections?.offline(error); renderGlobal(); renderAgentHeader();
     } finally { refreshing = null; }
   })();
   return refreshing;
@@ -507,12 +377,12 @@ if (!bootstrap.preferences.chatPosition && Number.isFinite(bootstrap.preferences
 async function poll() {
   await refresh();
   updateProgress();
-  setTimeout(poll, window.SapiensConnections?.remote ? 2000 : online ? 750 : 2000);
+  setTimeout(poll, window.SapiensConnections?.remote ? 2000 : state.online ? 750 : 2000);
 }
 setTimeout(poll, 750);
 
 window.sapiensWorkspace = {save:()=>{
-  state.drafts[state.selected]=$('#message-input').value;
+  saveDraft();
   window.SapiensConnections?.save(workspacePreferences());
 }};
 // iOS can collapse/reflow a backgrounded web app before pagehide. Capture the
@@ -555,19 +425,16 @@ window.addEventListener('pageshow',resumeChat);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)suspendChat();else resumeChat();});
 window.SapiensConnections?.subscribe(snapshot=>{
   clearTimeout(saveTimer);
-  if (snapshot.corpora?.id === live.corpora?.id) {
+  if (snapshot.corpora?.id === state.snapshot.corpora?.id) {
     // A cached workspace becoming live is a refresh, not navigation. Keep the
     // chat, draft and reading position the user chose while reconnecting.
-    online=SapiensConnections.connected;
+    dispatchUI({type:'Connection',online:SapiensConnections.connected});
     applySnapshot(snapshot);renderSidebar();renderConversation();renderTabs();renderWorkspace();renderGlobal();
     return;
   }
   pendingChatPosition=snapshot.preferences.chatPosition || null;lastChatPosition=pendingChatPosition;
-  taskDocuments.clear();openTasks.clear();openGroupTasks.clear();clarificationWorkload=null;
-  state=makeInitialState(snapshot);live=snapshot;online=SapiensConnections.connected;
-  workspaceRevision=snapshot.preferences.workspace_revision||0;
-  workspaceOwner=state.selected;renderedConversation='';$('#agent-search').value='';
-  Object.keys(attachmentDrafts).forEach(key=>delete attachmentDrafts[key]);Object.assign(attachmentDrafts,snapshot.attachment_drafts||{});
+  dispatchUI({type:'Reset',snapshot});dispatchUI({type:'Connection',online:SapiensConnections.connected});
+  renderedConversation='';$('#agent-search').value='';
   $('#message-input').value=state.drafts[state.selected]||'';
   applySnapshot(snapshot);savedPreferences=JSON.stringify(preferences());render();
   if(!snapshot.preferences.chatPosition && Number.isFinite(snapshot.preferences.scroll))$('#conversation-body').scrollTop=snapshot.preferences.scroll;

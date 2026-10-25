@@ -37,25 +37,25 @@ function activityState(panel='chat', view, period='upcoming', group=false) {
   return {panel,view,period:periods.includes(period)?period:'upcoming'};
 }
 // Pure transitions return the next model and explicit commands for the shell.
-function updateUI(model, action) {
+function updateNavigation(model, action) {
   const group=model.agents.find(a=>a.id===model.selected)?.kind==='group';
   switch(action.type) {
-    case 'Navigate': return [{...model,...activityState(action.panel,action.view,action.period,group)},['activity']];
-    case 'Filter': return [{...model,...activityState(model.panel,model.view,action.period,group)},['activity']];
+    case 'Navigate': return [{...model,...activityState(action.panel,action.view,action.period,group)},[{type:'Activity'}]];
+    case 'Filter': return [{...model,...activityState(model.panel,model.view,action.period,group)},[{type:'Activity'}]];
     case 'Select': {
       const target=model.agents.find(a=>a.id===action.id);
       if(!target)return [model,[]];
       const group=target.kind==='group';
       return [{...model,...activityState(),selected:target.id,search:'',
         drafts:{...model.drafts,[model.selected]:action.draft},groupView:group?target.id:null,
-        scope:group?'groups':model.groupView||model.scope==='groups'?'all':model.scope},['selection']];
+        scope:group?'groups':model.groupView||model.scope==='groups'?'all':model.scope},[{type:'Selection'}]];
     }
     case 'Scope': {
       if(!['all','sapis','groups'].includes(action.scope))return [model,[]];
-      const [next]=updateUI(model,{type:'Select',id:model.mainSapiId,draft:action.draft});
-      return [{...next,scope:action.scope,groupView:null},['selection','roster']];
+      const [next]=updateNavigation(model,{type:'Select',id:model.mainSapiId,draft:action.draft});
+      return [{...next,scope:action.scope,groupView:null},[{type:'Selection'},{type:'Roster'}]];
     }
-    case 'Search': return [{...model,search:action.value},['sidebar']];
+    case 'Search': return [{...model,search:action.value},[renderCommand('sidebar')]];
     default: throw new Error('Unknown UI action: '+action.type);
   }
 }
@@ -73,17 +73,5 @@ function paneState(panes, order, limit, workspace, action={}) {
     if(!visible.length)visible.push('chat');
     next=Object.fromEntries(order.map(p=>[p,visible.includes(p)]));
   }
-  return {panes:next,order};
-}
-
-// Text is always literal; rich HTML must pass through the existing sanitizer explicitly.
-function element(tag, className='', text, attributes={}) {
-  const node=document.createElement(tag);node.className=className;
-  if(Array.isArray(text))node.append(...text);
-  else if(text!==undefined)node.textContent=text;
-  for(const [key,value] of Object.entries(attributes)) {
-    if(key.startsWith('on'))node.addEventListener(key.slice(2),value);
-    else if(value!=null)node.setAttribute(key,String(value));
-  }
-  return node;
+  return {panes:next,paneOrder:order};
 }

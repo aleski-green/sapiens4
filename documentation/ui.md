@@ -1,75 +1,134 @@
-# UI state, views and effects
+# UI model, views and effects
 
-The UI stays plain JavaScript with no new build step. Its shared decision core is
-`web/shell/ui.js`; DOM integration stays in `shell/app.js` and the feature files.
-This follows the Model–Update–View separation described by
-[Elm](https://guide.elm-lang.org/architecture/) and the state/action/render
-boundaries described by [Halogen](https://purescript-halogen.github.io/purescript-halogen/guide/02-Introducing-Components.html).
+The workspace now has a single state writer: `dispatchUI`. Feature handlers send
+messages to a pure `updateUI(model, action) -> [model, commands]`. The runtime
+commits the returned model before interpreting commands. This is preparation for
+an incremental PureScript/Halogen or Elm migration, with JavaScript still serving
+as the current implementation language.
 
-## State transitions
+The boundary follows [Elm's model/update/commands architecture](https://guide.elm-lang.org/effects/)
+and [Halogen's separation of rendering and effectful evaluation](https://purescript-halogen.github.io/purescript-halogen/guide/03-Performing-Effects.html).
+No compiler or dependency pin changes in this step.
 
-`updateUI(model, action)` is pure and returns `[nextModel, commands]`.
-`dispatchUI` commits the model before interpreting commands that render, focus,
-scroll or save. DOM listeners supply explicit actions:
+## Modules and ownership
 
-| Action | Payload | Transition |
+| Module | Responsibility | Migration destination |
 | --- | --- | --- |
-| Select | id, draft | Save the outgoing draft, select a Sapi/Group, open its conversation |
-| Scope | scope, draft | Select Chief and show the requested roster |
-| Navigate | panel, view, period | Enter a valid activity state |
-| Filter | period | Change the active view's history filter |
-| Search | value | Filter the roster |
+| `shell/ui.js` | Navigation tree, valid activity states, pane transitions | Pure navigation types and functions |
+| `shell/model.js` | Initial state, snapshot projection, roster, composer, document lifecycle | Model, Action/Msg, update, JSON decoders |
+| `shell/view.js` | Task rows, task history and shared personal/group transcript as HTML values | Halogen `ComponentHTML` or Elm `Html Msg` |
+| `shell/app.js` | Dispatch, command interpreter, mounting and input adapters | Runtime/effect interpreter, component wiring |
+| `shell/bridge.js` | Snapshot polling, persistence, chat reconciliation and lifecycle | Subscriptions, effects, browser adapter |
+| `features/*` | Feature presentation, scoped dialogs and platform adapters | Subsequent components or foreign adapters |
 
-Navigation has one `panel/view/period` value, replacing independent globals for
-each panel's last view and task/routine filters. `activityState` validates saved
-and incoming values, maps legacy Notes/Tasks panels to Work, and restricts filters
-to their view and owner. The navigation tree supplies labels, paths and valid
-Work views. `defaultWorkActivity` chooses the initial Work view from existing
-tasks and routines; ordinary refreshes preserve manual navigation.
+Workspace state contains the host snapshot, projected agents/messages, selection,
+activity, panes, drafts, workspace tabs, document requests, disclosure state and
+composer state. There is no second mutable `live` snapshot, task cache or send set.
+Rendering no longer changes selection, roster scope or workspace state.
 
-`paneState` is a separate pure transition/projection for visibility and recency.
-The shell supplies viewport capacity and tab availability. It retains desktop
-workspace intent while limiting phones to one or two useful panes.
+The model contains plain data. It does not contain elements, promises, callbacks,
+network clients or native handles. Snapshot projection mutates only newly created
+local arrays/records; previous models and incoming snapshots are not modified.
+Clock and connectivity arrive as explicit input messages.
 
-## Views
+## Messages and effects
 
-`element(tag, className, textOrChildren, attributes)` composes task and Memo DOM.
-Strings become literal text, arrays become children, and function-valued `on*`
-attributes become event listeners. Attribute objects are trusted view definitions,
-not arbitrary API payloads. Rich content still goes through the existing text
-formatter or Memo sanitizer explicitly.
+| Message family | Inputs and behavior |
+| --- | --- |
+| Select / Scope / Navigate / Filter / Search | Validate navigation, retain drafts, choose a roster and activity |
+| Pane / Viewport / Home | Project pane visibility with desktop/phone limits and recency |
+| Snapshot / Reset / Workspaces | Accept host state; Reset starts a new corpora epoch |
+| Draft / Expand | Store composer text and disclosure state |
+| Send / MessageSent / MessageFailed | Capture a submission, prevent duplicate sends, retain newer drafts on completion |
+| Clarify / Uploading / Attachment | Compose clarification and attachments without direct model mutation |
+| RetryDocument / DocumentReceived | Explicit retry and response acceptance by request identity |
+| Connection / Clock | Inputs from runtime subscriptions |
 
-Keep stable DOM when a view has not changed. Chat's existing keyed reconciliation,
-scroll anchoring, focus handling and native browser isolation remain in place.
-CSS uses shared `:is(...)` selector prefixes only for alternatives with equal
-specificity; declarations and cascade order remain intact. SCSS is unnecessary
-for this change and would add a dependency/build step.
+Commands describe loading a document, sending a message, saving preferences,
+notification and UI adapter work. `performUI` owns their effects. Command results
+re-enter the model through messages. Unknown action/command tags throw;
+JavaScript does **not** provide compile-time exhaustiveness or effect typing.
+Some region-render commands remain transitional: a typed framework's renderer
+will replace them, while focus, clipboard, persistence and native calls stay effects.
 
-## Effects and limits
+Navigation is validated by `activityState`: each panel admits its own views and
+filters, Group-only Deleted cannot leak into personal tasks, and old Notes/Tasks
+preferences decode to Work. The same navigation tree supplies labels and paths.
 
-Task documents have `loading`, `ready` or `failed` states. Validate response fields
-before constructing a ready state. A pending cache entry is also its request
-identity: only the current entry can commit a result. It tracks the current mount
-so leaving and returning during loading still receives the result. Switching
-corpora clears task caches and expansion/clarification state; old requests cannot
-commit into the new corpora. Failure offers an explicit retry.
+## Shared document lifecycle
 
-View and period persist in device preferences; the host preferences API keeps its
-existing schema. No server protocol or dependency pins change.
+Task history and Memo use one parameterized resource state, corresponding to:
 
-This is an incremental JavaScript architecture, not PureScript's compile-time
-exhaustiveness or effect typing. Network/native adapters and some older feature
-handlers remain imperative. Extend the action/update boundary for new navigation
-behavior; keep I/O outside pure transitions and decode data at its boundary.
+```purescript
+data RemoteData a
+  = Loading Request (Maybe a)
+  | Ready Request a
+  | Failed Request String
+```
 
-RSpec remains the test entrypoint. `spec/ui_state_spec.rb` exercises the shipped
-workspace through Blindly4 accessibility actions against the real service,
-including restored task history, navigation while a request is pending and retry
-after a failed response. Tests contain no JavaScript and do not inspect the DOM.
-See [testing](testing.md) for behavior boundaries and device-validation limits.
+This is a type sketch for the migration, not a compiled dependency. A request has
+`kind`, owner, revision, corpora epoch and sequence. `currentDocument` projects the
+required resource from the model; `loadDocument` emits a command only when its
+revision changes or the person explicitly retries. Decoders check response data
+before it can enter Ready.
 
-Measure compression as `loct_max = max(17 * code_lines, o200k_base_tokens)` on
-owned source, excluding dependency submodules and generated files. Count both
-production UI and the source total including regression tests, so moving code or
-adding tests cannot conceal growth. Report physical lines as a conservative
-alternative alongside code lines excluding comments and blanks.
+A response can commit only to its current request and epoch. It can finish while
+the person is elsewhere, but only the currently selected document is rendered.
+No request retains a mount. This covers leaving and returning, changing views,
+retries, newer revisions and switching corpora. Failure is stable until retry;
+it does not cause an automatic request loop. Memo now has the same retry behavior
+as task history.
+
+Send completion also carries its captured epoch and owner. It removes only the
+attachments sent and clears only the unchanged submitted text, preserving a new
+draft typed while confirmation is pending.
+
+## Views and adapters
+
+Personal and Group transcripts share one projection. Warnings, author names,
+attachments and progress are part of that value, replacing render-then-patch
+passes over message nodes. Task/routine rows share a view function. Dynamic text
+is escaped; rich chat text passes through the existing formatter explicitly.
+
+DOM mounting and interaction are runtime responsibilities. Task mounts retain
+focus/disclosures when their data has not changed. Chat retains its keyed
+reconciliation and reading-position adapter, including the iOS foreground handling.
+Memo sanitization, image loading, native browser geometry, file previews, file
+selection and clipboard access remain browser/platform adapters. Their safety
+boundaries and the native guest-webview isolation are retained.
+
+## Migration readiness
+
+The workspace core is ready for a **staged migration**, starting with task/Memo
+state and the composer. The whole frontend is not yet a typed Halogen/Elm program.
+
+1. Translate the model records and closed message/resource variants; add checked
+   decoders for the complete host snapshot. Preserve request epochs and sequences.
+2. Replace task/transcript HTML projections with typed HTML and native framework
+   event handlers. Run the same accessibility scenarios during the replacement.
+3. Interpret commands using Halogen effects/FFI or Elm commands/ports. Replace
+   polling and browser lifecycle listeners with managed subscriptions.
+4. Migrate the remaining settings, navigation menus and connection dialogs as
+   components. Keep transport/crypto, sanitized rich Memo and native guest views
+   behind explicit foreign adapters until they have separate migration coverage.
+
+Do not build a second virtual-DOM framework or simulate a type system in JavaScript
+just to imitate syntax. The useful preparation is explicit data ownership, pure
+transitions/projections and named effect boundaries. Type safety and framework
+lifecycle management come with the actual migration.
+
+## Behavior and size checks
+
+RSpec drives the shipped app through Blindly4 and the real service. It does not
+import these functions, execute test JavaScript or assert DOM details. Coverage
+includes navigation, saved history, retry, late task/Memo responses, corpora
+switching, unsent drafts, a new draft during send confirmation, reading position,
+Group isolation, remote reconnection and native workspaces. See
+[testing](testing.md) for real-device gaps and commands.
+
+Compare exact source snapshots with `o200k_base`, summing tokens per UTF-8 file,
+including comments and whitespace. Report owned UI JavaScript separately from all
+owned code plus tests; exclude dependencies and generated/binary files. Also
+report physical lines. Moving functions between files must not count as savings.
+Migration preparation can trade removed duplication for an explicit model, so a
+large compression percentage should not be assumed from architecture alone.
