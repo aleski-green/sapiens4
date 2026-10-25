@@ -16,7 +16,10 @@ The first build is unsigned. No automatic updater or installer is included: repl
 
 Install Python 3.9+, Node.js 22.5+, npm, Git, .NET SDK 10, stable Rust and MSVC C++ build tools. Install
 the Rust target for your package (`rustup target add aarch64-pc-windows-msvc` or
-`rustup target add x86_64-pc-windows-msvc`). Then:
+`rustup target add x86_64-pc-windows-msvc`). On Windows ARM64, use the x64 Node.js
+distribution for the UI build: the pinned PureScript installer provides a Windows
+x64 compiler, which runs under emulation. The desktop package still targets
+`win-arm64`; Node and the compiler are build-time tools only. Then:
 
 ```powershell
 git clone --recurse-submodules https://github.com/aleski-green/sapiens4.git

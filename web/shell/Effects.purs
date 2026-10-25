@@ -117,7 +117,8 @@ restoreScroll = do
       when (D.n "clientHeight" viewport > 0.0 && (D.b "bottom" saved || node /= Nothing)) do
         let target = if D.b "bottom" saved then D.n "scrollHeight" viewport - D.n "clientHeight" viewport else D.n "scrollTop" viewport + D.n "top" (fromMaybe D.null node) - D.n "top" viewport - D.n "offset" saved
         liftEffect $ B.scroll "#conversation-body" target
-        H.modify_ _ { restoringScroll=false }
+        -- Accept subsequent scroll observations at the restored viewport size.
+        H.modify_ _ { restoringScroll=false, scrollPosition=D.put "width" (D.get "clientWidth" viewport) $ D.put "height" (D.get "clientHeight" viewport) saved }
 
 scrollBottom :: UI Unit
 scrollBottom = do
