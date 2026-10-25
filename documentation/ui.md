@@ -15,7 +15,7 @@ There is no handwritten JavaScript application or parallel DOM rendering runtime
 
 `Navigation` defines closed pane, activity, view, scope and period types. `Model`
 owns drafts, attachments, navigation, documents, workspace state and dialog state.
-`Action` describes user input and asynchronous results. `App` handles the shell,
+`Action` describes user input, external events and timers. `App` handles the shell,
 with corpora and dialog evaluation in their respective feature modules. Views are
 pure functions of the current model. Foreign handles and disposers live separately
 in the connection runtime.
@@ -46,11 +46,13 @@ disposes remote clients and camera resources when unmounted. PureScript also
 owns relay authentication, encrypted request routing, reconnect handling,
 invitation validation, local persistence and service-worker cache policy.
 
-Document, preview and image requests keep their continuations beside the request
-inside `HalogenM` forks. Shared epoch guards reject responses from an earlier
-corpora; document sequence and preview-path checks still distinguish overlapping
-requests. These local completions do not need separate shell action constructors.
-Reusable pure view functions supply text nodes and button behavior. Outbound JSON
+Requests use local continuations inside `HalogenM` forks. Shared epoch and dialog
+identity guards reject obsolete results; document sequence and preview-path checks
+still distinguish overlapping requests. Snapshot refresh and attachment completion
+live with their effects, and dialog requests accept success continuations directly.
+There are no internal response action constructors or dialog-result enumeration.
+Reusable pure view functions supply text nodes, button behavior and labeled form
+controls with the correct value/change events. Outbound JSON
 uses Argonaut record encoding where the keys are fixed; dynamic dictionaries keep
 their explicit keys. Host response validation remains at the boundary.
 
@@ -105,21 +107,24 @@ may increase source size even when duplicated rendering machinery is removed.
 Compared with `d4ae491` using `o200k_base` (per UTF-8 source file, including
 whitespace; generated bundles and third-party source excluded):
 
-| Source | JavaScript | Initial migration (`f34056e`) | Refactored | Change vs JavaScript |
-| --- | ---: | ---: | ---: | ---: |
-| UI application source | 47,142 | 59,872 | 57,553 | +22.08% |
-| UI plus new shared bindings | 47,142 | 64,175 | 61,856 | +31.21% |
+| Source | JavaScript | Initial migration (`f34056e`) | First pass (`b59166a`) | Current | Change vs first pass |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| UI application source | 47,142 | 59,872 | 57,553 | 56,739 | -1.41% |
+| UI plus new shared bindings | 47,142 | 64,175 | 61,856 | 61,042 | -1.32% |
 
 The initial increase was 12,730 application tokens plus 4,303 shared binding
 tokens. The migration introduced type declarations, imports, explicit effects and
 rendering syntax while retaining manual JSON assembly and completion dispatch.
-The abstraction pass removes 2,319 tokens (3.61%) from that combined total, while
-also preserving the subsequently merged Windows scroll fix. Against its immediate
-parent `179b141`, the reduction is 2,364 tokens (3.68%). Bindings remain in the
-measurement, and no application code was moved into libs4 to obtain the reduction.
+The first abstraction pass removed 2,319 tokens (3.61%) from that combined total,
+while preserving the subsequently merged Windows scroll fix. The second pass
+removes another 814 tokens by replacing internal response actions with continuations,
+sharing dialog guards and composing form controls. Combined savings against the
+initial migration are 3,133 tokens (4.88%). Application source is now 20.36% larger
+than the original JavaScript, or 29.49% including the new bindings. Bindings remain
+in the measurement, and no application code was moved into libs4 for these savings.
 
-Source compression does not imply a smaller executable: esbuild reports the main
-bundle at approximately 322.3 KiB versus 318.5 KiB for the initial migration.
-Generic record encoding introduces compiled instances. Further component splits
-should be justified by independent state, reuse or lifecycle ownership; slots,
-inputs and outputs can add source instead of reducing it.
+Source compression does not imply a smaller executable. The first pass's generic
+record encoding increased the main bundle from approximately 318.5 to 322.3 KiB;
+the second pass reduces it to 316.6 KiB. Further component splits should be
+justified by independent state, reuse or lifecycle ownership; slots, inputs and
+outputs can add source instead of reducing it.

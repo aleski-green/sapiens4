@@ -1,7 +1,7 @@
 module Sapiens.Html where
 
 import Prelude
-import Data.Tuple (Tuple(..))
+import Data.Tuple (Tuple)
 import Effect.Aff (Aff)
 import Halogen as H
 import Halogen.HTML as C
@@ -94,17 +94,12 @@ empty = text ""
 when :: Boolean -> Html -> Html
 when yes content = if yes then content else empty
 
-field :: String -> String -> String -> Array Prop -> Html
-field caption key current props = node "label" [] [text caption,node "input" ([attr "name" key,label caption,value current,input (Field key)] <> props) []]
+field :: String -> String -> String -> String -> Array Prop -> Array Html -> Html
+field tag caption key current props children = node "label" []
+  [text caption,node tag ([attr "name" key,label caption,value current,(if tag == "select" then change else input) (Field key)] <> props) children]
 
-textarea :: String -> String -> String -> Int -> Array Prop -> Html
-textarea caption key current rows props = node "label" [] [text caption,node "textarea" ([attr "name" key,label caption,value current,attr "rows" (show rows),input (Field key)] <> props) []]
-
-select :: String -> String -> String -> Array (Tuple String String) -> Html
-select caption key current options = node "label" [] [text caption,node "select" [attr "name" key,label caption,value current,change (Field key)] (map option options)]
-  where
-  option pair = case pair of
-    Tuple k v -> node "option" [value k,bool "selected" (k == current)] [text v]
+choice :: Boolean -> String -> Action -> Html
+choice selected = control [cls $ if selected then "selected" else "",attr "aria-pressed" $ show selected]
 
 link :: String -> String -> Html
 link href caption = node "a" [attr "href" href,attr "target" "_blank",attr "rel" "noopener noreferrer"] [text caption]

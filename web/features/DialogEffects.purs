@@ -17,7 +17,7 @@ import Effect.Ref as Ref
 import Foreign.Object as O
 import Halogen as H
 import Libs4.Browser as B
-import Sapiens.Action (Action(..), Success(..), DialogResult(..))
+import Sapiens.Action (Action(..), Success(..))
 import Sapiens.Connections as C
 import Sapiens.Data as D
 import Sapiens.Dialog as Dialog
@@ -37,8 +37,8 @@ handle runtime dispatch action = case action of
       when (kind == M.ConnectRemote && M.remote m) $ liftEffect $ B.historyPush $ D.json {dialog: true}
       E.sync
       case kind of
-        M.DecisionPrompts -> E.run (DialogReceived d.identity PromptsLoaded) (E.api runtime m "/api/decision-prompts" "GET" D.null) dispatch
-        M.RelayList -> E.run (DialogReceived d.identity RelaysLoaded) (C.json "/api/host/relays" "GET" D.null) dispatch
+        M.DecisionPrompts -> receive d.identity (\value -> E.modifyDialog d.identity _ {content=value,fields=D.first $ D.rows "prompts" value,error=""}) $ E.api runtime m "/api/decision-prompts" "GET" D.null
+        M.RelayList -> receive d.identity (\value -> E.modifyDialog d.identity _ {content=value,error=""}) $ C.json "/api/host/relays" "GET" D.null
         M.HostPairing -> dispatch $ HostPairPoll d.identity
         M.EditCorpora -> liftEffect $ B.focus "#corpora-dialog textarea"
         M.ConnectRemote -> liftEffect $ B.focus "#paste-invitation textarea"
@@ -57,60 +57,52 @@ handle runtime dispatch action = case action of
   SubmitDialog -> do
     m <- H.get
     traverse_ (\d -> unless d.busy $ submit m d) m.dialog
-  DialogReceived id resultType result -> do
-    m <- H.get
-    when ((_.identity <$> m.dialog) == Just id) do
-      E.modifyDialog id _ {busy=false}
-      case result of
-        Left failure -> E.modifyDialog id _ {error=message failure}
-        Right value -> case resultType of
-          PromptsLoaded -> do
-            let first = D.first $ D.rows "prompts" value
-            E.modifyDialog id _ {content=value,fields=first,error=""}
-          RelaysLoaded -> E.modifyDialog id _ {content=value,error=""}
-          RelayEditLoaded -> push M.RelayAdd value
-          RelayImported -> E.modifyDialog id \d -> d {fields=D.put "connection" (D.get "raw" value) d.fields,error=""}
-          RelaySaved -> do
-            when (D.b "reset" value) $ resetRelay true
-            relayList value
-          DialogSaved caption -> dispatch CloseDialog *> E.notify caption *> dispatch Poll
-          CorporaEdited -> dispatch CloseDialog *> dispatch LoadRegistry
-          PairingStatus -> do
-            E.modifyDialog id _ {error=if D.valid (D.get "relay_deleted" value) && not (D.b "relay_deleted" value) then "Revoked locally. Relay could not be reached." else ""}
-            dispatch $ HostPairPoll id
   AttachmentKind kind -> do
     m <- H.get
     if kind == "link" || kind == "filepath" then dispatch $ OpenDialog (M.Reference kind) (D.json {owner: m.selected}) else do
       unless (A.length (M.attachments m) >= 8) do
         H.modify_ _ {uploading=m.uploading+1}
-        E.run (AttachmentReceived m.epoch m.selected) (do
+        attach m do
           file <- toAffE $ B.chooseFile (if kind == "image" then "image/png,image/jpeg,image/gif,image/webp" else ".pdf,.txt,.md,.csv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.rtf,.odt") 10485760
-          if not (D.valid file) then pure D.null else E.api runtime m (M.ownerPath m <> "/attachments") "POST" (D.json {kind, name: D.get "name" file, data: D.get "data" file})) dispatch
+          if not (D.valid file) then pure D.null else E.api runtime m (M.ownerPath m <> "/attachments") "POST" (D.json {kind, name: D.get "name" file, data: D.get "data" file})
       when (A.length (M.attachments m) >= 8) $ E.notify "Attach up to 8 items per message."
   DialogCommand command value -> commandAction command value
   _ -> pure unit
   where
+  attach m operation = E.attempt operation \result -> E.inEpoch m.epoch \current -> do
+    H.modify_ \s -> s {uploading=max 0 $ current.uploading-1,dialog=map (_ {busy=false}) s.dialog}
+    case result of
+      Left failure -> E.notify $ message failure
+      Right item -> when (D.valid item) do
+        H.modify_ \s -> s {attachments=O.alter (Just <<< flip A.snoc item <<< fromMaybe []) m.selected s.attachments}
+        dispatch CloseDialog
+        E.save dispatch
   updateField key value d =
     let fields = if key == "node" && d.kind == M.DecisionPrompts then fromMaybe d.fields $ A.find (( _ == value) <<< D.s "node") $ D.rows "prompts" d.content else D.put key (D.text value) d.fields
         withLead = if key == "lead" && d.kind == M.GroupSettings then D.put "members" (D.array $ map D.text $ A.nub $ A.snoc (D.strings $ D.get "members" fields) value) fields else fields
     in d {fields=withLead,error=""}
-  runDialog _ d result operation = do
+  receive id done operation = E.attempt operation \result -> E.inDialog id \_ -> do
+    E.modifyDialog id _ {busy=false}
+    case result of
+      Left failure -> E.modifyDialog id _ {error=message failure}
+      Right value -> done value
+  runDialog d done operation = do
     E.modifyDialog d.identity _ {busy=true,error=""}
-    E.run (DialogReceived d.identity result) operation dispatch
+    receive d.identity done operation
+  saved caption _ = dispatch CloseDialog *> E.notify caption *> dispatch Poll
   submit m d = case d.kind of
     M.AgentSettings -> if not (D.matches "^[A-Z][A-Za-z0-9_.:#+|()&$^\\-]*$" $ D.s "name" d.fields) then E.modifyDialog d.identity _ {error=Dialog.nameHelp} else
-      runDialog m d (DialogSaved "Sapi saved.") $ E.api runtime m ("/api/agents/" <> B.encodeURI (D.s "id" d.record)) "PUT" $ D.json {name: D.get "name" d.fields, role: D.get "role" d.fields, manager: if D.s "manager" d.fields == "" then D.null else D.get "manager" d.fields, execution: D.json {mode: D.get "mode" d.fields}}
-    M.GroupSettings -> runDialog m d (DialogSaved "Group saved.") $ E.api runtime m ("/api/groups/" <> B.encodeURI (D.s "id" d.record)) "PUT" $ D.obj $ map (\key -> Tuple key $ D.get key d.fields) ["name","description","lead","members","revision"]
+      runDialog d (saved "Sapi saved.") $ E.api runtime m ("/api/agents/" <> B.encodeURI (D.s "id" d.record)) "PUT" $ D.json {name: D.get "name" d.fields, role: D.get "role" d.fields, manager: if D.s "manager" d.fields == "" then D.null else D.get "manager" d.fields, execution: D.json {mode: D.get "mode" d.fields}}
+    M.GroupSettings -> runDialog d (saved "Group saved.") $ E.api runtime m ("/api/groups/" <> B.encodeURI (D.s "id" d.record)) "PUT" $ D.obj $ map (\key -> Tuple key $ D.get key d.fields) ["name","description","lead","members","revision"]
     M.GroupTask -> saveTask m d false
     M.Reference kind -> if A.length (M.attachments m) >= 8 then E.modifyDialog d.identity _ {error="Attach up to 8 items per message."} else do
       H.modify_ _ {uploading=m.uploading+1}
       E.modifyDialog d.identity _ {busy=true}
-      E.run (AttachmentReceived m.epoch m.selected) (E.api runtime m (M.ownerPath m <> "/attachments") "POST" $ D.json {kind, value: D.get "value" d.fields}) dispatch
+      attach m $ E.api runtime m (M.ownerPath m <> "/attachments") "POST" $ D.json {kind, value: D.get "value" d.fields}
     M.DecisionPrompts -> dispatch $ Mutate ("/api/decision-prompts/" <> B.encodeURI (D.s "node" d.fields)) "PUT" (D.json {content: D.get "content" d.fields}) (SavedPrompt $ D.s "content" d.fields)
     M.CreateCorpora -> do
       E.modifyDialog d.identity _ {busy=true,error=""}
-      void $ H.fork do
-        result <- H.liftAff $ try $ C.json "/api/host/local" "POST" d.fields
+      E.attempt (C.json "/api/host/local" "POST" d.fields) \result -> do
         current <- H.get
         case result of
           Left failure -> E.modifyDialog d.identity _ {busy=false,error=message failure}
@@ -119,7 +111,7 @@ handle runtime dispatch action = case action of
             H.modify_ \s -> s {records=A.snoc s.records record}
             when ((_.identity <$> current.dialog) == Just d.identity) $ dispatch CloseDialog
             dispatch $ EnterCorpora $ D.s "key" record
-    M.EditCorpora -> runDialog m d CorporaEdited do
+    M.EditCorpora -> runDialog d (\_ -> dispatch CloseDialog *> dispatch LoadRegistry) do
       C.reconcile runtime (M.remote m) m.records m.active
       info <- C.request runtime (M.remote m) d.record "/api/corpora" "GET" D.null
       when (D.s "status" info == "archived") $ throwError $ error "Restore this archived corpora before sending. Your draft is kept here."
@@ -129,12 +121,12 @@ handle runtime dispatch action = case action of
       Left failure -> E.modifyDialog d.identity _ {error=failure}
       Right connection -> do
         let change = D.obj $ [Tuple "action" (D.text "save"),Tuple "name" (D.text $ S.trim $ D.s "name" d.fields),Tuple "connection" connection] <> if D.s "id" d.record == "" then [] else [Tuple "id" $ D.get "id" d.record]
-        if D.s "id" d.record == D.s "selected" d.content && D.get "connection" d.record /= connection then confirmRelay d change (D.s "name" d.fields) else changeRelay m d change
+        if D.s "id" d.record == D.s "selected" d.content && D.get "connection" d.record /= connection then confirmRelay d change (D.s "name" d.fields) else changeRelay d change
     _ -> pure unit
   saveTask m d deleted =
     let existing = D.s "id" d.record /= ""
         data_ = D.merge d.fields $ if existing then D.json {revision: D.get "revision" d.record, deleted, state: if D.b "deleted" d.record then D.text "backlog" else D.get "state" d.fields} else D.empty
-    in runDialog m d (DialogSaved $ if deleted then "Task deleted." else "Task saved.") $ E.api runtime m (M.ownerPath m <> "/tasks" <> if existing then "/" <> B.encodeURI (D.s "id" d.record) else "") (if existing then "PUT" else "POST") data_
+    in runDialog d (saved $ if deleted then "Task deleted." else "Task saved.") $ E.api runtime m (M.ownerPath m <> "/tasks" <> if existing then "/" <> B.encodeURI (D.s "id" d.record) else "") (if existing then "PUT" else "POST") data_
   push kind record = do
     m <- H.get
     let next = Dialog.make kind record m
@@ -148,7 +140,7 @@ handle runtime dispatch action = case action of
         next = Dialog.make M.RelayList record m
     H.modify_ _ {dialog=Just $ next {content=content},dialogStack=[],sequence=next.identity}
     E.sync
-  changeRelay m d data_ = runDialog m d RelaySaved $ C.json "/api/host/relays" "POST" $ D.put "revision" (D.get "revision" d.content) data_
+  changeRelay d data_ = runDialog d (\value -> when (D.b "reset" value) (resetRelay true) *> relayList value) $ C.json "/api/host/relays" "POST" $ D.put "revision" (D.get "revision" d.content) data_
   confirmRelay d change to = do
     let current = D.find (D.s "selected" d.content) $ D.rows "servers" d.content
     push M.RelaySwitch $ D.json {change, from: D.get "name" current, to}
@@ -209,10 +201,10 @@ handle runtime dispatch action = case action of
         E.sync
       Nothing -> dispatch CloseDialog
     "relay-select" -> when (D.s "id" value /= D.s "selected" d.content) $ confirmRelay d (D.json {action: "switch", id: D.get "id" value}) (D.s "name" value)
-    "relay-confirm" -> changeRelay m d $ D.put "confirm_revoke" (D.bool true) $ D.get "change" d.record
-    "relay-edit" -> runDialog m d RelayEditLoaded $ C.json ("/api/host/relays/" <> B.encodeURI (D.s "id" value)) "GET" D.null
-    "relay-archive" -> changeRelay m d $ D.json {action: if D.b "archived" value then "restore" else "archive", id: D.get "id" value}
-    "relay-import" -> runDialog m d RelayImported do
+    "relay-confirm" -> changeRelay d $ D.put "confirm_revoke" (D.bool true) $ D.get "change" d.record
+    "relay-edit" -> runDialog d (push M.RelayAdd) $ C.json ("/api/host/relays/" <> B.encodeURI (D.s "id" value)) "GET" D.null
+    "relay-archive" -> changeRelay d $ D.json {action: if D.b "archived" value then "restore" else "archive", id: D.get "id" value}
+    "relay-import" -> runDialog d (\imported -> E.modifyDialog d.identity \current -> current {fields=D.put "connection" (D.get "raw" imported) current.fields,error=""}) do
       file <- toAffE $ B.chooseFile "application/json,.json" 4096
       if not (D.valid file) then pure (D.json {raw: D.get "connection" d.fields}) else do
         let raw = D.str $ B.base64Decode $ D.s "data" file
@@ -224,16 +216,14 @@ handle runtime dispatch action = case action of
       if D.s "key" d.record == "" then dispatch CloseDialog else if D.b "beta" current && not (D.b "beta_accepted" d.content) then push M.RelayTerms d.record else dispatch $ OpenDialog M.HostPairing $ D.put "_ready" (D.bool true) d.record
     "relay-accept" -> do
       E.modifyDialog d.identity _ {busy=true}
-      void $ H.fork do
-        result <- H.liftAff $ try $ C.json "/api/host/relays" "POST" $ D.json {revision: D.get "revision" d.content, action: "accept-beta", accepted: true}
-        current <- H.get
-        when ((_.identity <$> current.dialog) == Just d.identity) $ case result of
-          Left failure -> E.modifyDialog d.identity _ {busy=false,error=message failure}
-          Right _ -> dispatch $ OpenDialog M.HostPairing $ D.put "_ready" (D.bool true) d.record
+      receive d.identity (\_ -> dispatch $ OpenDialog M.HostPairing $ D.put "_ready" (D.bool true) d.record) $
+        C.json "/api/host/relays" "POST" $ D.json {revision: D.get "revision" d.content, action: "accept-beta", accepted: true}
     _ | S.take 5 command == "host-" -> do
       let op = S.drop 5 command
       proceed <- if op == "revoke" || op == "replace" then liftEffect $ B.confirm $ if op == "revoke" then "Revoke this remote access? It will need to pair again." else "Replace the trusted remote device? The previous device will lose access." else pure true
-      when proceed $ runDialog m d PairingStatus do
+      when proceed $ runDialog d (\result -> do
+        E.modifyDialog d.identity _ {error=if D.valid (D.get "relay_deleted" result) && not (D.b "relay_deleted" result) then "Revoked locally. Relay could not be reached." else ""}
+        dispatch $ HostPairPoll d.identity) do
         previous <- if op == "revoke" || op == "replace" then C.request runtime (M.remote m) d.record "/api/remote/revoke" "POST" D.empty else pure D.empty
         if op == "pair" || op == "replace" then C.request runtime (M.remote m) d.record "/api/remote/pair" "POST" (D.json {saved: true}) else if op == "approve" then C.request runtime (M.remote m) d.record "/api/remote/approve" "POST" (D.json {peer: D.get "peer" value}) else pure previous
     _ -> pure unit

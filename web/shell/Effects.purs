@@ -34,11 +34,41 @@ attempt operation receive = void $ H.fork $ H.liftAff (try operation) >>= receiv
 inEpoch :: Int -> (M.Model -> UI Unit) -> UI Unit
 inEpoch epoch receive = H.get >>= \m -> when (epoch == m.epoch) $ receive m
 
+withDialog :: (M.Dialog -> UI Unit) -> UI Unit
+withDialog receive = H.gets _.dialog >>= traverse_ receive
+
+inDialog :: Int -> (M.Dialog -> UI Unit) -> UI Unit
+inDialog id receive = withDialog \d -> when (d.identity == id) $ receive d
+
 modifyDialog :: Int -> (M.Dialog -> M.Dialog) -> UI Unit
 modifyDialog id f = H.modify_ \m -> m {dialog=map (\d -> if d.identity == id then f d else d) m.dialog}
 
-run :: forall a. (Either Error a -> Action) -> Aff a -> Dispatch -> UI Unit
-run respond operation dispatch = attempt operation $ dispatch <<< respond
+refresh :: C.Runtime -> Dispatch -> M.Model -> Aff Json -> UI Unit
+refresh runtime dispatch requested operation = attempt operation \result -> do
+  m <- H.get
+  let key = requested.active
+  when (requested.epoch == m.epoch && requested.active == m.active) do
+    H.modify_ _ { polling=false }
+    case result of
+      Left failure -> H.modify_ \state -> state {online=false,feedback=if D.matches "revoked|another window" (message failure) then message failure else state.feedback}
+      Right raw -> do
+        captureScroll
+        snapshot <- liftEffect $ if D.valid m.snapshot && D.str (D.at ["corpora","id"] m.snapshot) == D.str (D.at ["corpora","id"] raw) then pure raw else C.decorate key raw
+        now <- liftEffect B.now
+        current <- H.get
+        let same = D.str (D.at ["corpora","id"] current.snapshot) == D.str (D.at ["corpora","id"] snapshot)
+            updated = (if same then M.project else M.reset) snapshot current
+            tab = M.activeTab updated
+        H.put updated {now=now,online=true,feedback="",records=map (\r -> if D.s "key" r == key then D.merge r $ D.get "corpora" raw else r) current.records,address=if current.addressOpen then current.address else D.fallback (if D.s "url" tab == "about:blank" then "" else D.s "url" tab) $ D.s "path" tab}
+        liftEffect $ C.cache key raw
+        restoreScroll
+        requestDocument runtime
+        when (now - m.lastPreview >= 2000.0) do
+          H.modify_ _ {lastPreview=now}
+          preview runtime
+        sync
+    latest <- H.get
+    later (if M.remote latest || not latest.online then 2000.0 else 750.0) $ dispatch Poll
 
 api :: C.Runtime -> M.Model -> String -> String -> Json -> Aff Json
 api runtime m path method body = do

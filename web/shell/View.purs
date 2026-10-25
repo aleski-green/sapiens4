@@ -118,7 +118,7 @@ conversation m = V.node "section" [V.cls "conversation",V.id "chat-panel",V.labe
 activityNav :: M.Model -> V.Html
 activityNav m = V.node "nav" [V.cls "conversation-tabs",V.label "Agent activity"] $ map tab [Tuple "chat" "Chat",Tuple "work" "Work",Tuple "updates" "Updates"]
   where
-  item activity label = V.control [V.cls $ if m.activity == activity then "selected" else "",V.attr "aria-pressed" $ show $ m.activity == activity] (label) (Navigate activity)
+  item activity label = V.choice (m.activity == activity) label (Navigate activity)
   tree = case _ of
     N.Leaf view -> item (N.Work view N.Planned) (N.workLabel view)
     N.Branch id label view children -> V.div "activity-submenu-row" [item (N.Work view N.Planned) label,V.control [V.label $ label <> " menu",V.attr "aria-expanded" $ show $ m.menu == Just ("activity-" <> id)] "›" (Menu $ "activity-" <> id),V.node "div" [V.cls "activity-menu activity-submenu",V.hidden $ m.menu /= Just ("activity-" <> id)] $ map tree children]
@@ -132,7 +132,7 @@ activityNav m = V.node "nav" [V.cls "conversation-tabs",V.label "Agent activity"
 
 viewbar :: M.Model -> V.Html
 viewbar m = V.node "div" [V.id "activity-viewbar",V.hidden hidden] $ [V.span [V.cls "activity-view-title"] (label)] <> case m.activity of
-  N.Work view period | A.elem view [N.Tasks,N.Automated,N.Scheduled] -> [V.div "work-nav-tools" [V.div "activity-view-menu" [V.control [V.label $ if view == N.Scheduled then "Routine history" else if M.isGroup (M.selected m) then "Task status" else "Task history",V.attr "aria-expanded" $ show $ m.menu == Just "activity-filter"] (N.periodLabel period <> " ⌄") (Menu "activity-filter"),V.node "div" [V.cls "activity-menu",V.hidden $ m.menu /= Just "activity-filter"] $ map (\p -> V.control [V.cls $ if p == period then "selected" else "",V.attr "aria-pressed" $ show $ p == period] (N.periodLabel p) (SetPeriod p)) (if view == N.Scheduled then [N.Planned,N.Paused] else [N.Planned,N.Executed] <> if M.isGroup (M.selected m) then [N.Deleted] else [])],V.when (not $ D.b "archived" $ M.selected m) $ V.button "" "+ New" $ if view == N.Scheduled then PrepareDraft "Add New Scheduled Routine:\nFrequency: every XXX minutes\nExecute: PROMPT" "XXX" else PrepareDraft "Add New Task: TODO" "TODO"]]
+  N.Work view period | A.elem view [N.Tasks,N.Automated,N.Scheduled] -> [V.div "work-nav-tools" [V.div "activity-view-menu" [V.control [V.label $ if view == N.Scheduled then "Routine history" else if M.isGroup (M.selected m) then "Task status" else "Task history",V.attr "aria-expanded" $ show $ m.menu == Just "activity-filter"] (N.periodLabel period <> " ⌄") (Menu "activity-filter"),V.node "div" [V.cls "activity-menu",V.hidden $ m.menu /= Just "activity-filter"] $ map (\p -> V.choice (p == period) (N.periodLabel p) (SetPeriod p)) (if view == N.Scheduled then [N.Planned,N.Paused] else [N.Planned,N.Executed] <> if M.isGroup (M.selected m) then [N.Deleted] else [])],V.when (not $ D.b "archived" $ M.selected m) $ V.button "" "+ New" $ if view == N.Scheduled then PrepareDraft "Add New Scheduled Routine:\nFrequency: every XXX minutes\nExecute: PROMPT" "XXX" else PrepareDraft "Add New Task: TODO" "TODO"]]
   _ -> []
   where
   hidden = m.activity == N.Updates || m.activity == N.Work N.Memo N.Planned || m.activity == N.Chat N.Conversation
