@@ -51,7 +51,7 @@ $env:SAPIENS_PYTHON = 'python'
 ruby libs4/ruby/bundle.rb exec rspec --tag '~windows'
 ```
 
-The executable also accepts `--smoke-report PATH --data-dir TEMP_DIRECTORY` to launch a real WebView2 window, verify the rendered app, save a JSON result and PNG, then close. Use an empty test data directory. The Blindly4 repository documents its permission-free and interactive integration suites.
+Set `SAPIENS_TEST_WINDOWS_PACKAGE` to the built package and `SAPIENS_TEST_BLINDLY4` to the Blindly4 executable, then run `ruby libs4/ruby/bundle.rb exec rspec spec/windows_package_spec.rb`. RSpec drives the actual window through accessibility against temporary data. No JavaScript smoke-test mode is embedded in the application. See `documentation/testing.md` for setup and platform limits.
 
 To include the native RSpec contract in a local run, build the portable desktop package and set `SAPIENS_TEST_WINDOWS_PACKAGE` to its directory. See [Testing](../documentation/testing.md). macOS and POSIX-only cases are explicitly skipped on Windows; no security settings are changed to run tests.
 

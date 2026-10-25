@@ -63,9 +63,10 @@ handlers remain imperative. Extend the action/update boundary for new navigation
 behavior; keep I/O outside pure transitions and decode data at its boundary.
 
 RSpec remains the test entrypoint. `spec/ui_state_spec.rb` exercises the shipped
-workspace through DOM actions and controlled HTTP responses, including restored
-views, invalid preferences, remounting, cross-corpora races and retry. Existing
-browser, service and native contracts remain required.
+workspace through Blindly4 accessibility actions against the real service,
+including restored task history, navigation while a request is pending and retry
+after a failed response. Tests contain no JavaScript and do not inspect the DOM.
+See [testing](testing.md) for behavior boundaries and device-validation limits.
 
 Measure compression as `loct_max = max(17 * code_lines, o200k_base_tokens)` on
 owned source, excluding dependency submodules and generated files. Count both

@@ -50,7 +50,7 @@ WebKit tabs keep their own browser sessions. File selection, editing shortcuts,
 external links, themes and the favicon-derived Dock icon remain available.
 
 ```sh
-ruby libs4/ruby/bundle.rb exec rspec spec/distribution_spec.rb spec/platform_spec.rb
+ruby libs4/ruby/bundle.rb exec rspec spec/distribution_spec.rb spec/workspace_accessibility_spec.rb
 codesign --verify --strict .build/macos/Sapiens4.app
 ```
 

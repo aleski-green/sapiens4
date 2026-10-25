@@ -298,7 +298,8 @@ window.SapiensConnections=(()=>{
   start();
   return {initial,remote,get active(){return active;},get connected(){return connected;},get busy(){return busy;},get generation(){return generation;},
     subscribe:fn=>{listener=fn;if(lastSnapshot)fn(lastSnapshot);},
-    async fetch(path,options={}){const record=active;if(!record||busy)throw new Error('Connecting…');if(!connected&&!['GET','HEAD'].includes((options.method||'GET').toUpperCase()))throw new Error('Offline — read only.');const response=remote?await client(record).fetch(path,options):await fetch('/api/host/corpora/'+record.id+path,options);if(record!==active)throw new Error('Workspace changed');return response;},
+    // Metadata refreshes keep the corpora identity; navigation invalidates in-flight requests.
+    async fetch(path,options={}){const record=active,version=generation;if(!record||busy)throw new Error('Connecting…');if(!connected&&!['GET','HEAD'].includes((options.method||'GET').toUpperCase()))throw new Error('Offline — read only.');const response=remote?await client(record).fetch(path,options):await fetch('/api/host/corpora/'+record.id+path,options);if(record.key!==active?.key||version!==generation)throw new Error('Workspace changed');return response;},
     snapshot:snapshot=>{if(snapshot.corpora.id!==active?.id)return;$('corpora-startup-feedback').textContent='';metadata(active,snapshot.corpora);connected=true;cache(snapshot);renderStatus();},
     offline:error=>{connected=false;if(error?.revoked||/revoked|another window/.test(error?.message||''))$('corpora-startup-feedback').textContent=error.message;renderStatus();},
     save:preferences=>{if(active)write('s4.workspace.'+active.key,preferences);},decorate,remoteControl,connectForm,

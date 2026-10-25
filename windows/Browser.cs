@@ -201,7 +201,5 @@ internal sealed class Browser : IDisposable
         current.View.Bounds = new Rectangle(origin.X + Coordinate("x"), origin.Y + Coordinate("y"), Coordinate("width"), Coordinate("height"));
         current.View.Visible = true; current.View.BringToFront();
     }
-    internal bool HasGuestTitle(string title) => tabs.Values.Any(t => !t.View.IsDisposed && t.View.CoreWebView2.DocumentTitle == title);
-    internal IEnumerable<WebView2> Views => tabs.Values.Select(tab => tab.View);
     public void Dispose() { disposed = true; shell.LocationChanged -= PositionGuest; foreach (var tab in tabs.Values) tab.View.Dispose(); tabs.Clear(); }
 }

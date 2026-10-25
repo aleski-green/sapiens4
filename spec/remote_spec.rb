@@ -319,7 +319,7 @@ RSpec.describe 'Encrypted remote service contracts' do
     expect(send_frame(text: 'plaintext')).to have_key('error')
     @peer.call('connect', **args, name: 'new-phone')
     Contract.wait { @peer.call('status', name: 'phone')['closed'] }
-    expect(@peer.call('status', name: 'phone')['closed']).to eq(4002)
+    expect(@peer.call('status', name: 'phone')['closed']).to eq(4002), @peer.call('status', name: 'phone').inspect
     @relay.request('DELETE', "/api/rooms/#{room['room']}", nil, bearer: room['desktop'])
     Contract.wait { @peer.call('status', name: 'new-phone')['closed'] }
     expect(@peer.call('status', name: 'new-phone')['closed']).to eq(4001)

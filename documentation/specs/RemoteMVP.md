@@ -340,7 +340,7 @@ git submodule update --init --recursive
 ruby libs4/ruby/bundle.rb install
 python3 -m pip install -r libs4/python/remote-requirements.txt
 npm ci --prefix libs4 --ignore-scripts
-ruby libs4/ruby/bundle.rb exec rspec spec/remote_spec.rb spec/platform_spec.rb
+ruby libs4/ruby/bundle.rb exec rspec spec/remote_spec.rb spec/workspace_accessibility_spec.rb
 ```
 
 The vendor bundle is checked into the pinned `libs4` submodule so users do not
