@@ -1,4 +1,4 @@
-/* Shared corpora switcher; the same actions reflow on small screens. */
+
 [hidden]{display:none!important}
 .app-header{position:relative}
 .connection-button{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;min-height:44px;color:var(--muted);font:inherit;border:0;background:transparent;cursor:pointer}
@@ -75,7 +75,7 @@
  :root body.sapi-workspace[data-mobile-ui] .app-header .pane-controls{background:transparent}
 }
 
-/* Relay catalogue: two rows remain visible; a third adds internal scrolling. */
+
 .relay-list{border:1px solid var(--line);border-radius:10px}
 .relay-scroll{max-height:250px;overflow-y:auto;overscroll-behavior:contain}
 .relay-row{position:relative;padding:12px;min-height:96px;box-sizing:border-box}

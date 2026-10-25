@@ -5,7 +5,7 @@ RSpec.describe 'Source distribution contract' do
       folder = File.realpath(folder)
       release = File.join(folder, 'source')
       files, error, code = Contract.capture('git', 'ls-files', '--recurse-submodules',
-        'macos', 'web', 'license', 'README.md', 'blindly4/license', 'blindly4/README.md', 'libs4/license')
+        'macos', 'web', 'license', 'README.md', 'blindly4/license', 'blindly4/README.md', 'libs4')
       expect(code).to eq(0), error
       files.lines.map(&:strip).each do |file|
         target = File.join(release, file)
@@ -20,7 +20,7 @@ RSpec.describe 'Source distribution contract' do
       app = File.join(release, '.build/macos/Sapiens4.app')
       FileUtils.mkdir_p(File.join(app, 'Contents/Resources'))
       File.write(File.join(app, 'Contents/Resources/obsolete-helper.py'), 'Old build artifact')
-      out, error, code = Contract.capture('sh', 'macos/build.sh', chdir: release, timeout: 180,
+      out, error, code = Contract.capture('sh', 'macos/build.sh', chdir: release, timeout: 600,
         env: {'SAPIENS_PYTHON' => Contract::PYTHON, 'SAPIENS_DATA_DIR' => data})
       expect(code).to eq(0), out + error
       out, error, code = Contract.capture('plutil', '-convert', 'json', '-o', '-', File.join(app, 'Contents/Resources/Launcher.plist'))
@@ -43,6 +43,8 @@ RSpec.describe 'Source distribution contract' do
         FileUtils.mkdir_p(File.dirname(target))
         FileUtils.cp(File.join(Contract::ROOT, file), target)
       end
+      out, error, code = Contract.capture(Contract::PYTHON, 'web/shell/build.py', chdir: release, timeout: 600)
+      expect(code).to eq(0), out + error
       isolated = Host.new(repo: release)
       begin
         state = isolated.state
@@ -51,7 +53,7 @@ RSpec.describe 'Source distribution contract' do
         example = isolated.calls.first['prompt'][/read the worked example at (.*?)\. It demonstrates/m, 1]
         expect(example).not_to be_nil
         expect(File.identical?(example, File.join(release, 'prompts/examples/jarvis-notes.html'))).to eq(true)
-        %w[/workspace/ /workspace/app.js /remote-vendor.js /workspace/styles.css].each do |path|
+        %w[/workspace/ /workspace/app.js /workspace/guest.js /sw.js /remote-vendor.js /workspace/styles.css].each do |path|
           status, body = isolated.request('GET', path)
           expect(status).to eq(200)
           expect(body).not_to be_empty

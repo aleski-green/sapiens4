@@ -36,7 +36,7 @@ RSpec.describe 'Connecting from the shipped remote app', :desktop do
 
   it 'rejects a malformed invitation and still accepts a valid invitation afterward' do
     desktop.press('Connect remote corpora')
-    desktop.fill('Or paste an invitation', 'not an invitation')
+    desktop.fill('Or paste an invitation', 's4.A.abc.abc.abc.A.1')
     desktop.press('Connect')
     desktop.see('Use the QR')
     expect(host.api('GET', '/api/remote')['pending']).to be_nil

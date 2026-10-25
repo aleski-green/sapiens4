@@ -1,4 +1,4 @@
-/* One installation screen, using the workspace theme on either mobile platform. */
+
 #mobile-install-gate{position:fixed;inset:0;z-index:60;display:grid;place-items:center;overflow:auto;padding:max(24px,env(safe-area-inset-top)) 24px max(24px,env(safe-area-inset-bottom));background:var(--sapi-bg);color:var(--sapi-ink)}
 .install-card{width:100%;max-width:360px;font:400 16px/1.5 var(--sapi-font)}
 .install-brand{display:block;color:var(--sapi-accent);font-size:24px;font-weight:600;letter-spacing:-1px;margin-bottom:40px}

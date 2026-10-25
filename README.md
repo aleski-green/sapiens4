@@ -41,8 +41,11 @@ Extract a package and run `Sapiens4.exe`, or run `.\start.ps1 -Open` from source
 The runtime and UI live in this repo. Blindly4 provides native computer access;
 [libs4](https://github.com/aleski-green/libs4) owns third-party dependencies,
 lockfiles, and prebuilt browser libraries. Both are pinned Git submodules. Existing checkouts can fetch
-them with `git submodule update --init --recursive`; Node.js is not needed to run
-the application or build the relay image.
+them with `git submodule update --init --recursive`. The UI is written in PureScript
+with Halogen; see [UI architecture](documentation/ui.md). Building from source requires
+Node.js 22.5+ and npm to install the pinned compiler and dependencies. Startup scripts
+build the UI when its sources change. Packaged apps need no Node installation; the
+relay image builds its UI in a separate Node stage.
 
 Source startup requires Python 3.9+, Git and authenticated Codex CLI 0.156.1+.
 Blindly4 source builds require stable Rust. On macOS, it requires macOS 13+,
