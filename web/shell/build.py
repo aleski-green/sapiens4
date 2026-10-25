@@ -12,7 +12,6 @@ OUTPUT = ROOT / '.build' / 'web'
 
 
 def npm_tool(name, env):
-    # CreateProcess does not search PATHEXT for npm's Windows command shims.
     commands = [name + '.exe', name + '.cmd'] if os.name == 'nt' else [name]
     search_path = str(LIBS / 'node_modules' / '.bin') + os.pathsep + env['PATH']
     executable = next((path for command in commands
@@ -47,9 +46,6 @@ def build():
     if not (LIBS / 'node_modules' / '.bin' / 'purs').exists():
         subprocess.run([npm_tool('npm', env), 'ci', '--prefix', str(LIBS)], env=env, check=True)
     if os.name == 'nt':
-        # Spago spawns purs without a shell; a .cmd shim cannot be executed that
-        # way. Keep npm's .bin directory off its PATH and expose the pinned PE
-        # binary as purs.exe without modifying the installed package.
         native_bin = LIBS / '.cache' / 'bin'
         native_bin.mkdir(parents=True, exist_ok=True)
         shutil.copy2(LIBS / 'node_modules' / 'purescript' / 'purs.bin', native_bin / 'purs.exe')

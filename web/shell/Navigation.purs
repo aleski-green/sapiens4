@@ -2,8 +2,7 @@ module Sapiens.Navigation where
 
 import Prelude
 import Data.Array as A
-import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Tuple (Tuple(..))
+import Data.Maybe (fromMaybe)
 import Data.Argonaut.Core (Json)
 import Sapiens.Data as D
 
@@ -146,7 +145,10 @@ readActivity group prefs =
     _ -> Chat $ fromMaybe Conversation $ A.find ((_ == D.s "view" prefs) <<< chatId) [Conversation,Pins,Threads,Comments]
 
 encodeActivity :: Activity -> Json
-encodeActivity a = D.obj [Tuple "panel" (D.text $ panel a),Tuple "view" (D.text $ view a),Tuple "period" (D.text $ periodId $ period a)]
+encodeActivity a = D.json {panel: panel a, view: view a, period: periodId $ period a}
+
+ios :: Json -> Boolean
+ios env = D.matches "iPad|iPhone|iPod" (D.s "userAgent" env) || D.s "platform" env == "MacIntel" && D.n "touchPoints" env > 1.0
 
 limit :: Json -> Int
 limit env

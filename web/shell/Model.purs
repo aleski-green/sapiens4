@@ -18,9 +18,12 @@ data RemoteData a = NotAsked | Loading Request (Maybe a) | Ready Request a | Fai
 
 type Request = { epoch :: Int, sequence :: Int, key :: String, revision :: String, path :: String }
 
-data DialogKind = AppMenu | WorkspaceSettings | Computer | AgentSettings | GroupSettings | Attach | Reference String | DecisionPrompts | GroupTask | Routine | CreateCorpora | EditCorpora | ConnectRemote | HostPairing | RelayList | RelayAdd | RelaySwitch | RelayTerms | DraftReplacement | Installation | Notice
+data DialogKind = AppMenu | WorkspaceSettings | Computer | AgentSettings | GroupSettings | Attach | Reference String | DecisionPrompts | GroupTask | CreateCorpora | EditCorpora | ConnectRemote | HostPairing | RelayList | RelayAdd | RelaySwitch | RelayTerms | Installation | Notice
 
 derive instance eqDialogKind :: Eq DialogKind
+
+corporaDialog :: DialogKind -> Boolean
+corporaDialog kind = A.elem kind [CreateCorpora,EditCorpora,ConnectRemote,HostPairing,RelayList,RelayAdd,RelaySwitch,RelayTerms,Notice]
 
 type Dialog = { kind :: DialogKind, title :: String, record :: Json, fields :: Json, content :: Json, error :: String, busy :: Boolean, identity :: Int }
 
@@ -37,7 +40,7 @@ type Model =
   , toast :: String, feedback :: String, theme :: String, installRequired :: Boolean
   , dialogStack :: Array Dialog
   , imageUrls :: Json
-  , preview :: RemoteData Json, previewPath :: String, address :: String, addressOpen :: Boolean, browserError :: String
+  , preview :: RemoteData Json, previewPath :: String, address :: String, addressOpen :: Boolean
   , scrollPosition :: Json, restoringScroll :: Boolean, preferencesSaved :: String
   }
 
@@ -50,7 +53,7 @@ initial env =
   , epoch:0, sequence:0, now:0.0, env, panes:[N.ChatPane,N.Sidebar,N.Workspace], search:"", searchOpen:false, menu:Nothing, dialog:Nothing
   , records:[], active:"", online:false, busy:false, localAvailable:false, showArchived:false
   , toast:"", feedback:"", theme:if D.b "dark" env then "dark" else "light", installRequired:false
-  , dialogStack:[], imageUrls:D.empty, preview:NotAsked, previewPath:"", address:"", addressOpen:false, browserError:"", scrollPosition:D.null, restoringScroll:false, preferencesSaved:""
+  , dialogStack:[], imageUrls:D.empty, preview:NotAsked, previewPath:"", address:"", addressOpen:false, scrollPosition:D.null, restoringScroll:false, preferencesSaved:""
   }
 
 agent :: Model -> String -> Json
@@ -83,6 +86,9 @@ tabs m = A.filter (\t -> D.s "url" t /= "about:blank" || D.s "path" t /= "" || n
 activeTab :: Model -> Json
 activeTab m = let rows = tabs m in fromMaybe (D.first rows) $ A.find ((_ == D.str (D.at [m.selected,"activeTab"] m.workspaces)) <<< D.s "id") rows
 
+visiblePanes :: Model -> Array N.Pane
+visiblePanes m = N.visiblePanes (N.limit m.env) (D.valid $ activeTab m) m.panes
+
 withWorkspaces :: Json -> Model -> Model
 withWorkspaces prefs m = if D.n "workspace_revision" prefs > m.workspaceRevision then m { workspaces=D.get "workspaces" prefs, workspaceRevision=D.n "workspace_revision" prefs } else m
 
@@ -103,19 +109,19 @@ result turn =
 project :: Json -> Model -> Model
 project snapshot m = withWorkspaces (D.get "preferences" snapshot) m { snapshot=snapshot, agents=agents, messages=messages, selected=id, groupView=groupView, scope=scope }
   where
-  personal = map (\a -> D.merge a $ D.obj [Tuple "kind" (D.text "sapi"),Tuple "status" (D.text $ if A.any (\t -> D.s "agent" t == D.s "id" a && D.s "status" t == "running") turns then "busy" else "online"),Tuple "lastActivity" (D.number $ B.parseTime $ D.fallback (D.s "created" a) $ D.s "created" $ D.last $ A.filter (\t -> D.s "agent" t == D.s "id" a) turns),Tuple "preview" (D.text $ D.cut 150 $ D.replace "\\s+" " " $ D.fallback "Ready for your message." $ D.s "text" $ D.last $ fromMaybe [] $ O.lookup (D.s "id" a) personalMessages)]) (D.rows "agents" snapshot)
+  personal = map (\a -> D.merge a $ D.json {kind: "sapi", status: if A.any (\t -> D.s "agent" t == D.s "id" a && D.s "status" t == "running") turns then "busy" else "online", lastActivity: B.parseTime $ D.fallback (D.s "created" a) $ D.s "created" $ D.last $ A.filter (\t -> D.s "agent" t == D.s "id" a) turns, preview: D.cut 150 $ D.replace "\\s+" " " $ D.fallback "Ready for your message." $ D.s "text" $ D.last $ fromMaybe [] $ O.lookup (D.s "id" a) personalMessages}) (D.rows "agents" snapshot)
   turns = D.rows "turns" snapshot
   append owner rows = O.alter (Just <<< (_ <> rows) <<< fromMaybe []) owner
   personalMessages = foldl (\all t -> if D.s "group" t /= "" || not (A.elem (D.s "flow" t) ["chat","computer"]) then all else
-    let input = D.obj [Tuple "role" (D.text "user"),Tuple "author" (D.at ["origin","caller"] t),Tuple "text" (D.get "input" t),Tuple "created" (D.get "created" t),Tuple "attachments" (D.get "attachments" t),Tuple "requestTurn" t,Tuple "chatKey" (D.text $ "user:" <> D.s "id" t)]
-        output = D.merge (result t) $ D.obj [Tuple "role" (D.text "assistant"),Tuple "created" (D.text $ D.fallback (D.s "created" t) $ D.s "output_at" t),Tuple "outputOrder" (D.get "output_order" t),Tuple "turnId" (D.get "id" t),Tuple "chatKey" (D.text $ "assistant:" <> D.s "id" t)]
+    let input = D.json {role: "user", author: D.at ["origin","caller"] t, text: D.get "input" t, created: D.get "created" t, attachments: D.get "attachments" t, requestTurn: t, chatKey: "user:" <> D.s "id" t}
+        output = D.merge (result t) $ D.json {role: "assistant", created: D.fallback (D.s "created" t) $ D.s "output_at" t, outputOrder: D.get "output_order" t, turnId: D.get "id" t, chatKey: "assistant:" <> D.s "id" t}
     in append (D.s "agent" t) ([input] <> if A.elem (D.s "status" t) ["done","warning"] && D.valid (D.get "output" t) then [output] else []) all) O.empty turns
-  groups = map (\g -> D.merge g $ D.obj [Tuple "kind" (D.text "group"),Tuple "status" (D.text $ if A.any ((_ == "running") <<< D.s "status") (D.rows "requests" g) then "busy" else "online"),Tuple "lastActivity" (D.number $ B.parseTime $ D.s "updated" g),Tuple "preview" (D.text $ D.fallback (D.fallback "Shared workspace" $ D.s "description" g) $ D.s "text" $ D.last $ D.rows "messages" g)]) (D.rows "groups" snapshot)
+  groups = map (\g -> D.merge g $ D.json {kind: "group", status: if A.any ((_ == "running") <<< D.s "status") (D.rows "requests" g) then "busy" else "online", lastActivity: B.parseTime $ D.s "updated" g, preview: D.fallback (D.fallback "Shared workspace" $ D.s "description" g) $ D.s "text" $ D.last $ D.rows "messages" g}) (D.rows "groups" snapshot)
   agents = personal <> groups
-  groupMessages = foldl (\all g -> O.insert (D.s "id" g) (map (\msg -> D.merge msg $ D.obj [Tuple "role" (D.text $ if D.s "author" msg == "admin" then "user" else "assistant"),Tuple "author" (if D.s "author" msg == "admin" then D.null else D.get "author" msg),Tuple "chatKey" (D.get "id" msg)]) (D.rows "messages" g)) all) personalMessages groups
+  groupMessages = foldl (\all g -> O.insert (D.s "id" g) (map (\msg -> D.merge msg $ D.json {role: if D.s "author" msg == "admin" then "user" else "assistant", author: if D.s "author" msg == "admin" then D.null else D.get "author" msg, chatKey: D.get "id" msg}) (D.rows "messages" g)) all) personalMessages groups
   delegated = foldl (\all work -> if D.s "callId" work == D.str (D.at ["origin","call"] work) then all else
     let turn = D.find (D.s "callId" work) turns
-        message = D.obj [Tuple "role" (D.text "assistant"),Tuple "author" (D.get "owner" work),Tuple "text" (D.text $ D.fallback (D.fallback ("Delegated to " <> D.fallback (D.s "owner" work) (D.s "name" $ D.find (D.s "owner" work) agents) <> " · " <> D.s "state" work) $ D.s "error" work) $ D.s "output" work),Tuple "created" (D.get "created" turn),Tuple "delegation" work,Tuple "requestTurn" (if A.elem (D.s "status" turn) ["done","warning"] then D.null else turn),Tuple "chatKey" (D.text $ "delegation:" <> D.s "id" work)]
+        message = D.json {role: "assistant", author: D.get "owner" work, text: D.fallback (D.fallback ("Delegated to " <> D.fallback (D.s "owner" work) (D.s "name" $ D.find (D.s "owner" work) agents) <> " · " <> D.s "state" work) $ D.s "error" work) $ D.s "output" work, created: D.get "created" turn, delegation: work, requestTurn: if A.elem (D.s "status" turn) ["done","warning"] then D.null else turn, chatKey: "delegation:" <> D.s "id" work}
     in append (D.str $ D.at ["origin","agent"] work) [message] all) groupMessages (D.rows "workloads" snapshot)
   messages = map (A.sortBy (\a b -> compare (B.parseTime $ D.s "created" a) (B.parseTime $ D.s "created" b) <> compare (D.n "outputOrder" a) (D.n "outputOrder" b))) delegated
   target = D.find m.selected agents
@@ -135,7 +141,7 @@ reset snapshot old = project snapshot old
   , sending=Set.empty, uploading=0, clarification=Nothing, documents=O.empty, expanded=Set.empty, epoch=old.epoch+1
   , panes=if not (D.valid $ D.get "panes" p) then [N.ChatPane,N.Sidebar,N.Workspace] else A.filter (\pane -> D.b (N.paneId pane) $ D.get "panes" p) [N.ChatPane,N.Sidebar,N.Workspace]
   , workspaces=D.get "workspaces" p, workspaceRevision=D.n "workspace_revision" p, search="", searchOpen=false
-  , preview=NotAsked, previewPath="", address="", browserError="", scrollPosition=D.get "chatPosition" p, restoringScroll=D.valid $ D.get "chatPosition" p
+  , preview=NotAsked, previewPath="", address="", scrollPosition=D.get "chatPosition" p, restoringScroll=D.valid $ D.get "chatPosition" p
   }
   where
   p = D.get "preferences" snapshot
@@ -163,13 +169,12 @@ maybeGroup :: Model -> Json
 maybeGroup m = fromMaybe D.null $ (flip D.find m.agents) <$> m.groupView
 
 preferences :: Model -> Json
-preferences m = D.merge (N.encodeActivity m.activity) $ D.obj
-  [Tuple "selected" (D.text m.selected),Tuple "scope" (D.text $ N.scopeId m.scope),Tuple "groupView" (maybeJson m.groupView),Tuple "panes" (D.obj $ map (\p -> Tuple (N.paneId p) (D.bool $ A.elem p m.panes)) [N.Sidebar,N.ChatPane,N.Workspace])
-  ,Tuple "drafts" (D.obj $ O.toUnfoldable $ map D.text m.drafts),Tuple "attachment_drafts" (D.obj $ O.toUnfoldable $ map (D.array <<< map (D.get "id")) m.attachments),Tuple "workspaces" m.workspaces,Tuple "chatPosition" m.scrollPosition]
-  where
-  maybeJson = case _ of
-    Nothing -> D.null
-    Just s -> D.text s
+preferences m = D.merge (N.encodeActivity m.activity) $ D.json
+  { selected: m.selected, scope: N.scopeId m.scope, groupView: m.groupView
+  , panes: O.fromFoldable $ map (\p -> Tuple (N.paneId p) (A.elem p m.panes)) [N.Sidebar,N.ChatPane,N.Workspace]
+  , drafts: m.drafts, attachment_drafts: map (map $ D.get "id") m.attachments
+  , workspaces: m.workspaces, chatPosition: m.scrollPosition
+  }
 
 currentDocument :: Model -> Maybe Request
 currentDocument m = case m.activity of

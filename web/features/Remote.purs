@@ -11,7 +11,6 @@ import Data.Maybe (Maybe(..), fromMaybe, isNothing)
 import Data.Number as N
 import Data.String as S
 import Data.String.CodeUnits as CU
-import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Aff (Aff, Milliseconds(..), delay, effectCanceler, launchAff_, makeAff, throwError)
 import Effect.Class (liftEffect)
@@ -83,7 +82,7 @@ decodeValue value
           relay = B.base64Decode $ base64 $ part 1
           expiration = fromMaybe 0 (I.fromStringAs (fromMaybe I.decimal (I.radix 36)) (part 6))
       in if D.valid relay && A.elem (A.length parts) [7,8] && part 0 == "s4" && A.all (D.matches "^[A-Za-z0-9_-]+$") (A.take 5 $ A.drop 1 parts) && D.matches "^[0-9a-z]{1,10}$" (part 6) && (A.length parts == 7 || D.matches "^sapi4_[a-z0-9]{9}$" (part 7)) then
-        Right $ D.obj [Tuple "v" (D.text protocol), Tuple "relay" relay, Tuple "room" (D.text $ part 2), Tuple "token" (D.text $ part 3), Tuple "secret" (D.text $ part 4), Tuple "desktop" (D.text $ base64 $ part 5), Tuple "expires" (D.integer expiration), Tuple "public_id" (D.text $ part 7)]
+        Right $ D.json {v: protocol, relay, room: part 2, token: part 3, secret: part 4, desktop: base64 $ part 5, expires: expiration, public_id: part 7}
       else Left invalid
 
 invitationLink :: Json -> String
@@ -118,7 +117,7 @@ deviceInfo env =
         "Mac" -> "macOS"
         "Linux device" -> "Linux"
         _ -> "Unknown platform"
-  in D.obj [Tuple "name" (D.text name), Tuple "platform" (D.text $ platform <> version), Tuple "client" (D.text $ if D.b "installed" env then "Sapiens4 Home Screen app" else "Sapiens4 browser")]
+  in D.json {name, platform: platform <> version, client: if D.b "installed" env then "Sapiens4 Home Screen app" else "Sapiens4 browser"}
 
 create :: Json -> Aff Transport
 create source = do
@@ -127,7 +126,7 @@ create source = do
       public = B.byteKey $ D.get "publicKey" keys
   when (B.byteLength secret /= 32 || B.byteLength public /= 32 || B.publicKey secret /= public) $ throwError $ error "Saved device keys are invalid. Connect this corpora again."
   liftEffect do
-    session <- Ref.new $ D.put "keys" (D.obj [Tuple "publicKey" (D.text public), Tuple "secretKey" (D.text secret)]) source
+    session <- Ref.new $ D.put "keys" (D.json {publicKey: public, secretKey: secret}) source
     socket <- Ref.new Nothing
     pending <- Ref.new O.empty
     ready <- Ref.new false
@@ -198,7 +197,7 @@ connect client = do
           generation <- Ref.read client.generation
           when (generation == version) action
     socket <- liftEffect $ B.openSocket (D.replace "^http" "ws" (D.s "relay" session) <> "/api/socket")
-      (current $ send client $ D.obj [Tuple "type" (D.text "auth"),Tuple "room" (D.get "room" session),Tuple "token" (D.get "token" session)])
+      (current $ send client $ D.json {type: "auth", room: D.get "room" session, token: D.get "token" session})
       (\raw -> current do
         result <- Exception.try do
           let value = D.parse raw
@@ -208,7 +207,7 @@ connect client = do
             "messages" -> if isNothing (toArray $ D.get "messages" value) || A.length (D.rows "messages" value) > 20 then close client else traverse_ (\item -> do
               consume client item
               id <- serial client
-              send client $ D.obj [Tuple "type" (D.text "ack"),Tuple "id" (D.text id),Tuple "message" (D.get "id" item)]) (D.rows "messages" value)
+              send client $ D.json {type: "ack", id, message: D.get "id" item}) (D.rows "messages" value)
             _ -> pure unit
         case result of
           Left _ -> close client
@@ -246,13 +245,13 @@ request client timeout payload = do
   time <- liftEffect B.now
   env <- liftEffect B.environment
   connection <- liftEffect $ Ref.read client.connection
-  let plain = D.encode $ D.merge (D.obj [Tuple "v" (D.text protocol),Tuple "room" (D.get "room" session),Tuple "direction" (D.text "phone-to-desktop"),Tuple "corpora_id" (D.at ["corpora","id"] session),Tuple "connection_id" (D.text connection),Tuple "device_info" (deviceInfo env),Tuple "id" (D.text id),Tuple "expires" (D.number $ (time + I.toNumber timeout) / 1000.0)]) payload
+  let plain = D.encode $ D.merge (D.json {v: protocol, room: D.get "room" session, direction: "phone-to-desktop", corpora_id: D.at ["corpora","id"] session, connection_id: connection, device_info: deviceInfo env, id, expires: (time + I.toNumber timeout) / 1000.0}) payload
   when (B.byteLength (B.base64Encode plain) > 16000000) $ throwError $ error "Request is too large."
-  let frame = D.obj [Tuple "sender" (D.at ["keys","publicKey"] session),Tuple "nonce" (D.text nonce),Tuple "ciphertext" (D.text $ B.box plain nonce (D.s "desktop" session) (D.str $ D.at ["keys","secretKey"] session))]
+  let frame = D.json {sender: D.at ["keys","publicKey"] session, nonce, ciphertext: B.box plain nonce (D.s "desktop" session) (D.str $ D.at ["keys","secretKey"] session)}
   makeAff \done -> do
     Ref.modify_ (O.insert id done) client.pending
     serialId <- serial client
-    sent <- Exception.try $ send client $ D.obj [Tuple "type" (D.text "send"),Tuple "id" (D.text serialId),Tuple "frame" frame]
+    sent <- Exception.try $ send client $ D.json {type: "send", id: serialId, frame}
     case sent of
       Left failure -> Ref.modify_ (O.delete id) client.pending *> done (Left failure)
       Right _ -> pure unit
@@ -267,7 +266,7 @@ request client timeout payload = do
 authenticate :: Transport -> Boolean -> Aff Json
 authenticate client pairing = do
   session <- liftEffect $ Ref.read client.session
-  result <- request client (if pairing then 180000 else 15000) $ if pairing then D.obj [Tuple "kind" (D.text "pair"),Tuple "secret" (D.get "secret" session)] else D.obj [Tuple "kind" (D.text "request"),Tuple "op" (D.text "resume")]
+  result <- request client (if pairing then 180000 else 15000) $ if pairing then D.json {kind: "pair", secret: D.get "secret" session} else D.json {kind: "request", op: "resume"}
   let corpora = D.get "corpora" result
       previous = D.str $ D.at ["corpora","id"] session
   unless (D.b "paired" result && D.s "name" corpora /= "" && CU.length (D.s "name" corpora) <= 200 && D.matches "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$" (D.s "id" corpora) && (previous == "" || previous == D.s "id" corpora)) $ throwError $ error "Corpora identity changed. Connect again."
@@ -278,7 +277,7 @@ authenticate client pairing = do
 
 api :: Transport -> String -> String -> Json -> Aff Json
 api client method path data_ = do
-  response <- request client 15000 $ D.obj [Tuple "kind" (D.text "request"),Tuple "op" (D.text "api"),Tuple "method" (D.text method),Tuple "path" (D.text path),Tuple "data" data_]
+  response <- request client 15000 $ D.json {kind: "request", op: "api", method, path, data: data_}
   let value = D.get "body" response
   when (D.n "status" response < 200.0 || D.n "status" response >= 300.0) $ throwError $ error $ D.fallback "Request failed" $ D.s "error" value
   pure value

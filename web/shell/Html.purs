@@ -22,6 +22,15 @@ keyed tag = C.keyed (C.ElemName tag)
 text :: String -> Html
 text = C.text
 
+textNode :: String -> Array Prop -> String -> Html
+textNode tag props caption = node tag props [text caption]
+
+span :: Array Prop -> String -> Html
+span = textNode "span"
+
+control :: Array Prop -> String -> Action -> Html
+control props caption action = textNode "button" ([attr "type" "button",click action] <> props) caption
+
 attr :: String -> String -> Prop
 attr name = P.attr (C.AttrName name)
 
@@ -56,28 +65,28 @@ click :: Action -> Prop
 click action = on "click" (const action)
 
 input :: (String -> Action) -> Prop
-input action = on "input" $ ValueInput action
+input action = case E.onValueInput action of P.IProp prop -> P.IProp prop
 
 change :: (String -> Action) -> Prop
-change action = on "change" $ ValueInput action
+change action = case E.onValueChange action of P.IProp prop -> P.IProp prop
 
 check :: (Boolean -> Action) -> Prop
-check action = on "change" $ CheckedInput action
+check action = case E.onChecked action of P.IProp prop -> P.IProp prop
 
 submit :: Action -> Prop
 submit action = on "submit" \event -> Submit event action
 
 button :: String -> String -> Action -> Html
-button classes caption action = node "button" [cls classes,attr "type" "button",click action] [text caption]
+button classes = control [cls classes]
 
 icon :: String -> String -> Action -> Html
-icon caption glyph action = node "button" [cls "icon-button",attr "type" "button",label caption,attr "title" caption,click action] [text glyph]
+icon caption = control [cls "icon-button",label caption,attr "title" caption]
 
 div :: String -> Array Html -> Html
 div classes = node "div" [cls classes]
 
 p :: String -> String -> Html
-p classes caption = node "p" [cls classes] [text caption]
+p classes = textNode "p" [cls classes]
 
 empty :: Html
 empty = text ""

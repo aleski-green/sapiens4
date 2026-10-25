@@ -11,12 +11,11 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Set as Set
 import Data.String as S
 import Data.String.CodeUnits as CU
-import Data.Traversable (traverse)
+import Data.Foldable (traverse_)
 import Data.Tuple (Tuple(..))
 import Effect.Aff (Aff, Milliseconds(..), delay, try)
 import Effect.Class (liftEffect)
 import Effect.Exception (message)
-import Effect.Ref as Ref
 import Foreign.Object as O
 import Halogen as H
 import Halogen.Subscription as HS
@@ -47,20 +46,16 @@ handle runtime action = do
   case action of
     Initialize -> do
       H.modify_ _ {feedback="Connecting…"}
-      source <- liftEffect HS.create
-      void $ H.subscribe source.emitter
-      let emit = HS.notify source.listener
-      disposers <- liftEffect $ traverse (\(Tuple target event) -> B.subscribe target event (emit <<< Global event))
+      traverse_ (\(Tuple target event) -> void $ H.subscribe $ Global event <$> HS.makeEmitter (B.subscribe target event))
         [Tuple "window" "error",Tuple "window" "unhandledrejection",Tuple "window" "resize",Tuple "viewport" "resize",Tuple "window" "online",Tuple "window" "storage",Tuple "window" "pagehide",Tuple "window" "pageshow",Tuple "window" "popstate",Tuple "window" "beforeinstallprompt",Tuple "document" "visibilitychange",Tuple "document" "click"]
-      keyboard <- liftEffect $ B.subscribeEvent "document" "keydown" $ emit <<< GlobalEvent "keydown"
-      appearance <- liftEffect $ B.subscribeMedia "(prefers-color-scheme: dark)" $ emit RefreshTheme
-      native <- liftEffect $ B.callback "sapiensBrowserEvent" $ emit <<< NativeReport
-      liftEffect $ Ref.write (disposers <> [keyboard,appearance,native]) runtime.disposers
+      void $ H.subscribe $ GlobalEvent "keydown" <$> HS.makeEmitter (B.subscribeEvent "document" "keydown")
+      void $ H.subscribe $ HS.makeEmitter \emit -> B.subscribeMedia "(prefers-color-scheme: dark)" $ emit RefreshTheme
+      void $ H.subscribe $ NativeReport <$> HS.makeEmitter (B.callback "sapiensBrowserEvent")
       now <- liftEffect B.now
       savedTheme <- liftEffect $ B.storageRead "sapi-color-theme"
       H.modify_ \m -> m {now=now,theme=if A.elem savedTheme ["dark","light"] then savedTheme else m.theme}
       m <- H.get
-      let ios = D.matches "iPad|iPhone|iPod" (D.s "userAgent" m.env) || D.s "platform" m.env == "MacIntel" && D.n "touchPoints" m.env > 1.0
+      let ios = N.ios m.env
           mobile = ios || D.matches "Android" (D.s "userAgent" m.env)
           required = M.remote m && mobile && not (D.b "installed" m.env)
       H.modify_ _ { installRequired=required }
@@ -92,19 +87,19 @@ handle runtime action = do
             H.put updated {now=now,online=true,feedback="",records=map (\r -> if D.s "key" r == key then D.merge r $ D.get "corpora" raw else r) current.records,address=if current.addressOpen then current.address else D.fallback (if D.s "url" tab == "about:blank" then "" else D.s "url" tab) $ D.s "path" tab}
             liftEffect $ C.cache key raw
             E.restoreScroll
-            E.requestDocument runtime dispatch
+            E.requestDocument runtime
             when (now - m.lastPreview >= 2000.0) do
               H.modify_ _ {lastPreview=now}
-              E.preview runtime dispatch
+              E.preview runtime
             E.sync
         latest <- H.get
-        E.later dispatch (if M.remote latest || not latest.online then 2000.0 else 750.0) Poll
+        E.later (if M.remote latest || not latest.online then 2000.0 else 750.0) $ dispatch Poll
     Select id -> do
       E.captureScroll
       E.persistLocal
       H.modify_ $ M.select id
       E.scrollBottom
-      E.preview runtime dispatch
+      E.preview runtime
       E.save dispatch
       E.sync
     SetScope scope -> do
@@ -119,7 +114,7 @@ handle runtime action = do
       E.captureScroll
       H.modify_ _ {activity=activity,menu=Nothing}
       liftEffect $ B.scroll "#conversation-body" 0.0
-      E.requestDocument runtime dispatch
+      E.requestDocument runtime
       E.save dispatch
       E.sync
     DefaultWork -> H.get >>= dispatch <<< Navigate <<< Work.defaultActivity
@@ -135,13 +130,13 @@ handle runtime action = do
       unless m.searchOpen $ liftEffect $ B.focus "#agent-search"
     TogglePane pane -> do
       m <- H.get
-      if pane == N.Workspace && not (D.valid $ M.activeTab m) then dispatch $ Browser "open" $ D.obj [Tuple "url" $ D.text "about:blank"] else do
+      if pane == N.Workspace && not (D.valid $ M.activeTab m) then dispatch $ Browser "open" $ D.json {url: "about:blank"} else do
         H.modify_ _ {panes=N.togglePane true (N.limit m.env) (D.valid $ M.activeTab m) pane m.panes}
         E.save dispatch
         E.sync
     Home -> do
       m <- H.get
-      if M.remote m && D.b "installed" m.env && (D.matches "iPad|iPhone|iPod" (D.s "userAgent" m.env) || D.s "platform" m.env == "MacIntel" && D.n "touchPoints" m.env > 1.0) then do
+      if M.remote m && D.b "installed" m.env && (N.ios m.env) then do
         E.persistLocal
         void $ H.liftAff $ try $ sequential $ parallel (toAffE B.updateWorker) <|> parallel (delay $ Milliseconds 12000.0)
         E.persistLocal
@@ -149,8 +144,6 @@ handle runtime action = do
       else do
         H.modify_ _ {panes=[N.ChatPane,N.Sidebar,N.Workspace]}
         dispatch $ Select $ D.s "main_agent_id" m.snapshot
-    ValueInput next event -> liftEffect (B.eventData event) >>= dispatch <<< next <<< D.s "value"
-    CheckedInput next event -> liftEffect (B.eventData event) >>= dispatch <<< next <<< D.b "checked"
     Draft value -> do
       H.modify_ \m -> m {drafts=O.insert m.selected value m.drafts}
       E.resizeComposer
@@ -205,36 +198,16 @@ handle runtime action = do
               Just work | D.s "owner" work == m.selected -> [Tuple "workload" $ D.get "id" work]
               _ -> []
         E.run (MessageFinished m.epoch m.selected text items) (E.api runtime m (M.ownerPath m <> "/messages") "POST" payload) dispatch
-    MessageFinished epoch id text items result -> do
-      m <- H.get
-      when (epoch == m.epoch) do
-        H.modify_ _ {sending=Set.delete id m.sending}
-        case result of
-          Left failure -> E.notify dispatch $ message failure
-          Right _ -> do
-            H.modify_ \s -> s {drafts=if S.trim (fromMaybe "" $ O.lookup id s.drafts) == text then O.insert id "" s.drafts else s.drafts,attachments=O.insert id (A.filter (\a -> not $ A.any (( _ == D.s "id" a) <<< D.s "id") items) $ fromMaybe [] $ O.lookup id s.attachments) s.attachments,clarification=Nothing}
-            E.save dispatch
-            E.scrollBottom
-            dispatch Poll
-    RefreshDocument -> E.requestDocument runtime dispatch
-    RetryDocument key -> H.modify_ (\m -> m {documents=O.delete key m.documents}) *> E.requestDocument runtime dispatch
-    DocumentReceived request result -> do
-      m <- H.get
-      when (request.epoch == m.epoch && ((_.sequence <$> (O.lookup request.key m.documents >>= M.requestOf)) == Just request.sequence)) do
-        let decoded = case result of
-              Left failure -> Left $ message failure
-              Right value -> M.decodeDocument request value
-        H.modify_ _ {documents=O.insert request.key (case decoded of
-          Left error -> M.Failed request error
-          Right value -> M.Ready request value) m.documents}
-        case decoded of
-          Right document | S.take 5 request.key == "memo:" -> E.memoImages runtime dispatch document
-          _ -> pure unit
-    MemoImageReceived epoch key result -> do
-      m <- H.get
-      when (epoch == m.epoch) $ case result of
-        Right uri -> H.modify_ _ {imageUrls=D.put key (D.text uri) m.imageUrls}
-        Left _ -> pure unit
+    MessageFinished epoch id text items result -> E.inEpoch epoch \m -> do
+      H.modify_ _ {sending=Set.delete id m.sending}
+      case result of
+        Left failure -> E.notify $ message failure
+        Right _ -> do
+          H.modify_ \s -> s {drafts=if S.trim (fromMaybe "" $ O.lookup id s.drafts) == text then O.insert id "" s.drafts else s.drafts,attachments=O.insert id (A.filter (\a -> not $ A.any (( _ == D.s "id" a) <<< D.s "id") items) $ fromMaybe [] $ O.lookup id s.attachments) s.attachments,clarification=Nothing}
+          E.save dispatch
+          E.scrollBottom
+          dispatch Poll
+    RetryDocument key -> H.modify_ (\m -> m {documents=O.delete key m.documents}) *> E.requestDocument runtime
     ToggleExpanded key -> H.modify_ \m -> m {expanded=(if Set.member key m.expanded then Set.delete else Set.insert) key m.expanded}
     Clarify work -> do
       dispatch $ Select $ D.s "owner" work
@@ -244,16 +217,13 @@ handle runtime action = do
       H.modify_ \m -> m {menu=if m.menu == Just key then Nothing else Just key,mention=Nothing}
       E.sync
     CloseMenu -> H.modify_ _ {menu=Nothing} *> E.sync
-    Notify text -> E.notify dispatch text
-    ClearToast text -> H.modify_ \m -> if m.toast == text then m {toast=""} else m
     Copy text caption -> do
       result <- H.liftAff $ try $ toAffE $ B.clipboard text
-      E.notify dispatch $ case result of
+      E.notify $ case result of
         Right _ -> caption
         Left _ -> "Could not copy. You can select the task body to copy it."
     Scroll -> E.captureScroll *> E.persistLocal
     UserScroll -> H.modify_ _ {scrollPosition=D.null,restoringScroll=false}
-    RestoreScroll -> E.restoreScroll
     Resize -> do
       env <- liftEffect B.environment
       H.modify_ _ {env=env}
@@ -280,17 +250,15 @@ handle runtime action = do
           let owner = D.s "owner" data_
               path = "/api/" <> (if S.take 6 owner == "group_" then "groups/" else "agents/") <> B.encodeURI owner
               op = if D.s "open" data_ /= "" || D.s "file" data_ /= "" then "open" else D.s "action" data_
-              body = if D.s "open" data_ /= "" then D.obj [Tuple "url" $ D.get "open" data_] else if D.s "file" data_ /= "" then D.obj [Tuple "path" $ D.get "file" data_] else D.get "fields" data_
+              body = if D.s "open" data_ /= "" then D.json {url: D.get "open" data_} else if D.s "file" data_ /= "" then D.json {path: D.get "file" data_} else D.get "fields" data_
           E.run (NativeReceived m.epoch owner op) (do
             void $ E.api runtime m (path <> if op == "" then "/browser" else "/control") "POST" (if op == "" then data_ else D.put "op" (D.text $ "workspace_" <> op) body)
             E.api runtime m "/api/state" "GET" D.null) dispatch
         _ -> pure unit
-    NativeReceived epoch owner op result -> do
-      m <- H.get
-      when (epoch == m.epoch) do
-        H.modify_ _ {nativeReporting=false}
-        dispatch $ BrowserReceived epoch owner op result
-        dispatch DrainNative
+    NativeReceived epoch owner op result -> E.inEpoch epoch \_ -> do
+      H.modify_ _ {nativeReporting=false}
+      dispatch $ BrowserReceived epoch owner op result
+      dispatch DrainNative
     RefreshTheme -> do
       saved <- liftEffect $ B.storageRead "sapi-color-theme"
       env <- liftEffect B.environment
@@ -308,16 +276,14 @@ handle runtime action = do
       let value = D.encode $ M.preferences m
       when (m.online && not m.busy && not m.saving && value /= m.preferencesSaved) do
         H.modify_ _ {saving=true}
-        E.run (PreferencesReceived m.epoch value) (E.api runtime m "/api/preferences" "PUT" $ D.obj [Tuple "attachment_drafts" $ D.get "attachment_drafts" $ M.preferences m]) dispatch
-    PreferencesReceived epoch sent result -> do
-      m <- H.get
-      when (epoch == m.epoch) do
-        H.modify_ _ {saving=false}
-        case result of
-          Right data_ -> H.modify_ $ \s -> (M.withWorkspaces (D.get "preferences" data_) s) {preferencesSaved=sent}
-          Left failure -> E.notify dispatch $ "Settings are not saved yet: " <> message failure
-        latest <- H.get
-        when (D.encode (M.preferences latest) /= latest.preferencesSaved) $ E.later dispatch 2000.0 Persist
+        E.run (PreferencesReceived m.epoch value) (E.api runtime m "/api/preferences" "PUT" $ D.json {attachment_drafts: D.get "attachment_drafts" $ M.preferences m}) dispatch
+    PreferencesReceived epoch sent result -> E.inEpoch epoch \_ -> do
+      H.modify_ _ {saving=false}
+      case result of
+        Right data_ -> H.modify_ $ \s -> (M.withWorkspaces (D.get "preferences" data_) s) {preferencesSaved=sent}
+        Left failure -> E.notify $ "Settings are not saved yet: " <> message failure
+      latest <- H.get
+      when (D.encode (M.preferences latest) /= latest.preferencesSaved) $ E.later 2000.0 $ dispatch Persist
     Mutate path method body success -> do
       m <- H.get
       H.modify_ \s -> s {dialog=map (_ {busy=true}) s.dialog}
@@ -327,45 +293,41 @@ handle runtime action = do
       when (epoch == m.epoch && (_.identity <$> m.dialog) == identity) do
         H.modify_ \s -> s {dialog=map (_ {busy=false}) s.dialog}
         case result of
-          Left failure -> E.notify dispatch $ message failure
+          Left failure -> E.notify $ message failure
           Right value -> case success of
-            CloseAndRefresh caption -> dispatch CloseDialog *> E.notify dispatch caption *> dispatch Poll
+            CloseAndRefresh caption -> dispatch CloseDialog *> E.notify caption *> dispatch Poll
             SavedPrompt content -> do
               H.modify_ \s -> s {dialog=map (\d -> d {fields=D.put "path" (D.get "path" value) d.fields,content=D.put "prompts" (D.array $ map (\p -> if D.s "node" p == D.s "node" d.fields then D.put "content" (D.text content) $ D.put "path" (D.get "path" value) p else p) $ D.rows "prompts" d.content) d.content}) s.dialog}
-              E.notify dispatch "Prompt saved for subsequent decisions."
+              E.notify "Prompt saved for subsequent decisions."
             _ -> dispatch Poll
-    AttachmentReceived epoch id result -> do
-      m <- H.get
-      when (epoch == m.epoch) do
-        H.modify_ \s -> s {uploading=max 0 $ m.uploading-1,dialog=map (_ {busy=false}) s.dialog}
-        case result of
-          Left failure -> E.notify dispatch $ message failure
-          Right item -> when (D.valid item) do
-            H.modify_ \s -> s {attachments=O.alter (Just <<< flip A.snoc item <<< fromMaybe []) id s.attachments}
-            dispatch CloseDialog
-            E.save dispatch
+    AttachmentReceived epoch id result -> E.inEpoch epoch \m -> do
+      H.modify_ \s -> s {uploading=max 0 $ m.uploading-1,dialog=map (_ {busy=false}) s.dialog}
+      case result of
+        Left failure -> E.notify $ message failure
+        Right item -> when (D.valid item) do
+          H.modify_ \s -> s {attachments=O.alter (Just <<< flip A.snoc item <<< fromMaybe []) id s.attachments}
+          dispatch CloseDialog
+          E.save dispatch
     RemoveAttachment id -> H.modify_ (\m -> m {attachments=O.alter (Just <<< A.filter (( _ /= id) <<< D.s "id") <<< fromMaybe []) m.selected m.attachments}) *> E.save dispatch
     Browser op fields -> do
       m <- H.get
       E.run (BrowserReceived m.epoch m.selected op) (do
         void $ E.api runtime m (M.ownerPath m <> "/control") "POST" $ D.put "op" (D.text $ "workspace_" <> op) fields
         E.api runtime m "/api/state" "GET" D.null) dispatch
-    BrowserReceived epoch owner op result -> do
-      m <- H.get
-      when (epoch == m.epoch) $ case result of
-        Left failure -> E.notify dispatch $ message failure
-        Right snapshot -> do
-          H.modify_ $ M.withWorkspaces $ D.get "preferences" snapshot
-          when (owner == m.selected) do
-            current <- H.get
-            let tab = M.activeTab current
-                opened = op == "open"
-                navigated = A.elem op ["open","focus","close","back","forward","reload"]
-            H.modify_ _ {menu=if navigated then Nothing else current.menu,addressOpen=if navigated then opened && D.s "url" tab == "about:blank" else current.addressOpen,address=if not navigated && current.addressOpen then current.address else D.fallback (if D.s "url" tab == "about:blank" then "" else D.s "url" tab) $ D.s "path" tab,panes=if op == "close" && not (D.valid tab) then A.filter (_ /= N.Workspace) current.panes else if A.elem op ["open","focus","close","back","forward","reload"] then N.togglePane false (N.limit current.env) (D.valid tab) N.Workspace current.panes else current.panes,preview=if op == "open" || op == "focus" then M.NotAsked else current.preview}
-            when (opened && D.s "url" tab == "about:blank") $ liftEffect $ B.focus "#browser-address"
-          E.sync
-          E.preview runtime dispatch
-          E.save dispatch
+    BrowserReceived epoch owner op result -> E.inEpoch epoch \m -> case result of
+      Left failure -> E.notify $ message failure
+      Right snapshot -> do
+        H.modify_ $ M.withWorkspaces $ D.get "preferences" snapshot
+        when (owner == m.selected) do
+          current <- H.get
+          let tab = M.activeTab current
+              opened = op == "open"
+              navigated = A.elem op ["open","focus","close","back","forward","reload"]
+          H.modify_ _ {menu=if navigated then Nothing else current.menu,addressOpen=if navigated then opened && D.s "url" tab == "about:blank" else current.addressOpen,address=if not navigated && current.addressOpen then current.address else D.fallback (if D.s "url" tab == "about:blank" then "" else D.s "url" tab) $ D.s "path" tab,panes=if op == "close" && not (D.valid tab) then A.filter (_ /= N.Workspace) current.panes else if A.elem op ["open","focus","close","back","forward","reload"] then N.togglePane false (N.limit current.env) (D.valid tab) N.Workspace current.panes else current.panes,preview=if op == "open" || op == "focus" then M.NotAsked else current.preview}
+          when (opened && D.s "url" tab == "about:blank") $ liftEffect $ B.focus "#browser-address"
+        E.sync
+        E.preview runtime
+        E.save dispatch
     Address text -> H.modify_ _ {address=text,addressOpen=true}
     OpenAddress -> do
       m <- H.get
@@ -381,14 +343,9 @@ handle runtime action = do
       m <- H.get
       let directory = if M.isGroup $ M.selected m then D.s "workspace" $ M.selected m else D.replace "[\\\\/][^\\\\/]+$" "" $ D.str $ D.at ["orchestration",m.selected,"notes","path"] m.snapshot
       dispatch CloseMenu
-      if Workspace.native m then liftEffect $ B.nativeMessage $ D.obj [Tuple "pickFile" (D.bool true),Tuple "owner" (D.text m.selected),Tuple "directory" (D.text directory)] else do
+      if Workspace.native m then liftEffect $ B.nativeMessage $ D.json {pickFile: true, owner: m.selected, directory} else do
         H.modify_ _ {address=directory <> "/",addressOpen=true}
         liftEffect $ B.focus "#browser-address"
-    PreviewReceived request result -> do
-      m <- H.get
-      when (request.epoch == m.epoch && m.previewPath == request.path && ((_.sequence <$> M.requestOf m.preview) == Just request.sequence)) $ H.modify_ _ {preview=case result of
-        Right value -> M.Ready request value
-        Left failure -> M.Failed request $ message failure}
     PrepareDraft preset placeholder -> prepareDraft preset placeholder
     Feedback -> do
       m <- H.get
@@ -406,7 +363,7 @@ handle runtime action = do
       dispatch next
     OpenLink url -> do
       m <- H.get
-      when (Workspace.native m) $ dispatch $ Browser "open" $ D.obj [Tuple "url" $ D.text url]
+      when (Workspace.native m) $ dispatch $ Browser "open" $ D.json {url}
     NoteAnchor id -> liftEffect $ B.scrollIntoView $ "#" <> id
     _ -> do
       handled <- Corpora.handle runtime dispatch action
@@ -470,5 +427,5 @@ handle runtime action = do
   resume _ = do
     dispatch Resize
     E.restoreScroll
-    E.later dispatch 32.0 RestoreScroll
+    E.later 32.0 E.restoreScroll
     dispatch Poll

@@ -5,7 +5,7 @@ import Data.Argonaut.Core (Json)
 import Data.Either (Either)
 import Effect.Exception (Error)
 import Sapiens.Connections (Registry)
-import Sapiens.Model (DialogKind, Request)
+import Sapiens.Model (DialogKind)
 import Sapiens.Navigation (Activity, Scope, Pane, Period)
 import Web.Event.Event (Event)
 
@@ -25,14 +25,10 @@ data Action
   | ToggleSearch
   | TogglePane Pane
   | Home
-  | ValueInput (String -> Action) Event
-  | CheckedInput (Boolean -> Action) Event
   | Draft String
   | MessageKey Event
   | Send
   | MessageFinished Int String String (Array Json) (Either Error Json)
-  | RefreshDocument
-  | DocumentReceived Request (Either Error Json)
   | RetryDocument String
   | ToggleExpanded String
   | Clarify Json
@@ -45,12 +41,9 @@ data Action
   | SubmitDialog
   | DialogReceived Int DialogResult (Either Error Json)
   | DialogCommand String Json
-  | Notify String
-  | ClearToast String
   | Copy String String
   | Scroll
   | UserScroll
-  | RestoreScroll
   | Resize
   | Global String Json
   | GlobalEvent String Event
@@ -78,8 +71,6 @@ data Action
   | OpenAddress
   | EditAddress
   | OpenFile
-  | MemoImageReceived Int String (Either Error String)
-  | PreviewReceived Request (Either Error Json)
   | PrepareDraft String String
   | Feedback
   | Pair
@@ -99,6 +90,6 @@ data Action
   | OpenLink String
   | NoteAnchor String
 
-data Success = Refresh | CloseAndRefresh String | SavedPrompt String | CreatedCorpora | ResetRelay | RefreshHostPairing | RefreshRelayList
+data Success = Refresh | CloseAndRefresh String | SavedPrompt String
 
 data DialogResult = PromptsLoaded | RelayEditLoaded | RelayImported | RelaysLoaded | RelaySaved | DialogSaved String | CorporaEdited | PairingStatus

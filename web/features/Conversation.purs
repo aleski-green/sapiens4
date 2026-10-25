@@ -35,7 +35,7 @@ attention t = A.elem (D.s "status" t) ["failed","interrupted","conflict"]
 
 turnActions :: M.Model -> Json -> V.Html
 turnActions m turn = V.div "actions" $ case D.s "status" turn of
-  "running" -> [V.node "button" [V.cls "button",V.disabled $ not m.online || D.b "stopping" (activity m turn),V.click $ command "cancel"] [V.text "Stop"],V.node "small" [] [V.text "Already completed actions are not undone."]]
+  "running" -> [V.control [V.cls "button",V.disabled $ not m.online || D.b "stopping" (activity m turn)] "Stop" (command "cancel"),V.textNode "small" [] "Already completed actions are not undone."]
   "queued" -> [V.button "button" "Cancel queued turn" $ command "cancel"]
   _ | attention turn -> [V.button "button" "Retry" $ command "retry",V.button "button" "Dismiss" $ command "cancel"]
   _ -> []
@@ -50,7 +50,7 @@ activity m turn =
   in if D.s "turn" a == D.s "id" turn then a else D.empty
 
 progress :: M.Model -> Json -> V.Html
-progress m turn = V.div "" [V.node "strong" [] [V.text $ phase <> " · " <> show elapsed <> "s"],V.p "" detail,V.when (quiet >= 60) $ V.node "small" [] [V.text $ "No recent update · " <> show quiet <> "s since last activity"]]
+progress m turn = V.div "" [V.textNode "strong" [] (phase <> " · " <> show elapsed <> "s"),V.p "" detail,V.when (quiet >= 60) $ V.textNode "small" [] ("No recent update · " <> show quiet <> "s since last activity")]
   where
   a = activity m turn
   started = if D.n "started" a == 0.0 then B.parseTime $ D.s "created" turn else D.n "started" a
@@ -69,8 +69,8 @@ groupCallControls group request = V.div "actions" $ if not (A.elem state ["queue
 
 message :: M.Model -> Json -> V.Html
 message m msg = V.node "div" [V.attr "data-chat-key" $ D.s "chatKey" msg,V.cls $ "message " <> (if user then "user " else "") <> if D.s "warning" msg /= "" then "warning-message" else ""]
-  [ V.div "message-meta" ([if user then V.node "span" [] [V.text "↗"] else T.avatar (if M.isGroup a then M.agent m (D.s "author" msg) else a) "mini" false,V.node "strong" [] [author],V.node "time" [] [V.text $ T.time $ D.s "created" msg]] <> map _.badge warnings)
-  , V.div "message-bubble" (map _.detail warnings <> T.paragraphs m (D.s "text" msg) <> [V.when (not $ A.null $ D.rows "attachments" msg) $ V.div "message-attachments" $ map T.attachment $ D.rows "attachments" msg,V.when (D.b "stale" msg) $ V.node "small" [V.cls "group-banner"] [V.text "Result from an earlier task revision · current work was preserved."],V.when (D.valid (D.get "delegation" msg) && M.blocksChat request) $ turnActions m request])
+  [ V.div "message-meta" ([if user then V.span [] "↗" else T.avatar (if M.isGroup a then M.agent m (D.s "author" msg) else a) "mini" false,V.node "strong" [] [author],V.textNode "time" [] (T.time $ D.s "created" msg)] <> map _.badge warnings)
+  , V.div "message-bubble" (map _.detail warnings <> T.paragraphs m (D.s "text" msg) <> [V.when (not $ A.null $ D.rows "attachments" msg) $ V.div "message-attachments" $ map T.attachment $ D.rows "attachments" msg,V.when (D.b "stale" msg) $ V.textNode "small" [V.cls "group-banner"] "Result from an earlier task revision · current work was preserved.",V.when (D.valid (D.get "delegation" msg) && M.blocksChat request) $ turnActions m request])
   ]
   where
   a = M.selected m
@@ -78,7 +78,7 @@ message m msg = V.node "div" [V.attr "data-chat-key" $ D.s "chatKey" msg,V.cls $
   request = D.get "requestTurn" msg
   author = if D.s "author" msg /= "" then if M.isGroup a then T.mention m (D.s "author" msg) else V.text $ D.s "name" $ M.agent m $ D.s "author" msg else if user then V.text "Admin" else T.mention m m.selected
   warning key caption body = let open = Set.member ("warning:" <> key) m.expanded in
-    { badge: V.node "button" [V.attr "type" "button",V.cls "warning-badge",V.attr "aria-expanded" $ show open,V.attr "aria-controls" $ "warning-" <> key,V.click $ ToggleExpanded $ "warning:" <> key] [V.text caption]
+    { badge: V.control [V.cls "warning-badge",V.attr "aria-expanded" $ show open,V.attr "aria-controls" $ "warning-" <> key] (caption) (ToggleExpanded $ "warning:" <> key)
     , detail: V.node "div" [V.cls "warning-details",V.id $ "warning-" <> key,V.hidden $ not open] body }
   error = D.s "error" request
   reason = if D.matches "(timeouterror|time limit|exceeded [0-9]+(?:\\.[0-9]+)?s)" (S.toLower error) then "Timed out" else if D.matches "(tool-step limit|tool limit)" (S.toLower error) then "Tool limit reached" else ""
@@ -97,7 +97,7 @@ rows m =
   a = M.selected m
   messages = fromMaybe [] $ O.lookup m.selected m.messages
   groupProgress r = let turn = D.find (D.s "id" r) $ D.rows "turns" m.snapshot in Tuple ("request:" <> D.s "id" r) $ V.node "section" [V.cls "live-status",V.attr "data-chat-key" $ "request:" <> D.s "id" r]
-    [V.node "strong" [] [V.text $ D.s "name" (M.agent m $ D.s "target" r) <> " · " <> statusName (D.s "status" r)],V.when (M.blocksChat turn) $ progress m turn,V.when (D.s "error" r /= "") $ V.p "" $ D.s "error" r,groupCallControls a r]
+    [V.textNode "strong" [] (D.s "name" (M.agent m $ D.s "target" r) <> " · " <> statusName (D.s "status" r)),V.when (M.blocksChat turn) $ progress m turn,V.when (D.s "error" r /= "") $ V.p "" $ D.s "error" r,groupCallControls a r]
   personalProgress t = Tuple ("progress:" <> D.s "id" t) $ V.node "section" [V.cls "live-status",V.attr "data-chat-key" $ "progress:" <> D.s "id" t] [progress m t,turnActions m t]
 
 composer :: M.Model -> V.Html
@@ -105,10 +105,10 @@ composer m = V.node "div" [V.cls "composer-area",V.id "composer-area",V.hidden $
   [ V.node "div" [V.id "attachment-chip"] $ map (\item -> V.div "attachment-chip" [T.attachment item,V.icon ("Remove " <> D.s "name" item) "×" $ RemoveAttachment $ D.s "id" item]) $ M.attachments m
   , V.node "form" [V.cls "composer",V.id "chat-form",V.submit Send]
       [V.node "textarea" [V.attr "rows" "2",V.id "message-input",V.attr "maxlength" "16000",V.attr "placeholder" placeholder,V.label $ "Message " <> D.s "name" a,V.value $ M.draft m,V.input Draft,V.on "keydown" MessageKey,V.click MentionCursor,V.attr "aria-expanded" $ show $ m.mention /= Nothing] []
-      ,V.div "composer-bottom" [V.icon "Add attachment" "＋" $ OpenDialog M.Attach D.empty,V.node "button" [V.attr "type" "submit",V.cls "send-button",V.label "Send message",V.disabled blocked] [V.text "↑"]]
+      ,V.div "composer-bottom" [V.icon "Add attachment" "＋" $ OpenDialog M.Attach D.empty,V.textNode "button" [V.attr "type" "submit",V.cls "send-button",V.label "Send message",V.disabled blocked] "↑"]
       ,case m.mention of
         Nothing -> V.empty
-        Just menu -> V.node "div" [V.cls "mention-suggestions",V.id "mention-suggestions",V.attr "role" "listbox",V.label "Sapis"] $ if A.null menu.choices then [V.div "empty" [V.text "No matching Sapis."]] else A.mapWithIndex (\i entity -> V.node "button" [V.attr "type" "button",V.attr "role" "option",V.id $ "mention-option-" <> show i,V.attr "aria-selected" $ show $ i == menu.index,V.click $ MentionChoice i] [V.node "strong" [] [V.text $ "@" <> D.s "name" entity],V.node "small" [] [V.text "Sapi"]]) menu.choices
+        Just menu -> V.node "div" [V.cls "mention-suggestions",V.id "mention-suggestions",V.attr "role" "listbox",V.label "Sapis"] $ if A.null menu.choices then [V.div "empty" [V.text "No matching Sapis."]] else A.mapWithIndex (\i entity -> V.node "button" [V.attr "type" "button",V.attr "role" "option",V.id $ "mention-option-" <> show i,V.attr "aria-selected" $ show $ i == menu.index,V.click $ MentionChoice i] [V.textNode "strong" [] ("@" <> D.s "name" entity),V.textNode "small" [] "Sapi"]) menu.choices
       ]
   ]
   where

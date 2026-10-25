@@ -6,7 +6,6 @@ import Data.Array as A
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Set as Set
 import Data.String as S
-import Data.Tuple (Tuple(..))
 import Foreign.Object as O
 import Libs4.Browser as B
 import Sapiens.Action (Action(..), Success(..))
@@ -18,7 +17,7 @@ import Sapiens.Navigation as N
 import Sapiens.Text as T
 
 emptyTasks :: String -> String -> V.Html
-emptyTasks title detail = V.div "task-empty" [V.p "" title,V.node "small" [] [V.text detail]]
+emptyTasks title detail = V.div "task-empty" [V.p "" title,V.textNode "small" [] (detail)]
 
 disclosure :: M.Model -> String -> String -> Array V.Html -> Array V.Html -> V.Html
 disclosure m key classes summary content = V.node "details" [V.cls classes,V.bool "open" $ Set.member key m.expanded]
@@ -26,12 +25,12 @@ disclosure m key classes summary content = V.node "details" [V.cls classes,V.boo
 
 taskRow :: M.Model -> Json -> V.Html
 taskRow m task = disclosure m ("task:" <> m.selected <> ":" <> D.s "id" task) ("task-row " <> if routine then "task-routine" else "")
-  ([V.node "span" [V.cls $ "task-mark " <> tone,V.attr "aria-hidden" "true"] [V.text $ if state == "Completed" then "✓" else if tone == "attention" then "!" else "·"]
-   ,V.node "span" [V.cls "task-row-copy"] [V.node "span" [V.cls "task-title",V.attr "title" $ D.s "title" task] [V.text $ D.s "title" task],V.node "span" [V.cls "task-meta"] [V.node "span" [V.cls $ "task-state " <> tone] [V.text $ if state == "WaitingForAdmin" then "Needs input" else state],V.node "span" [V.cls "task-assignee"] [V.text $ D.fallback route $ D.s "meta" task]]]]
-   <> (if routine then [control "Run routine" "Run" $ PrepareDraft ("@" <> D.s "id" task <> "\nRun it now.") "",control "Edit routine" "Edit" $ PrepareDraft ("Edit @" <> D.s "id" task <> " ( " <> D.s "title" task <> " )\nEdit Frequency (prev every " <> D.s "minutes" task <> " minutes): new every XXX minutes\nEdit Execution Prompt as: " <> D.s "prompt" task) "XXX",control (if state == "Paused" then "Resume routine" else "Pause routine") (if state == "Paused" then "▶" else "Ⅱ") $ PrepareDraft ((if state == "Paused" then "Resume Scheduled Routine" else "Pause Scheduled Routine") <> "\n@" <> D.s "id" task) "",V.node "span" [V.cls "task-reference",V.attr "title" "Scheduled tasks queued in this allowance; pauses automatically at 1000."] [V.node "code" [] [V.text $ "@" <> D.s "id" task],V.node "span" [] [V.text $ show (D.int $ D.get "runCount" task) <> "/1000"]]] else []) <> [V.node "span" [V.cls "task-chevron",V.attr "aria-hidden" "true"] [V.text "›"]])
-  [V.div "task-body-heading" [V.node "span" [] [V.text $ if routine then "Execution prompt" else "Task body"],V.node "span" [V.cls "task-format"] [V.text $ if routine then "" else "YAML"],V.node "button" [V.attr "type" "button",V.cls "task-copy",V.label $ "Copy " <> if routine then "execution prompt" else "task YAML",V.click $ Copy (D.s "body" task) (if routine then "Execution prompt copied." else "Task YAML copied.")] [V.text "Copy"]]
-  ,V.node "pre" [V.cls "task-body-yaml",V.label $ if routine then "Execution prompt" else "Task body YAML"] [V.text $ D.s "body" task]
-  ,V.when (D.s "result" task /= "") $ V.div "task-result" $ [V.node "h3" [V.cls "task-result-heading"] [V.text "Result"]] <> T.paragraphs m (D.s "result" task)
+  ([V.span [V.cls $ "task-mark " <> tone,V.attr "aria-hidden" "true"] (if state == "Completed" then "✓" else if tone == "attention" then "!" else "·")
+   ,V.node "span" [V.cls "task-row-copy"] [V.span [V.cls "task-title",V.attr "title" $ D.s "title" task] (D.s "title" task),V.node "span" [V.cls "task-meta"] [V.span [V.cls $ "task-state " <> tone] (if state == "WaitingForAdmin" then "Needs input" else state),V.span [V.cls "task-assignee"] (D.fallback route $ D.s "meta" task)]]]
+   <> (if routine then [control "Run routine" "Run" $ PrepareDraft ("@" <> D.s "id" task <> "\nRun it now.") "",control "Edit routine" "Edit" $ PrepareDraft ("Edit @" <> D.s "id" task <> " ( " <> D.s "title" task <> " )\nEdit Frequency (prev every " <> D.s "minutes" task <> " minutes): new every XXX minutes\nEdit Execution Prompt as: " <> D.s "prompt" task) "XXX",control (if state == "Paused" then "Resume routine" else "Pause routine") (if state == "Paused" then "▶" else "Ⅱ") $ PrepareDraft ((if state == "Paused" then "Resume Scheduled Routine" else "Pause Scheduled Routine") <> "\n@" <> D.s "id" task) "",V.node "span" [V.cls "task-reference",V.attr "title" "Scheduled tasks queued in this allowance; pauses automatically at 1000."] [V.textNode "code" [] ("@" <> D.s "id" task),V.span [] (show (D.int $ D.get "runCount" task) <> "/1000")]] else []) <> [V.span [V.cls "task-chevron",V.attr "aria-hidden" "true"] "›"])
+  [V.div "task-body-heading" [V.span [] (if routine then "Execution prompt" else "Task body"),V.span [V.cls "task-format"] (if routine then "" else "YAML"),V.control [V.cls "task-copy",V.label $ "Copy " <> if routine then "execution prompt" else "task YAML"] "Copy" (Copy (D.s "body" task) (if routine then "Execution prompt copied." else "Task YAML copied."))]
+  ,V.textNode "pre" [V.cls "task-body-yaml",V.label $ if routine then "Execution prompt" else "Task body YAML"] (D.s "body" task)
+  ,V.when (D.s "result" task /= "") $ V.div "task-result" $ [V.textNode "h3" [V.cls "task-result-heading"] "Result"] <> T.paragraphs m (D.s "result" task)
   ,V.when (D.s "error" task /= "") $ V.p "task-error" $ D.s "error" task]
   where
   state = D.s "state" task
@@ -39,7 +38,7 @@ taskRow m task = disclosure m ("task:" <> m.selected <> ":" <> D.s "id" task) ("
   name id = D.s "name" $ M.agent m id
   route = (if D.s "sender" task == D.s "owner" task then "" else name (D.s "sender" task) <> " → ") <> name (D.s "owner" task)
   routine = D.b "routine" task
-  control caption glyph action = V.node "button" [V.attr "type" "button",V.cls "task-copy task-routine-action",V.label caption,V.on "click" \e -> Link e action] [V.text glyph]
+  control caption glyph action = V.textNode "button" [V.attr "type" "button",V.cls "task-copy task-routine-action",V.label caption,V.on "click" \e -> Link e action] (glyph)
 
 groupCalls :: M.Model -> Json -> Array Json
 groupCalls m group = map row $ A.reverse $ A.filter (not <<< D.valid <<< D.get "task") $ D.rows "requests" group
@@ -49,7 +48,7 @@ groupCalls m group = map row $ A.reverse $ A.filter (not <<< D.valid <<< D.get "
         result = fromMaybe D.null $ A.find (( _ == D.s "id" r) <<< D.s "turn") $ D.rows "messages" group
         title = if D.b "memo" r then "Update group Memo" else D.fallback "Group call" $ D.s "text" message
         state = if D.s "status" r == "warning" then "Completed" else if D.s "status" r == "output_pending" then "Running" else if D.s "status" r == "cancelled" then "Cancelled" else C.statusName $ D.s "status" r
-    in D.obj [Tuple "id" (D.get "id" r),Tuple "title" (D.text title),Tuple "state" (D.text state),Tuple "owner" (D.get "target" r),Tuple "sender" (D.get "target" r),Tuple "body" (D.text $ "objective: " <> D.encode (D.text title) <> "\nassignee: " <> D.encode (D.text $ D.s "name" $ M.agent m $ D.s "target" r) <> "\n"),Tuple "result" (D.get "text" result),Tuple "error" (D.get "error" r)]
+    in D.json {id: D.get "id" r, title, state, owner: D.get "target" r, sender: D.get "target" r, body: "objective: " <> D.encode (D.text title) <> "\nassignee: " <> D.encode (D.text $ D.s "name" $ M.agent m $ D.s "target" r) <> "\n", result: D.get "text" result, error: D.get "error" r}
 
 defaultActivity :: M.Model -> N.Activity
 defaultActivity m = if A.any (not <<< M.past) states then N.Work N.Tasks N.Planned else if A.any (\r -> D.s "owner" r == m.selected && not (D.b "paused" r)) (D.rows "routines" m.snapshot) then N.Work N.Scheduled N.Planned else if A.null states then N.Work N.Memo N.Planned else N.Work N.Tasks N.Executed
@@ -59,11 +58,11 @@ defaultActivity m = if A.any (not <<< M.past) states then N.Work N.Tasks N.Plann
 
 groupTask :: M.Model -> Json -> Json -> V.Html
 groupTask m group task = disclosure m ("group-task:" <> D.s "id" task) "task-row group-task"
-  [V.node "span" [V.cls "task-row-copy"] [V.node "span" [V.cls "task-title"] [V.text $ D.s "title" task],V.node "span" [V.cls "task-meta"] [V.text $ D.s "name" (M.agent m $ D.s "assignee" task) <> " · " <> if D.b "deleted" task then "Deleted" else taskState $ D.s "state" task]],V.node "span" [V.cls "task-chevron"] [V.text "›"]]
+  [V.node "span" [V.cls "task-row-copy"] [V.span [V.cls "task-title"] (D.s "title" task),V.span [V.cls "task-meta"] (D.s "name" (M.agent m $ D.s "assignee" task) <> " · " <> if D.b "deleted" task then "Deleted" else taskState $ D.s "state" task)],V.span [V.cls "task-chevron"] "›"]
   [V.div "group-task-body" $ T.paragraphs m $ D.s "body" task
-  ,V.when (not $ D.b "archived" group) $ V.div "actions" [V.button "button" (if D.b "deleted" task then "Restore / edit" else "Edit") $ OpenDialog M.GroupTask task,V.when (not $ D.b "deleted" task) $ V.node "button" [V.cls "button",V.disabled running,V.click $ Mutate ("/api/groups/" <> D.s "id" group <> "/tasks/" <> D.s "id" task <> "/run") "POST" (D.obj [Tuple "revision" $ D.get "revision" task]) Refresh] [V.text $ if running then "Running / queued" else if D.s "state" task == "done" then "Run again" else "Run task"]]
-  ,V.when (not $ A.null $ D.rows "results" task) $ V.node "details" [] [V.node "summary" [] [V.text $ "Results · " <> show (A.length $ D.rows "results" task)],V.div "" $ map (\r -> V.div "group-task-result" $ [V.node "strong" [] [V.text $ D.s "name" (M.agent m $ D.s "author" r) <> if D.b "stale" r then " · Earlier revision" else ""]] <> T.paragraphs m (D.fallback (D.fallback "No reply saved." $ D.s "error" r) $ D.s "text" r)) $ D.rows "results" task]
-  ,V.when (not $ A.null $ D.rows "history" task) $ V.node "details" [] [V.node "summary" [] [V.text $ "Change history · " <> show (A.length $ D.rows "history" task)],V.div "" $ map (\h -> V.div "group-task-result" [V.node "strong" [] [V.text $ D.s "title" h],V.p "" $ D.s "name" (M.agent m $ D.s "assignee" h) <> " · " <> taskState (D.s "state" h) <> if D.b "deleted" h then " · Deleted" else "",V.p "" $ D.s "body" h]) $ A.reverse $ D.rows "history" task]]
+  ,V.when (not $ D.b "archived" group) $ V.div "actions" [V.button "button" (if D.b "deleted" task then "Restore / edit" else "Edit") $ OpenDialog M.GroupTask task,V.when (not $ D.b "deleted" task) $ V.control [V.cls "button",V.disabled running] (if running then "Running / queued" else if D.s "state" task == "done" then "Run again" else "Run task") (Mutate ("/api/groups/" <> D.s "id" group <> "/tasks/" <> D.s "id" task <> "/run") "POST" (D.json {revision: D.get "revision" task}) Refresh)]
+  ,V.when (not $ A.null $ D.rows "results" task) $ V.node "details" [] [V.textNode "summary" [] ("Results · " <> show (A.length $ D.rows "results" task)),V.div "" $ map (\r -> V.div "group-task-result" $ [V.textNode "strong" [] (D.s "name" (M.agent m $ D.s "author" r) <> if D.b "stale" r then " · Earlier revision" else "")] <> T.paragraphs m (D.fallback (D.fallback "No reply saved." $ D.s "error" r) $ D.s "text" r)) $ D.rows "results" task]
+  ,V.when (not $ A.null $ D.rows "history" task) $ V.node "details" [] [V.textNode "summary" [] ("Change history · " <> show (A.length $ D.rows "history" task)),V.div "" $ map (\h -> V.div "group-task-result" [V.textNode "strong" [] (D.s "title" h),V.p "" $ D.s "name" (M.agent m $ D.s "assignee" h) <> " · " <> taskState (D.s "state" h) <> if D.b "deleted" h then " · Deleted" else "",V.p "" $ D.s "body" h]) $ A.reverse $ D.rows "history" task]]
   where
   running = A.any (\r -> D.s "task" r == D.s "id" task && A.elem (D.s "status" r) ["queued","running"]) $ D.rows "requests" group
 
@@ -95,10 +94,10 @@ tasks m view period = V.node "section" [V.cls "task-browser"] [V.node "div" [V.i
 routines :: M.Model -> N.Period -> V.Html
 routines m period = V.node "section" [V.cls "task-browser"] [V.node "div" [V.cls "task-list",V.label $ N.periodLabel period <> " scheduled routines"] $ if A.null rows then [emptyTasks (if period == N.Paused then "No paused routines" else "No planned routines") (if period == N.Paused then "Paused routines will appear here." else "Create a scheduled routine through chat.")] else map (taskRow m) rows]
   where
-  rows = map (\r -> D.merge r $ D.obj [Tuple "routine" (D.bool true),Tuple "sender" (D.get "owner" r),Tuple "state" (D.text $ if D.b "paused" r then "Paused" else "Planned"),Tuple "minutes" (D.text $ show $ D.int $ D.get "minutes" r),Tuple "meta" (D.text $ "Every " <> show (D.int $ D.get "minutes" r) <> " minutes" <> if D.b "paused" r then "" else " · " <> B.formatDate "" D.empty (D.s "nextDue" r)),Tuple "body" (D.text $ "Frequency: every " <> show (D.int $ D.get "minutes" r) <> " minutes\nExecute: " <> D.s "prompt" r)]) $ A.filter (\r -> D.s "owner" r == m.selected && D.b "paused" r == (period == N.Paused)) $ D.rows "routines" m.snapshot
+  rows = map (\r -> D.merge r $ D.json {routine: true, sender: D.get "owner" r, state: if D.b "paused" r then "Paused" else "Planned", minutes: show $ D.int $ D.get "minutes" r, meta: "Every " <> show (D.int $ D.get "minutes" r) <> " minutes" <> if D.b "paused" r then "" else " · " <> B.formatDate "" D.empty (D.s "nextDue" r), body: "Frequency: every " <> show (D.int $ D.get "minutes" r) <> " minutes\nExecute: " <> D.s "prompt" r}) $ A.filter (\r -> D.s "owner" r == m.selected && D.b "paused" r == (period == N.Paused)) $ D.rows "routines" m.snapshot
 
 events :: M.Model -> V.Html
-events m = V.node "section" [V.cls "event-log"] [V.div "event-columns event-head" $ map (\s -> V.node "span" [] [V.text s]) ["Timestamp","Actor","Entity","Event","Agency",""],V.div "event-rows" $ if A.null rows then [V.p "empty" "No events yet."] else map event rows]
+events m = V.node "section" [V.cls "event-log"] [V.div "event-columns event-head" $ map (\s -> V.span [] (s)) ["Timestamp","Actor","Entity","Event","Agency",""],V.div "event-rows" $ if A.null rows then [V.p "empty" "No events yet."] else map event rows]
   where
   rows = A.take 100 $ D.arr $ D.at ["events",m.selected] m.snapshot
   name id = case id of
@@ -107,5 +106,5 @@ events m = V.node "section" [V.cls "event-log"] [V.div "event-columns event-head
     "corpora" -> "Corpora"
     _ -> D.fallback (if S.take 12 id == "routine_sch_" then "@" <> id else id) $ D.s "name" $ D.find id m.agents
   event row = let key = "event:" <> D.encode (D.get "id" row) in V.node "details" [V.cls "task-row event-row",V.bool "open" $ Set.member key m.expanded]
-    [V.node "summary" [V.cls "event-columns",V.on "click" \e -> Link e (ToggleExpanded key)] (map (\v -> V.node "span" [V.attr "title" v] [V.text v]) [B.formatDate "en-GB" (D.obj [Tuple "day" (D.text "2-digit"),Tuple "month" (D.text "short"),Tuple "hour" (D.text "2-digit"),Tuple "minute" (D.text "2-digit"),Tuple "second" (D.text "2-digit"),Tuple "fractionalSecondDigits" (D.integer 3)]) (D.s "timestamp" row),name $ D.s "actor" row,name $ D.s "entity" row,D.s "event" row,D.fallback "—" $ D.s "agency" row,"›"])
-    ,V.when (Set.member key m.expanded) $ V.node "pre" [] [V.text $ D.encode $ D.get "details" row]]
+    [V.node "summary" [V.cls "event-columns",V.on "click" \e -> Link e (ToggleExpanded key)] (map (\v -> V.span [V.attr "title" v] (v)) [B.formatDate "en-GB" (D.json {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3}) (D.s "timestamp" row),name $ D.s "actor" row,name $ D.s "entity" row,D.s "event" row,D.fallback "—" $ D.s "agency" row,"›"])
+    ,V.when (Set.member key m.expanded) $ V.textNode "pre" [] (D.encode $ D.get "details" row)]

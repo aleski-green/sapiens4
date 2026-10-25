@@ -39,31 +39,29 @@ handle runtime dispatch action = case action of
           E.restoreScroll
     current <- H.get
     unless current.installRequired $ E.run (RegistryReceived current.epoch) (C.registry runtime (M.remote current) $ D.s "origin" current.env) dispatch
-  RegistryReceived epoch result -> yes do
-    m <- H.get
-    when (m.epoch == epoch) $ case result of
-      Left failure -> do
-        H.modify_ _ {feedback=message failure,online=false}
-        E.later dispatch 3000.0 LoadRegistry
-      Right registry -> do
-        saved <- D.str <$> liftEffect (C.read "s4.active")
-        let previous = fromMaybe D.null $ A.find (( _ == m.active) <<< D.s "key") registry.records
-            preferred = fromMaybe (D.first registry.records) $ A.find (( _ == saved) <<< D.s "key") registry.records
-            record = if D.valid previous then previous else preferred
-        H.modify_ _ {records=registry.records,localAvailable=registry.localAvailable}
-        void $ liftEffect $ C.write "s4.records" $ D.array registry.records
-        when (D.valid record) do
-          if D.s "key" record /= m.active then enter record else do
-            H.modify_ _ {polling=true}
-            current <- H.get
-            E.run (SnapshotReceived current.epoch current.active) (C.authenticate runtime (M.remote current) record *> C.request runtime (M.remote current) record "/api/state" "GET" D.null) dispatch
-        unless (D.valid record) $ H.modify_ _ {active="",online=false,feedback="",snapshot=D.empty,agents=[]}
-        current <- H.get
-        when (not (M.remote current) && S.contains (S.Pattern "pairing=local") (D.s "search" current.env)) do
-          liftEffect $ B.historyReplace $ D.s "path" current.env
-          H.modify_ _ {env=D.put "search" (D.text "") current.env}
-          traverse_ (dispatch <<< OpenDialog M.HostPairing) $ A.find (( _ == "Local") <<< D.s "location") registry.records
-        E.sync
+  RegistryReceived epoch result -> yes $ E.inEpoch epoch \m -> case result of
+    Left failure -> do
+      H.modify_ _ {feedback=message failure,online=false}
+      E.later 3000.0 $ dispatch LoadRegistry
+    Right registry -> do
+      saved <- D.str <$> liftEffect (C.read "s4.active")
+      let previous = fromMaybe D.null $ A.find (( _ == m.active) <<< D.s "key") registry.records
+          preferred = fromMaybe (D.first registry.records) $ A.find (( _ == saved) <<< D.s "key") registry.records
+          record = if D.valid previous then previous else preferred
+      H.modify_ _ {records=registry.records,localAvailable=registry.localAvailable}
+      void $ liftEffect $ C.write "s4.records" $ D.array registry.records
+      when (D.valid record) do
+        if D.s "key" record /= m.active then enter record else do
+          H.modify_ _ {polling=true}
+          current <- H.get
+          E.run (SnapshotReceived current.epoch current.active) (C.authenticate runtime (M.remote current) record *> C.request runtime (M.remote current) record "/api/state" "GET" D.null) dispatch
+      unless (D.valid record) $ H.modify_ _ {active="",online=false,feedback="",snapshot=D.empty,agents=[]}
+      current <- H.get
+      when (not (M.remote current) && S.contains (S.Pattern "pairing=local") (D.s "search" current.env)) do
+        liftEffect $ B.historyReplace $ D.s "path" current.env
+        H.modify_ _ {env=D.put "search" (D.text "") current.env}
+        traverse_ (dispatch <<< OpenDialog M.HostPairing) $ A.find (( _ == "Local") <<< D.s "location") registry.records
+      E.sync
   EnterCorpora key -> yes do
     m <- H.get
     unless (m.busy || key == m.active) $ traverse_ enter $ A.find (\r -> D.s "key" r == key && D.s "status" r /= "archived") m.records
@@ -74,25 +72,23 @@ handle runtime dispatch action = case action of
       H.modify_ _ {busy=true}
       E.run (LifecycleReceived m.epoch) (C.reconcile runtime (M.remote m) m.records m.active *> C.lifecycle runtime (M.remote m) (M.activeRecord m) command) dispatch
       E.sync
-  LifecycleReceived epoch result -> yes do
-    m <- H.get
-    when (epoch == m.epoch) do
-      H.modify_ _ {busy=false,menu=Nothing}
-      case result of
-        Left failure -> do
-          H.modify_ _ {online=false}
-          dispatch $ OpenDialog M.Notice $ D.text $ message failure
-        Right info -> H.modify_ \s -> s {records=map (\r -> if D.s "key" r == s.active then D.merge r info else r) s.records,snapshot=D.put "corpora" info s.snapshot}
-      dispatch Poll
-      E.sync
+  LifecycleReceived epoch result -> yes $ E.inEpoch epoch \_ -> do
+    H.modify_ _ {busy=false,menu=Nothing}
+    case result of
+      Left failure -> do
+        H.modify_ _ {online=false}
+        dispatch $ OpenDialog M.Notice $ D.text $ message failure
+      Right info -> H.modify_ \s -> s {records=map (\r -> if D.s "key" r == s.active then D.merge r info else r) s.records,snapshot=D.put "corpora" info s.snapshot}
+    dispatch Poll
+    E.sync
   Pair -> yes do
     m <- H.get
     case m.dialog of
       Just d | d.kind == M.ConnectRemote && not d.busy -> case R.decode (D.s "invitation" d.fields) of
-        Left failure -> modifyDialog d.identity _ {error=failure}
+        Left failure -> E.modifyDialog d.identity _ {error=failure}
         Right invitation -> do
           dispatch StopScan
-          modifyDialog d.identity _ {busy=true,error="Waiting for host approval…"}
+          E.modifyDialog d.identity _ {busy=true,error="Waiting for host approval…"}
           void $ H.fork do
             result <- H.liftAff $ try $ if M.remote m then do
               transport <- R.invitation invitation
@@ -123,13 +119,13 @@ handle runtime dispatch action = case action of
                   pollPair d.identity value
       _ -> pure unit
   PairCode id code pending -> yes do
-    modifyDialog id \d -> d {fields=D.put "code" (D.text code) $ D.put "pending" (D.text pending) d.fields}
+    E.modifyDialog id \d -> d {fields=D.put "code" (D.text code) $ D.put "pending" (D.text pending) d.fields}
   PairReceived id result -> yes do
     m <- H.get
     when ((_.identity <$> m.dialog) == Just id) $ case result of
       Left failure -> do
         H.liftAff $ C.cancelPairing runtime
-        modifyDialog id \d -> d {busy=false,error=message failure,fields=D.remove "code" d.fields}
+        E.modifyDialog id \d -> d {busy=false,error=message failure,fields=D.remove "code" d.fields}
       Right record -> do
         liftEffect $ Ref.write "" runtime.pendingPairId
         H.modify_ \s -> s {records=A.snoc (A.filter (( _ /= D.s "key" record) <<< D.s "key") s.records) record}
@@ -142,12 +138,12 @@ handle runtime dispatch action = case action of
     case m.dialog of
       Just d | d.kind == M.ConnectRemote -> do
         dispatch StopScan
-        modifyDialog d.identity \s -> s {fields=D.put "scanning" (D.bool true) s.fields,error=""}
+        E.modifyDialog d.identity \s -> s {fields=D.put "scanning" (D.bool true) s.fields,error=""}
         void $ H.fork do
           result <- H.liftAff $ try $ toAffE $ B.cameraStart "#qr-camera"
           current <- H.get
           case result of
-            Left failure -> dispatch StopScan *> modifyDialog d.identity _ {error=if D.matches "NotAllowed|denied" (message failure) then "Camera access is off. Upload a QR image." else "Camera unavailable. Upload a QR image."}
+            Left failure -> dispatch StopScan *> E.modifyDialog d.identity _ {error=if D.matches "NotAllowed|denied" (message failure) then "Camera access is off. Upload a QR image." else "Camera unavailable. Upload a QR image."}
             Right camera -> if (_.identity <$> current.dialog) /= Just d.identity || not (maybe false (D.b "scanning" <<< _.fields) current.dialog) then liftEffect $ B.cameraStop camera else do
               liftEffect $ Ref.write (Just camera) runtime.camera
               dispatch $ ScanFrame d.identity
@@ -156,7 +152,7 @@ handle runtime dispatch action = case action of
     m <- H.get
     when ((_.identity <$> m.dialog) == Just id && maybe false (D.b "scanning" <<< _.fields) m.dialog) do
       result <- liftEffect $ B.cameraQR "#qr-camera" 1000
-      if D.s "data" result == "" then E.later dispatch 200.0 (ScanFrame id) else dispatch $ QRReceived id $ Right result
+      if D.s "data" result == "" then E.later 200.0 (dispatch $ ScanFrame id) else dispatch $ QRReceived id $ Right result
   UploadQR -> yes do
     m <- H.get
     traverse_ (\d -> E.run (QRReceived d.identity) (do
@@ -166,8 +162,8 @@ handle runtime dispatch action = case action of
   QRReceived id result -> yes do
     m <- H.get
     when ((_.identity <$> m.dialog) == Just id) $ case result of
-      Left failure -> modifyDialog id _ {error=message failure}
-      Right value | D.valid value -> if D.s "data" value == "" then modifyDialog id _ {error="No supported QR found in this image."} else do
+      Left failure -> E.modifyDialog id _ {error=message failure}
+      Right value | D.valid value -> if D.s "data" value == "" then E.modifyDialog id _ {error="No supported QR found in this image."} else do
         dispatch StopScan
         dispatch $ Field "invitation" $ D.s "data" value
         dispatch Pair
@@ -187,29 +183,28 @@ handle runtime dispatch action = case action of
     case m.dialog of
       Just d | d.identity == id -> do
         case result of
-          Left failure -> modifyDialog id _ {error=message failure}
+          Left failure -> E.modifyDialog id _ {error=message failure}
           Right value -> do
             if not (D.valid d.content) && not (D.b "paired" value || D.b "enabled" value || D.b "_ready" d.record) then dispatch $ OpenDialog M.RelayList d.record else do
               let invitation = D.get "invitation" value
                   link = if D.n "expires" invitation > m.now/1000.0 && D.b "enabled" value then R.invitationLink invitation else ""
-                  dates = D.obj $ map (\key -> Tuple key $ D.text $ if D.n key value <= 0.0 then "Not recorded" else B.formatDate "" (D.obj [Tuple "dateStyle" $ D.text "medium",Tuple "timeStyle" $ D.text "long"]) (B.timestamp $ D.n key value * 1000.0)) ["paired_at","last_connected_at"]
-              modifyDialog id \current -> current {content=value,title=if D.b "paired" value then "Edit Pairing" else "New Pairing",fields=D.put "dates" dates $ D.put "expiration" (D.text $ B.timestamp $ D.n "expires" invitation*1000.0) $ D.put "link" (D.text link) current.fields}
+                  dates = D.obj $ map (\key -> Tuple key $ D.text $ if D.n key value <= 0.0 then "Not recorded" else B.formatDate "" (D.json {dateStyle: "medium", timeStyle: "long"}) (B.timestamp $ D.n key value * 1000.0)) ["paired_at","last_connected_at"]
+              E.modifyDialog id \current -> current {content=value,title=if D.b "paired" value then "Edit Pairing" else "New Pairing",fields=D.put "dates" dates $ D.put "expiration" (D.text $ B.timestamp $ D.n "expires" invitation*1000.0) $ D.put "link" (D.text link) current.fields}
               H.modify_ \s -> s {records=map (\r -> if D.s "key" r == D.s "key" d.record then D.put "paired" (D.get "paired" value) r else r) s.records}
               when (link /= "" && link /= D.s "link" d.fields) $ E.run (QRImageReceived id link) (toAffE $ B.qrImage link) dispatch
-        E.later dispatch 2500.0 $ HostPairPoll id
+        E.later 2500.0 $ dispatch $ HostPairPoll id
       _ -> pure unit
   QRImageReceived id link result -> yes do
     m <- H.get
     case m.dialog of
       Just d | d.identity == id && D.s "link" d.fields == link -> case result of
-        Left failure -> modifyDialog id _ {error=message failure}
-        Right uri -> modifyDialog id \current -> current {fields=D.put "qr" (D.text uri) current.fields}
+        Left failure -> E.modifyDialog id _ {error=message failure}
+        Right uri -> E.modifyDialog id \current -> current {fields=D.put "qr" (D.text uri) current.fields}
       _ -> pure unit
   Install -> yes $ dispatch $ OpenDialog M.Installation D.empty
   _ -> pure false
   where
   yes operation = operation *> pure true
-  modifyDialog id f = H.modify_ \m -> m {dialog=map (\d -> if d.identity == id then f d else d) m.dialog}
   enter record = do
     m <- H.get
     E.captureScroll

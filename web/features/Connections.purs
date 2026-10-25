@@ -18,18 +18,17 @@ import Libs4.Browser as B
 import Sapiens.Data as D
 import Sapiens.Remote as R
 
-type Runtime = { clients :: Ref.Ref (O.Object R.Transport), credentials :: Ref.Ref (O.Object Json), disposers :: Ref.Ref (Array (Effect Unit)), camera :: Ref.Ref (Maybe B.Camera), pendingPair :: Ref.Ref (Maybe R.Transport), pendingPairId :: Ref.Ref String }
+type Runtime = { clients :: Ref.Ref (O.Object R.Transport), credentials :: Ref.Ref (O.Object Json), camera :: Ref.Ref (Maybe B.Camera), pendingPair :: Ref.Ref (Maybe R.Transport), pendingPairId :: Ref.Ref String }
 type Registry = { records :: Array Json, localAvailable :: Boolean }
 
 create :: Effect Runtime
 create = do
   clients <- Ref.new O.empty
   credentials <- Ref.new O.empty
-  disposers <- Ref.new []
   camera <- Ref.new Nothing
   pendingPair <- Ref.new Nothing
   pendingPairId <- Ref.new ""
-  pure {clients,credentials,disposers,camera,pendingPair,pendingPairId}
+  pure {clients,credentials,camera,pendingPair,pendingPairId}
 
 read :: String -> Effect Json
 read key = D.parse <$> B.storageRead key
@@ -44,7 +43,7 @@ write key value = do
 
 json :: String -> String -> Json -> Aff Json
 json path method body = do
-  response <- toAffE $ B.request path method (if method == "GET" || method == "HEAD" then "" else D.encode body) $ D.obj [Tuple "Content-Type" (D.text "application/json"),Tuple "X-Sapiens-Local" (D.text "1")]
+  response <- toAffE $ B.request path method (if method == "GET" || method == "HEAD" then "" else D.encode body) $ D.json {"Content-Type": "application/json", "X-Sapiens-Local": "1"}
   let value = D.parse $ D.s "text" response
   when (D.n "status" response < 200.0 || D.n "status" response >= 300.0) $ throwError $ error $ D.fallback "Request failed" (D.s "error" value)
   unless (D.valid value) $ throwError $ error "Invalid host response"
@@ -74,7 +73,7 @@ registry :: Runtime -> Boolean -> String -> Aff Registry
 registry runtime remote origin = if remote then do
   saved <- A.filter ((_ == origin) <<< D.s "relay") <$> R.sessions
   liftEffect $ Ref.write (O.fromFoldable $ map (\s -> Tuple (R.sessionKey s) s) saved) runtime.credentials
-  pure {records:map (\s -> D.merge (D.get "corpora" s) $ D.obj [Tuple "key" (D.text $ R.sessionKey s),Tuple "location" (D.text "Remote")]) saved,localAvailable:false}
+  pure {records:map (\s -> D.merge (D.get "corpora" s) $ D.json {key: R.sessionKey s, location: "Remote"}) saved,localAvailable:false}
   else do
     data_ <- json "/api/host" "GET" D.null
     pure {records:map (\r -> D.put "key" (D.get "id" r) r) (D.rows "corpora" data_),localAvailable:D.b "local_available" data_}
@@ -102,8 +101,8 @@ lifecycle runtime remote record action = do
   info <- request runtime remote record "/api/corpora" "GET" D.null
   operation <- liftEffect B.uuid
   now <- liftEffect B.now
-  let intent = D.obj [Tuple "action" (D.text action),Tuple "revision" (D.get "revision" info),Tuple "operation" (D.text operation)]
-  void $ liftEffect $ write "s4.lifecycle.pending" $ D.merge intent $ D.obj [Tuple "key" (D.get "key" record),Tuple "expiresAt" (D.number $ now + 30000.0)]
+  let intent = D.json {action, revision: D.get "revision" info, operation}
+  void $ liftEffect $ write "s4.lifecycle.pending" $ D.merge intent $ D.json {key: D.get "key" record, expiresAt: now + 30000.0}
   result <- request runtime remote record "/api/corpora/lifecycle" "PUT" intent >>= wait 10
   void $ liftEffect $ write "s4.lifecycle.pending" D.null
   pure result
@@ -157,11 +156,10 @@ register runtime transport = do
     Ref.modify_ (O.insert key transport) runtime.clients
     Ref.modify_ (O.insert key session) runtime.credentials
     Ref.write Nothing runtime.pendingPair
-  pure $ D.merge (D.get "corpora" session) $ D.obj [Tuple "key" (D.text key),Tuple "location" (D.text "Remote")]
+  pure $ D.merge (D.get "corpora" session) $ D.json {key, location: "Remote"}
 
 dispose :: Runtime -> Effect Unit
 dispose runtime = do
-  Ref.read runtime.disposers >>= traverse_ identity
   Ref.read runtime.clients >>= traverse_ R.close <<< O.values
   Ref.read runtime.camera >>= traverse_ B.cameraStop
   Ref.read runtime.pendingPair >>= traverse_ R.close

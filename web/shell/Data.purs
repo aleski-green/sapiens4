@@ -3,6 +3,7 @@ module Sapiens.Data where
 import Prelude
 import Data.Argonaut.Core (Json, jsonNull, fromString, fromBoolean, fromNumber, fromArray, fromObject, toString, toBoolean, toNumber, toArray, toObject, stringify)
 import Data.Argonaut.Parser (jsonParser)
+import Data.Argonaut.Encode (class EncodeJson, encodeJson)
 import Data.Array as A
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
@@ -49,6 +50,9 @@ rows key = arr <<< get key
 
 obj :: Array (Tuple String Json) -> Json
 obj = fromObject <<< O.fromFoldable
+
+json :: forall a. EncodeJson a => a -> Json
+json = encodeJson
 
 put :: String -> Json -> Json -> Json
 put key value = fromObject <<< O.insert key value <<< fromMaybe O.empty <<< toObject

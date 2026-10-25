@@ -22,13 +22,13 @@ color value = if D.matches "^#[a-fA-F0-9]{6}$" value then value else "#74b9ed"
 
 avatar :: Json -> String -> Boolean -> V.Html
 avatar a size presence = V.node "span" [V.cls $ "avatar " <> (if M.isGroup a then "group-avatar " else "") <> size,V.style (if M.isGroup a then "background:linear-gradient(90deg," <> bands <> ")" else "--avatar-color:" <> color (D.s "color" a)),V.attr "aria-hidden" "true"]
-  [V.node "span" [] [V.text $ "(" <> D.s "face" a <> ")"],V.when presence $ V.node "i" [V.cls $ "presence " <> if D.s "status" a == "busy" then "busy" else ""] []]
+  [V.span [] ("(" <> D.s "face" a <> ")"),V.when presence $ V.node "i" [V.cls $ "presence " <> if D.s "status" a == "busy" then "busy" else ""] []]
   where
   colors = if A.null $ D.rows "stripes" a then [D.s "color" a] else D.strings $ D.get "stripes" a
   bands = S.joinWith "," $ A.mapWithIndex (\i c -> color c <> " " <> show (i * 100 / A.length colors) <> "% " <> show ((i + 1) * 100 / A.length colors) <> "%") colors
 
 mention :: M.Model -> String -> V.Html
-mention m id = let a = D.find id m.agents in if D.valid a then V.node "button" [V.attr "type" "button",V.cls "entity-mention",V.label $ "Open chat with " <> D.s "name" a,V.click $ Select id] [V.text $ "@" <> D.s "name" a] else V.text $ if id == "you" then "You" else id
+mention m id = let a = D.find id m.agents in if D.valid a then V.control [V.cls "entity-mention",V.label $ "Open chat with " <> D.s "name" a] ("@" <> D.s "name" a) (Select id) else V.text $ if id == "you" then "You" else id
 
 groupLabels :: M.Model -> Json -> Boolean -> V.Html
 groupLabels m sapi compact = V.node "span" [V.cls $ "group-labels " <> if compact then "compact" else "",V.style $ "--label-count:" <> show (A.length groups) <> ";--label-step:22px;--label-min:22px"] $ map chip groups
@@ -36,7 +36,7 @@ groupLabels m sapi compact = V.node "span" [V.cls $ "group-labels " <> if compac
   groups = A.filter (\g -> M.isGroup g && not (D.b "archived" g) && D.has (D.s "id" sapi) (D.get "members" g)) m.agents
   chip g = let lead = D.s "lead" g == D.s "id" sapi
                title = D.s "name" g <> if lead then " · Lead" else ""
-           in V.node "button" [V.attr "type" "button",V.cls "group-chip",V.style $ "--group-color:" <> color (D.s "color" g),V.label title,V.attr "title" title,V.click $ Select $ D.s "id" g] [V.node "span" [] [V.text $ (if compact then S.take 1 $ D.s "name" g else D.s "name" g) <> if lead then "★" else ""]]
+           in V.node "button" [V.attr "type" "button",V.cls "group-chip",V.style $ "--group-color:" <> color (D.s "color" g),V.label title,V.attr "title" title,V.click $ Select $ D.s "id" g] [V.span [] ((if compact then S.take 1 $ D.s "name" g else D.s "name" g) <> if lead then "★" else "")]
 
 type Match = { before :: String, full :: String, groups :: Array String, after :: String }
 
@@ -66,8 +66,8 @@ mentions m value = if A.null m.agents then [V.text value] else case matchWith un
 
 link :: String -> String -> V.Html
 link destination caption =
-  if S.take 1 destination == "/" || S.take 7 destination == "file://" then V.node "button" [V.attr "type" "button",V.cls "entity-mention",V.click $ Browser "open" $ D.obj [Tuple (if S.take 7 destination == "file://" then "url" else "path") (D.text destination)]] [V.text $ D.fallback destination caption]
-  else if A.elem (D.s "protocol" url) ["http:","https:"] then V.node "a" [V.cls "chat-link",V.attr "href" (D.s "href" url),V.attr "title" destination,V.attr "target" "_blank",V.attr "rel" "noopener noreferrer",V.on "click" \event -> Link event (OpenLink $ D.s "href" url)] [V.text $ label <> " ↗"]
+  if S.take 1 destination == "/" || S.take 7 destination == "file://" then V.control [V.cls "entity-mention"] (D.fallback destination caption) (Browser "open" $ D.obj [Tuple (if S.take 7 destination == "file://" then "url" else "path") (D.text destination)])
+  else if A.elem (D.s "protocol" url) ["http:","https:"] then V.textNode "a" [V.cls "chat-link",V.attr "href" (D.s "href" url),V.attr "title" destination,V.attr "target" "_blank",V.attr "rel" "noopener noreferrer",V.on "click" \event -> Link event (OpenLink $ D.s "href" url)] (label <> " ↗")
   else V.text $ D.fallback destination caption
   where
   url = B.parseURL "about:blank" destination
@@ -95,7 +95,7 @@ format m value = go (collect value) value
   token hit =
     let g i = fromMaybe "" $ A.index hit.groups i
     in if g 1 /= "" then [link (D.fallback (g 3) $ g 2) (g 1)]
-    else if g 4 /= "" then [V.node "code" [] [V.text $ g 4]]
+    else if g 4 /= "" then [V.textNode "code" [] (g 4)]
     else if g 5 /= "" then [V.node "strong" [] $ mentions m $ g 5]
     else if g 6 /= "" then [V.text hit.full]
     else let url = trimURL $ D.replace "[.,;:!?]+$" "" hit.full in [link url "",V.text $ CU.drop (CU.length url) hit.full]
@@ -104,10 +104,10 @@ paragraphs :: M.Model -> String -> Array V.Html
 paragraphs m = map (V.node "p" [] <<< A.intercalate [V.node "br" [] []] <<< map (format m) <<< S.split (S.Pattern "\n")) <<< S.split (S.Pattern "\n\n")
 
 time :: String -> String
-time = B.formatDate "" $ D.obj [Tuple "hour" (D.text "2-digit"),Tuple "minute" (D.text "2-digit")]
+time = B.formatDate "" $ D.json {hour: "2-digit", minute: "2-digit"}
 
 attachment :: Json -> V.Html
-attachment item = if D.s "kind" item == "link" then V.link (D.s "value" item) (caption <> " ↗") else V.node "span" [V.cls "attachment-item",V.attr "title" (D.s "value" item)] [V.text caption]
+attachment item = if D.s "kind" item == "link" then V.link (D.s "value" item) (caption <> " ↗") else V.span [V.cls "attachment-item",V.attr "title" (D.s "value" item)] (caption)
   where
   kind = D.s "kind" item
   caption = S.toUpper (S.take 1 kind) <> S.drop 1 kind <> " · " <> D.s "name" item

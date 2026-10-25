@@ -39,10 +39,20 @@ draft. Dialog results carry dialog identities. Native browser reports are queued
 and serialized, and workspace revisions reject stale snapshots. Corpora changes
 start a new epoch and restore preferences from that corpora's local cache.
 
-Halogen manages rendering and subscriptions. The application disposes global
-listeners, remote clients and camera resources when unmounted. PureScript also
+Halogen manages rendering and subscriptions. Global event emitters return their
+cleanup effects directly to Halogen; no separate listener registry is needed.
+Input values and checkbox changes use Halogen's event decoders. The application
+disposes remote clients and camera resources when unmounted. PureScript also
 owns relay authentication, encrypted request routing, reconnect handling,
 invitation validation, local persistence and service-worker cache policy.
+
+Document, preview and image requests keep their continuations beside the request
+inside `HalogenM` forks. Shared epoch guards reject responses from an earlier
+corpora; document sequence and preview-path checks still distinguish overlapping
+requests. These local completions do not need separate shell action constructors.
+Reusable pure view functions supply text nodes and button behavior. Outbound JSON
+uses Argonaut record encoding where the keys are fixed; dynamic dictionaries keep
+their explicit keys. Host response validation remains at the boundary.
 
 ## Foreign interfaces
 
@@ -92,9 +102,24 @@ and report new shared foreign bindings separately and in the total. Exclude
 compiler output and third-party source. Types, explicit effects and error handling
 may increase source size even when duplicated rendering machinery is removed.
 
-Compared with `d4ae491` using `o200k_base` (per UTF-8 source file):
+Compared with `d4ae491` using `o200k_base` (per UTF-8 source file, including
+whitespace; generated bundles and third-party source excluded):
 
-| Source | Before | After | Change |
-| --- | ---: | ---: | ---: |
-| UI application source | 47,142 | 59,872 | +27.0% |
-| UI plus new shared bindings | 47,142 | 64,175 | +36.13% |
+| Source | JavaScript | Initial migration (`f34056e`) | Refactored | Change vs JavaScript |
+| --- | ---: | ---: | ---: | ---: |
+| UI application source | 47,142 | 59,872 | 57,553 | +22.08% |
+| UI plus new shared bindings | 47,142 | 64,175 | 61,856 | +31.21% |
+
+The initial increase was 12,730 application tokens plus 4,303 shared binding
+tokens. The migration introduced type declarations, imports, explicit effects and
+rendering syntax while retaining manual JSON assembly and completion dispatch.
+The abstraction pass removes 2,319 tokens (3.61%) from that combined total, while
+also preserving the subsequently merged Windows scroll fix. Against its immediate
+parent `179b141`, the reduction is 2,364 tokens (3.68%). Bindings remain in the
+measurement, and no application code was moved into libs4 to obtain the reduction.
+
+Source compression does not imply a smaller executable: esbuild reports the main
+bundle at approximately 322.3 KiB versus 318.5 KiB for the initial migration.
+Generic record encoding introduces compiled instances. Further component splits
+should be justified by independent state, reuse or lifecycle ownership; slots,
+inputs and outputs can add source instead of reducing it.
