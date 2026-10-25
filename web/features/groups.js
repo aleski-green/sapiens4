@@ -69,7 +69,6 @@ function renderGroupPanel(host) {
   }
   renderAttachment();
 }
-let scheduledPeriod='upcoming', groupTaskFilter='active', workView='tasks', chatView='conversation', updatesView='events';
 function groupCallTasks(group) {
   const states={queued:'Queued',running:'Running',output_pending:'Running',done:'Completed',warning:'Completed',failed:'Failed',interrupted:'Interrupted',cancelled:'Cancelled'};
   return (group.requests||[]).filter(r=>!r.task).slice().reverse().map(r=>{
@@ -79,44 +78,15 @@ function groupCallTasks(group) {
       body:`objective: ${JSON.stringify(title)}\nassignee: ${JSON.stringify(agent(r.target).name)}\n`,result:result?.text,error:r.error};
   });
 }
-function selectDefaultWorkView() {
-  const group=selected().kind==='group';
-  const states=group?groupCallTasks(selected()).map(t=>t.state):(live.workloads||[]).filter(w=>!w.origin?.group&&w.participants.includes(state.selected)).map(w=>w.state);
-  const groups=group?[selected()]:[];
-  for(const g of groups)for(const task of g.tasks||[]) {
-    if(!task.deleted&&(group||task.assignee===state.selected))states.push(task.state==='done'?'Completed':'Queued');
-  }
-  taskPeriod='upcoming';groupTaskFilter='active';scheduledPeriod='upcoming';
-  if(states.some(status=>!pastTaskStates.has(status)))workView='tasks';
-  else if((live.routines||[]).some(r=>r.owner===state.selected&&!r.paused))workView='routine-scheduled';
-  else if(states.length){workView='tasks';taskPeriod='past';groupTaskFilter='done';}
-  else workView='memo';
+function defaultWorkActivity() {
+  const group=selected().kind==='group'?selected():null;
+  const states=group?groupCallTasks(group).map(t=>t.state):(live.workloads||[]).filter(w=>!w.origin?.group&&w.participants.includes(state.selected)).map(w=>w.state);
+  for(const task of group?.tasks||[])if(!task.deleted)states.push(task.state==='done'?'Completed':'Queued');
+  if(states.some(status=>!pastTaskStates.has(status)))return {view:'tasks'};
+  if((live.routines||[]).some(r=>r.owner===state.selected&&!r.paused))return {view:'routine-scheduled'};
+  return states.length?{view:'tasks',period:'past'}:{view:'memo'};
 }
 const openGroupTasks=new Set();
-const activityLabels={conversation:'Conversation',pins:'Pins',threads:'Threads',comments:'Comments',events:'Events',records:'Records'};
-// Stable view IDs distinguish Composer workflows from goal-specific composers.
-const workNavigation=[
-  {id:'memo',label:'Memo'},
-  {id:'tasks',label:'Tasks',children:[
-    {id:'tasks-call',label:'Call'},{id:'tasks-backlog',label:'Backlog'},{id:'tasks-automated',label:'Automated'}]},
-  {id:'automation',label:'Automation',children:[
-    {id:'routine',label:'Routines',children:[
-      {id:'routine-scheduled',label:'Scheduled'},{id:'routine-callback',label:'Callbacks'},{id:'routine-job',label:'Jobs'}]},
-    {id:'workflows',label:'Workflows',children:[
-      {id:'workflow-agentic',label:'Agentic'},{id:'workflow-pipeline',label:'Pipelines'},{id:'workflow-composer',label:'Composers'}]},
-    {id:'composer',label:'Composers',children:[
-      {id:'composer-workflow',label:'Workflow'},{id:'composer-routine',label:'Routine'},{id:'composer-call',label:'Call'}]}
-  ]}
-];
-const workPaths={};
-function indexWorkNavigation(nodes,path=[]) {
-  for(const node of nodes) {
-    activityLabels[node.id]=node.label;
-    workPaths[node.id]=[...path,node];
-    if(node.children)indexWorkNavigation(node.children,workPaths[node.id]);
-  }
-}
-indexWorkNavigation(workNavigation);
 const activityChevron = sideways => `<svg class="activity-chevron${sideways?' sideways':''}" viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true" focusable="false"><path d="m4.5 6.25 3.5 3.5 3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 function closeActivityMenus() {
   document.querySelectorAll('.activity-menu').forEach(menu=>menu.hidden=true);
@@ -124,7 +94,7 @@ function closeActivityMenus() {
 }
 function renderActivityNavigation() {
   const nav=$('.conversation-tabs'), group=selected().kind==='group';
-  const view=state.panel==='work'?workView:state.panel==='updates'?updatesView:chatView;
+  const view=state.view;
   const item=(name,panel)=>`<button data-activity-view="${name}" data-activity-panel="${panel}" class="${view===name?'selected':''}" aria-pressed="${view===name}">${activityLabels[name]}</button>`;
   const workMenu=workNavigation.map(node=>{
     if(!node.children)return item(node.id,'work');
@@ -139,7 +109,7 @@ function renderActivityNavigation() {
   if(nav.dataset.view!==html){nav.innerHTML=html;nav.dataset.view=html;}
   let bar=$('#activity-viewbar');
   if(!bar){bar=document.createElement('div');bar.id='activity-viewbar';nav.after(bar);}
-  bar.hidden=state.panel==='updates'||(state.panel==='work'&&workView==='memo')||(state.panel==='chat'&&chatView==='conversation');
+  bar.hidden=state.panel==='updates'||(state.panel==='work'&&state.view==='memo')||(state.panel==='chat'&&state.view==='conversation');
   let detail=`<span class="activity-view-title">${activityLabels[view]||''}</span>`;
   if(state.panel==='work') {
     const path=workPaths[view]||[];
@@ -149,23 +119,23 @@ function renderActivityNavigation() {
       detail=`<span class="activity-view-title">${path.slice(0,-1).map(node=>node.label).join(' / ')} /</span><div class="activity-view-menu"><button data-activity-menu="activity-category-menu" aria-expanded="false" aria-controls="activity-category-menu" aria-label="${category.label} views">${path[2].label} ${activityChevron(false)}</button><div class="activity-menu" id="activity-category-menu" hidden>${category.children.map(node=>item(node.id,'work')).join('')}</div></div>`;
     }
   }
-  if(state.panel==='work'&&['tasks','tasks-automated','routine-scheduled'].includes(workView)) {
-    const scheduled=workView==='routine-scheduled',groupTasks=group&&!scheduled;
-    const options=scheduled?[['upcoming','Planned'],['paused','Paused']]:groupTasks?[['active','Planned'],['done','Executed'],['deleted','Deleted']]:[['upcoming','Planned'],['past','Executed']];
-    const filter=scheduled?scheduledPeriod:groupTasks?groupTaskFilter:taskPeriod;
+  if(state.panel==='work'&&['tasks','tasks-automated','routine-scheduled'].includes(state.view)) {
+    const scheduled=state.view==='routine-scheduled',groupTasks=group&&!scheduled;
+    const options=scheduled?[['upcoming','Planned'],['paused','Paused']]:groupTasks?[['upcoming','Planned'],['past','Executed'],['deleted','Deleted']]:[['upcoming','Planned'],['past','Executed']];
+    const filter=state.period;
     detail+=`<div class="work-nav-tools"><div class="activity-view-menu"><button data-activity-menu="activity-task-filter" aria-expanded="false" aria-controls="activity-task-filter" aria-label="${scheduled?'Routine history':group?'Task status':'Task history'}">${options.find(([value])=>value===filter)[1]} ${activityChevron(false)}</button><div class="activity-menu" id="activity-task-filter" hidden>${options.map(([value,label])=>`<button data-work-filter="${value}" class="${value===filter?'selected':''}" aria-pressed="${value===filter}">${label}</button>`).join('')}</div></div>${!selected().archived?'<button data-new-task>+ New</button>':''}</div>`;
   }
   if(bar.dataset.view!==detail){bar.innerHTML=detail;bar.dataset.view=detail;}
 }
 function renderChatCollection(host) {
-  if(state.panel!=='chat'||chatView==='conversation')return false;
+  if(state.panel!=='chat'||state.view==='conversation')return false;
   host.classList.remove('notes-view');
   $('#composer-area').hidden=true;
-  host.innerHTML=`<p class="empty">${activityLabels[chatView]} are not available yet.</p>`;
+  host.innerHTML=`<p class="empty">${activityLabels[state.view]} are not available yet.</p>`;
   return true;
 }
 function prepareActivityFeedback() {
-  state.panel='chat';chatView='conversation';closeActivityMenus();renderConversation();
+  dispatchUI({type:'Navigate',panel:'chat'});
   const input=$('#message-input');
   // Preserve an unfinished request; feedback is a draft and is never auto-sent.
   input.value=input.value?input.value+'\n\nFeedback: ':'Feedback: ';
@@ -189,14 +159,7 @@ document.addEventListener('click',e=>{
     menu.hidden=!opening;button.setAttribute('aria-expanded',String(opening));return;
   }
   if(d?.activityView) {
-    closeActivityMenus();state.panel=d.activityPanel;
-    if(state.panel==='work') {
-      const path=workPaths[d.activityView]||[],node=path.at(-1);
-      workView=path.length===2&&node.children?node.children[0].id:d.activityView;
-    }
-    else if(state.panel==='chat')chatView=d.activityView;
-    else updatesView=d.activityView;
-    renderConversation();save();return;
+    dispatchUI({type:'Navigate',panel:d.activityPanel,view:d.activityView});return;
   }
   if(d&&'activityFeedback' in d){prepareActivityFeedback();return;}
   if(!e.target.closest('.activity-menu'))closeActivityMenus();
@@ -224,26 +187,26 @@ function groupTaskCard(group, task) {
 }
 function renderScheduledRoutines(host) {
   const routines=(live.routines||[]).filter(r=>r.owner===state.selected);
-  const key=JSON.stringify([state.selected,scheduledPeriod,routines]);
+  const key=JSON.stringify([state.selected,state.period,routines]);
   if(host.firstElementChild?.taskViewKey===key)return;
-  const view=taskElement('section','task-browser');view.taskViewKey=key;
-  const list=taskElement('div','task-list');
-  const planned=scheduledPeriod==='upcoming';
+  const view=element('section','task-browser');view.taskViewKey=key;
+  const list=element('div','task-list');
+  const planned=state.period==='upcoming';
   list.setAttribute('aria-label',`${planned?'Planned':'Paused'} scheduled routines`);
   const rows=routines.filter(r=>Boolean(r.paused)!==planned).map(r=>({id:r.id,title:r.title,state:r.paused?'Paused':'Planned',owner:r.owner,sender:r.owner,
     reference:'@'+r.id,editRoutine:r.id,routineAction:r.paused?'resume':'pause',runCount:r.runCount||0,
     meta:`Every ${r.minutes} minutes${r.paused?'':` · ${new Date(r.nextDue).toLocaleString()}`}`,
     body:`Frequency: every ${r.minutes} minutes\nExecute: ${r.prompt}`}));
   if(!rows.length){
-    const empty=taskElement('div','task-empty');
-    empty.append(taskElement('p','',planned?'No planned routines':'No paused routines'),
-      taskElement('small','',planned?'Create a scheduled routine through chat.':'Paused routines will appear here.'));
+    const empty=element('div','task-empty');
+    empty.append(element('p','',planned?'No planned routines':'No paused routines'),
+      element('small','',planned?'Create a scheduled routine through chat.':'Paused routines will appear here.'));
     list.append(empty);
   }else rows.forEach(row=>list.append(taskRow(row,state.selected)));
   view.append(list);host.replaceChildren(view);
 }
 function workDraft(preset, placeholder) {
-  state.panel='chat';chatView='conversation';renderConversation();
+  dispatchUI({type:'Navigate',panel:'chat'});
   const input=$('#message-input'),start=input.value.length+(input.value?2:0);
   input.value=input.value?input.value+'\n\n'+preset:preset;
   state.drafts ??= {};state.drafts[state.selected]=input.value;
@@ -254,10 +217,10 @@ function workDraft(preset, placeholder) {
 }
 function renderGroupTasks(host, group) {
   host.querySelectorAll('[data-open-group-task]').forEach(row=>row.open?openGroupTasks.add(row.dataset.openGroupTask):openGroupTasks.delete(row.dataset.openGroupTask));
-  host.innerHTML=`<section class="group-work"><div class="group-task-list">${group.tasks.filter(t=>workView!=='tasks-automated'||t.taskType==='automated').filter(t=>groupTaskFilter==='deleted'?t.deleted:!t.deleted&&(groupTaskFilter==='done'?t.state==='done':t.state!=='done')).map(t=>groupTaskCard(group,t)).join('')}</div></section>`;
+  host.innerHTML=`<section class="group-work"><div class="group-task-list">${group.tasks.filter(t=>state.view!=='tasks-automated'||t.taskType==='automated').filter(t=>state.period==='deleted'?t.deleted:!t.deleted&&(state.period==='past'?t.state==='done':t.state!=='done')).map(t=>groupTaskCard(group,t)).join('')}</div></section>`;
   const list=host.querySelector('.group-task-list');
-  if(workView!=='tasks-automated'&&groupTaskFilter!=='deleted')for(const task of groupCallTasks(group)) {
-    if(pastTaskStates.has(task.state)===(groupTaskFilter==='done'))list.append(taskRow(task,group.id));
+  if(state.view!=='tasks-automated'&&state.period!=='deleted')for(const task of groupCallTasks(group)) {
+    if(pastTaskStates.has(task.state)===(state.period==='past'))list.append(taskRow(task,group.id));
   }
   if(!list.children.length)list.innerHTML='<p class="empty">No tasks here yet.</p>';
 }
@@ -309,25 +272,25 @@ function renderWork(host) {
   const group=selected().kind==='group'?selected():null;
   if(state.panel==='updates'){renderUpdates(host,group);return;}
   // Preserve loaded task/Memo DOM between polling snapshots.
-  const key=state.selected+':'+workView;
+  const key=state.selected+':'+state.view;
   if(host.dataset.work!==key||!host.querySelector('#work-content')) {
     host.dataset.work=key;
     host.innerHTML='<div id="work-content"></div>';
   }
   const content=host.querySelector('#work-content');
-  host.classList.toggle('notes-view',workView==='memo');
-  if(workView==='memo') {
+  host.classList.toggle('notes-view',state.view==='memo');
+  if(state.view==='memo') {
     if(group?.notes?.revision==='missing')content.innerHTML='<p class="empty">No shared Memo yet.</p>';
     else renderNotes(content);
-  } else if(workView==='routine-scheduled')renderScheduledRoutines(content);
-  else if(!['tasks','tasks-automated'].includes(workView))content.innerHTML=`<p class="empty">${activityLabels[workView]} is not available yet.</p>`;
+  } else if(state.view==='routine-scheduled')renderScheduledRoutines(content);
+  else if(!['tasks','tasks-automated'].includes(state.view))content.innerHTML=`<p class="empty">${activityLabels[state.view]} is not available yet.</p>`;
   else if(group)renderGroupTasks(content,group);
   else renderTasks(content);
 }
 document.addEventListener('click',async e=>{
   const b=e.target.closest('button');if(!b)return;const d=b.dataset;
   if('newTask' in d) {
-    const scheduled=workView==='routine-scheduled';
+    const scheduled=state.view==='routine-scheduled';
     workDraft(scheduled?'Add New Scheduled Routine:\nFrequency: every XXX minutes\nExecute: PROMPT':'Add New Task: TODO',scheduled?'XXX':'TODO');return;
   }
   if(d.runRoutine) {
@@ -347,10 +310,7 @@ document.addEventListener('click',async e=>{
     return;
   }
   if(d.workFilter) {
-    closeActivityMenus();
-    if(workView==='routine-scheduled')scheduledPeriod=d.workFilter;
-    else if(selected().kind==='group')groupTaskFilter=d.workFilter;else taskPeriod=d.workFilter;
-    renderConversation();return;
+    dispatchUI({type:'Filter',period:d.workFilter});return;
   }
   if(d.groupTask){const group=agent(d.group);taskDialog(group,group.tasks.find(t=>t.id===d.groupTask));return;}
   if(!d.groupArchive&&!d.taskRun&&!d.groupCall)return;

@@ -15,7 +15,10 @@ const ctx=vm.createContext({document:window.document,FormData:window.FormData,CS
   modal:(title,content)=>{window.document.querySelector('#dialog').innerHTML=content;},closeModal:()=>{},toast:()=>{},openChat:()=>{},
   api:async(path,method,data)=>{calls.push({path,method,data});return group;},refresh:async()=>{refreshed++;},render:()=>{},renderConversation:()=>{},
   renderNotes:host=>host.textContent='Memo',renderTasks:host=>host.textContent='Personal tasks'});
+vm.runInContext(fs.readFileSync('web/shell/ui.js','utf8'),ctx);
 vm.runInContext(fs.readFileSync('web/features/groups.js','utf8'),ctx);
+const shell=fs.readFileSync('web/shell/app.js','utf8');
+vm.runInContext(shell.slice(shell.indexOf('function dispatchUI('),shell.indexOf('function openChat(')),ctx);
 const host=window.document.querySelector('#conversation-body');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 (async()=>{
@@ -48,7 +51,7 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
   const edit=window.document.querySelector('#group-task-form');edit.elements.title.value='Edited';
   edit.dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true}));await tick();
   assert.equal(calls.at(-1).method,'PUT');assert.equal(calls.at(-1).data.revision,7);assert.equal(calls.at(-1).data.title,'Edited');
-  state.panel='work';ctx.renderGroupPanel(host);ctx.renderActivityNavigation();
+  state.panel='work';state.view='tasks';state.period='upcoming';ctx.renderGroupPanel(host);ctx.renderActivityNavigation();
   const nav=window.document.querySelector('.conversation-tabs');
   assert.deepEqual([...nav.querySelectorAll('[data-activity-panel=work]')].map(b=>b.textContent),['Memo','Tasks','Call','Backlog','Automated','Automation','Routines','Workflows','Composers']);
   assert.ok(nav.querySelector('[data-panel=work]'));
@@ -56,9 +59,9 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
   assert.equal(host.querySelector('.task-row').open,false);
   host.querySelector('.task-row').open=true;await tick();ctx.renderGroupPanel(host);
   assert.equal(host.querySelector('.task-row').open,true);
-  window.document.querySelector('[data-work-filter=done]').click();ctx.renderGroupPanel(host);
+  window.document.querySelector('[data-work-filter=past]').click();ctx.renderGroupPanel(host);
   assert.doesNotMatch(host.textContent,/Shared task/);
-  window.document.querySelector('[data-work-filter=active]').click();
+  window.document.querySelector('[data-work-filter=upcoming]').click();
   nav.querySelector('[data-activity-view=memo]').click();ctx.renderGroupPanel(host);assert.equal(host.querySelector('#work-content').textContent,'Memo');
   nav.querySelector('[data-activity-view=automation]').click();ctx.renderGroupPanel(host);ctx.renderActivityNavigation();
   assert.match(host.textContent,/not available yet/);assert.equal(window.document.querySelector('[data-new-group-task]'),null);

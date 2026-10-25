@@ -31,7 +31,7 @@ function notesWiki(source, path, owner, profile = {}, metadata = {}, turnCount =
     throw new Error('Notes.html requires exactly three sections: about, map, content.');
   const ids = [...template.content.querySelectorAll('[id]')].map(node => node.id);
   if (new Set(ids).size !== ids.length) throw new Error('Notes.html section anchors must be unique.');
-  const root = document.createElement('div'); root.className = 'notes-wiki';
+  const root = element('div', 'notes-wiki');
   const tags = new Set('section article nav div p span h2 h3 h4 blockquote sup sub pre code a img table thead tbody tfoot tr td th caption ul ol li dl dt dd details summary figure figcaption strong em b i small br hr'.split(' '));
   function copy(node) {
     if (node.nodeType === 3) return document.createTextNode(node.textContent);
@@ -107,7 +107,7 @@ function notesWiki(source, path, owner, profile = {}, metadata = {}, turnCount =
 function memoFacts(code) {
   const lines = code.textContent.trim().split('\n');
   if (!lines.length || !lines.every(line => !line.trim() || /^\s*(?:[\w-]+\s*:|[-#] |[ \t]+\S)/.test(line))) return null;
-  const fragment = document.createElement('div'); fragment.className = 'memo-facts';
+  const fragment = element('div', 'memo-facts');
   const scalar = value => {
     try { const parsed = JSON.parse(value); if (typeof parsed === 'string') return parsed; } catch {}
     return value;
@@ -117,7 +117,7 @@ function memoFacts(code) {
     const p = document.createElement('p');
     if (match) {
       const label = match[2].replace(/_/g,' '), value = match[3];
-      const strong = document.createElement('strong'); strong.textContent = label + ': ';
+      const strong = element('strong', '', label + ': ');
       p.append(strong);
       if (/^[|>][+-]?$/.test(value)) {
         const block = [];
@@ -146,7 +146,7 @@ function presentMemo(root, profile, metadata, turnCount) {
   });
   // Preserve links into unrecorded fields as one compact empty-memory section.
   if (emptyIds.size) {
-    const stub = document.createElement('aside'); stub.className = 'memo-unrecorded';
+    const stub = element('aside', 'memo-unrecorded');
     stub.textContent = 'Unrecorded fields have no saved content yet.';
     for (const id of emptyIds) { const anchor = document.createElement('span'); anchor.id = id; stub.append(anchor); }
     content.append(stub);
@@ -156,7 +156,7 @@ function presentMemo(root, profile, metadata, turnCount) {
     section.append(...node.childNodes); node.replaceWith(section);
   });
   root.querySelectorAll('summary').forEach(node => {
-    const heading = document.createElement('h3'); heading.textContent = node.textContent; node.replaceWith(heading);
+    const heading = element('h3', '', node.textContent); node.replaceWith(heading);
   });
   root.querySelectorAll('pre > code[data-language="yaml"]').forEach(code => {
     const facts = memoFacts(code); if (facts) code.parentElement.replaceWith(facts);
@@ -165,7 +165,7 @@ function presentMemo(root, profile, metadata, turnCount) {
   const named = new Map([...map.querySelectorAll('[data-note-anchor]')].map(a=>[a.dataset.noteAnchor,a.textContent]));
   for (const article of content.querySelectorAll(':scope > article')) {
     if (!article.querySelector(':scope > h2')) {
-      const h2 = document.createElement('h2'); h2.textContent = named.get(article.id) || label(article.id); article.prepend(h2);
+      const h2 = element('h2', '', named.get(article.id) || label(article.id)); article.prepend(h2);
     }
   }
   const toc = document.createElement('nav'); toc.id = map.id; toc.className = 'memo-toc'; toc.setAttribute('aria-label','Contents');
@@ -178,10 +178,10 @@ function presentMemo(root, profile, metadata, turnCount) {
     const li = document.createElement('li'), a = document.createElement('a');
     a.href = '#'+entry.id; a.dataset.noteAnchor = entry.id; a.textContent = entry.text; li.append(a); list.append(li);
   }
-  if (list.children.length > 1) { const title = document.createElement('strong'); title.textContent = 'Contents'; toc.append(title,list); map.replaceWith(toc); }
+  if (list.children.length > 1) { const title = element('strong', '', 'Contents'); toc.append(title,list); map.replaceWith(toc); }
   else map.remove();
-  const header = document.createElement('header'); header.className = 'memo-header';
-  const dates = document.createElement('p'); dates.className = 'memo-meta';
+  const header = element('header', 'memo-header');
+  const dates = element('p', 'memo-meta');
   function history(label, date, author) {
     const row = document.createElement('span');
     row.append(document.createTextNode(label+' '));
@@ -195,29 +195,27 @@ function presentMemo(root, profile, metadata, turnCount) {
       time.textContent = dateText+' · '+timeText+' '+zoneText; row.append(time);
     } else row.append(document.createTextNode('not recorded'));
     row.append(document.createTextNode(' by '));
-    const by = document.createElement('span'); by.className = 'memo-actor'; by.textContent = author || 'unrecorded actor'; row.append(by); dates.append(row);
+    const by = element('span', 'memo-actor', author || 'unrecorded actor'); row.append(by); dates.append(row);
   }
   history('Last modified at',metadata.modified_at,metadata.modified_by);
   history('Created at',metadata.created_at,metadata.created_by);
   header.append(dates); root.prepend(header);
-  const box = document.createElement('aside'); box.className = 'memo-infobox'; box.setAttribute('aria-label',displayName+' at a glance');
-  const identity = document.createElement('div'); identity.className = 'memo-identity';
-  const face = document.createElement('span'); face.className = 'memo-avatar'; face.textContent = '('+(profile.face || '◠‿◠')+')';
+  const box = element('aside', 'memo-infobox'); box.setAttribute('aria-label',displayName+' at a glance');
+  const identity = element('div', 'memo-identity');
+  const face = element('span', 'memo-avatar', '('+(profile.face || '◠‿◠')+')');
   face.style.backgroundColor = /^#[a-f0-9]{6}$/i.test(profile.color) ? profile.color : '#d8e5f4';
-  const name = document.createElement('strong'); name.textContent = displayName; identity.append(face,name); box.append(identity);
+  const name = element('strong', '', displayName); identity.append(face,name); box.append(identity);
   const table = document.createElement('table');
   for (const [key,value] of [['Full name',displayName !== profile.name ? profile.name : null],['Role',about.dataset.memoRole || profile.role],['Assists',about.dataset.memoAssists],['History',turnCount+' recorded turns'],[profile.kind==='group'?'Group ID':'Sapi ID',profile.id]]) {
     if (!value) continue;
-    const tr = document.createElement('tr'), th = document.createElement('th'), td = document.createElement('td');
-    th.textContent = key; td.textContent = value; if (key.endsWith(' ID')) td.className = 'memo-id'; tr.append(th,td); table.append(tr);
+    table.append(element('tr','',[element('th','',key),element('td',key.endsWith(' ID')?'memo-id':'',value)]));
   }
   box.append(table);
-  const workspace = document.createElement('div'); workspace.className = 'memo-workspace';
-  const workspaceLabel = document.createElement('strong'); workspaceLabel.textContent = 'Workspace';
-  const workspacePath = document.createElement('code'); workspacePath.textContent = metadata.workspace || metadata.path?.replace(/\/[^/]+$/,'') || 'Not recorded';
-  workspace.append(workspaceLabel,workspacePath); box.append(workspace); about.prepend(box); about.className = 'memo-lead';
+  box.append(element('div','memo-workspace',[element('strong','','Workspace'),
+    element('code','',metadata.workspace || metadata.path?.replace(/\/[^/]+$/,'') || 'Not recorded')]));
+  about.prepend(box); about.className = 'memo-lead';
   if (!content.querySelector('article,h2,h3,p,pre,table,img')) {
-    const p = document.createElement('p'); p.className = 'memo-stub'; p.textContent = 'This Memo is a stub. No populated memory entries have been saved yet.'; content.prepend(p);
+    const p = element('p', 'memo-stub', 'This Memo is a stub. No populated memory entries have been saved yet.'); content.prepend(p);
   }
 }
 function notesInfo(id) {return agent(id).kind==='group'?agent(id).notes:live.orchestration[id].notes;}

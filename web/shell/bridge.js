@@ -31,7 +31,7 @@ function preferences() {
 function chatPosition() {
   if (pendingChatPosition) return pendingChatPosition;
   const viewport = $('#conversation-body');
-  if (state.panel !== 'chat' || chatView !== 'conversation') return null;
+  if (state.panel !== 'chat' || state.view !== 'conversation') return null;
   if (document.hidden || !viewport.clientHeight) return lastChatPosition;
   const geometry = `${viewport.clientWidth}:${viewport.clientHeight}`;
   // iOS reflows its app-switcher snapshot BEFORE visibilitychange. The resulting
@@ -47,7 +47,7 @@ function chatPosition() {
 function restoreChatPosition() {
   const saved = pendingChatPosition, viewport = $('#conversation-body');
   if (!saved || document.hidden) return;
-  if (saved.selected !== state.selected || state.panel !== 'chat' || chatView !== 'conversation') {
+  if (saved.selected !== state.selected || state.panel !== 'chat' || state.view !== 'conversation') {
     pendingChatPosition = null;return;
   }
   if (!viewport.clientHeight) return;
@@ -62,7 +62,7 @@ function restoreChatPosition() {
   if (!resumingChat) pendingChatPosition = null;
 }
 function workspacePreferences() {
-  return {...preferences(),workspaces:state.workspaces,scroll:$('#conversation-body').scrollTop,chatPosition:chatPosition()};
+  return {...preferences(),view:state.view,period:state.period,workspaces:state.workspaces,scroll:$('#conversation-body').scrollTop,chatPosition:chatPosition()};
 }
 save = function() {
   window.SapiensConnections?.save(workspacePreferences());
@@ -175,6 +175,7 @@ function applySnapshot(snapshot) {
       (agent(state.selected).retired && !old.get(state.selected)?.retired)) {
     state.drafts[state.selected] = $('#message-input').value;
     state.selected = snapshot.main_agent_id;
+    Object.assign(state,activityState(state.panel,state.view,state.period));
     $('#message-input').value = state.drafts[state.selected] || '';
     renderTabs(); renderWorkspace();
   }
@@ -242,10 +243,9 @@ renderConversation = function() {
   // visible again, after the phone has restored its viewport.
   if (document.hidden) return;
   const viewport = $('#conversation-body');
-  if(['tasks','notes'].includes(state.panel)){workView=state.panel==='notes'?'memo':'tasks';state.panel='work';}
   viewport.classList.toggle('notes-view', state.panel === 'notes');
   const turns = live.turns.filter(j => j.agent === state.selected);
-  const key = state.selected + ':' + state.panel + ':'+(state.panel==='work'?workView:state.panel==='chat'?chatView:updatesView);
+  const key = state.selected + ':' + state.panel + ':'+state.view;
   const changedView = renderedConversation !== key;
   if (changedView) lastChatGeometry = null;
   renderedConversation = key;
@@ -253,7 +253,7 @@ renderConversation = function() {
   const bottom = state.panel === 'chat' && (changedView || viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80);
   const firstVisible = !changedView && [...viewport.children].find(node => node.getBoundingClientRect().bottom > viewport.getBoundingClientRect().top);
   const anchor = firstVisible ? {node:firstVisible,top:firstVisible.getBoundingClientRect().top} : null;
-  const chat = state.panel === 'chat' && chatView === 'conversation';
+  const chat = state.panel === 'chat' && state.view === 'conversation';
   const host = chat ? document.createElement('div') : viewport;
   const finish = () => { if (chat) {commitChat(viewport, host, changedView, bottom, scroll, anchor);restoreChatPosition();} };
   if(renderChatCollection(host)){renderAgentHeader();renderGlobal();return;}
@@ -290,13 +290,8 @@ renderConversation = function() {
     for (const turn of activeTurns) {
       host.insertAdjacentHTML('beforeend', `<section data-chat-key="progress:${esc(turn.id)}" class="live-status"><div data-turn-progress="${esc(turn.id)}">${turnProgress(turn)}</div>${turnActions(turn)}</section>`);
     }
-  } else if (state.panel === 'tasks') {
-    $('#composer-area').hidden = true;
-    renderTasks(host);
-  } else if (state.panel === 'notes') {
-    $('#composer-area').hidden = true;
-    renderNotes(host);
   }
+
   renderAgentHeader(); renderGlobal();
   finish();
 };
@@ -568,9 +563,10 @@ window.SapiensConnections?.subscribe(snapshot=>{
     return;
   }
   pendingChatPosition=snapshot.preferences.chatPosition || null;lastChatPosition=pendingChatPosition;
+  taskDocuments.clear();openTasks.clear();openGroupTasks.clear();clarificationWorkload=null;
   state=makeInitialState(snapshot);live=snapshot;online=SapiensConnections.connected;
   workspaceRevision=snapshot.preferences.workspace_revision||0;
-  workspaceOwner=state.selected;renderedConversation='';search='';$('#agent-search').value='';
+  workspaceOwner=state.selected;renderedConversation='';$('#agent-search').value='';
   Object.keys(attachmentDrafts).forEach(key=>delete attachmentDrafts[key]);Object.assign(attachmentDrafts,snapshot.attachment_drafts||{});
   $('#message-input').value=state.drafts[state.selected]||'';
   applySnapshot(snapshot);savedPreferences=JSON.stringify(preferences());render();

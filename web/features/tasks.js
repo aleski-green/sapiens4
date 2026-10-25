@@ -1,44 +1,31 @@
 const taskDocuments = new Map();
 const openTasks = new Set();
 const pastTaskStates = new Set(['Completed', 'Unresolved', 'Failed', 'Interrupted', 'Cancelled']);
-let taskPeriod = 'upcoming';
 let clarificationWorkload = null;
-function taskElement(tag, className, text) {
-  const node = document.createElement(tag);
-  node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 function taskRow(task, sapi) {
-  const row = taskElement('details', 'task-row');
+  const row = element('details', 'task-row');
   const key = sapi + ':' + task.id;
   row.open = openTasks.has(key);
   row.addEventListener('toggle', () => {
     if (row.isConnected) row.open ? openTasks.add(key) : openTasks.delete(key);
   });
-  const summary = taskElement('summary', 'task-summary');
   const tone = task.state === 'Completed' ? 'complete' :
     ['Failed', 'Interrupted', 'Unresolved', 'WaitingForAdmin'].includes(task.state) ? 'attention' :
     ['Running', 'Queued'].includes(task.state) ? 'active' : 'neutral';
-  const mark = taskElement('span', 'task-mark ' + tone, task.state === 'Completed' ? '✓' : tone === 'attention' ? '!' : '·');
-  mark.setAttribute('aria-hidden', 'true');
-  const copy = taskElement('span', 'task-row-copy');
-  const title = taskElement('span', 'task-title', task.title); title.title = task.title;
   const owner = agent(task.owner).name;
   const route = task.sender === task.owner ? owner : `${agent(task.sender).name} → ${owner}`;
-  const status = task.state === 'WaitingForAdmin' ? 'Needs input' : task.state;
-  const meta = taskElement('span', 'task-meta');
-  meta.append(taskElement('span', 'task-state ' + tone, status), taskElement('span', 'task-assignee', task.meta || route));
-  copy.append(title, meta);
-  const arrow = taskElement('span', 'task-chevron', '›'); arrow.setAttribute('aria-hidden', 'true');
-  summary.append(mark, copy);
+  const summary = element('summary', 'task-summary', [
+    element('span','task-mark '+tone,task.state==='Completed'?'✓':tone==='attention'?'!':'·',{'aria-hidden':true}),
+    element('span','task-row-copy',[
+      element('span','task-title',task.title,{title:task.title}),
+      element('span','task-meta',[
+        element('span','task-state '+tone,task.state==='WaitingForAdmin'?'Needs input':task.state),
+        element('span','task-assignee',task.meta||route)])])]);
   if(task.editRoutine){
-    const run=taskElement('button','task-copy','Run');run.type='button';run.dataset.runRoutine=task.editRoutine;
-    run.setAttribute('aria-label','Run routine');
-    run.addEventListener('click',e=>e.preventDefault());summary.append(run);
-    const edit=taskElement('button','task-copy','Edit');edit.type='button';edit.dataset.editRoutine=task.editRoutine;
-    edit.addEventListener('click',e=>e.preventDefault());summary.append(edit);
-    const action=taskElement('button','task-copy task-routine-action');action.type='button';
+    for(const [action,label] of [['run','Run'],['edit','Edit']])
+      summary.append(element('button','task-copy',label,{type:'button',['data-'+action+'-routine']:task.editRoutine,
+        'aria-label':action==='run'?'Run routine':null,onclick:e=>e.preventDefault()}));
+    const action=element('button','task-copy task-routine-action');action.type='button';
     const paused=task.routineAction==='resume';
     action.dataset[paused?'resumeRoutine':'pauseRoutine']=task.editRoutine;
     action.title=paused?'Resume routine':'Pause routine';action.setAttribute('aria-label',action.title);
@@ -47,78 +34,77 @@ function taskRow(task, sapi) {
   }
   if(task.reference){
     row.classList.add('task-routine');
-    const reference=taskElement('span','task-reference');
-    reference.append(taskElement('code','',task.reference),taskElement('span','',`${task.runCount}/1000`));
+    const reference=element('span','task-reference',[element('code','',task.reference),element('span','',`${task.runCount}/1000`)]);
     reference.title='Scheduled tasks queued in this allowance; pauses automatically at 1000.';
     summary.append(reference);
   }
-  summary.append(arrow); row.append(summary);
-  const content = taskElement('div', 'task-content');
-  const heading = taskElement('div', 'task-body-heading');
-  heading.append(taskElement('span', '', task.editRoutine?'Execution prompt':'Task body'), taskElement('span', 'task-format', task.editRoutine?'':'YAML'));
-  const button = taskElement('button', 'task-copy', 'Copy'); button.type = 'button';
+  summary.append(element('span','task-chevron','›',{'aria-hidden':true}));row.append(summary);
+  const content = element('div', 'task-content');
+  const heading = element('div', 'task-body-heading');
+  heading.append(element('span', '', task.editRoutine?'Execution prompt':'Task body'), element('span', 'task-format', task.editRoutine?'':'YAML'));
+  const button = element('button', 'task-copy', 'Copy'); button.type = 'button';
   button.setAttribute('aria-label', task.editRoutine?'Copy execution prompt':'Copy task YAML');
   button.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(task.body); toast(task.editRoutine?'Execution prompt copied.':'Task YAML copied.'); }
     catch (_) { toast('Could not copy. You can select the task body to copy it.'); }
   });
   heading.append(button);
-  const body = taskElement('pre', 'task-body-yaml', task.body);
+  const body = element('pre', 'task-body-yaml', task.body);
   body.setAttribute('aria-label', task.editRoutine?'Execution prompt':'Task body YAML');
   content.append(heading, body);
   if (task.result) {
-    content.append(taskElement('h3', 'task-result-heading', 'Result'));
-    const result = taskElement('div', 'task-result');
+    content.append(element('h3', 'task-result-heading', 'Result'));
+    const result = element('div', 'task-result');
     result.innerHTML = formatText(task.result);
     content.append(result);
   }
-  if (task.error) content.append(taskElement('p', 'task-error', task.error));
+  if (task.error) content.append(element('p', 'task-error', task.error));
   row.append(content);
   return row;
 }
 function drawTasks(host, id, cached) {
-  const automated=typeof workView!=='undefined'&&workView==='tasks-automated';
-  const key = JSON.stringify([id, cached.revision, taskPeriod, automated, cached.pending, cached.error]);
+  const automated=state.view==='tasks-automated';
+  const key = JSON.stringify([id, cached.revision, state.period, automated, cached.status]);
   if (host.firstElementChild?.taskViewKey === key) return;
-  const view = taskElement('section', 'task-browser'); view.taskViewKey = key;
+  const view = element('section', 'task-browser'); view.taskViewKey = key;
   const rows = cached.rows || [];
   const inPeriod = (task, period) => pastTaskStates.has(task.state) === (period === 'past');
-  const list = taskElement('div', 'task-list'); list.id = 'task-list';
-  list.setAttribute('aria-label', taskPeriod==='past'?'Executed tasks':'Planned tasks');
-  list.setAttribute('aria-busy', String(Boolean(cached.pending)));
-  const visible = rows.filter(t => inPeriod(t, taskPeriod)&&(!automated||t.taskType==='automated'));
-  if (cached.error) {
-    const error = taskElement('div', 'task-empty');
-    error.append(taskElement('p', '', 'Could not load tasks.'));
-    const retry = taskElement('button', 'task-copy', 'Try again'); retry.type = 'button';
-    retry.addEventListener('click', () => { taskDocuments.delete(id); renderTasks(host); });
-    error.append(retry); list.append(error);
+  const list = element('div','task-list',undefined,{id:'task-list',
+    'aria-label':state.period==='past'?'Executed tasks':'Planned tasks','aria-busy':cached.status==='loading'});
+  const visible = rows.filter(t => inPeriod(t, state.period)&&(!automated||t.taskType==='automated'));
+  if (cached.status==='failed') {
+    list.append(element('div','task-empty',[
+      element('p','','Could not load tasks.'),
+      element('button','task-copy','Try again',{type:'button',onclick:()=>{taskDocuments.delete(id);renderTasks(host);}})]));
   } else if (!cached.rows) {
-    list.append(taskElement('p', 'task-empty', 'Loading tasks…'));
+    list.append(element('p', 'task-empty', 'Loading tasks…'));
   } else if (!visible.length) {
-    const empty = taskElement('div', 'task-empty');
-    empty.append(taskElement('p', '', taskPeriod === 'past' ? 'No executed tasks' : 'No planned tasks'),
-      taskElement('small', '', taskPeriod === 'past' ? 'Completed and stopped tasks will appear here.' : 'Queued, running and waiting tasks will appear here.'));
-    list.append(empty);
+    list.append(element('div','task-empty',[
+      element('p','',state.period==='past'?'No executed tasks':'No planned tasks'),
+      element('small','',state.period==='past'?'Completed and stopped tasks will appear here.':'Queued, running and waiting tasks will appear here.')]));
   } else visible.forEach(task => list.append(taskRow(task, id)));
   view.append(list); host.replaceChildren(view);
 }
 function renderTasks(host) {
   const id = state.selected;
-  const revision = JSON.stringify((live.workloads || []).filter(w => w.participants.includes(id)));
+  const revision = JSON.stringify([live.corpora?.id,(live.workloads || []).filter(w => w.participants.includes(id))]);
   let cached = taskDocuments.get(id);
-  if (cached?.revision === revision) { drawTasks(host, id, cached); return; }
-  cached = {revision, rows:cached?.rows, pending:true};
+  if (cached?.revision === revision) { cached.host=host;drawTasks(host, id, cached);return; }
+  cached = {revision, rows:cached?.rows, status:'loading',host};
   taskDocuments.set(id, cached); drawTasks(host, id, cached);
   (typeof apiFetch === 'function' ? apiFetch : fetch)(`/api/agents/${encodeURIComponent(id)}/tasks?format=json`, {signal:AbortSignal.timeout(15000)})
     .then(async response => {
       if (!response.ok) throw new Error('Could not load tasks');
       return response.json();
-    }).then(data => { cached.rows = data.tasks; })
-    .catch(error => { cached.error = error.message; })
-    .finally(() => {
-      cached.pending = false;
-      if (taskDocuments.get(id) === cached && state.selected === id && ['tasks','work'].includes(state.panel) && host.isConnected) drawTasks(host, id, cached);
+    }).then(data => {
+      if(!Array.isArray(data.tasks)||data.tasks.some(t=>!t||!['id','title','body','state','owner','sender'].every(k=>typeof t[k]==='string')))
+        throw new Error('Invalid tasks response');
+      return {revision,rows:data.tasks,status:'ready'};
+    }).catch(() => ({revision,status:'failed'})).then(result => {
+      // Cache identity is the request token: superseded or disposed requests cannot commit.
+      if(taskDocuments.get(id)!==cached)return;
+      taskDocuments.set(id,result);
+      if(state.selected===id&&['tasks','work'].includes(state.panel)&&cached.host.isConnected)drawTasks(cached.host,id,result);
     });
 }
 function delegationMessages(snapshot) {

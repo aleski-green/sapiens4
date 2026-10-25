@@ -12,7 +12,7 @@ assert.equal(context.browserDestination('/Users/My files/notes.md').path,'/Users
 assert.equal(context.browserDestination('https://example.com').url,'https://example.com');
 assert.equal(context.browserDestination('file:///tmp/a.md').url,'file:///tmp/a.md');
 const app=fs.readFileSync('web/shell/app.js','utf8');
-vm.runInContext(app.slice(app.indexOf('function syncWorkspace()'),app.indexOf("let search =")),context);
+vm.runInContext(app.slice(app.indexOf('function syncWorkspace()'),app.indexOf("let toastTimer")),context);
 const legacy={id:'blank-a',url:'about:blank'}, file={id:'tab-file',url:'file:///tmp/a.md'}, blank={id:'tab-new',url:'about:blank'};
 state.selected='a';state.workspaces.a={tabs:[legacy,file],activeTab:legacy.id};context.syncWorkspace();
 assert.deepEqual(Array.from(state.tabs),[file]);assert.equal(state.activeTab,file.id);

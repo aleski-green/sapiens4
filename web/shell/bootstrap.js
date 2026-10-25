@@ -39,7 +39,7 @@ function makeInitialState(data) {
   const ws = workspaces[selected] || {tabs:[]};
   return {agents, mainSapiId:agents[0].id, selected, scope:agents.find(a=>a.id===selected)?.kind==='group'?'groups':prefs.scope || 'all',
     groupView:prefs.groupView || (agents.find(a=>a.id===selected)?.kind==='group'?selected:null),
-    panel:['chat','tasks','notes','work','updates'].includes(prefs.panel) ? prefs.panel : 'chat', mode:'assist', panes:{sidebar:true,chat:true,workspace:true,...prefs.panes},
+    ...activityState(prefs.panel,prefs.view,prefs.period,agents.find(a=>a.id===selected)?.kind==='group'),search:'', mode:'assist', panes:{sidebar:true,chat:true,workspace:true,...prefs.panes},
     tabs:ws.tabs, activeTab:ws.activeTab || ws.tabs[0]?.id || null, workspaces,
     drafts:prefs.drafts || {}, messages:{}};
 }

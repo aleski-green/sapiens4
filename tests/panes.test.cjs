@@ -23,8 +23,9 @@ function setup({touch=true,width=390,height=844,panes={sidebar:true,chat:true,wo
       return {preferences:{workspace_revision:++revision,workspaces:{sapi_test:{tabs:tabs?[tab]:[],activeTab:tabs?tab.id:null,bookmarks:[]}}}};
     }});
   let revision=0;
-  vm.runInContext(fs.readFileSync('web/shell/app.js','utf8')+'\n'+fs.readFileSync('web/features/workspaces.js','utf8'),ctx);
-  vm.runInContext("let chatView='conversation';save=()=>{};render=()=>{renderPanes();};renderPanes();",ctx);
+  vm.runInContext(fs.readFileSync('web/shell/ui.js','utf8'),ctx);
+vm.runInContext(fs.readFileSync('web/shell/app.js','utf8')+'\n'+fs.readFileSync('web/features/workspaces.js','utf8'),ctx);
+  vm.runInContext("save=()=>{};render=()=>{renderPanes();};renderPanes();",ctx);
   const visible=()=>['sidebar','chat','workspace'].filter(p=>window.document.querySelector(`[data-toggle-pane="${p}"]`).getAttribute('aria-pressed')==='true');
   return {window,state,ctx,visible,
     click:p=>window.document.querySelector(`[data-toggle-pane="${p}"]`).click(),

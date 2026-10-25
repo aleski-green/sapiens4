@@ -7,6 +7,7 @@ const initial={agents:[sapi('chief','Chief'),sapi('a','Lead'),sapi('b','Member')
 const ctx=vm.createContext({window,document:window.document,console,ResizeObserver:class{observe(){} disconnect(){}},setTimeout,clearTimeout,
  bootstrap:{creation_template:'create: sapi or group of sapis\nto work on: WORKFLOW'},makeInitialState:()=>initial,
  openNewTab:()=>{},setBrowserMenu:()=>{},renderTabs:()=>{},renderWorkspace:()=>{}});
+vm.runInContext(fs.readFileSync('web/shell/ui.js','utf8'),ctx);
 vm.runInContext(fs.readFileSync('web/shell/app.js','utf8'),ctx);
 vm.runInContext(fs.readFileSync('web/features/tasks.js','utf8'),ctx);
 vm.runInContext(fs.readFileSync('web/features/groups.js','utf8'),ctx);
@@ -148,7 +149,7 @@ console.log('Scheduled routines: Planned/Paused, count, Edit, Pause and Resume d
 const sharedTask=(state,assignee='b',deleted=false)=>({id:'shared',title:'Shared work',state,assignee,deleted,results:[],history:[]});
 const workDefault=(view,filter)=>{
   click('[data-panel=work]');
-  assert.equal(vm.runInContext('workView',ctx),view);
+  assert.equal(vm.runInContext('state.view',ctx),view);
   if(filter)assert.equal(window.document.querySelector('[data-activity-menu=activity-task-filter]').textContent.trim(),filter);
 };
 for(const id of ['b','g']) {
@@ -172,7 +173,7 @@ for(const id of ['b','g']) {
   workDefault('routine-scheduled','Planned'); // Reevaluate on every Work click.
   click('[data-activity-view=memo]');
   ctx.renderConversation();
-  assert.equal(vm.runInContext('workView',ctx),'memo'); // Polling preserves manual navigation.
+  assert.equal(vm.runInContext('state.view',ctx),'memo'); // Polling preserves manual navigation.
 }
 ctx.openChat('b');ctx.live.routines=[];ctx.live.workloads=[];
 group.tasks=[sharedTask('backlog')];workDefault('memo');

@@ -21,6 +21,7 @@ function pixels(text){
   let requested=[],released=[];
   w.presentMemo=()=>{};w.SapiensConnections={fetch:async uri=>{requested.push(uri);return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'image/png'}});}};
   w.URL.createObjectURL=()=> 'blob:note';w.URL.revokeObjectURL=url=>released.push(url);
+  w.eval(fs.readFileSync(path.join(__dirname,'../../web/shell/ui.js'),'utf8'));
   w.eval(fs.readFileSync(path.join(__dirname,'../../web/features/notes.js'),'utf8'));
   const root=w.notesWiki('<section id="about"></section><section id="map"></section><section id="content"><img src="photo.png"></section>','/Notes.html','chief');
   await sleep();const image=root.querySelector('img');out.src=image.src;image.dispatchEvent(new w.Event('load'));out.requested=requested;out.released=released;

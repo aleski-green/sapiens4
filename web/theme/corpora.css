@@ -82,8 +82,8 @@
 .relay-row+.relay-row{border-top:1px solid var(--line)}
 .relay-row[data-current=true]{background:var(--sapi-hover)}
 #corpora-dialog .relay-row label{display:flex;align-items:center;gap:12px;margin:0;padding-right:64px}
-#corpora-dialog .relay-row input,#corpora-dialog .relay-check input{width:18px;height:18px;flex:none;margin:0;padding:0}
-.relay-row strong,.relay-row small{display:block;overflow-wrap:anywhere}
+#corpora-dialog :is(.relay-row input,.relay-check input) {width:18px;height:18px;flex:none;margin:0;padding:0}
+.relay-row :is(strong,small) {display:block;overflow-wrap:anywhere}
 .relay-row small,.relay-private{font-size:12px;color:var(--muted)}
 .relay-badge{position:absolute;right:12px;top:14px;font-size:11px;color:var(--muted)}
 .relay-row-actions{display:flex;gap:8px;margin:6px 0 0 30px}

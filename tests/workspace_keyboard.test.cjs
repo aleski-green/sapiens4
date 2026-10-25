@@ -17,7 +17,8 @@ async function check(modifier,existing=false) {
       requests.push(args);
       return {preferences:{workspace_revision:1,workspaces:{sapi_test:{tabs:[tab],activeTab:tab.id,bookmarks:[]}}}};
     }});
-  vm.runInContext(fs.readFileSync('web/shell/app.js','utf8')+'\n'+fs.readFileSync('web/features/workspaces.js','utf8'),ctx);
+  vm.runInContext(fs.readFileSync('web/shell/ui.js','utf8'),ctx);
+vm.runInContext(fs.readFileSync('web/shell/app.js','utf8')+'\n'+fs.readFileSync('web/features/workspaces.js','utf8'),ctx);
   vm.runInContext('save=()=>{};renderPanes();renderTabs();renderWorkspace();',ctx);
   assert.equal(window.document.querySelector('#workspace-panel').hidden,!existing);
   const event=new window.KeyboardEvent('keydown',{key:'l',[modifier]:true,bubbles:true,cancelable:true});

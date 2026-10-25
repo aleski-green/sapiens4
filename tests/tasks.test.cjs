@@ -17,8 +17,9 @@ const byClass=(root,name)=>find(root,n=>n.className?.split(' ').includes(name));
 function fixture(fetch) {
   const messages = [];
   const ctx = vm.createContext({Map,Set,JSON,Date,AbortSignal,fetch,encodeURIComponent,
-    document:{createElement:element},state:{selected:'chief',panel:'tasks',messages:{}},live:{workloads:[]},
+    document:{createElement:element},state:{selected:'chief',panel:'tasks',period:'upcoming',messages:{}},live:{workloads:[]},
     toast:message=>messages.push(message),agent:id=>({id,name:id}),displayTime:time=>time,formatText:text=>text});
+  vm.runInContext(fs.readFileSync('web/shell/ui.js','utf8'),ctx);
   vm.runInContext(fs.readFileSync('web/features/tasks.js','utf8'),ctx);
   return {ctx,host:element(),messages};
 }
@@ -39,9 +40,9 @@ const task=(state,id=state)=>({id,state,title:'Research <script>bad</script>',ow
   f.ctx.renderTasks(f.host);assert.equal(f.host.firstElementChild,view,'Unchanged polling preserves DOM and focus');
   assert.equal(requests,1);
   const row=byClass(list,'task-row');row.open=true;row.listeners.toggle();
-  vm.runInContext("taskPeriod='past'",f.ctx);f.ctx.renderTasks(f.host);
+  vm.runInContext("state.period='past'",f.ctx);f.ctx.renderTasks(f.host);
   assert.equal(byClass(f.host,'task-list').children.length,5,'Terminal outcomes appear in Past');
-  vm.runInContext("taskPeriod='upcoming'",f.ctx);f.ctx.renderTasks(f.host);
+  vm.runInContext("state.period='upcoming'",f.ctx);f.ctx.renderTasks(f.host);
   assert.equal(byClass(f.host,'task-row').open,true,'Expansion survives changing tabs');
 
   let finish;

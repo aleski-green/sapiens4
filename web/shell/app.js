@@ -13,7 +13,7 @@ function syncWorkspace(){
   state.activeTab=state.tabs.some(t=>t.id===ws.activeTab)?ws.activeTab:state.tabs[0]?.id || null;
 }
 
-let search = '', toastTimer;
+let toastTimer;
 const agent = id => state.agents.find(a=>a.id===id) || state.agents[0];
 const selected = () => agent(state.selected);
 const isMainSapi = a => a.id===state.mainSapiId;
@@ -24,15 +24,21 @@ function mention(id){
   return a?`<button type="button" class="entity-mention" data-mention="${esc(a.id)}" aria-label="Open chat with ${esc(a.name)}">@${esc(a.name)}</button>`:esc(id==='you'?'You':id);
 }
 
-function openChat(id){
-  const a=state.agents.find(a=>a.id===id);if(!a)return;
-  state.drafts ??= {};state.drafts[state.selected]=$('#message-input').value;
-  state.selected=id;state.panel='chat';chatView='conversation';closeActivityMenus();showPane('chat');a.unread=false;
-  if(a.kind==='group') {state.groupView=a.id;state.scope='groups';}
-  else {if(state.groupView||state.scope==='groups')state.scope='all';state.groupView=null;}
-  search='';$('#agent-search').value='';$('#message-input').value=state.drafts[id]||'';
-  closeModal();setBrowserMenu();render();$('#conversation-body').scrollTop=$('#conversation-body').scrollHeight;
+function dispatchUI(action) {
+  const [next,commands]=updateUI(state,action);
+  Object.assign(state,next);
+  for(const command of commands) {
+    if(command==='selection') {
+      closeActivityMenus();showPane('chat');
+      $('#agent-search').value='';$('#message-input').value=state.drafts[state.selected]||'';
+      closeModal();setBrowserMenu();render();
+      $('#conversation-body').scrollTop=$('#conversation-body').scrollHeight;
+    } else if(command==='activity') {closeActivityMenus();renderConversation();save();}
+    else if(command==='roster') {if(paneLimit()<3){showPane('sidebar');renderPanes();}renderSidebar();save();}
+    else if(command==='sidebar')renderSidebar();
+  }
 }
+function openChat(id){dispatchUI({type:'Select',id,draft:$('#message-input').value});}
 
 function toast(message){$('#toast').textContent=message;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),3200);}
 
@@ -48,21 +54,16 @@ function paneLimit(){
   const portrait=orientation ? orientation.startsWith('portrait') : window.innerHeight>=window.innerWidth;
   return portrait ? 1 : 2;
 }
-function showPane(pane){
-  state.panes[pane]=true;
-  paneOrder=[pane,...paneOrder.filter(name=>name!==pane)];
+function showPane(pane, toggle=false){
+  const next=paneState(state.panes,paneOrder,paneLimit(),!!state.activeTab,{pane,toggle});
+  state.panes=next.panes;paneOrder=next.order;
 }
 function renderPanes(){
   syncWorkspace();
-  state.panes ??= {sidebar:true,chat:true,workspace:true};
-  const p={...state.panes,workspace:!!state.panes.workspace && !!state.activeTab};
   const limit=paneLimit();
-  if(limit<3){
-    const visible=paneOrder.filter(name=>p[name]).slice(0,limit);
-    if(!visible.length)visible.push('chat');
-    for(const name of paneOrder)p[name]=visible.includes(name);
-    state.panes={...p};
-  }
+  const p=paneState(state.panes,paneOrder,limit,!!state.activeTab).panes;
+  p.workspace &&= !!state.activeTab;
+  if(limit<3)state.panes={...p};
   document.body.dataset.paneLimit=limit;
   document.body.toggleAttribute('data-mobile-ui',limit<3);
   syncMobileViewport();
@@ -103,7 +104,7 @@ function setSearchOpen(open){
   $('#search-toggle').setAttribute('aria-expanded',String(open));
   $('#corpora-search').classList.toggle('search-open',open);
   if(open)$('#agent-search').focus();
-  else{search='';$('#agent-search').value='';renderSidebar();}
+  else{$('#agent-search').value='';dispatchUI({type:'Search',value:''});}
 }
 $('#search-toggle').addEventListener('click',()=>setSearchOpen($('#search-toggle').getAttribute('aria-expanded')!=='true'));
 $('#agent-search').addEventListener('keydown',e=>{
@@ -117,13 +118,7 @@ function appMenu(){
 }
 
 
-function leaveGroup(scope) {
-  state.groupView=null;
-  openChat(state.mainSapiId);
-  state.scope=scope;
-  if(paneLimit()<3){showPane('sidebar');renderPanes();}
-  renderSidebar();save();
-}
+function leaveGroup(scope) {dispatchUI({type:'Scope',scope,draft:$('#message-input').value});}
 function renderSidebar(){
   const group=state.agents.find(g=>g.id===state.groupView&&!g.archived);
   if(!group)state.groupView=null;
@@ -137,7 +132,7 @@ function renderSidebar(){
     b.disabled=b.dataset.scope==='groups'&&!hasGroups;
   });
   const pinned=id=>id===(group?group.lead:state.mainSapiId);
-  const list=state.agents.filter(a=>!a.retired&&!a.archived&&(group?group.members.includes(a.id):(state.scope==='all'||(state.scope==='groups')===(a.kind==='group')))&&`${a.name} ${a.role}`.toLowerCase().includes(search.toLowerCase()))
+  const list=state.agents.filter(a=>!a.retired&&!a.archived&&(group?group.members.includes(a.id):(state.scope==='all'||(state.scope==='groups')===(a.kind==='group')))&&`${a.name} ${a.role}`.toLowerCase().includes((state.search||'').toLowerCase()))
     .sort((a,b)=>Number(pinned(b.id))-Number(pinned(a.id))||(b.lastActivity||0)-(a.lastActivity||0));
   $('#agent-list').innerHTML=list.map(a=>`<div class="agent-entry"><div class="agent-row ${a.id===state.selected?'active':''} ${pinned(a.id)?'main-sapi-row':''} ${a.kind==='group'?'group-row':''}" data-agent="${esc(a.id)}">${avatar(a,pinned(a.id)?'main-sapi-avatar':'',true)}<div class="agent-row-copy"><div class="agent-row-name"><button class="agent-name" data-agent="${esc(a.id)}" aria-label="Open ${esc(a.name)}${group&&pinned(a.id)?' · Lead':''}" ${a.id===state.selected?'aria-current="true"':''}>${esc(a.name)}</button>${a.kind==='group'?`<span class="group-labels compact" style="--label-count:1"><span class="group-chip" style="--group-color:${groupColor(a.color)}" title="${a.members.length} members" aria-label="${a.members.length} members"><span>${a.members.length}</span></span></span>`:groupLabels(a,true)+`<small>${esc(new Date(a.lastActivity).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false}))}</small>`}</div><p>${group&&pinned(a.id)?'Lead · ':''}${esc(group?a.role:(a.preview||a.description||'Shared workspace'))}</p></div></div></div>`).join('');
   observeGroupLabels();
@@ -167,9 +162,7 @@ document.addEventListener('click',e=>{
   }
   if(d.togglePane){
     if(d.togglePane==='workspace'&&!state.activeTab){openNewTab();return;}
-    const count=Object.values(state.panes).filter(Boolean).length;
-    if(state.panes[d.togglePane] && (paneLimit()===3 || (paneLimit()===2 && count>1)))state.panes[d.togglePane]=false;
-    else showPane(d.togglePane);
+    showPane(d.togglePane,true);
     renderPanes();save();return;
   }
   if(d.action){actions[d.action]?.();return;}
@@ -186,7 +179,7 @@ document.addEventListener('click',e=>{
     return;
   }
   if(d.scope&&!b.disabled){leaveGroup(d.scope);return;}
-  if(d.panel && !b.disabled && ['chat','tasks','notes','work','updates'].includes(d.panel)){state.panel=d.panel;if(d.panel==='work')selectDefaultWorkView();if(d.panel==='chat')chatView='conversation';if(d.panel==='updates')updatesView='events';closeActivityMenus();renderConversation();save();return;}
+  if(d.panel && !b.disabled){dispatchUI({type:'Navigate',panel:d.panel,...(d.panel==='work'?defaultWorkActivity():{})});return;}
   if(d.tab){browserAction('focus',{id:d.tab});return;}
   if(d.closeTab){browserAction('close',{id:d.closeTab});return;}
 
@@ -202,7 +195,7 @@ $('#add-agent').addEventListener('click',()=>addAgent());
 $('#resource-button').addEventListener('click',()=>computerDialog());
 
 
-$('#agent-search').addEventListener('input',e=>{search=e.target.value;renderSidebar();});
+$('#agent-search').addEventListener('input',e=>{dispatchUI({type:'Search',value:e.target.value});});
 
 $('#message-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat(e.target.value);}});
 $('.wordmark').addEventListener('click',e=>{e.preventDefault();state.panes={sidebar:true,chat:true,workspace:true};showPane('chat');renderPanes();save();});

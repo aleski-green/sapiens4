@@ -2,7 +2,7 @@
 from sapiens.paths import ROOT
 
 WEB = ROOT / "web"
-SCRIPTS = ("shell/bootstrap.js", "shell/app.js", "features/names.js", "features/notes.js",
+SCRIPTS = ("shell/ui.js", "shell/bootstrap.js", "shell/app.js", "features/names.js", "features/notes.js",
            "features/mentions.js", "features/tasks.js",
            "features/workspaces.js", "features/groups.js", "shell/bridge.js")
 

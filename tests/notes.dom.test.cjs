@@ -4,7 +4,7 @@ const {JSDOM} = require('../libs4/node_modules/jsdom');
 const {window} = new JSDOM('<!doctype html><body></body>', {url:'http://localhost/'});
 const sandbox = {document:window.document, XMLSerializer:window.XMLSerializer, URL, console,
   esc: value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))};
-vm.createContext(sandbox); vm.runInContext(fs.readFileSync('web/features/notes.js','utf8'),sandbox);
+vm.createContext(sandbox);vm.runInContext(fs.readFileSync('web/shell/ui.js','utf8'),sandbox); vm.runInContext(fs.readFileSync('web/features/notes.js','utf8'),sandbox);
 const profile = {id:'sapi_test',name:'Test Sapi',face:'¬o¬',color:'#dbd0f7',role:'Designer'};
 const metadata = {modified_at:'2026-10-01T20:30:00+00:00',workspace:'/workspace/sapi_test'};
 const render = source => sandbox.notesWiki(source,'/workspace/sapi_test/Notes.html',profile.id,profile,metadata,6);
