@@ -11,11 +11,12 @@ RSpec.describe 'Reading and composing while work arrives', :desktop do
     desktop.fill('Message ChiefSapi', 'My next thought')
     host.release
     desktop.see('Contract test reply')
+    expect(desktop.label(desktop.control('focused'))).to include('Message ChiefSapi')
     desktop.control('type', '--text', ' continues')
-    expect(desktop.find('Message ChiefSapi')['value']).to eq('My next thought continues')
+    expect(desktop.value('Message ChiefSapi', 'My next thought continues')).to eq('My next thought continues')
     desktop.reload
     desktop.see('Contract test reply')
-    expect(desktop.find('Message ChiefSapi')['value']).to eq('My next thought continues')
+    expect(desktop.value('Message ChiefSapi', 'My next thought continues')).to eq('My next thought continues')
   end
 
   it 'keeps an earlier message in view when new work completes' do

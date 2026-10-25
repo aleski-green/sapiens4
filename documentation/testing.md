@@ -61,6 +61,22 @@ it does not invoke the retired script-injection smoke-test mode. The remote-brow
 and HTTP-proxy window scenarios currently require macOS and are explicitly
 pending on Windows; the other desktop scenarios share the native driver.
 
+The Windows driver waits for the visible composer before arranging service data,
+then reloads the shell to pick up that data. The fixture reports native WebView2
+navigation events so a reload must finish before the driver uses the new page.
+Editor focus uses a guarded Blindly4 mouse click, followed by observations of
+focus and the exact value. Menus that support expansion but not invocation are
+clicked so they can both open and close. Presses verify the discovered accessible
+description before acting. Bounded retries apply only to transient accessibility
+reads, initial window discovery, and rejected lookups that performed no action;
+input is never replayed after an ambiguous failure. Value assertions wait for the
+exact expected text without restoring focus or retyping. Windows text roles are
+used for heading assertions. These checks use native accessibility and navigation
+events, not JavaScript evaluation or an application test bridge.
+The packaged-window test closes through native Alt+F4. Fixture cleanup waits up
+to ten seconds for Windows to release WebView2 profile files, then fails if a
+sharing violation remains.
+
 ## Boundaries and coverage
 
 | Behavior | Scenarios |

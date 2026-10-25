@@ -14,6 +14,15 @@ internal static class AccessibilityProbe
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         using var window = new MainWindow(args);
+        var shellView = window.Controls.OfType<WebView2>().Single();
+        // Native lifecycle observations keep a reload from reusing the old page.
+        shellView.CoreWebView2InitializationCompleted += (_, e) => {
+            if (!e.IsSuccess) { Console.WriteLine("NAVIGATION ERROR " + e.InitializationException); return; }
+            shellView.CoreWebView2.NavigationStarting += (_, navigation) =>
+                Console.WriteLine($"NAVIGATION START {navigation.NavigationId}");
+            shellView.CoreWebView2.NavigationCompleted += (_, navigation) =>
+                Console.WriteLine($"NAVIGATION END {navigation.NavigationId} {navigation.IsSuccess} {navigation.WebErrorStatus}");
+        };
         var browserProcesses = new HashSet<int>();
         window.FormClosing += (_, _) => {
             foreach (var view in window.Controls.OfType<WebView2>())

@@ -14,8 +14,15 @@ RSpec.describe 'Packaged Windows application', :windows do
     desktop.press('Send message')
     expect(desktop.see('Contract test reply')).to include('Hello from the packaged app')
   ensure
-    app&.signal('TERM') if app && !Gem.win_platform?
-    app&.close
+    begin
+      if app && Gem.win_platform? && @desktop
+        desktop.key('alt+F4')
+      elsif app && !Gem.win_platform?
+        app.signal('TERM')
+      end
+    ensure
+      app&.close
+    end
   end
 
   it 'preserves remote authority across an embedded-runtime restart' do
