@@ -67,18 +67,7 @@ class Host
     release
     stop
   ensure
-    if @directory
-      # WebView2 may release its temporary profile shortly after the window exits.
-      Contract.wait(timeout: 10, description: "fixture profile release: #{@directory}") do
-        begin
-          FileUtils.remove_entry(@directory) if File.exist?(@directory)
-          true
-        rescue Errno::EACCES, Errno::ENOTEMPTY, Errno::ENOENT
-          raise unless Gem.win_platform?
-          false
-        end
-      end
-    end
+    FileUtils.remove_entry(@directory) if @directory && File.exist?(@directory)
   end
 
   def request(method, path, body = nil, headers = {})

@@ -127,7 +127,7 @@ API additions:
 Run RSpec from the repository root (see [Testing](testing.md) for setup):
 
 ```sh
-ruby libs4/ruby/bundle.rb exec rspec spec/workflow_spec.rb spec/groups_spec.rb spec/workspace_accessibility_spec.rb
+ruby libs4/ruby/bundle.rb exec rspec spec/workflow_spec.rb spec/groups_spec.rb spec/platform_spec.rb
 ```
 
 Delegation contracts use external provider executables and temporary state. They exercise

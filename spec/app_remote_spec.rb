@@ -1,48 +1,57 @@
-require_relative 'support/desktop'
 require_relative 'support/relay'
 
-RSpec.describe 'Connecting from the shipped remote app', :desktop do
-  before do
-    skip 'Remote WebKit fixture currently runs on macOS' if Gem.win_platform?
-    @relay = Relay.new
-    @host = Host.new
-    @invitation = host.api('POST', '/api/remote/pair', {relay: @relay.url, token: @relay.token}, status: 201)['qr']
-    start_desktop(@relay.url + '/mac')
-  end
-  after { @relay&.close }
-
-  def connect
-    desktop.press('Connect remote corpora')
-    desktop.fill('Or paste an invitation', JSON.generate(@invitation))
-    desktop.press('Connect')
+RSpec.describe 'Installed app encrypted connection', :host do
+  it 'keeps the replaced window disconnected instead of reclaiming the other window’s session' do
+    relay = Relay.new
+    peer = RemotePeer.new(script: 'app-remote-peer.cjs')
+    invitation = host.api('POST', '/api/remote/pair', {relay: relay.url, token: relay.token}, status: 201)['qr']
+    peer.call('pair', invitation: invitation)
     pending = Contract.wait { host.api('GET', '/api/remote')['pending'] }
-    expect(desktop.see(pending['confirmation_code'])).to include('Approve this matching code')
-    expect(host.state['turns']).to be_empty
     host.api('POST', '/api/remote/approve', {peer: pending['peer']})
-    desktop.see('Message ChiefSapi')
+    Contract.wait { peer.call('status')['state'] == 'approved' }
+    peer.call('open-window')
+    2.times { expect(peer.call('request', path: '/api/state')['error']).to include('another window') }
+    expect(peer.call('other-request', path: '/api/state')['status']).to eq(200)
+  ensure
+    peer.close if peer
+    relay.close if relay
   end
 
-  it 'waits for matching-code approval, sends an encrypted message and reconnects after reload' do
-    connect
-    desktop.fill('Message ChiefSapi', 'A private remote message')
-    desktop.press('Send message')
-    desktop.see('Contract test reply')
-    desktop.fill('Message ChiefSapi', 'Unsent remote draft')
-    desktop.reload
-    desktop.see('Contract test reply')
-    expect(desktop.find('Message ChiefSapi')['value']).to eq('Unsent remote draft')
-    expect(host.state['turns'].map { |turn| turn['input'] }).to eq(['A private remote message'])
-  end
-
-  it 'rejects a malformed invitation and still accepts a valid invitation afterward' do
-    desktop.press('Connect remote corpora')
-    desktop.fill('Or paste an invitation', 's4.A.abc.abc.abc.A.1')
-    desktop.press('Connect')
-    desktop.see('Use the QR')
-    expect(host.api('GET', '/api/remote')['pending']).to be_nil
-    desktop.fill('Or paste an invitation', JSON.generate(@invitation))
-    desktop.press('Connect')
+  it 'pairs through host approval, restores trust, edits via ChiefSapi and controls lifecycle' do
+    relay = Relay.new
+    peer = RemotePeer.new(script: 'app-remote-peer.cjs')
+    invitation = host.api('POST', '/api/remote/pair', {relay: relay.url, token: relay.token}, status: 201)['qr']
+    start = peer.call('pair', invitation: invitation)
     pending = Contract.wait { host.api('GET', '/api/remote')['pending'] }
-    expect(desktop.see(pending['confirmation_code'])).to include('Approve this matching code')
+    expect(start['code']).to eq(pending['confirmation_code'])
+    expect(peer.call('saved')['count']).to eq(0)
+    host.api('POST', '/api/remote/approve', {peer: pending['peer']})
+    result = Contract.wait { value = peer.call('status'); value if value['state'] != 'waiting' }
+    expect(result['state']).to eq('approved'), result.inspect
+    expect(peer.call('saved')).to include('count' => 1, 'secrets' => false, 'browserStorage' => 0)
+    identity = host.state['corpora']['id']
+    expect(peer.call('request', path: '/api/state')['body']['corpora']['id']).to eq(identity)
+    details = host.api('GET', '/api/remote')
+    expect(details['device_info']).to include('name' => 'iPhone', 'platform' => 'iOS 26.0', 'client' => 'Sapiens4 Home Screen app')
+    expect(details['last_connected_at']).to be >= details['paired_at']
+    expect(peer.call('restore')['id']).to eq(identity)
+    expect(host.api('GET', '/api/remote')['last_connected_at']).to be > details['last_connected_at']
+    metadata = peer.call('request', path: '/api/corpora')['body']
+    expect(peer.call('request', path: "/api/agents/#{chief}/control", method: 'POST', body: {
+      op: 'corpora_update', revision: metadata['revision'], name: 'Remote Studio', device: 'Host Mac', scope: 'Design work'
+    })['status']).to eq(200)
+    expect(host.api('GET', '/api/corpora')).to include('name' => 'Remote Studio', 'scope' => 'Design work')
+    metadata = host.api('GET', '/api/corpora')
+    expect(peer.call('request', path: '/api/corpora/lifecycle', method: 'PUT', body: {
+      action: 'pause', revision: metadata['revision'], operation: SecureRandom.uuid
+    })['body']['status']).to eq('paused')
+    expect(host.state['pulse']['running']).to eq(false)
+    expect(peer.call('request', path: '/api/host')['error']).to include('not allowed')
+    host.api('POST', '/api/remote/revoke', {})
+    Contract.wait { peer.call('saved')['count'] == 0 }
+    expect(peer.call('saved')['count']).to eq(0)
+  ensure
+    peer.close if peer
+    relay.close if relay
   end
 end

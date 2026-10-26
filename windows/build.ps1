@@ -15,9 +15,6 @@ if ($destination -eq $repo -or $repo.StartsWith($destination + [IO.Path]::Direct
 if (-not (Test-Path (Join-Path $BlindlySource 'windows/Cargo.toml'))) { throw 'Initialize the Rust revision of the Blindly4 submodule first' }
 if (-not (Test-Path (Join-Path $repo 'libs4/web/remote-vendor.js'))) { throw 'Initialize dependencies with git submodule update --init --recursive first' }
 
-& $BuildPython (Join-Path $repo 'web/shell/build.py')
-if ($LASTEXITCODE -ne 0) { throw 'PureScript UI build failed' }
-
 dotnet publish (Join-Path $PSScriptRoot 'Sapiens4.csproj') -c Release -r $Runtime --self-contained true -o $destination
 if ($LASTEXITCODE -ne 0) { throw 'Sapiens4 desktop build failed' }
 foreach ($obsolete in @('runtime/sapiens', 'runtime/prompts', 'runtime/web', 'runtime/sapiens4', 'sapiens4.cmd')) {
@@ -46,12 +43,6 @@ foreach ($folder in @('sapiens','prompts','web')) {
         New-Item -ItemType Directory -Force -Path ([IO.Path]::GetDirectoryName($target)) | Out-Null
         Copy-Item -LiteralPath $file.FullName -Destination $target -Force
     }
-}
-
-$webOutput = Join-Path $payload '.build/web'
-New-Item -ItemType Directory -Force -Path $webOutput | Out-Null
-foreach ($asset in @('app.js','sw.js','guest.js')) {
-    Copy-Item -LiteralPath (Join-Path $repo ".build/web/$asset") -Destination $webOutput -Force
 }
 
 & (Join-Path $repo 'libs4/python/package-windows.ps1') -Runtime $Runtime -TargetDirectory (Join-Path $payload 'python') -PythonArchive $PythonArchive -BuildPython $BuildPython

@@ -37,8 +37,7 @@ class Relay
   end
   def request(method, path, body = nil, bearer: token, headers: {})
     body = {} if method == 'POST' && body.nil?
-    authorization = bearer ? {'Authorization' => "Bearer #{bearer}"} : {}
-    Contract.http(url + path, method, body, authorization.merge(headers))
+    Contract.http(url + path, method, body, {'Authorization' => "Bearer #{bearer}"}.merge(headers))
   end
   def room
     status, body = request('POST', '/api/rooms', {})
@@ -52,8 +51,8 @@ class Relay
 end
 
 class RemotePeer
-  def initialize
-    @input, @output, @error, @process = Open3.popen3(Contract::PYTHON, File.join(__dir__, 'remote_peer.py'))
+  def initialize(script: 'remote_peer.cjs')
+    @input, @output, @error, @process = Open3.popen3('node', File.join(__dir__, script))
     @errors = Thread.new { @error.read }
   end
   def call(op, **fields)
@@ -74,40 +73,4 @@ class RemotePeer
     @errors.join
     @error.close
   end
-end
-
-# A second implementation of the public wire protocol, independent of the app.
-# Browser persistence and reconnection are exercised separately through Blindly4.
-class PairedDevice
-  def initialize
-    @peer = RemotePeer.new
-    @keys = @peer.call('keys')
-  end
-
-  def pair(invitation)
-    @invitation = invitation
-    @peer.call('connect', name: 'device', url: invitation['relay'], room: invitation['room'], token: invitation['token'])
-    send_request(kind: 'pair', secret: invitation['secret'])
-  end
-
-  def send_request(**fields)
-    frame = @peer.call('pack', private: @keys['private'], public: @invitation['desktop'], room: @invitation['room'],
-      body: {id: SecureRandom.hex(8), kind: 'request', expires: Time.now.to_f + 120}.merge(fields))
-    @peer.call('call', name: 'device', body: {type: 'send', frame: frame})
-  end
-
-  def receive
-    delivery = @peer.call('read', name: 'device', timeout: 7000)
-    raise "No encrypted response: #{delivery.inspect}" unless delivery && delivery['messages']
-    item = delivery['messages'].first
-    @peer.call('call', name: 'device', body: {type: 'ack', message: item['id']})
-    @peer.call('unpack', private: @keys['private'], public: @invitation['desktop'], frame: item['frame']).fetch('result')
-  end
-
-  def request(path, method: 'GET', body: nil)
-    send_request(op: 'api', path: path, method: method, data: body)
-    receive
-  end
-
-  def close; @peer.close; end
 end

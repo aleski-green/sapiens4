@@ -1,39 +1,53 @@
+"""Serve Sapiens4's runtime UI from an explicit public asset allowlist."""
 from sapiens.paths import ROOT
 
 WEB = ROOT / "web"
-BUNDLE = ROOT / ".build" / "web"
+SCRIPTS = ("shell/bootstrap.js", "shell/app.js", "features/names.js", "features/notes.js",
+           "features/mentions.js", "features/tasks.js",
+           "features/workspaces.js", "features/groups.js", "shell/bridge.js")
+
+
+# Never expose Python sources, runtime data, or Git metadata.
 PUBLIC_ASSETS = {
+    **{'/' + name + '.js': ('text/javascript', 'features/' + name + '.js') for name in
+       ('corpora', 'relay-servers', 'remote-session', 'remote-transport', 'remote-code', 'remote-onboarding', 'remote-install')},
     '/remote-vendor.js': ('text/javascript', ROOT / 'libs4/web/remote-vendor.js'),
-    '/corpora.css': ('text/css', WEB / 'theme/corpora.css'),
-    '/remote-install.css': ('text/css', WEB / 'theme/remote-install.css'),
-    '/manifest.webmanifest': ('application/manifest+json', WEB / 'shell/remote.webmanifest'),
-    **{f'/app-icon-{size}.png': ('image/png', WEB / f'shell/app-icon-{size}.png') for size in (180, 192, 512)},
-    **{f'/{name}.svg': ('image/svg+xml', WEB / f'shell/{name}.svg') for name in ('favicon', 'favicon-dark')},
-    '/workspace/guest.js': ('text/javascript', BUNDLE / 'guest.js'),
-    '/sw.js': ('text/javascript', BUNDLE / 'sw.js'),
-    '/live.css': ('text/css', WEB / 'theme/live.css'),
-    '/workspace/styles.css': ('text/css', WEB / 'theme/styles.css'),
-    '/assets/sapi-theme.css': ('text/css', WEB / 'theme/sapi-theme.css'),
+    '/corpora.css': ('text/css', 'theme/corpora.css'),
+    '/remote-install.css': ('text/css', 'theme/remote-install.css'),
+    '/manifest.webmanifest': ('application/manifest+json', 'shell/remote.webmanifest'),
+    **{f'/app-icon-{size}.png': ('image/png', f'shell/app-icon-{size}.png') for size in (180, 192, 512)},
+    '/sw.js': ('text/javascript', 'shell/sw.js'),
+    "/live.css": ("text/css", "theme/live.css"),
+    "/workspace/styles.css": ("text/css", "theme/styles.css"),
+    "/assets/sapi-theme.css": ("text/css", "theme/sapi-theme.css"),
+    "/assets/sapi-theme.js": ("text/javascript", "theme/sapi-theme.js"),
 }
 
-
 def javascript():
-    path = BUNDLE / 'app.js'
-    if not path.is_file():
-        raise RuntimeError('Build the PureScript UI first: python3 web/shell/build.py (Node.js 22.5+ required).')
-    return path.read_text(encoding='utf-8')
+    source = "\n".join((WEB / name).read_text(encoding='utf-8') for name in SCRIPTS)
+    return "(async () => {\n" + source + "\n})().catch(error => {\n" + """
+        // Preserve menus and saved workspace context on bootstrap failure.
+        const panel = document.createElement('main');
+        panel.style.cssText = 'padding:40px;font:16px monospace';
+        const title = document.createElement('h1'); title.textContent = 'Sapiens4 could not connect';
+        const detail = document.createElement('p'); detail.textContent = error.message;
+        const retry = document.createElement('button'); retry.textContent = 'Retry connection';
+        retry.onclick = () => location.reload();
+        panel.append(title, detail, retry); document.getElementById("corpora-startup-feedback")?.replaceChildren(panel);
+    });
+    """
 
 
 def index():
-    return (WEB / 'shell/index.html').read_text(encoding='utf-8')
+    return (WEB / "shell/index.html").read_text(encoding='utf-8')
 
 
 def asset(path):
-    if path in {'/', '/workspace/', '/workspace/index.html'}:
-        return 'text/html; charset=utf-8', index().encode()
-    if path == '/workspace/app.js':
-        return 'text/javascript; charset=utf-8', javascript().encode()
+    if path in {"/", "/workspace/", "/workspace/index.html"}:
+        return "text/html; charset=utf-8", index().encode()
+    if path == "/workspace/app.js":
+        return "text/javascript; charset=utf-8", javascript().encode()
     if path in PUBLIC_ASSETS:
-        mime, file = PUBLIC_ASSETS[path]
-        return mime + '; charset=utf-8', file.read_bytes()
+        mime, name = PUBLIC_ASSETS[path]
+        return mime + "; charset=utf-8", (WEB / name).read_bytes()
     return None

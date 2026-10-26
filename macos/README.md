@@ -1,7 +1,7 @@
 # Sapiens4 for macOS
 
 An AppKit/WebKit window with a Dock icon. Requires macOS 13+, Command Line Tools,
-stable Rust, Python 3.9+, Node.js 22.5+, npm, Git and authenticated Codex CLI 0.156.1 or newer.
+stable Rust, Python 3.9+, Git and authenticated Codex CLI 0.156.1 or newer.
 
 ## Build and open
 
@@ -50,7 +50,7 @@ WebKit tabs keep their own browser sessions. File selection, editing shortcuts,
 external links, themes and the favicon-derived Dock icon remain available.
 
 ```sh
-ruby libs4/ruby/bundle.rb exec rspec spec/distribution_spec.rb spec/workspace_accessibility_spec.rb
+ruby libs4/ruby/bundle.rb exec rspec spec/distribution_spec.rb spec/platform_spec.rb
 codesign --verify --strict .build/macos/Sapiens4.app
 ```
 

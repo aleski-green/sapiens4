@@ -1,6 +1,8 @@
 import Cocoa
 import WebKit
 
+// A normal navigable resource keeps text files in WebKit's back/forward history.
+// Each tab grants access only to files explicitly opened through the host.
 final class TextFiles: NSObject, WKURLSchemeHandler {
     var allowed = Set<String>()
     static func fileURL(_ url: URL?) -> URL? {
@@ -21,6 +23,7 @@ final class TextFiles: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
 }
 
+// Guest views have no script-message handlers and never share the app's origin.
 final class BrowserTab {
     let owner: String
     let id: String
@@ -32,12 +35,18 @@ final class BrowserTab {
     var error = ""
     var awaitingCommit = false
     var observations: [NSKeyValueObservation] = []
-    init(owner: String, id: String, script: String) {
+    init(owner: String, id: String) {
         self.owner = owner; self.id = id
         let configuration = WKWebViewConfiguration()
         configuration.setURLSchemeHandler(files, forURLScheme:"sapiens-file")
         configuration.websiteDataStore = .default()
-        configuration.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        configuration.userContentController.addUserScript(WKUserScript(source: """
+            if (location.href === 'about:blank' || ['text/plain','application/json','application/xml','text/xml'].includes(document.contentType)) {
+                const style = document.createElement('style');
+                style.textContent = 'html,body{background:#fff;color:#171717;color-scheme:light dark}pre{white-space:pre-wrap;overflow-wrap:anywhere}@media(prefers-color-scheme:dark){html,body{background:#000;color:#eee}}';
+                document.documentElement.append(style);
+            }
+            """, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         view = WKWebView(frame: .zero, configuration: configuration)
         view.allowsBackForwardNavigationGestures = true
     }
@@ -46,12 +55,7 @@ final class BrowserTab {
 final class Browser: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
     weak var shell: WKWebView?
     let origin: URL
-    let guestScript: String
-    init(origin: URL = URL(string: "http://127.0.0.1:4174")!) {
-        self.origin = origin
-        guestScript = (try? String(contentsOf: origin.appendingPathComponent("workspace/guest.js"), encoding: .utf8)) ?? ""
-        super.init()
-    }
+    init(origin: URL = URL(string: "http://127.0.0.1:4174")!) { self.origin = origin; super.init() }
     var tabs: [String: BrowserTab] = [:]
     var active: BrowserTab?
     var dark = false
@@ -90,7 +94,6 @@ final class Browser: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
     }
     func sync(_ data: [String: Any]) {
         guard let shell, let container = shell.superview, let workspaces = data["workspaces"] as? [String: [String: Any]] else { return }
-        let wasDark = dark
         dark = data["dark"] as? Bool == true
         owner = data["owner"] as? String ?? ""
         let activeKey = owner + ":" + (data["active"] as? String ?? "")
@@ -104,10 +107,12 @@ final class Browser: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
                 let key = owner + ":" + id
                 alive.insert(key)
                 let fresh = tabs[key] == nil
-                let tab = tabs[key] ?? BrowserTab(owner: owner, id: id, script: guestScript)
+                let tab = tabs[key] ?? BrowserTab(owner: owner, id: id)
                 if fresh {
                     tabs[key] = tab
                     tab.view.navigationDelegate = self; tab.view.uiDelegate = self
+                    // WKWebView exposes its web document as its accessibility subtree, hiding
+                    // native guest subviews. Keep guests beside the shell in its container.
                     tab.view.isHidden = true
                     container.addSubview(tab.view, positioned: .above, relativeTo: shell)
                     tab.observations = [
@@ -117,7 +122,6 @@ final class Browser: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
                 }
                 tab.view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
                 tab.view.underPageBackgroundColor = dark ? .black : .white
-                if dark != wasDark { tab.view.evaluateJavaScript("window.sapiensDocumentTheme?.({dark:\(dark)})", completionHandler: nil) }
                 tab.view.pageZoom = item["zoom"] as? Double ?? 1
                 if tab.sequence != sequence {
                     tab.sequence = sequence; tab.error = ""; tab.awaitingCommit = true
@@ -193,6 +197,7 @@ final class Browser: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
     }
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let tab = tab(for: webView), let url = action.request.url else { decisionHandler(.cancel); return }
+        // The app control server must never become a guest page, including in frames.
         let host = url.host ?? ""
         if url.port == origin.port && ["127.0.0.1", "localhost", "::1"].contains(host) {
             tab.error = "The Sapiens control server cannot open in a browser tab."

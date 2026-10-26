@@ -241,7 +241,7 @@ A supplied Origin must match the loopback Host. Unknown routes return 404.
 ```sh
 ruby libs4/ruby/bundle.rb install
 python3 -m pip install -r libs4/python/remote-requirements.txt
-python3 web/shell/build.py
+npm ci --prefix libs4 --ignore-scripts
 SAPIENS_PYTHON=python3 ruby libs4/ruby/bundle.rb exec rspec
 ```
 
