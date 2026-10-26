@@ -90,7 +90,7 @@ class Handler(BaseHTTPRequestHandler):
             data = self._body() if write else None
             if path == '/api/host' and self.command == 'GET':
                 return self._send(200, registry.records())
-            if write and self.server.service._stopping.is_set():
+            if write and self.server.service.execution.stopping.is_set():
                 raise APIError(503, 'Host is shutting down')
             if path == '/api/host/relays' and self.command == 'GET':
                 return self._send(200, registry.relays.view())

@@ -15,6 +15,8 @@ if ($destination -eq $repo -or $repo.StartsWith($destination + [IO.Path]::Direct
 if (-not (Test-Path (Join-Path $BlindlySource 'windows/Cargo.toml'))) { throw 'Initialize the Rust revision of the Blindly4 submodule first' }
 if (-not (Test-Path (Join-Path $repo 'libs4/web/remote-vendor.js'))) { throw 'Initialize dependencies with git submodule update --init --recursive first' }
 
+& $BuildPython (Join-Path $repo 'sapiens/build.py')
+if ($LASTEXITCODE -ne 0) { throw 'Haskell domain build failed' }
 & $BuildPython (Join-Path $repo 'web/shell/build.py')
 if ($LASTEXITCODE -ne 0) { throw 'PureScript UI build failed' }
 
@@ -48,6 +50,8 @@ foreach ($folder in @('sapiens','prompts','web')) {
     }
 }
 
+New-Item -ItemType Directory -Force -Path (Join-Path $payload '.build') | Out-Null
+Copy-Item -LiteralPath (Join-Path $repo '.build/domain') -Destination (Join-Path $payload '.build') -Recurse -Force
 $webOutput = Join-Path $payload '.build/web'
 New-Item -ItemType Directory -Force -Path $webOutput | Out-Null
 foreach ($asset in @('app.js','sw.js','guest.js')) {

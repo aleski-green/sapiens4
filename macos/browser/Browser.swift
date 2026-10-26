@@ -1,48 +1,6 @@
 import Cocoa
 import WebKit
 
-final class TextFiles: NSObject, WKURLSchemeHandler {
-    var allowed = Set<String>()
-    static func fileURL(_ url: URL?) -> URL? {
-        guard let url else { return nil }
-        return url.scheme == "sapiens-file" ? URL(fileURLWithPath: url.path) : url
-    }
-    func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
-        guard let url = task.request.url, allowed.contains(url.path) else {
-            task.didFailWithError(NSError(domain:NSURLErrorDomain,code:NSURLErrorNoPermissionsToReadFile)); return
-        }
-        do {
-            let text = try String(contentsOfFile:url.path,encoding:.utf8)
-            let data = Browser.textDocument(text,title:url.lastPathComponent).data(using:.utf8)!
-            task.didReceive(URLResponse(url:url,mimeType:"text/html",expectedContentLength:data.count,textEncodingName:"utf-8"))
-            task.didReceive(data); task.didFinish()
-        } catch { task.didFailWithError(error) }
-    }
-    func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
-}
-
-final class BrowserTab {
-    let owner: String
-    let id: String
-    let files = TextFiles()
-    let view: WKWebView
-    var sequence = ""
-    var document: URL?
-    var requested: URL?
-    var error = ""
-    var awaitingCommit = false
-    var observations: [NSKeyValueObservation] = []
-    init(owner: String, id: String, script: String) {
-        self.owner = owner; self.id = id
-        let configuration = WKWebViewConfiguration()
-        configuration.setURLSchemeHandler(files, forURLScheme:"sapiens-file")
-        configuration.websiteDataStore = .default()
-        configuration.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
-        view = WKWebView(frame: .zero, configuration: configuration)
-        view.allowsBackForwardNavigationGestures = true
-    }
-}
-
 final class Browser: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
     weak var shell: WKWebView?
     let origin: URL

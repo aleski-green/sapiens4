@@ -1,7 +1,10 @@
 from datetime import datetime, timedelta
-import re
+import json
+import subprocess
+import sys
 from uuid import uuid4, uuid5, NAMESPACE_URL
 
+from sapiens.paths import ROOT
 from sapiens.clock import utcnow
 from sapiens.validation import APIError, text_field
 
@@ -25,30 +28,18 @@ class ScheduledRoutines:
                 service.store.save_routine(routine)
 
     def command(self, owner, text, attachments=()):
-        """Recognize only the explicit chat templates, before any model execution."""
-        creating = text.startswith('Add New Scheduled Routine:')
-        editing = text.startswith('Edit @routine_sch_')
-        changing = text.startswith(('Pause Schedule Riutine', 'Pause Scheduled Routine', 'Resume Scheduled Routine'))
-        if not creating and not editing and not changing:
+        binary = ROOT / '.build/domain' / ('sapiens-domain.exe' if sys.platform == 'win32' else 'sapiens-domain')
+        result = subprocess.run([str(binary), 'routine', str(int(bool(attachments)))], input=text.encode('utf-8'),
+                                capture_output=True, timeout=10, check=True,
+                                **({'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}))
+        command = json.loads(result.stdout)
+        if command is None:
             return None
-        if attachments:
-            raise APIError(400, 'Put the execution instructions in the routine prompt')
-        if changing:
-            match = re.fullmatch(r'(Pause Schedule Riutine|Pause Scheduled Routine|Resume Scheduled Routine):?\s*\n@(routine_sch_[0-9]{5,})', text)
-            if not match:
-                raise APIError(400, 'Put the Scheduled Routine ID on the next line')
-            return self.set_paused(owner, match[2], match[1].startswith('Pause'))
-        pattern = (r'Add New Scheduled Routine:\s*\nFrequency: every ([0-9]+) minutes?\s*\nExecute: ([\s\S]+)'
-                   if creating else
-                   r'Edit @(routine_sch_[0-9]{5,}) \( [^\n]* \)\s*\nEdit Frequency \(prev every ([0-9]+) minutes?\): new every ([0-9]+) minutes?\s*\nEdit Execution Prompt as: ([\s\S]+)')
-        match = re.fullmatch(pattern, text)
-        if not match:
-            raise APIError(400, 'Use the Scheduled Routine template with a whole number of minutes and an execution prompt')
-        fields = match.groups()
-        minutes, execution = int(fields[-2]), fields[-1].strip()
-        return self.save(owner, minutes, execution,
-                         routine_id=None if creating else fields[0],
-                         previous_minutes=None if creating else int(fields[1]))
+        if 'error' in command:
+            raise APIError(400, command['error'])
+        if 'paused' in command:
+            return self.set_paused(owner, command['routine_id'], command['paused'])
+        return self.save(owner, **command)
 
     def save(self, owner, minutes, execution, *, routine_id=None, previous_minutes=None, source_call=None):
         execution = text_field(dict(prompt=execution), 'prompt', 16000)
@@ -59,7 +50,7 @@ class ScheduledRoutines:
             if owner.startswith('group_'):
                 service.groups.get(owner, active=True)
             else:
-                service.lifecycle.require_active(service._agent(owner))
+                service.lifecycle.require_active(service.population.agent(owner))
             routines = [r for r in service.store.routines() if r['owner'] == owner]
             routine = next((r for r in routines if r['id'] == routine_id), None)
             if routine_id and routine is None:
@@ -119,7 +110,7 @@ class ScheduledRoutines:
                                       created=at, output_at=at))
             state['chat'].extend([dict(role='user', content=text, turn=turn_id, time=at),
                                   dict(role='agent', content=reply, turn=turn_id, time=at)])
-        self.service._sync(agent)
+        self.service.projection.sync(agent)
         return dict(id=turn_id, agent=agent.agid, status='done', flow='chat')
 
     def dispatch(self, tick):
@@ -142,7 +133,7 @@ class ScheduledRoutines:
             group = service.groups.get(owner) if owner.startswith('group_') else None
             if group and group['archived']:
                 continue
-            agent = service._agent(group['lead'] if group else owner)
+            agent = service.population.agent(group['lead'] if group else owner)
             if service.lifecycle.retired(agent):
                 continue
             # A deterministic occurrence ID makes enqueue recovery idempotent.
@@ -167,7 +158,7 @@ class ScheduledRoutines:
             else:
                 if not service.store.projected_turn(turn_id):
                     agent.runner.submit('chat', routine['prompt'], turn_id=turn_id, origin=origin, batchable=True)
-                    service._sync(agent)
+                    service.projection.sync(agent)
                 turn = dict(id=turn_id, input=routine['prompt'], origin=origin)
                 work, call = service.delegation.begin(agent.agid, turn)
                 if call['state'] == 'Running' and not work['decisions']:

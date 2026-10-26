@@ -62,7 +62,7 @@ class GroupChat:
         return request
 
     def active_root(self, gid, actor):
-        group, request = self.find(self.service._active_turn(actor)) if actor != 'admin' else (None, None)
+        group, request = self.find(self.service.execution.active_turn(actor)) if actor != 'admin' else (None, None)
         return request['root'] if group and group['id'] == gid else None
 
     def submit(self, gid, data, actor='admin'):
@@ -111,7 +111,7 @@ class GroupChat:
 
     def dispatch(self):
         with self.service._lock:
-            if self.service._stopping.is_set():
+            if self.service.execution.stopping.is_set():
                 return
             for group in self.service.store.groups():
                 if group['archived']:
@@ -123,10 +123,10 @@ class GroupChat:
                     if request.get('memo') and agid != group['lead']:
                         request['target'] = agid = group['lead']
                         self.service.store.save_group(group)
-                    agent = self.service._agent(agid)
+                    agent = self.service.population.agent(agid)
                     if self.service.store.projected_turn(request['id']):
                         continue
-                    if agid in self.service._runners or any(t['status'] in {'queued', 'running'} for t in agent.state['turns']):
+                    if agid in self.service.execution.runners or any(t['status'] in {'queued', 'running'} for t in agent.state['turns']):
                         continue
                     if any(c['addressedTo'] == agid and c['state'] == 'Queued'
                            for w in self.service.store.workloads() for c in w['calls']):
@@ -135,8 +135,8 @@ class GroupChat:
                     agent.runner.submit('chat', message['text'] + attachment_prompt(message.get('attachments', [])), turn_id=request['id'],
                                         origin=request.get('origin') or dict(group=group['id'], author=message['author']),
                                         batchable=bool(request.get('origin', {}).get('routine')))
-                    self.service._sync(agent)
-                    self.service._queue.put(agid)
+                    self.service.projection.sync(agent)
+                    self.service.execution.queue.put(agid)
 
     def run(self, agid, runner, turn, snapshot, result):
         with self.service._lock:
@@ -261,7 +261,7 @@ class GroupChat:
                         raise APIError(409, 'The recipient is no longer a Group member')
                     if request.get('task'):
                         raise APIError(409, 'Start the current task revision from Work instead')
-                self.service.turn_action(request['target'], rid, action)
+                self.service.population.turn_action(request['target'], rid, action)
                 group = self.groups.get(gid)
                 request = next(r for r in group['requests'] if r['id'] == rid)
                 if action == 'retry':

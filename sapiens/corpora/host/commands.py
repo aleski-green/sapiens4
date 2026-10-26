@@ -24,7 +24,7 @@ class Orchestration:
 
     def attach(self, url):
         self.url = url
-        for agent in self.service._agents.values():
+        for agent in self.service.population.agents.values():
             self.prepare(agent)
 
 
@@ -35,14 +35,14 @@ class Orchestration:
             matches = [r for r in rows if r["name"].casefold() == value.casefold()]
         if len(matches) != 1:
             raise APIError(400, "Sapi name must identify exactly one existing Sapi; use its ID")
-        agent = self.service._agent(matches[0]["id"])
+        agent = self.service.population.agent(matches[0]["id"])
         if not include_retired:
             self.service.lifecycle.require_active(agent)
         return agent
 
 
     def control(self, agid, data):
-        with self.service.store.events.context(agid, 'chatInput' if self.service._active_turn(agid) else None):
+        with self.service.store.events.context(agid, 'chatInput' if self.service.execution.active_turn(agid) else None):
             return self._control_run(agid, data)
 
     def _control_run(self, agid, data):
@@ -51,18 +51,18 @@ class Orchestration:
             return self._control(agid, data)
         with self.service._lock:
             if not any(t['id'] == run_id and t['status'] == 'running'
-                       for t in self.service._agent(agid).state['turns']):
+                       for t in self.service.population.agent(agid).state['turns']):
                 raise APIError(409, 'AgencyRun is no longer active')
-            previous = getattr(self.service._execution, 'turn', None)
-            self.service._execution.turn = run_id
+            previous = getattr(self.service.execution.local, 'turn', None)
+            self.service.execution.local.turn = run_id
             try:
                 return self._control(agid, {k: v for k, v in data.items() if k != 'agencyRun'})
             finally:
-                self.service._execution.turn = previous
+                self.service.execution.local.turn = previous
 
     def _control(self, agid, data):
         with self.service._lock:
-            agent = self.service._agent(agid)
+            agent = self.service.population.agent(agid)
             op = data.get("op")
             fields = {"corpora_get": set(), "corpora_update": {"name", "device", "scope", "revision", "archived"}, "batch": {"operations"}, "status": {'target'},
                       "delegate": {'decision'},
@@ -90,7 +90,7 @@ class Orchestration:
             if op in {'corpora_get', 'corpora_update'}:
                 if agid != self.service.registry.main:
                     raise APIError(403, 'Only ChiefSapi can change corpora settings')
-                return (self.service.corpora_identity() if op == 'corpora_get' else
+                return (self.service.projection.corpora_identity() if op == 'corpora_get' else
                         self.service.corpora_settings.update({k: v for k, v in data.items() if k != 'op'}))
             if op == 'batch':
                 operations = data.get('operations')
@@ -123,12 +123,12 @@ class Orchestration:
                 return {'self_id': agid, 'saved': True, 'routine': routine}
             if op in {'routine_create', 'routine_update'}:
                 routine = self.service.routines.save(agid, data.get('minutes'), data.get('prompt'),
-                    routine_id=text_field(data, 'id', 80) if op == 'routine_update' else None, source_call=self.service._active_turn(agid))
+                    routine_id=text_field(data, 'id', 80) if op == 'routine_update' else None, source_call=self.service.execution.active_turn(agid))
                 return {'self_id': agid, 'saved': True, 'routine': routine}
             if op == 'delegate':
                 return self.service.delegation.apply(agid, data.get('decision'))
             if op == 'computer_acquire':
-                return self.service.acquire_computer(agid)
+                return self.service.execution.acquire_computer(agid)
             if op == 'workspace':
                 return self.service.workspace.summary(workspace_owner)
             if op == 'status':
@@ -148,14 +148,14 @@ class Orchestration:
                 if matches:
                     if len(matches) != 1 or matches[0]['role'] != role or matches[0]['id'] == agent.agid:
                         raise APIError(409, 'Name already exists with a different role; use status to inspect it')
-                    child = self.service._agent(matches[0]['id'])
+                    child = self.service.population.agent(matches[0]['id'])
                     self.service.lifecycle.require_active(child)
                     if self.service.registry.directory()[child.agid]['parent'] != parent:
                         raise APIError(409, 'Name already exists with a different manager')
                     result = {'agent': matches[0], 'created': False}
                 else:
-                    result = {'agent': self.service.create_agent(dict(name=name, role=role, manager=parent)), 'created': True}
-                self.prepare(self.service._agent(result['agent']['id']))
+                    result = {'agent': self.service.population.create_agent(dict(name=name, role=role, manager=parent)), 'created': True}
+                self.prepare(self.service.population.agent(result['agent']['id']))
             elif op.startswith('workspace_'):
                 result['workspace'] = self.service.workspace.control(workspace_owner, op.removeprefix('workspace_'), data)
             elif op == "manager":
@@ -184,7 +184,7 @@ class Orchestration:
     def team(self):
         result = []
         for row in self.service.store.agents():
-            agent = self.service._agent(row['id'])
+            agent = self.service.population.agent(row['id'])
             if not self.service.lifecycle.retired(agent):
                 result.append(dict(id=row['id'], name=row['name'], role=row['role'],
                     manager=self.service.registry.directory().get(agent.agid, {}).get('parent'),

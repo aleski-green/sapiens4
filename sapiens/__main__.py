@@ -40,7 +40,7 @@ def main():
             # A private inherited pipe: EOF also shuts down after a desktop crash.
             sys.stdin.readline()
             with service._lock:
-                for agent in service._agents.values():
+                for agent in service.population.agents.values():
                     agent.runner.cancel_event.set()
             server.shutdown()
         threading.Thread(target=watch_parent, daemon=True).start()
