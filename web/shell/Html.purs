@@ -29,7 +29,16 @@ span :: Array Prop -> String -> Html
 span = textNode "span"
 
 control :: Array Prop -> String -> Action -> Html
-control props caption action = textNode "button" ([attr "type" "button",click action] <> props) caption
+control props caption = controlWith props [text caption]
+
+controlWith :: Array Prop -> Array Html -> Action -> Html
+controlWith props children action = node "button" ([attr "type" "button",click action] <> props) children
+
+chevron :: Boolean -> Html
+chevron sideways = svg "svg" [cls $ "activity-chevron" <> if sideways then " sideways" else "",attr "viewBox" "0 0 16 16",attr "width" "12",attr "height" "12",attr "fill" "none",attr "aria-hidden" "true",attr "focusable" "false"]
+  [svg "path" [attr "d" "m4.5 6.25 3.5 3.5 3.5-3.5",attr "stroke" "currentColor",attr "stroke-width" "1.5",attr "stroke-linecap" "round",attr "stroke-linejoin" "round"] []]
+  where
+  svg tag = C.elementNS (C.Namespace "http://www.w3.org/2000/svg") (C.ElemName tag)
 
 attr :: String -> String -> Prop
 attr name = P.attr (C.AttrName name)

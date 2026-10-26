@@ -74,6 +74,23 @@ input is never replayed after an ambiguous failure. Value assertions wait for th
 exact expected text without restoring focus or retyping. Windows text roles are
 used for heading assertions. These checks use native accessibility and navigation
 events, not JavaScript evaluation or an application test bridge.
+
+Text entry clicks the visible editor and checks the focused control's accessible
+name and editable role before rediscovering it for the value write. A transient
+absence of a focused control is polled without clicking again or typing. Incoming
+messages can move the editor's accessibility index between discovery and input.
+A macOS write rejected because the resolved target is not writable is retried
+only because Blindly4 rejects it before changing any text. Focus or verification
+failures after input begins fail the scenario without replaying input.
+
+Corpora selection also runs through real mouse clicks, including saved native
+remote connections and separate drafts after reload. Browser links are clicked
+after opening, resizing and closing the workspace menu. Clicks must land inside
+the fixture window. Accessibility invocation alone can activate an offscreen menu
+item, and finding its accessible label does not establish that a mouse user can
+reach it. Appearance changes require visual comparison with the baseline as well;
+behavior assertions do not establish icon, color or spacing equivalence.
+
 The packaged-window test closes through native Alt+F4. Fixture cleanup waits up
 to ten seconds for Windows to release WebView2 profile files, then fails if a
 sharing violation remains.
@@ -85,7 +102,7 @@ sharing violation remains.
 | Sending messages, saved task history, Memo, late task/Memo replies, retry, drafts during send confirmation, search, per-person workspace | `ui_state_spec.rb`, through Blindly4 and the real service |
 | Incoming replies while composing or reading older messages | `chat_scroll_spec.rb`, using native input and accessible on-screen positions |
 | Shared group messages, personal-chat isolation and Group-only task filters | `groups_browser_spec.rb` |
-| Creating/switching corpora, pause/resume, preserving drafts and execution state | `corpora_browser_spec.rb` |
+| Creating/switching corpora, pause/resume, preserving drafts and execution state | `corpora_browser_spec.rb`, plus mouse selection and saved local/remote transitions in `corpora_selection_spec.rb` |
 | Relay JSON validation, save, cancel/confirm switching | `relay_browser_spec.rb` |
 | Matching-code approval, remote message delivery, saved draft and reconnection, invalid invitations | `app_remote_spec.rb`, shipped remote app with real host and relay |
 | Native tabs, unframeable websites, links, bookmarks, text files, reload, menus, resize | `workspace_accessibility_spec.rb` |

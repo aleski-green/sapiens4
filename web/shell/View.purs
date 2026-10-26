@@ -19,7 +19,7 @@ import Sapiens.Workspace as Workspace
 
 render :: M.Model -> V.Html
 render m = V.node "div" []
-  [V.div "app" [header m,corporaMenu m,statusMenu m,emptyCorpora m,installGate m,V.textNode "p" [V.id "corpora-startup-feedback",V.attr "role" "status"] (m.feedback)
+  [V.div "app" [header m,emptyCorpora m,installGate m,V.textNode "p" [V.id "corpora-startup-feedback",V.attr "role" "status"] (m.feedback)
     ,V.node "div" [V.cls "main-grid",V.hidden $ A.null m.agents || m.installRequired,V.attr "data-visible-panes" $ show $ A.length panes,V.style $ "grid-template-columns:" <> S.joinWith " " columns] [sidebar m,conversation m,Workspace.view m]]
   ,Dialog.view m,V.textNode "div" [V.id "toast",V.cls $ "toast " <> if m.toast /= "" then "visible" else "",V.attr "role" "status",V.attr "aria-live" "polite"] (m.toast)]
   where
@@ -36,13 +36,14 @@ stateName = case _ of
   _ -> "Active"
 
 header :: M.Model -> V.Html
-header m = V.node "header" [V.cls "app-header"]
+header m = V.node "header" [V.cls "app-header"] $
   [V.node "a" [V.cls "wordmark",V.attr "href" "#",V.label "Sapiens4 home",V.on "click" \e -> Link e Home] [V.span [V.cls "brand-name"] "Sapiens4"]
   ,V.control [V.id "app-menu",V.cls "icon-button menu-button",V.label "Menu",V.attr "title" "Menu"] "☰" (OpenDialog M.AppMenu D.empty)
   ,V.node "nav" [V.cls "pane-controls",V.label "Panel visibility"] $ map paneButton [Tuple N.Sidebar "chat list",Tuple N.ChatPane "chat",Tuple N.Workspace "workspace"]
   ,V.control [V.cls "theme-toggle",V.label $ "Switch to " <> (if m.theme == "dark" then "light" else "dark") <> " theme"] (if m.theme == "dark" then "☀" else "☾") (Theme)
-  ,V.node "button" [V.id "corpora-picker",V.cls "connection-button",V.attr "aria-controls" "corpora-menu",V.attr "aria-expanded" $ show $ m.menu == Just "corpora",V.click $ Menu "corpora"] [V.span [V.id "corpora-location"] (D.fallback (if M.remote m then "Remote" else "Local") $ D.s "location" $ M.activeRecord m),V.span [V.attr "aria-hidden" "true"] "⌄"]
-  ,V.node "button" [V.id "connection-status",V.cls "connection-status connection-button",V.attr "aria-controls" "corpora-status-menu",V.attr "aria-expanded" $ show $ m.menu == Just "status",V.attr "aria-live" "polite",V.attr "data-online" $ show $ m.online && not m.busy && D.s "status" (M.activeRecord m) == "active",V.disabled $ m.active == "" || not m.online || m.busy,V.click $ Menu "status"] [V.node "span" [V.cls "connection-dot",V.attr "aria-hidden" "true"] [],V.span [V.id "connection-label"] (status m),V.span [V.attr "aria-hidden" "true"] "⌄"]]
+  ,V.node "button" [V.id "corpora-picker",V.cls "connection-button",V.attr "aria-controls" "corpora-menu",V.attr "aria-expanded" $ show $ m.menu == Just "corpora",V.click $ Menu "corpora"] [V.span [V.id "corpora-location"] (D.fallback (if M.remote m then "Remote" else "Local") $ D.s "location" $ M.activeRecord m),V.chevron false]
+  ,V.node "button" [V.id "connection-status",V.cls "connection-status connection-button",V.attr "aria-controls" "corpora-status-menu",V.attr "aria-expanded" $ show $ m.menu == Just "status",V.attr "aria-live" "polite",V.attr "data-online" $ show $ m.online && not m.busy && D.s "status" (M.activeRecord m) == "active",V.disabled $ m.active == "" || not m.online || m.busy,V.click $ Menu "status"] [V.node "span" [V.cls "connection-dot",V.attr "aria-hidden" "true"] [],V.span [V.id "connection-label"] (status m),V.chevron false]]
+  <> [corporaMenu m,statusMenu m]
   where
   panes = M.visiblePanes m
   paneButton (Tuple pane caption) =
@@ -121,10 +122,10 @@ activityNav m = V.node "nav" [V.cls "conversation-tabs",V.label "Agent activity"
   item activity label = V.choice (m.activity == activity) label (Navigate activity)
   tree = case _ of
     N.Leaf view -> item (N.Work view N.Planned) (N.workLabel view)
-    N.Branch id label view children -> V.div "activity-submenu-row" [item (N.Work view N.Planned) label,V.control [V.label $ label <> " menu",V.attr "aria-expanded" $ show $ m.menu == Just ("activity-" <> id)] "›" (Menu $ "activity-" <> id),V.node "div" [V.cls "activity-menu activity-submenu",V.hidden $ m.menu /= Just ("activity-" <> id)] $ map tree children]
+    N.Branch id label view children -> V.div "activity-submenu-row" [item (N.Work view N.Planned) label,V.controlWith [V.attr "data-activity-menu" $ "activity-" <> id,V.label $ label <> " menu",V.attr "aria-expanded" $ show $ m.menu == Just ("activity-" <> id)] [V.chevron true] (Menu $ "activity-" <> id),V.node "div" [V.cls "activity-menu activity-submenu",V.hidden $ m.menu /= Just ("activity-" <> id)] $ map tree children]
   tab (Tuple id label) = V.div ("activity-tab " <> if N.panel m.activity == id then "active" else "")
-    [V.control [V.attr "aria-pressed" $ show $ N.panel m.activity == id] (label) (if id == "work" then DefaultWork else Navigate $ if id == "chat" then N.Chat N.Conversation else N.Updates)
-    ,V.node "button" [V.cls "activity-toggle",V.label $ label <> " menu",V.attr "aria-expanded" $ show $ m.menu == Just ("activity-" <> id),V.click $ Menu $ "activity-" <> id] [V.span [V.attr "aria-hidden" "true"] "⌄"]
+    [V.control [V.attr "data-panel" id,V.attr "aria-pressed" $ show $ N.panel m.activity == id] (label) (if id == "work" then DefaultWork else Navigate $ if id == "chat" then N.Chat N.Conversation else N.Updates)
+    ,V.node "button" [V.cls "activity-toggle",V.label $ label <> " menu",V.attr "aria-expanded" $ show $ m.menu == Just ("activity-" <> id),V.click $ Menu $ "activity-" <> id] [V.chevron false]
     ,V.node "div" [V.cls "activity-menu",V.hidden $ if id == "work" then not (A.elem m.menu $ map (Just <<< ("activity-" <> _)) ["work","tasks","automation","routine","workflows","composer"]) else m.menu /= Just ("activity-" <> id)] $ case id of
       "chat" -> map (\view -> item (N.Chat view) $ N.chatLabel view) [N.Pins,N.Threads,N.Comments] <> [V.node "hr" [] [],V.button "" "＋ Add feedback" Feedback]
       "work" -> map tree N.workTree
@@ -132,7 +133,7 @@ activityNav m = V.node "nav" [V.cls "conversation-tabs",V.label "Agent activity"
 
 viewbar :: M.Model -> V.Html
 viewbar m = V.node "div" [V.id "activity-viewbar",V.hidden hidden] $ [V.span [V.cls "activity-view-title"] (label)] <> case m.activity of
-  N.Work view period | A.elem view [N.Tasks,N.Automated,N.Scheduled] -> [V.div "work-nav-tools" [V.div "activity-view-menu" [V.control [V.label $ if view == N.Scheduled then "Routine history" else if M.isGroup (M.selected m) then "Task status" else "Task history",V.attr "aria-expanded" $ show $ m.menu == Just "activity-filter"] (N.periodLabel period <> " ⌄") (Menu "activity-filter"),V.node "div" [V.cls "activity-menu",V.hidden $ m.menu /= Just "activity-filter"] $ map (\p -> V.choice (p == period) (N.periodLabel p) (SetPeriod p)) (if view == N.Scheduled then [N.Planned,N.Paused] else [N.Planned,N.Executed] <> if M.isGroup (M.selected m) then [N.Deleted] else [])],V.when (not $ D.b "archived" $ M.selected m) $ V.button "" "+ New" $ if view == N.Scheduled then PrepareDraft "Add New Scheduled Routine:\nFrequency: every XXX minutes\nExecute: PROMPT" "XXX" else PrepareDraft "Add New Task: TODO" "TODO"]]
+  N.Work view period | A.elem view [N.Tasks,N.Automated,N.Scheduled] -> [V.div "work-nav-tools" [V.div "activity-view-menu" [V.controlWith [V.label $ if view == N.Scheduled then "Routine history" else if M.isGroup (M.selected m) then "Task status" else "Task history",V.attr "aria-expanded" $ show $ m.menu == Just "activity-filter"] [V.text $ N.periodLabel period,V.chevron false] (Menu "activity-filter"),V.node "div" [V.cls "activity-menu",V.hidden $ m.menu /= Just "activity-filter"] $ map (\p -> V.choice (p == period) (N.periodLabel p) (SetPeriod p)) (if view == N.Scheduled then [N.Planned,N.Paused] else [N.Planned,N.Executed] <> if M.isGroup (M.selected m) then [N.Deleted] else [])],V.when (not $ D.b "archived" $ M.selected m) $ V.button "" "+ New" $ if view == N.Scheduled then PrepareDraft "Add New Scheduled Routine:\nFrequency: every XXX minutes\nExecute: PROMPT" "XXX" else PrepareDraft "Add New Task: TODO" "TODO"]]
   _ -> []
   where
   hidden = m.activity == N.Updates || m.activity == N.Work N.Memo N.Planned || m.activity == N.Chat N.Conversation

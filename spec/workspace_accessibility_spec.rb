@@ -17,7 +17,7 @@ RSpec.describe 'Working with browser tabs and documents', :desktop do
   after { @pages&.close }
 
   it 'opens a site that forbids framing and follows its links' do
-    desktop.press('Play First')
+    desktop.click('Play First')
     expect(desktop.see('Pause First')).to include('First player')
   end
 
@@ -38,7 +38,7 @@ RSpec.describe 'Working with browser tabs and documents', :desktop do
     expect(desktop.text).not_to include('Play First')
     desktop.press('Workspace options')
     expect(desktop.find('First input', role: 'AXTextField')['value']).to eq('A draft on the website')
-    desktop.press('Play First')
+    desktop.click('Play First')
     desktop.see('Pause First')
   end
 
@@ -78,10 +78,10 @@ RSpec.describe 'Working with browser tabs and documents', :desktop do
 
   it 'keeps guest controls operable after resizing the desktop window' do
     @desktop.process.input.puts(JSON.generate(width: 1100, height: 740))
-    desktop.press('Play First')
+    desktop.click('Play First')
     expect(desktop.see('Pause First')).to include('First player')
     @desktop.process.input.puts(JSON.generate(width: 1300, height: 900, top: 44))
-    desktop.press('Pause First')
+    desktop.click('Pause First')
     expect(desktop.see('Play First')).to include('First player')
   end
 end

@@ -101,13 +101,14 @@ class Desktop
 
   def fill(text, value)
     editable = %w[AXTextField AXTextArea AXComboBox]
-    if Gem.win_platform?
-      # UIA index paths can move as progress controls appear above the editor.
-      # A guarded native click focuses the visible field without replaying input.
-      click_node(find(text, role: editable))
-      Contract.wait(description: "focused #{text.inspect}") { find(text, role: editable)['focused'] }
-    else
-      act_on(text, role: editable) { |node| control('focus', '--path', node.fetch('path')) }
+    target = find(text, role: editable)
+    click_node(target)
+    Contract.wait(description: "focused #{text.inspect}") do
+      node = control('focused')
+      editable.include?(node['role']) && %w[title description].any? { |key| !target[key].to_s.empty? && node[key] == target[key] }
+    rescue RuntimeError => error
+      raise unless error.message.start_with?('Blindly4 focused: ') && error.message.include?('"code":"focus_unavailable"')
+      false
     end
     act_on(text, role: editable) { |node| control('set-value', '--path', node.fetch('path'), '--value', value) }
     self.value(text, value)
@@ -120,7 +121,7 @@ class Desktop
       begin
         yield find(text, role: role)
       rescue RuntimeError => error
-        raise unless error.message.match?(/Path .* (does not|no longer) exist|press target does not match --expect-description/)
+        raise unless error.message.match?(/Path .* (does not|no longer) exist|press target does not match --expect-description|\ABlindly4 set-value: Error: Target is not a writable text control\s*\z/)
         false
       end
     end
@@ -133,8 +134,16 @@ class Desktop
   def click_node(node)
     raise 'Cannot click a disabled or empty control' if node['enabled'] == false ||
       node.fetch('size')['width'] <= 0 || node['size']['height'] <= 0
-    control('click', '--x', (node.fetch('position')['x'] + node.fetch('size')['width'] / 2).to_i.to_s,
-      '--y', (node['position']['y'] + node['size']['height'] / 2).to_i.to_s)
+    x = node.fetch('position')['x'] + node.fetch('size')['width'] / 2
+    y = node['position']['y'] + node['size']['height'] / 2
+    windows = tree.select { |item| item['role'] == 'AXWindow' }
+    inside = windows.any? do |window|
+      origin, size = window.values_at('position', 'size')
+      x >= origin['x'] && x < origin['x'] + size['width'] &&
+        y >= origin['y'] && y < origin['y'] + size['height']
+    end
+    raise "Cannot click #{label(node).inspect}: target at (#{x}, #{y}) is outside the fixture window #{windows.map { |w| w.slice('position', 'size') }}" unless inside
+    control('click', '--x', x.to_i.to_s, '--y', y.to_i.to_s)
   end
 
   def key(value)
