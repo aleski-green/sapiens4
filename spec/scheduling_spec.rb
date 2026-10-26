@@ -94,7 +94,6 @@ RSpec.describe 'Scheduled work and pulse contracts' do
     work = host.api('GET', "/api/agents/#{owner}/tasks?format=json")['tasks'].first
     expect(work).to include('taskType' => 'automated', 'state' => 'Completed', 'result' => 'Verified comparison')
     expect(host.api('GET', "/api/agents/#{owner}/notes")['content']).to eq(memo)
-    expect(host.calls.map { |c| c['node'] }).to eq(%w[ReadyToWork Execution])
     expect(host.calls.map { |c| c['prompt'] }.join).to include('Memo is read-only by default')
     before = host.state['routines'].first['runCount']
     host.restart

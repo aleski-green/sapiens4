@@ -67,12 +67,12 @@ RSpec.describe 'App-wide relay selection', :host do
   it 'migrates existing setup without revocation, then revokes all local devices and native remote connections even offline' do
     relay = Relay.new
     other = Host.new
-    device = RemotePeer.new(script: 'app-remote-peer.cjs')
+    device = PairedDevice.new
     invitation = host.api('POST', '/api/remote/pair', {relay: relay.url, token: relay.token}, status: 201)['qr']
-    device.call('pair', invitation: invitation)
+    device.pair(invitation)
     pending = Contract.wait { host.api('GET', '/api/remote')['pending'] }
     host.api('POST', '/api/remote/approve', {peer: pending['peer']})
-    Contract.wait { device.call('status')['state'] == 'approved' }
+    expect(device.receive['paired']).to eq(true)
     child = nil
     if host.api('GET', '/api/host')['local_available']
       child = host.api('POST', '/api/host/local', {name: 'Second'}, status: 201)
@@ -86,7 +86,7 @@ RSpec.describe 'App-wide relay selection', :host do
     old = catalogue['selected']
     expect(catalogue['servers'].find { |row| row['id'] == old }['address']).to eq(relay.url)
     expect(host.api('GET', '/api/remote')['paired']).to eq(true)
-    expect(device.call('request', path: '/api/state')['status']).to eq(200)
+    expect(device.request('/api/state')['status']).to eq(200)
     new_id = add
     expect(host.api('GET', '/api/remote')['paired']).to eq(true)
     host.restart # Secondary local corpora has not been opened after this restart.

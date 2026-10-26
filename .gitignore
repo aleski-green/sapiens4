@@ -24,7 +24,7 @@ __pycache__/
 .venv/
 .test-output/
 
-# JavaScript DOM test dependencies
+# Optional frontend build dependencies
 node_modules/
 
 # Windows build output
