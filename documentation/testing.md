@@ -1,132 +1,71 @@
-# Behavior contracts with RSpec
+# Testing
 
-RSpec is the repository's test entrypoint. The Python application runs as a
-separate process; no test imports its modules or monkey-patches its classes.
-RSpec examples own the behavioral specifications. Python remains the runtime
-under test, and the requirements file installs its runtime dependencies only.
+RSpec owns all scenarios and assertions. Exercise public HTTP, processes, files,
+relay traffic and native user interactions through Blindly4. Do not execute
+JavaScript, inspect private application state or assert DOM/CSS implementation.
+Fixtures use temporary data and controlled external model executables, never live
+corpora or paid model calls. Dependencies stay in libs4.
 
-## Run
+## Setup
 
-Use Ruby 3.4, Python 3.11 or newer, and Node.js 20.9 or newer. Initialize the
-Blindly4 and libs4 submodules before running the suite.
+Use Ruby 3.4, Python 3.11+, Node.js 22.5+ and npm:
 
 ```sh
 git submodule update --init --recursive
 ruby libs4/ruby/bundle.rb install
 python3 -m venv libs4/python/.venv
 libs4/python/.venv/bin/python -m pip install -r libs4/python/remote-requirements.txt
-npm ci --prefix libs4 --ignore-scripts
+python3 web/shell/build.py
+export SAPIENS_PYTHON="$PWD/libs4/python/.venv/bin/python"
 ruby libs4/ruby/bundle.rb exec rspec
 ```
 
-The Bundler wrapper keeps gems under `libs4/ruby/.gems` and uses the Python
-environment under libs4 when present. Set `SAPIENS_PYTHON` to override it.
-On Windows, create the same environment with `python -m venv libs4/python/.venv`
-and install through `libs4/python/.venv/Scripts/python.exe` instead.
-Tests never use a real Codex login: a temporary executable implements the model
-CLI protocol. Every service example has its own data directory, including spaces,
-an apostrophe and Unicode, and a random loopback port. Failed assertions still
-shut down owned processes. Timeouts terminate their remaining descendants.
+Set `SAPIENS_PYTHON` to override the test interpreter. Scheduling cases use real
+minute pulses; `--tag '~slow'` is useful for iteration, but run the complete suite
+before submitting. Source-release and platform build checks are included.
+
+## Native desktop tests
+
+Use an unlocked desktop with accessibility permission. Run serially and avoid
+interacting with fixture windows. On macOS:
 
 ```sh
-ruby libs4/ruby/bundle.rb exec rspec spec/workflow_spec.rb
-ruby libs4/ruby/bundle.rb exec rspec --tag '~slow'       # quick iteration; not the complete check
-ruby libs4/ruby/bundle.rb exec rspec --seed 12345        # reproduce an ordering failure
+./blindly4/macos/build.sh
+export SAPIENS_TEST_BLINDLY4="$PWD/blindly4/.build/release/blindly4"
+ruby libs4/ruby/bundle.rb exec rspec
 ```
 
-The full suite includes real minute-based scheduling. There is no accelerated
-clock or test-only endpoint in production. Persisted installation fixtures cover
-overdue schedules and the 1,000-run boundary without waiting for 1,000 minutes.
-SQLite is used only to prepare offline installation inputs; behavior is asserted
-through the running service. No runtime database access is used as an assertion
-shortcut.
-
-On Windows, install .NET 10 and build the external provider launcher before
-running the suite:
+On Windows, use .NET 10, Ruby 3.4, Python 3.11+, Node.js 22.5+ and npm:
 
 ```powershell
+git submodule update --init --recursive
+ruby libs4/ruby/bundle.rb install
+python -m venv libs4/python/.venv
+$env:SAPIENS_PYTHON = (Resolve-Path libs4/python/.venv/Scripts/python.exe).Path
+& $env:SAPIENS_PYTHON -m pip install -r libs4/python/remote-requirements.txt
+& $env:SAPIENS_PYTHON web/shell/build.py
 dotnet build spec/support/windows/CodexFixture.csproj -o tmp/codex-fixture
 $env:SAPIENS_TEST_CODEX = (Resolve-Path tmp/codex-fixture/CodexFixture.exe).Path
-$env:SAPIENS_PYTHON = 'python'
-ruby libs4/ruby/bundle.rb exec rspec --tag '~windows'
+$env:SAPIENS_TEST_BLINDLY4 = 'C:\path\to\blindly4.exe'
+ruby libs4/ruby/bundle.rb exec rspec
 ```
 
-For the packaged desktop contract, first run `windows/build.ps1`, set
-`SAPIENS_TEST_WINDOWS_PACKAGE` to the resulting package directory, and run the
-full suite. Validate x64 and ARM64 packages on their matching systems. The launcher
-inherits standard streams and starts Ruby as a child so the real Windows Job
-Object still owns and cancels the provider process tree.
+Set `SAPIENS_TEST_WINDOWS_PACKAGE` to a package built with `windows/build.ps1`
+to include packaged-runtime checks. Test ARM64 and x64 on matching systems.
+Use `--tag desktop` for focused UI runs. Missing platform configuration produces
+pending cases; configured permission and interaction errors are failures.
+Failed desktop scenarios write accessible content to `tmp/desktop-failure.txt`.
 
-## Migration map
+Use mouse clicks to establish that controls are reachable; accessibility
+invocation alone can activate offscreen controls. Rediscover moving targets and
+verify editor focus and exact values. Retry only observations or rejections known
+to occur before input; never replay an action after an uncertain outcome.
 
-The former 24 Python files contained 274 test methods. They are replaced by
-observable scenarios, not translated method for method. Independent invalid
-inputs remain separately named examples; a lifecycle or recovery scenario may
-cover several former methods.
+## Coverage limits
 
-| Former Python coverage | RSpec replacement |
-| --- | --- |
-| Integration, chat controls, lifecycle, model defaults, team creation | `service_spec.rb`: real HTTP, persistence, retry, attachments, authorization, legacy installation recovery |
-| Parallel execution, pulsation, Codex processes, Windows host primitives | `service_spec.rb`: bounded concurrency, batching, output order, process crash, exclusive computer leases, Unicode stdin and descendant cancellation |
-| Delegation and completion | `workflow_spec.rb`: routing, specialist creation, clarification, cancellation, recipient recovery, audited prompts, conditional completion evidence |
-| Groups | `groups_spec.rb`: routing isolation, roles, membership limits, task revisions, late results, archive/restore, attachments |
-| Notes, workspace, text previews | `workspace_spec.rb`: scoped files, unsafe URLs, stale navigation, persistent tabs, memo context and migration |
-| Routines and lifecycle events | `scheduling_spec.rb`: real scheduling, overdue admission, pause/resume, run limit, ownership, event attribution and no duplicate polling events |
-| Remote pairing, encryption, relay and setup | `remote_spec.rb`: real host and relay, independent NaCl peer, WebSocket replay/ack, approval failure and expiry, saved QR/setup, discovery lifecycle, allowlists, tampering, revocation and private-state boundaries |
-| Runtime distribution | `distribution_spec.rb`: source-only release boot, actual provider call, generated frontend syntax, and a signed macOS build retaining the selected data path |
-| Native/browser integration and computer presentation | `platform_spec.rb`: existing DOM and native platform probes, real WebKit connected to the HTTP service, packaged Windows checks |
-
-## Deliberately changed coverage
-
-Import-graph, folder-count, private helper, mocked method-call-count and exact
-internal object-layout assertions were retired. Those checks constrained a
-particular implementation rather than demonstrating a service contract.
-
-Process crash scenarios cover chat recovery outcomes, but do not prove all
-arbitrary crash interleavings. Exact remaining timeout arguments between decision
-nodes and arbitrary synthetic pulse-clock jitter are also no longer inspected. The suite does not wait thirty minutes to
-exhaust the model deadline. These are explicit limits, not claims of identical
-line or branch coverage.
-
-Existing JavaScript and Swift/C# harnesses remain platform probes called from
-RSpec. Some legacy probes still contain their original assertions. New behavior
-cases and assertions belong in RSpec; runtime-specific helpers should expose
-actions and observations. Blindly4 is an external Rust submodule with its own permission-free RSpec
-contracts. Build it with `./blindly4/macos/build.sh`, then run its suite from
-`blindly4/` with `BLINDLY4_BIN=.build/release/blindly4 bundle exec rspec`.
-
-Adding a fake Python service or a general Ruby-to-Python RPC bridge would defeat
-the boundary. Extend the controlled external provider or HTTP peer only when a
-new observable scenario needs it. Use fresh environments, bounded condition
-polling, and explicit expected effects; do not replace several assertions with
-only a process exit-code check when the service exposes the actual result.
-
-The retired standalone phone and desktop pairing pages are now covered through
-`install_spec.rb`, `corpora_browser_spec.rb`, `remote_browser_spec.rb` and
-`app_remote_spec.rb`, using the shipped workspace, QR scanner and encrypted
-transport. These retain QR validation/capture, camera cancellation, import safety,
-matching-code approval, binary responses, identity binding, trust migration,
-revocation and tab handoff checks. The old ID-entry wizard and carousel no longer
-exist. The current transport rejects interrupted requests instead of automatically
-replaying writes; the regression contract checks that no write is replayed.
-Browser probes simulate mobile installation state and Android's install event;
-physical Android installation and keyboard behavior still require a device run.
-
-### Native workspace accessibility
-
-On a macOS desktop with Accessibility permission for the invoking terminal, run
-`SAPIENS_TEST_BLINDLY4=/absolute/path/to/blindly4 ruby libs4/ruby/bundle.rb exec rspec spec/workspace_accessibility_spec.rb`.
-This opt-in contract uses the real WebKit workspace against an isolated host and
-local player fixtures. It checks AX discovery and pressing, selected-tab isolation,
-focus after closing/hiding a guest, window resizing and a shell
-inset. It never opens the user's installation or an external video service.
-Without the environment variable these desktop-input cases are pending; the
-regular WebKit navigation/isolation probe still runs in `platform_spec.rb`.
-
-On Windows with .NET 10, WebView2 and an unlocked desktop, set
-`$env:SAPIENS_TEST_BLINDLY4` to the built, unchanged Windows Blindly4 executable
-and run the same spec. Its three scenarios are shared with macOS; the Windows
-fixture runs the production Sapiens4 window and host against temporary data.
-It also verifies the native window title. UIA document roles differ from macOS,
-and the expandable workspace menu uses a click at its accessible bounds because
-Chromium does not expose an InvokePattern for that button.
+The macOS fixture runs WebKit with the production browser adapter; Windows runs
+MainWindow/WebView2. Remote-browser and HTTP-proxy window cases currently require
+macOS. Reload tests do not establish persistence across an actual app quit/upgrade.
+Validate mobile installation, camera pairing, background/resume, offline launch,
+updates, keyboard/rotation and touch behavior on real devices. Visually compare
+appearance changes; behavioral tests do not prove styling equivalence.

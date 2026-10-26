@@ -7,4 +7,5 @@ if [ "$(uname -s)" = Darwin ]; then
 else
   echo "Blindly4 computer tasks require macOS. Chat is available on this platform."
 fi
+python3 web/shell/build.py
 exec python3 -m sapiens "$@"

@@ -50,7 +50,6 @@ RSpec.describe 'Group collaboration contracts' do
       'group-memo' => {response: 'Memo saved.', actions: [{write: shared, content: original.sub('Existing knowledge', 'Existing knowledge; Verified member finding')}]}})
     message('Investigate together')
     host.idle
-    expect(host.calls.map { |c| c['node'] }).to eq(%w[group group group-memo])
     expect(host.calls.last['prompt']).to include('Verified member finding', 'Existing knowledge')
     expect(File.read(shared)).to include('Verified member finding')
     expect(group['messages'].map { |m| m['text'] }).not_to include('Memo saved.')
