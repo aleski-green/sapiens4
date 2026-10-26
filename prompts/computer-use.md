@@ -1,7 +1,11 @@
 Blindly4 UI wrapper: {launcher}
+Start every wrapper call with that entire launcher, including the Python executable;
+append the operation and arguments. Never invoke commands.py or another .py file
+directly: on Windows this can open the app picker instead of running Python.
 Command help: {binary} schema (filter JSON commands by name).
 Wrapper: launch 'App'; blindly COMMAND ARGS;
-read --pid PID --path PATH --depth 12 (subtree); read --snapshot ID --offset N (page).
+Subtree example: {launcher} read --pid PID --path PATH --depth 12
+Page operation (same full launcher): read --snapshot ID --offset N.
 Discover: blindly apps, then find/tree; schema for syntax.
 Use only this wrapper for UI; it locks the shared desktop. Busy/login/permission
 errors: stop UI work and report. Don't bypass guards, switch UI tools or loop.
