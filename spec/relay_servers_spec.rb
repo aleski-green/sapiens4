@@ -108,6 +108,28 @@ RSpec.describe 'App-wide relay selection', :host do
     relay.close if relay
   end
 
+  it 'preserves remote HTTP statuses and reconnects after an offline relay' do
+    relay = Relay.new
+    other = Host.new
+    invitation = other.api('POST', '/api/remote/pair', {relay: relay.url, token: relay.token}, status: 201)['qr']
+    waiting = host.api('POST', '/api/host/pair', invitation, status: 202)
+    pending = Contract.wait { other.api('GET', '/api/remote')['pending'] }
+    other.api('POST', '/api/remote/approve', {peer: pending['peer']})
+    Contract.wait { host.api('GET', '/api/host/pair/' + waiting['id'])['state'] == 'approved' }
+    path = "/api/host/corpora/#{other.state['corpora']['id']}/api"
+    expect(host.request('GET', path + '/missing').first).to eq(404)
+    expect(host.request('POST', path + '/agents', {name: 'invalid', role: 'Research'}).first).to eq(400)
+    relay.stop
+    host.restart
+    expect(host.request('GET', path + '/state').first).to eq(503)
+    relay.start
+    Contract.wait(timeout: 30) { host.request('GET', path + '/state').first == 200 }
+    expect(other.calls).to be_empty
+  ensure
+    other.close if other
+    relay.close if relay
+  end
+
   it 'cancels an incoming pairing so delayed approval cannot restore a removed connection' do
     relay = Relay.new
     other = Host.new

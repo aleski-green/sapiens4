@@ -1,3 +1,4 @@
+{-# LANGUAGE NoOverloadedStrings #-}
 module Command (Command(..), interpret) where
 
 import Control.Applicative ((<|>))

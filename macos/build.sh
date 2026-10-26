@@ -1,32 +1,61 @@
 #!/bin/sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$ROOT"
 if [ ! -f "$ROOT/libs4/web/remote-vendor.js" ]; then
   git -C "$ROOT" submodule update --init --recursive -- libs4
   test -f "$ROOT/libs4/web/remote-vendor.js"
 fi
-PYTHON=${SAPIENS_PYTHON:-$(command -v python3)}
+runghc -ihaskell haskell/Build.hs
 BUILD="$ROOT/.build/macos"
 APP="$BUILD/Sapiens4.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$BUILD/AppIcon.iconset" "$BUILD/module-cache"
-"$PYTHON" -c 'import sys; assert sys.version_info >= (3, 9), "Python 3.9+ required"'
-"$PYTHON" "$ROOT/sapiens/build.py"
-"$PYTHON" "$ROOT/web/shell/build.py"
-xcrun swiftc -module-cache-path "$BUILD/module-cache" -O -framework Cocoa -framework WebKit "$ROOT/macos/Sapiens4.swift" "$ROOT"/macos/host/*.swift "$ROOT"/macos/shell/*.swift "$ROOT"/macos/browser/*.swift -o "$APP/Contents/MacOS/Sapiens4"
-xcrun swiftc -module-cache-path "$BUILD/module-cache" -framework Cocoa "$ROOT/macos/icon.swift" -o "$BUILD/make-icon"
-cp "$ROOT/web/shell/favicon.svg" "$BUILD/favicon.svg"
-"$BUILD/make-icon" "$BUILD/AppIcon.iconset" "$BUILD/favicon.svg"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$BUILD/AppIcon.iconset"
+cp "$ROOT/.build/bin/sapiens-macos" "$APP/Contents/MacOS/Sapiens4"
+RUNTIME="$ROOT/libs4/haskell/.runtime"
+if [ ! -d "$RUNTIME" ]; then RUNTIME="$ROOT/.build/bin/.libs"; fi
+if [ -d "$RUNTIME" ]; then
+  mkdir -p "$APP/Contents/Frameworks"
+  for library in "$RUNTIME"/*.dylib; do
+    [ -f "$library" ] || continue
+    cp "$library" "$APP/Contents/Frameworks/"
+  done
+  for binary in "$APP/Contents/MacOS/Sapiens4" "$APP/Contents/Frameworks/"*.dylib; do
+    [ -f "$binary" ] || continue
+    otool -L "$binary" | awk 'NR > 1 { print $1 }' | while IFS= read -r dependency; do
+      name=$(basename "$dependency")
+      if [ -f "$APP/Contents/Frameworks/$name" ]; then
+        install_name_tool -change "$dependency" "@executable_path/../Frameworks/$name" "$binary"
+      fi
+    done
+    codesign --force --sign - "$binary"
+  done
+fi
+"$ROOT/.build/bin/sapiens-macos" --icon "$BUILD/AppIcon.iconset" "$ROOT/web/shell/favicon.svg"
 iconutil -c icns "$BUILD/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
-"$PYTHON" - "$APP" "$ROOT" "$PYTHON" "$PATH" <<'PY'
-import pathlib, plistlib, sys
-import os
-app, root, python, path = sys.argv[1:]
-contents = pathlib.Path(app) / 'Contents'
-info = dict(CFBundleIdentifier='com.sapiens4.desktop', CFBundleName='Sapiens4', CFBundleDisplayName='Sapiens4', CFBundleExecutable='Sapiens4', CFBundlePackageType='APPL', CFBundleVersion='1', CFBundleShortVersionString='1.0', CFBundleIconFile='AppIcon', NSHighResolutionCapable=True, LSMinimumSystemVersion='13.0', NSAppTransportSecurity={'NSAllowsLocalNetworking': True, 'NSAllowsArbitraryLoadsInWebContent': True}, NSHumanReadableCopyright='Sapiens4 local desktop launcher')
-(contents / 'Info.plist').write_bytes(plistlib.dumps(info))
-(contents / 'Resources' / 'Launcher.plist').write_bytes(plistlib.dumps(dict(Repository=root, Python=python, Path=path, DataDirectory=str(pathlib.Path(os.environ.get('SAPIENS_DATA_DIR') or root + '/.sapiens4').expanduser().resolve()))))
-PY
+INFO="$APP/Contents/Info.plist"
+plutil -create xml1 "$INFO"
+plutil -insert CFBundleIdentifier -string com.sapiens4.desktop "$INFO"
+plutil -insert CFBundleName -string Sapiens4 "$INFO"
+plutil -insert CFBundleDisplayName -string Sapiens4 "$INFO"
+plutil -insert CFBundleExecutable -string Sapiens4 "$INFO"
+plutil -insert CFBundlePackageType -string APPL "$INFO"
+plutil -insert CFBundleVersion -string 1 "$INFO"
+plutil -insert CFBundleShortVersionString -string 1.0 "$INFO"
+plutil -insert CFBundleIconFile -string AppIcon "$INFO"
+plutil -insert NSHighResolutionCapable -bool YES "$INFO"
+plutil -insert LSMinimumSystemVersion -string 13.0 "$INFO"
+plutil -insert NSAppTransportSecurity -xml '<dict><key>NSAllowsLocalNetworking</key><true/><key>NSAllowsArbitraryLoadsInWebContent</key><true/></dict>' "$INFO"
+plutil -insert NSHumanReadableCopyright -string 'Sapiens4 local desktop launcher' "$INFO"
+CONFIG="$APP/Contents/Resources/Launcher.plist"
+plutil -create xml1 "$CONFIG"
+plutil -insert Repository -string "$ROOT" "$CONFIG"
+plutil -insert Executable -string "$ROOT/.build/bin/sapiens4" "$CONFIG"
+plutil -insert Path -string "$PATH" "$CONFIG"
+DATA=${SAPIENS_DATA_DIR:-$ROOT/.sapiens4}
+case "$DATA" in '~/'*) DATA="$HOME/${DATA#\~/}" ;; esac
+case "$DATA" in /*) ;; *) DATA="$ROOT/$DATA" ;; esac
+plutil -insert DataDirectory -string "$DATA" "$CONFIG"
 mkdir -p "$APP/Contents/Resources/Licenses/Blindly4" "$APP/Contents/Resources/Licenses/Libs4"
 cp "$ROOT/license/LICENSE.md" "$ROOT/license/LICENSING.md" "$APP/Contents/Resources/Licenses/"
 cp "$ROOT/README.md" "$APP/Contents/Resources/README.md"

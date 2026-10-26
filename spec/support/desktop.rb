@@ -9,16 +9,11 @@ class Desktop
 
   def self.binary
     return @binary if @binary
-    @build = Dir.mktmpdir('sapiens desktop ')
-    @binary = File.join(@build, Gem.win_platform? ? 'Probe.exe' : 'desktop')
-    command = if Gem.win_platform?
-      ['dotnet', 'build', 'spec/support/windows_accessibility/Probe.csproj', '-o', @build]
-    else
-      ['xcrun', 'swiftc', '-framework', 'Cocoa', '-framework', 'WebKit',
-        *Dir['macos/browser/*.swift'], 'spec/support/macos/Desktop.swift', '-o', @binary]
+    @binary = File.join(Contract::ROOT, '.build/bin', Gem.win_platform? ? 'sapiens-windows-probe.exe' : 'sapiens-macos')
+    unless File.executable?(@binary)
+      out, error, code = Contract.capture('runghc', '-ihaskell', 'haskell/Build.hs', timeout: 600)
+      raise out + error unless code == 0
     end
-    out, error, code = Contract.capture(*command, timeout: 90)
-    raise out + error unless code == 0
     @binary
   end
 
