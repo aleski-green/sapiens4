@@ -70,8 +70,8 @@ view m = V.node "main" [V.cls "workspace",V.id "workspace-panel",V.label "Agent 
 
 sync :: M.Model -> Effect Unit
 sync m = when (D.b "native" m.env) do
-  rect <- B.measure "#workspace-content"
+  box <- B.measure "#workspace-content"
   background <- B.cssProperty ".workspace" "--sapi-white"
   foreground <- B.cssProperty ".workspace" "--sapi-ink"
   caption <- B.cssProperty ".workspace" "--sapi-bg"
-  B.nativeMessage $ D.json {workspaces: if native m then m.workspaces else D.empty, owner: if native m then m.selected else "", active: D.get "id" $ M.activeTab m, visible: native m && A.elem N.Workspace (M.visiblePanes m) && m.dialog == Nothing && m.menu == Nothing, dark: m.theme == "dark", background, foreground, captionBackground: caption, rect}
+  B.nativeMessage $ D.json {workspaces: if native m then m.workspaces else D.empty, owner: if native m then m.selected else "", active: D.get "id" $ M.activeTab m, visible: native m && A.elem N.Workspace (M.visiblePanes m) && m.dialog == Nothing && m.menu == Nothing, dark: m.theme == "dark", background, foreground, captionBackground: caption, rect:{x:D.n "x" box,y:D.n "y" box,width:D.n "width" box,height:D.n "height" box}}
