@@ -1,0 +1,11 @@
+module Main where
+import System.Environment
+import System.Exit
+import System.Process
+main :: IO ()
+main = do
+  ruby <- getEnv "SAPIENS_CONTRACT_RUBY"
+  provider <- getEnv "SAPIENS_CONTRACT_PROVIDER"
+  args <- getArgs
+  (_, _, _, child) <- createProcess (proc ruby $ provider : args)
+  waitForProcess child >>= exitWith

@@ -1,24 +1,25 @@
-FROM node:24-bookworm-slim AS ui
-RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates && rm -rf /var/lib/apt/lists/*
+FROM node:24-bookworm-slim AS node
+FROM haskell:9.12.2-slim-bookworm AS build
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git make gcc xz-utils pkg-config zlib1g-dev libffi-dev && rm -rf /var/lib/apt/lists/*
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
 WORKDIR /app
-COPY libs4/package.json libs4/package-lock.json ./libs4/
-COPY libs4/purescript/ ./libs4/purescript/
+COPY libs4/ ./libs4/
+COPY haskell/ ./haskell/
+COPY sapiens/corpora/host/routine/ ./sapiens/corpora/host/routine/
+COPY spec/support/haskell/ ./spec/support/haskell/
 COPY web/ ./web/
-RUN python3 web/shell/build.py
+RUN runghc -ihaskell haskell/Build.hs
 
-# This image runs only the public remote relay, never the local CORPORA runtime.
-FROM python:3.12-slim
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libgmp10 zlib1g libffi8 libnuma1 && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY libs4/python/relay-requirements.txt ./libs4/python/relay-requirements.txt
-RUN pip install --no-cache-dir -r libs4/python/relay-requirements.txt
-COPY sapiens/__init__.py sapiens/paths.py sapiens/files.py ./sapiens/
-COPY sapiens/corpora/__init__.py ./sapiens/corpora/
-COPY sapiens/corpora/host/__init__.py sapiens/corpora/host/assets.py sapiens/corpora/host/identity.py sapiens/corpora/host/remote_pairing.py sapiens/corpora/host/remote_setup.py sapiens/corpora/host/remote_relay.py ./sapiens/corpora/host/
+COPY --from=build /app/.build/bin/sapiens4 ./.build/bin/sapiens4
+COPY --from=build /app/.build/web/app.js /app/.build/web/sw.js /app/.build/web/guest.js ./.build/web/
 COPY web/ ./web/
-COPY --from=ui /app/.build/web/app.js /app/.build/web/sw.js /app/.build/web/guest.js ./.build/web/
 COPY libs4/web/ ./libs4/web/
 COPY libs4/license/ ./libs4/license/
 COPY license/ ./license/
 ENV SAPIENS_RELAY_BIND=0.0.0.0 SAPIENS_RELAY_DB=/data/relay.sqlite3
-CMD ["python", "-m", "sapiens.corpora.host.remote_relay"]
+CMD ["/app/.build/bin/sapiens4", "relay"]
