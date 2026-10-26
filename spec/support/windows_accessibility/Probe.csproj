@@ -9,7 +9,7 @@
   </PropertyGroup>
   <Import Project="../../../libs4/dotnet/WebView2.props" />
   <ItemGroup>
-    <Compile Include="../../../windows/*.cs" />
+    <Compile Include="../../../windows/**/*.cs" Exclude="../../../windows/obj/**;../../../windows/bin/**" />
     <EmbeddedResource Include="../../../windows/AppIcon.ico" LogicalName="Sapiens4.AppIcon.Light" />
     <EmbeddedResource Include="../../../windows/AppIconDark.ico" LogicalName="Sapiens4.AppIcon.Dark" />
   </ItemGroup>

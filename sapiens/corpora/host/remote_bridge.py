@@ -59,7 +59,7 @@ class RemoteBridge:
         if self.path.exists():
             try:
                 config = json.loads(self.path.read_text())
-                identity = service.corpora_identity()['id']
+                identity = service.projection.corpora_identity()['id']
                 if not isinstance(config, dict):
                     raise ValueError('Invalid saved pairing')
                 if config.get('corpora_id', identity) != identity:
@@ -98,7 +98,7 @@ class RemoteBridge:
         with self.lock:
             config = self.config or {}
             pending = config.get('pending')
-            corpora = self.service.corpora_identity()
+            corpora = self.service.projection.corpora_identity()
             return dict(available=crypto.available() and websocket is not None, enabled=bool(config),
                         corpora=corpora, public_id=public_id(corpora['id']),
                         invitation=config.get('invitation') if not config.get('peer') and config.get('expires', 0) > time.time() else None,
@@ -136,7 +136,7 @@ class RemoteBridge:
         with self.lock:
             if self.config:
                 raise ValueError('Revoke the existing pairing before creating another')
-            identity = self.service.corpora_identity()['id']
+            identity = self.service.projection.corpora_identity()['id']
             address = public_id(identity)
             room = request(relay, '/beta/api/rooms' if connection.get('beta') else '/api/rooms', admin, 'POST', dict(
                 public_id=address, corpora_id=identity, public_key=public))
@@ -172,7 +172,7 @@ class RemoteBridge:
             config['peer'] = pending['peer']
             config['paired_at'] = time.time()
             config['device_info'] = pending.get('device_info', {})
-            config['accept'] = self.response(pending['id'], dict(paired=True, corpora=self.service.corpora_identity()))
+            config['accept'] = self.response(pending['id'], dict(paired=True, corpora=self.service.projection.corpora_identity()))
             config['pending'] = None
             config.pop('secret', None)
             config.pop('invitation', None)
@@ -239,7 +239,7 @@ class RemoteBridge:
             return None
         if message.get('kind') != 'request' or message['expires'] > time.time() + 310:
             raise ValueError('Invalid request')
-        corpora = self.service.corpora_identity()
+        corpora = self.service.projection.corpora_identity()
         if message.get('corpora_id', corpora['id']) != corpora['id']:
             return self.response(message['id'], dict(error='This device is connected to a different CORPORA. Pair again.'))
         self.record_connection(message)

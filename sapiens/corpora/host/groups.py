@@ -35,7 +35,7 @@ class Groups:
     def authorize(self, group, actor, management=False, chief=False):
         if actor == 'admin':
             return
-        self.service.lifecycle.require_active(self.service._agent(actor))
+        self.service.lifecycle.require_active(self.service.population.agent(actor))
         if chief:
             allowed = actor == self.service.registry.main
         elif management:
@@ -53,7 +53,7 @@ class Groups:
         if len(set(value)) != len(value) or lead not in value:
             raise APIError(400, 'Members must be distinct and include exactly one Lead')
         for agid in value:
-            self.service.lifecycle.require_active(self.service._agent(agid))
+            self.service.lifecycle.require_active(self.service.population.agent(agid))
         return value
 
     def check_capacity(self, members, exclude=None):
@@ -132,7 +132,7 @@ class Groups:
                             request['status'] = 'running'
                         else:
                             if turn and turn['status'] == 'queued':
-                                self.service._agent(request['target']).runner.cancel(request['id'])
+                                self.service.population.agent(request['target']).runner.cancel(request['id'])
                             request['status'] = 'cancelled'
             action = 'leadership transferred' if changed_lead else ('archived' if group['archived'] else 'updated')
             self.save(group, actor, action, dict(lead=lead, members=members))

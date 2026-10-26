@@ -5,7 +5,7 @@ RSpec.describe 'Source distribution contract' do
       folder = File.realpath(folder)
       release = File.join(folder, 'source')
       files, error, code = Contract.capture('git', 'ls-files', '--recurse-submodules',
-        'macos', 'web', 'license', 'README.md', 'blindly4/license', 'blindly4/README.md', 'libs4')
+        'macos', 'sapiens', 'web', 'license', 'README.md', 'blindly4/license', 'blindly4/README.md', 'libs4')
       expect(code).to eq(0), error
       files.lines.map(&:strip).each do |file|
         target = File.join(release, file)
@@ -43,6 +43,8 @@ RSpec.describe 'Source distribution contract' do
         FileUtils.mkdir_p(File.dirname(target))
         FileUtils.cp(File.join(Contract::ROOT, file), target)
       end
+      out, error, code = Contract.capture(Contract::PYTHON, 'sapiens/build.py', chdir: release, timeout: 600)
+      expect(code).to eq(0), out + error
       out, error, code = Contract.capture(Contract::PYTHON, 'web/shell/build.py', chdir: release, timeout: 600)
       expect(code).to eq(0), out + error
       isolated = Host.new(repo: release)

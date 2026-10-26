@@ -34,9 +34,9 @@ class ChatAgencies:
         # Host lock serializes submissions, slot reservations, and stop with
         # dispatch; model execution happens outside it.
         with service._lock:
-            if not service.pulse.running or service._stopping.is_set():
+            if not service.pulse.running or service.execution.stopping.is_set():
                 return
-            for agent in list(service._agents.values()):
+            for agent in list(service.population.agents.values()):
                 if service.lifecycle.retired(agent):
                     continue
                 self.output(agent, tick)
@@ -55,11 +55,11 @@ class ChatAgencies:
         batch = AgencyBatch(queued)
         if not self.policies['scheduled' if scheduled else 'chatInput'].admits(tick, batch):
             return
-        if agent.agid in service._runners:
+        if agent.agid in service.execution.runners:
             return  # An older Group/delegation run retains its exclusive lease.
         slot = next((n for n in (1, 2) if (agent.agid, 'chatInput', n) not in self.slots), None)
-        owners = {key[0] for key in self.slots} | set(service._runners)
-        if slot is None or (agent.agid not in owners and len(owners) >= service.max_parallel_agents):
+        owners = {key[0] for key in self.slots} | set(service.execution.runners)
+        if slot is None or (agent.agid not in owners and len(owners) >= service.execution.max_parallel_agents):
             return  # Keep accumulating; do not seal another pending batch.
         self.context(agent)
         runner = TurnRunner(store=agent, context=agent.context, config=agent.runner.config,
@@ -85,7 +85,7 @@ class ChatAgencies:
         key = (agent.agid, 'chatInput', slot)
 
         def run():
-            service._execution.turn = execution['id']
+            service.execution.local.turn = execution['id']
             try:
                 with service.store.events.context(agent.agid, 'chatInput'):
                     runner.run_claimed(execution, snapshot)
@@ -97,20 +97,20 @@ class ChatAgencies:
                             turn.update(status='interrupted', error='AgencyRun stopped; inspect effects before retrying')
             finally:
                 # The computer lease is owned by the run, not merely its Sapi.
-                service.release_computer(agent.agid, turn_id=execution['id'])
+                service.execution.release_computer(agent.agid, turn_id=execution['id'])
                 with service._lock:
                     self.slots.pop(key, None)
-                    service._sync(agent)
+                    service.projection.sync(agent)
                     with agent.transaction() as state:
                         agent.trim(state)
                     service.delegation.reconcile(agent.agid)
-                service._execution.turn = None
+                service.execution.local.turn = None
 
         thread = threading.Thread(target=run, name=f'{agent.agid}-chatInput-{slot}', daemon=True)
         self.slots[key] = (runner, thread, execution['id'])
         service.store.record_pulse_call(tick, agent.agid, 'chatInput', slot,
             groups={t['origin']['group'] for t in queued if (t.get('origin') or {}).get('group')})
-        service._sync(agent)
+        service.projection.sync(agent)
         thread.start()
 
     def output(self, agent, tick):
@@ -140,7 +140,7 @@ class ChatAgencies:
                     state['last_output'] = item['content']
             self.service.store.record_pulse_call(tick, agent.agid, 'chatOutput', slot,
                 groups=[item['origin']['group']] if (item.get('origin') or {}).get('group') else [])
-        self.service._sync(agent)
+        self.service.projection.sync(agent)
         with agent.transaction() as state:
             agent.trim(state)
 

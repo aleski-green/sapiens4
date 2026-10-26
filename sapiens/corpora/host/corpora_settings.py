@@ -25,7 +25,7 @@ class CorporaSettings:
         return dict(id=service.corpora_id, name=self.value['name'] or 'CORPORA · ' + main.get('name', 'My workspace'),
                     device=self.value['device'], scope=self.value['scope'], status=self.value['status'],
                     revision=self.value['revision'], chief_id=service.registry.main, settings_template=prompt('corpora-settings-request').strip(),
-                    stopping=bool(service._runners or service.agencies.slots) and not service.pulse.running)
+                    stopping=bool(service.execution.runners or service.agencies.slots) and not service.pulse.running)
 
     def update(self, data):
         if not data or set(data) - {'name', 'device', 'scope', 'revision', 'archived'}:
@@ -41,13 +41,13 @@ class CorporaSettings:
                 if type(data['archived']) is not bool:
                     raise APIError(400, 'archived must be a boolean')
                 if data['archived']:
-                    self.service.stop_pulse()
+                    self.service.execution.stop_pulse()
                 self.value['status'] = 'archived' if data['archived'] else 'paused'
             self.value.update({k: data[k].strip() for k in ('name', 'device', 'scope') if k in data})
             self.value['revision'] += 1
             self.save()
             for row in self.service.store.agents():
-                self.service._manifests(self.service._agent(row['id']), row)
+                self.service.population.manifests(self.service.population.agent(row['id']), row)
             return self.identity()
 
     def lifecycle(self, data):
@@ -65,7 +65,7 @@ class CorporaSettings:
                 raise APIError(409, 'Corpora changed. Refresh before trying again.')
             if self.value['status'] == 'archived':
                 raise APIError(409, 'Restore this archived corpora before activating it')
-            if action == 'activate' and (service._runners or service.agencies.slots) and not service.pulse.running:
+            if action == 'activate' and (service.execution.runners or service.agencies.slots) and not service.pulse.running:
                 raise APIError(409, 'Work is still stopping. Try again shortly.')
             self.value['status'] = 'paused' if action == 'pause' else 'active'
             self.value['revision'] += 1
@@ -73,10 +73,10 @@ class CorporaSettings:
             self.value['operations'] = dict(list(self.value['operations'].items())[-256:])
             self.save()  # Persist intent before scheduling or interrupting work.
             if action == 'pause':
-                service.stop_pulse()
+                service.execution.stop_pulse()
             else:
                 service.start()
-            runners = list(service._runners.values()) + [entry[1] for entry in service.agencies.slots.values()]
+            runners = list(service.execution.runners.values()) + [entry[1] for entry in service.agencies.slots.values()]
         deadline = time.monotonic() + 5
         if action == 'pause':
             for runner in runners:

@@ -19,7 +19,7 @@ def create_attachment(service, agid, data):
         if agid.startswith('group_'):
             service.groups.get(agid, active=True)
         else:
-            service._agent(agid)
+            service.population.agent(agid)
         kind = data.get("kind")
         if kind not in {"image", "document", "link", "filepath"}:
             raise APIError(400, "Choose image, document, link, or filepath")

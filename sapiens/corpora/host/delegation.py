@@ -213,7 +213,7 @@ class Delegation:
 
     def record(self, agid, record):
         with self.service._lock:
-            agent = self.service._agent(agid)
+            agent = self.service.population.agent(agid)
             agent.archive('decisions/' + record['decisionId'], record)
             work, _ = self.find(record['callId'])
             summary = next(d for d in work['decisions'] if d['decisionId'] == record['decisionId'])
@@ -248,7 +248,7 @@ class Delegation:
             existing = next((c for c in work['calls'] if c['causedBy'] == turn['id']), None)
             if existing:
                 return existing
-            active = self.service.agencies.active_runner(agid, turn['id']) or self.service._agent(agid).runner
+            active = self.service.agencies.active_runner(agid, turn['id']) or self.service.population.agent(agid).runner
             if active.cancel_event.is_set():
                 raise APIError(409, 'Stopped before handoff acceptance')
             self.validate_target(work, agid, target)
@@ -266,13 +266,13 @@ class Delegation:
 
     def apply(self, agid, decision_id):
         """Only a recorded decision for this active call can admit a handoff."""
-        turn_id = self.service._active_turn(agid)
+        turn_id = self.service.execution.active_turn(agid)
         work, call = self.find(turn_id)
         if not call or call['node'] != 'Delegation' or not any(
                 d['decisionId'] == decision_id and d['callId'] == turn_id and d['node'] == 'Delegation'
                 for d in work['decisions']):
             raise APIError(409, 'Delegation requires this call\'s recorded Delegation decision')
-        record = json.loads(self.service._agent(agid).archive_path('decisions/' + decision_id).read_text(encoding='utf-8'))
+        record = json.loads(self.service.population.agent(agid).archive_path('decisions/' + decision_id).read_text(encoding='utf-8'))
         if record.get('error') or record.get('response', {}).get('event') != 'HandoffPrepared':
             raise APIError(409, 'Delegation decision has not produced a valid response')
         child = self.transfer(agid, {'id': turn_id}, record['response'], record, call['target'])
@@ -285,7 +285,7 @@ class Delegation:
                 for call in work['calls']:
                     if call['state'] != 'Queued' or not call['causedBy']:
                         continue
-                    agent = self.service._agent(call['addressedTo'])
+                    agent = self.service.population.agent(call['addressedTo'])
                     origin = dict(workloadId=work['workloadId'], taskId=work['task']['taskId'],
                                   caller=next(c['addressedTo'] for c in work['calls'] if c['callId'] == call['causedBy']),
                                   parentCall=call['causedBy'])
@@ -297,8 +297,8 @@ class Delegation:
                     if saved is None:
                         agent.runner.submit('chat', call['request'], turn_id=call['callId'], origin=origin,
                                             batchable=bool(origin.get('routine')))
-                        self.service._sync(agent)
-                    self.service._queue.put(agent.agid)
+                        self.service.projection.sync(agent)
+                    self.service.execution.queue.put(agent.agid)
 
     def run(self, agid, runner, turn, snapshot, result):
         runner.decision_deadline = monotonic() + execution_settings(runner.store.root)['timeout_seconds']
@@ -445,7 +445,7 @@ class Delegation:
                                    attempt=last['attempt']), calls=work['calls'], decisions=deepcopy(work['decisions']), outcome=work['outcome'])
                 if full:
                     for decision in item['decisions']:
-                        path = self.service._agent(decision['agent']).archive_path('decisions/' + decision['decisionId'])
+                        path = self.service.population.agent(decision['agent']).archive_path('decisions/' + decision['decisionId'])
                         decision.update(json.loads(path.read_text(encoding='utf-8')))
                 items.append(item)
         return dict(tasks=items)

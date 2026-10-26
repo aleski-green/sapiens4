@@ -15,7 +15,7 @@ class Desktop
       ['dotnet', 'build', 'spec/support/windows_accessibility/Probe.csproj', '-o', @build]
     else
       ['xcrun', 'swiftc', '-framework', 'Cocoa', '-framework', 'WebKit',
-        'macos/Browser.swift', 'spec/support/macos/Desktop.swift', '-o', @binary]
+        *Dir['macos/browser/*.swift'], 'spec/support/macos/Desktop.swift', '-o', @binary]
     end
     out, error, code = Contract.capture(*command, timeout: 90)
     raise out + error unless code == 0

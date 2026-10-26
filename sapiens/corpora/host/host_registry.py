@@ -56,7 +56,7 @@ class HostRegistry:
             local = []
             if self.local_available:
                 for identity in [self.server.service.corpora_id, *self.saved['locals']]:
-                    info = self.local(identity).corpora_identity()
+                    info = self.local(identity).projection.corpora_identity()
                     bridge = self.server.remote if identity == self.server.service.corpora_id else self.children[identity].remote
                     local.append(dict(info, location='Local', paired=bridge.status()['paired']))
             remote = [dict(item['corpora'], location='Remote') for item in self.saved['remotes'].values()]
@@ -169,13 +169,13 @@ class HostRegistry:
         folder.mkdir(parents=True, mode=0o700)
         atomic_json(folder / 'corpora-identity.json', {'version': 1, 'corpora_id': identity})
         atomic_json(folder / 'corpora-settings.json', dict(name=data['name'].strip(), scope=data.get('scope', '').strip(),
-                    device=self.server.service.corpora_identity()['device'], status='paused', revision=1, operations={}))
+                    device=self.server.service.projection.corpora_identity()['device'], status='paused', revision=1, operations={}))
         with self.lock:
             self.saved['locals'].append(identity)
             self.save()
             service = self.local(identity)
-            service.update_agent(service.registry.main, {'name': 'ChiefSapi', 'role': 'Head of Corpora'})
-            return dict(service.corpora_identity(), location='Local')
+            service.population.update_agent(service.registry.main, {'name': 'ChiefSapi', 'role': 'Head of Corpora'})
+            return dict(service.projection.corpora_identity(), location='Local')
 
     def begin_pair(self, data):
         client = RemoteClient.invitation(data)
