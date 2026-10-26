@@ -14,9 +14,12 @@ The first build is unsigned. No automatic updater or installer is included: repl
 
 ## Source development
 
-Install Python 3.9+, Git, .NET SDK 10, stable Rust and MSVC C++ build tools. Install
+Install Python 3.9+, Node.js 22.5+, npm, Git, .NET SDK 10, stable Rust and MSVC C++ build tools. Install
 the Rust target for your package (`rustup target add aarch64-pc-windows-msvc` or
-`rustup target add x86_64-pc-windows-msvc`). Then:
+`rustup target add x86_64-pc-windows-msvc`). On Windows ARM64, use the x64 Node.js
+distribution for the UI build: the pinned PureScript installer provides a Windows
+x64 compiler, which runs under emulation. The desktop package still targets
+`win-arm64`; Node and the compiler are build-time tools only. Then:
 
 ```powershell
 git clone --recurse-submodules https://github.com/aleski-green/sapiens4.git
@@ -24,7 +27,7 @@ cd sapiens4
 .\start.ps1 -Open
 ```
 
-`start.ps1` builds Blindly4 and starts the web UI on port 4174. `-SkipBuild` reuses an existing binary.
+`start.ps1` builds Blindly4 and the PureScript UI, then starts the web UI on port 4174. `-SkipBuild` reuses an existing binary.
 
 Build the portable desktop package:
 
@@ -36,7 +39,7 @@ Build the portable desktop package:
 
 The build downloads CPython 3.13.9 from python.org and verifies a pinned SHA-256. A build-time Python with pip installs CLI and encrypted remote-client dependencies as wheels for the selected architecture into the embedded runtime; the finished package needs no separate Python installation. Use `-BuildPython PATH` to select that build interpreter. The relay server's aiohttp dependency is separate. NuGet restores the pinned WebView2 SDK; WebView2 uses the locally installed Evergreen Runtime. To run a desktop development build, set `SAPIENS_PYTHON` to Python's full path and `SAPIENS_RUNTIME_DIR` to the repository root. An installed LLVM-MinGW Rust toolchain can be selected with `-BlindlyToolchain gnullvm`; MSVC remains the default.
 
-`AppIcon.ico` and `AppIconDark.ico` contain nine resolutions from 16 to 256 pixels, rendered from the SVG in `web/shell/bootstrap.js` with light and dark backgrounds. After changing that favicon, regenerate both with `node windows/icon.cjs` (requires the `sharp` Node package). Normal Windows builds embed the checked-in icons and do not need Node. Explorer and pinned shortcuts retain the default light icon; the running window switches icons with the app theme.
+`AppIcon.ico` and `AppIconDark.ico` contain nine resolutions from 16 to 256 pixels, rendered from the SVG in `web/shell/favicon.svg` and `favicon-dark.svg` with light and dark backgrounds. After changing that favicon, regenerate both with `python windows/icon.py` (requires the `sharp` Node package). Normal Windows builds embed the checked-in icons and compile the UI with Node; installed packages do not need Node. Explorer and pinned shortcuts retain the default light icon; the running window switches icons with the app theme.
 
 ## Tests
 
@@ -44,14 +47,14 @@ The build downloads CPython 3.13.9 from python.org and verifies a pinned SHA-256
 $env:PYTHONUTF8 = '1'
 ruby libs4/ruby/bundle.rb install
 python -m pip install -r libs4/python/remote-requirements.txt
-npm ci --prefix libs4 --ignore-scripts
+python web/shell/build.py
 dotnet build spec/support/windows/CodexFixture.csproj -o tmp/codex-fixture
 $env:SAPIENS_TEST_CODEX = (Resolve-Path tmp/codex-fixture/CodexFixture.exe).Path
 $env:SAPIENS_PYTHON = 'python'
 ruby libs4/ruby/bundle.rb exec rspec --tag '~windows'
 ```
 
-The executable also accepts `--smoke-report PATH --data-dir TEMP_DIRECTORY` to launch a real WebView2 window, verify the rendered app, save a JSON result and PNG, then close. Use an empty test data directory. The Blindly4 repository documents its permission-free and interactive integration suites.
+Set `SAPIENS_TEST_WINDOWS_PACKAGE` to the built package and `SAPIENS_TEST_BLINDLY4` to the Blindly4 executable, then run `ruby libs4/ruby/bundle.rb exec rspec spec/windows_package_spec.rb`. RSpec drives the actual window through accessibility against temporary data. No JavaScript smoke-test mode is embedded in the application. See `documentation/testing.md` for setup and platform limits.
 
 To include the native RSpec contract in a local run, build the portable desktop package and set `SAPIENS_TEST_WINDOWS_PACKAGE` to its directory. See [Testing](../documentation/testing.md). macOS and POSIX-only cases are explicitly skipped on Windows; no security settings are changed to run tests.
 

@@ -1,0 +1,212 @@
+require_relative 'host'
+
+class Desktop
+  attr_reader :process
+
+  def self.available?
+    (RUBY_PLATFORM.include?('darwin') || Gem.win_platform?) && ENV['SAPIENS_TEST_BLINDLY4']
+  end
+
+  def self.binary
+    return @binary if @binary
+    @build = Dir.mktmpdir('sapiens desktop ')
+    @binary = File.join(@build, Gem.win_platform? ? 'Probe.exe' : 'desktop')
+    command = if Gem.win_platform?
+      ['dotnet', 'build', 'spec/support/windows_accessibility/Probe.csproj', '-o', @build]
+    else
+      ['xcrun', 'swiftc', '-framework', 'Cocoa', '-framework', 'WebKit',
+        'macos/Browser.swift', 'spec/support/macos/Desktop.swift', '-o', @binary]
+    end
+    out, error, code = Contract.capture(*command, timeout: 90)
+    raise out + error unless code == 0
+    @binary
+  end
+
+  def self.cleanup
+    FileUtils.remove_entry(@build) if @build && File.directory?(@build)
+  end
+
+  def initialize(url = nil, process: nil, ready: true)
+    @owns_process = process.nil?
+    @process = process || Contract::Child.new(self.class.binary, url)
+    @navigation_events = Gem.win_platform? && ready
+    Contract.wait(description: 'desktop startup') { @process.stdout.include?('READY') || @process.stdout.include?('TITLE:') } if ready
+    wait_for_navigation if @navigation_events
+    Contract.wait(description: 'packaged desktop window') { !tree(wait_for_window: true).empty? } unless ready
+    control('activate')
+  end
+
+  def control(command, *args)
+    out, error, code = Contract.capture(ENV.fetch('SAPIENS_TEST_BLINDLY4'), command,
+      '--pid', process.pid.to_s, *args, timeout: 15, chdir: File.dirname(ENV.fetch('SAPIENS_TEST_BLINDLY4')))
+    raise "Blindly4 #{command}: #{out}#{error}" unless code == 0
+    JSON.parse(out)
+  end
+
+  def tree(wait_for_window: false)
+    # WebView2 can invalidate a read while replacing its accessibility tree.
+    # Retry only observations, never input, and still fail persistent errors.
+    result = Contract.wait(description: 'stable accessibility tree') do
+      begin
+        control('tree', '--depth', '50', '--max-nodes', '10000')
+      rescue RuntimeError => error
+        transient = error.message.match?(/\ABlindly4 tree:.*"code":"accessibility_error".*0x(?:80040201|00000000)/m)
+        starting = wait_for_window && error.message.include?("No visible windows for PID #{process.pid}")
+        raise unless Gem.win_platform? && (transient || starting)
+        false
+      end
+    end
+    raise 'Accessibility tree truncated' if result['truncated']
+    flatten = lambda do |node, path|
+      [node.reject { |key, _| key == 'children' }.merge('path' => path)] + node.fetch('children', []).each_with_index.flat_map do |child, i|
+        flatten.call(child, path.empty? ? i.to_s : "#{path}.#{i}")
+      end
+    end
+    result.fetch('tree').fetch('children', []).each_with_index.flat_map do |child, index|
+      child['role'] == 'AXWindow' ? flatten.call(child, index.to_s) : []
+    end
+  end
+
+  def label(node)
+    %w[title description value].map { |key| node[key].to_s }.reject(&:empty?).uniq.join(' ')
+  end
+
+  def find(text, role: nil)
+    roles = Array(role).flat_map { |value| Gem.win_platform? && value == 'AXHeading' ? ['AXStaticText'] : [value] }
+    Contract.wait(description: "accessible #{text.inspect}") do
+      tree.find { |node| (!role || roles.include?(node['role'])) && (text.is_a?(Regexp) ? label(node).match?(text) :
+        %w[title description value].any? { |key| node[key] == text }) }
+    end
+  end
+
+  def text
+    tree.map { |node| label(node) }.join("\n")
+  end
+
+  def see(text)
+    Contract.wait(description: "visible #{text.inspect}") { value = self.text; value if text.is_a?(Regexp) ? value.match?(text) : value.include?(text) }
+  end
+
+  def press(text, role: %w[AXButton AXCheckBox AXRadioButton AXLink AXDisclosureTriangle AXPopUpButton])
+    act_on(text, role: role) do |node|
+      if Gem.win_platform? && !node.fetch('actions', []).include?('AXPress') && node.fetch('actions', []).include?('AXShowMenu')
+        # Expand-only menus need a click to support both opening and closing.
+        click_node(node)
+      else
+        guard = node['description'].to_s
+        control('press', '--path', node.fetch('path'), *(!guard.empty? ? ['--expect-description', guard] : []))
+      end
+    end
+  end
+
+  def fill(text, value)
+    editable = %w[AXTextField AXTextArea AXComboBox]
+    if Gem.win_platform?
+      # UIA index paths can move as progress controls appear above the editor.
+      # A guarded native click focuses the visible field without replaying input.
+      click_node(find(text, role: editable))
+      Contract.wait(description: "focused #{text.inspect}") { find(text, role: editable)['focused'] }
+    else
+      act_on(text, role: editable) { |node| control('focus', '--path', node.fetch('path')) }
+    end
+    act_on(text, role: editable) { |node| control('set-value', '--path', node.fetch('path'), '--value', value) }
+    self.value(text, value)
+  end
+
+  # A loading page may replace an accessible element between discovery and action.
+  # Retry only a lookup failure, for which Blindly4 has performed no action.
+  def act_on(text, role: nil)
+    Contract.wait(description: "stable accessible #{text}") do
+      begin
+        yield find(text, role: role)
+      rescue RuntimeError => error
+        raise unless error.message.match?(/Path .* (does not|no longer) exist|press target does not match --expect-description/)
+        false
+      end
+    end
+  end
+
+  def click(text)
+    click_node(find(text))
+  end
+
+  def click_node(node)
+    raise 'Cannot click a disabled or empty control' if node['enabled'] == false ||
+      node.fetch('size')['width'] <= 0 || node['size']['height'] <= 0
+    control('click', '--x', (node.fetch('position')['x'] + node.fetch('size')['width'] / 2).to_i.to_s,
+      '--y', (node['position']['y'] + node['size']['height'] / 2).to_i.to_s)
+  end
+
+  def key(value)
+    control('key', '--key', value)
+  end
+
+  def reload
+    previous = process.stdout.scan(/^NAVIGATION START (\d+)/).last&.first
+    key(Gem.win_platform? ? 'control+r' : 'command+r')
+    wait_for_navigation(after: previous) if @navigation_events
+  end
+
+  def wait_for_navigation(after: nil)
+    Contract.wait(description: 'completed native navigation') do
+      current = process.stdout.scan(/^NAVIGATION START (\d+)/).last&.first
+      next false unless current && current != after
+      result = process.stdout.match(/^NAVIGATION END #{Regexp.escape(current)} (True|False) (\S+)/)
+      raise "Native navigation failed: #{result[2]}" if result && result[1] == 'False'
+      result
+    end
+  end
+
+  def value(text, expected)
+    Contract.wait(description: "#{text.inspect} value #{expected.inspect}") do
+      node = find(text, role: %w[AXTextField AXTextArea AXComboBox])
+      node['value'] if node['value'] == expected
+    end
+  end
+
+  def close
+    process.close if @owns_process
+  end
+end
+
+module DesktopExamples
+  def desktop; @desktop; end
+  def desktop_host
+    return Host.new unless Gem.win_platform?
+    host = Host.new(command: [Desktop.binary, '--runtime-dir', Contract::ROOT])
+    # The native host's URL is ready before WebView2 has loaded the shell.
+    Desktop.new(process: host.process).see('Message ChiefSapi')
+    host
+  rescue Exception
+    warn host.process.stdout if host&.process
+    host&.close
+    raise
+  end
+  def start_desktop(url = nil)
+    @host ||= desktop_host
+    skip 'Network proxy window currently requires macOS WebKit' if Gem.win_platform? && url && url != host.url
+    @desktop = Gem.win_platform? ? Desktop.new(process: host.process) : Desktop.new(url || host.url)
+    # The Windows host owns an already-loaded window; reload after arranging
+    # service fixtures, matching the fresh page opened by the macOS driver.
+    if Gem.win_platform?
+      @desktop.see('Message ChiefSapi')
+      @desktop.reload
+    end
+  end
+end
+
+RSpec.configure do |config|
+  config.include DesktopExamples, :desktop
+  config.before(:each, :desktop) do
+    skip 'Requires macOS/Windows and SAPIENS_TEST_BLINDLY4 with accessibility access' unless Desktop.available?
+  end
+  config.after(:each, :desktop) do |example|
+    if example.exception && @desktop
+      FileUtils.mkdir_p(File.join(Contract::ROOT, 'tmp'))
+      File.write(File.join(Contract::ROOT, 'tmp', 'desktop-failure.txt'), @desktop.text) rescue nil
+    end
+    @desktop&.close
+    @host&.close
+  end
+  config.after(:suite) { Desktop.cleanup }
+end

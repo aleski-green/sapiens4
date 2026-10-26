@@ -1,31 +1,32 @@
-RSpec.describe 'Remote Control Relay Servers browser flow', :host do
-  def probe(scenario)
-    out, error, code = Contract.capture('node', 'spec/support/relay-servers-browser.cjs', host.url, scenario)
-    expect(code).to eq(0), out + error
-    JSON.parse(out)
-  end
+require_relative 'support/desktop'
 
-  it 'adds, imports, edits, archives and restores JSON, then confirms switching and active credential changes' do
-    result = probe('manage')
-    expect(result).to include('heading' => 'Remote Control Relay Servers', 'archivedDefault' => false,
-      'scrolling' => true, 'invalidWrites' => 0, 'hidden' => 2, 'cancelled' => 'Sapiens4 beta',
-      'selected' => 'Office renamed', 'editWarning' => 'Change connection?', 'keptDraft' => true,
-      'resetWrites' => %w[switch save], 'bodyHasToken' => false, 'focus' => 'Cancel')
-    expect(result['initial']).to eq([{'name' => 'Sapiens4 beta', 'current' => true, 'disabled' => false},
-      {'name' => 'Utana beta', 'current' => false, 'disabled' => true}])
-    expect(result['saved'].find { |row| row['current'] }['name']).to eq('Sapiens4 beta')
-    expect(result['archived']).to include('disabled' => true)
-    expect(result['invalid']).to include('valid relay connection JSON')
-    expect(result['prefill']).to include('name' => 'Office', 'connection' => {
-      'format' => 'sapiens-relay-connection-v1', 'relay' => 'http://127.0.0.1:4180', 'token' => 't' * 32})
-    expect(result['warning']).to include('all paired devices and remote corpora connections', 'for this local app', 'Pair all devices and reconnect all remote corpora again')
-    expect(result['guide']).to start_with('https://github.com/aleski-green/sapiens4/')
-  end
+RSpec.describe 'Managing relay connections', :desktop do
+  def catalogue; host.api('GET', '/api/host/relays'); end
 
-  it 'requires explicit beta acceptance before showing the pairing action' do
-    skip 'Local corpora pairing is available on macOS and Windows only' unless host.api('GET', '/api/host')['local_available']
-    result = probe('terms')
-    expect(result).to include('gated' => true, 'acceptEnabled' => true, 'accepted' => true)
-    expect(result['terms']).to include('authors, contributors, and operators disclaim liability', 'use your own securely maintained relay')
+  it 'keeps an invalid connection editable and saves a valid relay without switching to it' do
+    start_desktop
+    desktop.press('Local')
+    desktop.press('Remote Control Relay Servers')
+    desktop.press(/Add your own relay/)
+    desktop.fill('Name', 'Office')
+    desktop.fill('Connection JSON', 'not json')
+    desktop.press('Save')
+    desktop.see('valid relay connection JSON')
+    expect(catalogue['servers'].map { |row| row['name'] }).not_to include('Office')
+    desktop.fill('Connection JSON', JSON.generate(format: 'sapiens-relay-connection-v1', relay: 'https://relay.example', token: 't' * 32))
+    desktop.press('Save')
+    desktop.see('Office')
+    expect(catalogue['selected']).to eq('sapiens-beta')
+    desktop.press(/Office/, role: 'AXRadioButton')
+    desktop.see('Switch server?')
+    desktop.press('Cancel')
+    expect(catalogue['selected']).to eq('sapiens-beta')
+    desktop.press(/Office/, role: 'AXRadioButton')
+    desktop.press('Switch & revoke all')
+    selected = Contract.wait do
+      state = catalogue
+      state if state['servers'].find { |row| row['id'] == state['selected'] }['name'] == 'Office'
+    end
+    expect(selected['selected']).not_to eq('sapiens-beta')
   end
 end

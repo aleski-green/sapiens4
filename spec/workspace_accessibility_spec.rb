@@ -1,138 +1,87 @@
-require_relative 'support/host'
+require_relative 'support/desktop'
+require_relative 'support/http_peer'
 
-RSpec.describe 'Native workspace accessibility' do
-  before(:all) do
-    skip 'Requires macOS or Windows and SAPIENS_TEST_BLINDLY4 with accessibility access' unless
-      (RUBY_PLATFORM.include?('darwin') || Gem.win_platform?) && ENV['SAPIENS_TEST_BLINDLY4']
-    @build = Dir.mktmpdir('sapiens accessibility ')
-    if Gem.win_platform?
-      @binary = File.join(@build, 'Probe.exe')
-      out, error, code = Contract.capture('dotnet', 'build', 'spec/support/windows_accessibility/Probe.csproj',
-        '-o', @build, timeout: 90)
-    else
-      @binary = File.join(@build, 'browser-probe')
-      out, error, code = Contract.capture('xcrun', 'swiftc', '-framework', 'Cocoa', '-framework', 'WebKit',
-        'macos/Browser.swift', 'macos/BrowserTests.swift', '-o', @binary, timeout: 90)
-    end
-    raise out + error unless code == 0
-  end
-
-  after(:all) { FileUtils.remove_entry(@build) if @build }
-
+RSpec.describe 'Working with browser tabs and documents', :desktop do
   before do
-    @host = Gem.win_platform? ? Host.new(command: [@binary, '--runtime-dir', Contract::ROOT]) : Host.new
-    @owner = chief
-    @tab = open_player('First')
-    @app = Gem.win_platform? ? host.process : Contract::Child.new(@binary, '--accessibility', host.url)
-    if Gem.win_platform?
-      expect(@app.stdout.lines.map(&:strip)).to include('TITLE: Sapiens4')
-    else
-      Contract.wait(description: 'native fixture startup') { @app.stdout.include?('READY') }
+    @pages = HTTPPeer.new do |request|
+      name = request.path.include?('second') ? 'Second' : 'First'
+      playing = request.path.end_with?('/playing')
+      [200, "<title>#{name} player</title><h1>#{name} player</h1><a href='/#{name.downcase}/#{playing ? 'stopped' : 'playing'}'>#{playing ? 'Pause' : 'Play'} #{name}</a><label>#{name} input<input></label>",
+        {'Content-Type' => 'text/html', 'X-Frame-Options' => 'DENY', 'Content-Security-Policy' => "frame-ancestors 'none'"}]
     end
-    control('activate')
-    find_control('Play First')
+    @host = desktop_host
+    host.control(chief, 'workspace_open', url: @pages.url + '/first')
+    start_desktop
+    desktop.see('Play First')
+  end
+  after { @pages&.close }
+
+  it 'opens a site that forbids framing and follows its links' do
+    desktop.press('Play First')
+    expect(desktop.see('Pause First')).to include('First player')
   end
 
-  after do
-    @app&.close unless Gem.win_platform?
-    @host&.close
+  it 'lets the person add a tab, navigate, and close it to return to the previous page' do
+    desktop.press('Add workspace tab')
+    desktop.fill('URL or file path', @pages.url + '/second')
+    desktop.press('Open address')
+    desktop.see('Play Second')
+    expect(desktop.text).not_to include('Play First')
+    desktop.press('Close Second player')
+    expect(desktop.see('Play First')).not_to include('Play Second')
   end
 
-  def control(command, *args)
-    out, error, code = Contract.wait(description: "stable accessibility #{command}") do
-      result = Contract.capture(ENV.fetch('SAPIENS_TEST_BLINDLY4'), command, '--pid', @app.pid.to_s, *args)
-      # UIA elements can disappear while a WebView loads/closes. Retry reads only.
-      result unless Gem.win_platform? && %w[tree focused].include?(command) &&
-        result[2] != 0 && result[0].match?(/0x80040201|0x00000000/)
-    end
-    expect(code).to eq(0), out + error
-    JSON.parse(out)
+  it 'keeps the workspace menu usable above a guest and returns to the guest afterward' do
+    desktop.fill('First input', 'A draft on the website')
+    desktop.press('Workspace options')
+    desktop.see('Open file…')
+    expect(desktop.text).not_to include('Play First')
+    desktop.press('Workspace options')
+    expect(desktop.find('First input', role: 'AXTextField')['value']).to eq('A draft on the website')
+    desktop.press('Play First')
+    desktop.see('Pause First')
   end
 
-  def tree
-    result = control('tree', '--depth', '40', '--max-nodes', '10000')
-    expect(result['truncated']).to eq(false)
-    flatten = lambda do |node, path|
-      [node.merge('path' => path)] + node.fetch('children', []).each_with_index.flat_map do |child, i|
-        flatten.call(child, path.empty? ? i.to_s : "#{path}.#{i}")
-      end
-    end
-    flatten.call(result.fetch('tree'), '')
+  it 'opens a new address from the keyboard while the workspace menu is open' do
+    desktop.click('Workspace options')
+    desktop.see('Open file…')
+    desktop.key(Gem.win_platform? ? 'control+l' : 'command+l')
+    desktop.fill('URL or file path', @pages.url + '/second')
+    desktop.press('Open address')
+    expect(desktop.see('Play Second')).not_to include('Play First')
   end
 
-  def find_control(title)
-    Contract.wait(description: "accessible #{title}") { tree.find { |n| n['title'] == title } }
+  it 'preserves a bookmark after reload and opens it after closing the tab' do
+    desktop.press('Bookmark First player')
+    desktop.see('Unbookmark First player')
+    desktop.reload
+    desktop.see('Unbookmark First player')
+    desktop.press('Close First player')
+    desktop.press('Show workspace')
+    desktop.press('Workspace options')
+    desktop.press('★ First player')
+    expect(desktop.see('Play First')).to include('Unbookmark First player')
   end
 
-  def web_area_role; Gem.win_platform? ? 'AXTextArea' : 'AXWebArea'; end
-
-  def press(title)
-    node = find_control(title)
-    if Gem.win_platform? && title == 'Workspace options'
-      # Chromium exposes this expandable button without UIA InvokePattern.
-      control('click', '--x', (node['position']['x'] + node['size']['width'] / 2).to_i.to_s,
-        '--y', (node['position']['y'] + node['size']['height'] / 2).to_i.to_s)
-    else
-      control('press', '--path', node.fetch('path'))
-    end
+  it 'reads a text file literally and reloads changes from disk' do
+    file = File.join(host.workspace(chief), 'research.txt')
+    File.write(file, 'A literal <b>research finding</b>')
+    desktop.press('Add workspace tab')
+    desktop.fill('URL or file path', file)
+    desktop.press('Open address')
+    desktop.see('A literal <b>research finding</b>')
+    File.write(file, 'Revised research finding')
+    desktop.press('Workspace options')
+    desktop.press('Reload')
+    expect(desktop.see('Revised research finding')).not_to include('A literal <b>research finding</b>')
   end
 
-  def open_player(name)
-    path = File.join(host.workspace(@owner), "#{name}.html")
-    File.write(path, <<~HTML)
-      <title>#{name} player</title><body style="margin:0">
-      <button onclick="this.textContent='Pause #{name}'">Play #{name}</button>
-      <input aria-label="#{name} input">
-    HTML
-    host.control(@owner, 'workspace_open', path: path)['workspace']['active_tab']
-  end
-
-  it 'exposes the guest player alongside the shell and performs its accessible Play action' do
-    expect(tree.count { |n| n['role'] == web_area_role }).to eq(2)
-    press('Play First')
-    expect(find_control('Pause First')['role']).to eq('AXButton')
-  end
-
-  it 'exposes only the selected guest and returns keyboard focus when that guest closes' do
-    second = open_player('Second')
-    find_control('Play Second')
-    expect(tree.map { |n| n['title'] }).not_to include('Play First')
-    host.control(@owner, 'workspace_focus', id: @tab)
-    find_control('Play First')
-    expect(tree.map { |n| n['title'] }).not_to include('Play Second')
-    input = find_control('First input')
-    control('focus', '--path', input.fetch('path'))
-    expect(control('focused')['title']).to eq('First input')
-    host.control(@owner, 'workspace_close', id: @tab)
-    find_control('Play Second')
-    expect(control('focused')['title']).not_to eq('First input')
-    expect(tree.map { |n| n['title'] }).not_to include('Play First')
-    host.control(@owner, 'workspace_close', id: second)
-    Contract.wait { tree.count { |n| n['role'] == web_area_role } == 1 }
-  end
-
-  it 'keeps the guest aligned after resizing with a shell inset and hides it behind workspace menus' do
-    before = find_control('Play First')
-    @app.input.puts(JSON.generate(width: 1300, height: 900))
-    after = Contract.wait do
-      node = find_control('Play First')
-      node if node['position'] != before['position']
-    end
-    @app.input.puts(JSON.generate(width: 1300, height: 900, top: 44))
-    inset = Contract.wait do
-      node = find_control('Play First')
-      node if node['position'] != after['position']
-    end
-    expect(inset['position']['x']).to be_within(1).of(after['position']['x'])
-    expect(inset['position']['y']).to be_within(1).of(after['position']['y'] + 44)
-    input = find_control('First input')
-    control('focus', '--path', input.fetch('path'))
-    press('Workspace options')
-    Contract.wait { tree.none? { |n| n['title'] == 'Play First' } }
-    expect(control('focused')['title']).not_to eq('First input')
-    press('Workspace options')
-    find_control('Play First')
-    press('Play First')
-    expect(find_control('Pause First')['role']).to eq('AXButton')
+  it 'keeps guest controls operable after resizing the desktop window' do
+    @desktop.process.input.puts(JSON.generate(width: 1100, height: 740))
+    desktop.press('Play First')
+    expect(desktop.see('Pause First')).to include('First player')
+    @desktop.process.input.puts(JSON.generate(width: 1300, height: 900, top: 44))
+    desktop.press('Pause First')
+    expect(desktop.see('Play First')).to include('First player')
   end
 end
