@@ -1,15 +1,14 @@
-# Behavior contracts with RSpec
+# Testing
 
-RSpec owns all scenarios and assertions. Tests drive the running application via
-public HTTP, the encrypted relay protocol, or native accessibility through
-Blindly4. They do not import application modules, call UI functions, evaluate
-JavaScript, inspect DOM nodes/CSS, or replace browser APIs. There are no JavaScript
-test files or JavaScript snippets hidden in native probes. Production browser
-adapters run compiled PureScript/Halogen and the shared foreign bindings.
+RSpec owns all scenarios and assertions. Exercise public HTTP, processes, files,
+relay traffic and native user interactions through Blindly4. Do not execute
+JavaScript, inspect private application state or assert DOM/CSS implementation.
+Fixtures use temporary data and controlled external model executables, never live
+corpora or paid model calls. Dependencies stay in libs4.
 
-## Run
+## Setup
 
-Use Ruby 3.4, Python 3.11+, Node.js 22.5+ and npm. Initialize the pinned submodules:
+Use Ruby 3.4, Python 3.11+, Node.js 22.5+ and npm:
 
 ```sh
 git submodule update --init --recursive
@@ -17,140 +16,56 @@ ruby libs4/ruby/bundle.rb install
 python3 -m venv libs4/python/.venv
 libs4/python/.venv/bin/python -m pip install -r libs4/python/remote-requirements.txt
 python3 web/shell/build.py
+export SAPIENS_PYTHON="$PWD/libs4/python/.venv/bin/python"
 ruby libs4/ruby/bundle.rb exec rspec
 ```
 
-The wrapper keeps gems and the Python environment in libs4. Set `SAPIENS_PYTHON`
-to override the interpreter. Node and npm build the UI and validate clean source releases.
-Every service scenario uses temporary data, a loopback port and a controlled
-external model executable; tests never use a real model login or existing corpora.
+Set `SAPIENS_PYTHON` to override the test interpreter. Scheduling cases use real
+minute pulses; `--tag '~slow'` is useful for iteration, but run the complete suite
+before submitting. Source-release and platform build checks are included.
 
-Run desktop behavior scenarios on an unlocked desktop with Accessibility access:
+## Native desktop tests
+
+Use an unlocked desktop with accessibility permission. Run serially and avoid
+interacting with fixture windows. On macOS:
 
 ```sh
 ./blindly4/macos/build.sh
-SAPIENS_TEST_BLINDLY4="$PWD/blindly4/.build/release/blindly4" ruby libs4/ruby/bundle.rb exec rspec --tag desktop
-SAPIENS_TEST_BLINDLY4="$PWD/blindly4/.build/release/blindly4" ruby libs4/ruby/bundle.rb exec rspec
-```
-
-These scenarios bring an isolated fixture window forward and use real mouse,
-keyboard and accessibility actions. Run them serially and avoid interacting with
-the fixture during a run. Missing platform/desktop configuration is reported as
-pending. Once configured, permission errors and failed interactions are failures.
-`tmp/desktop-failure.txt` records accessible window content for a failed scenario.
-
-The macOS fixture loads the shipped workspace with the production Browser adapter
-in WebKit. It adds only a native reload command and window resizing; it exposes no
-application test bridge. Each process has a private browser profile. On Windows,
-the fixture runs the production MainWindow and WebView2. Element paths come from
-the current accessibility tree, never hard-coded DOM or native tree indexes.
-
-For Windows, install .NET 10 and build the external model launcher:
-
-```powershell
-dotnet build spec/support/windows/CodexFixture.csproj -o tmp/codex-fixture
-$env:SAPIENS_TEST_CODEX = (Resolve-Path tmp/codex-fixture/CodexFixture.exe).Path
-$env:SAPIENS_TEST_BLINDLY4 = 'C:\path\to\blindly4.exe'
-$env:SAPIENS_PYTHON = 'python'
+export SAPIENS_TEST_BLINDLY4="$PWD/blindly4/.build/release/blindly4"
 ruby libs4/ruby/bundle.rb exec rspec
 ```
 
-Build the application using `windows/build.ps1` and set
-`SAPIENS_TEST_WINDOWS_PACKAGE` to validate its shipped runtime as well. Run x64 and
-ARM64 packages on matching systems. The package contract drives the actual window;
-it does not invoke the retired script-injection smoke-test mode. The remote-browser
-and HTTP-proxy window scenarios currently require macOS and are explicitly
-pending on Windows; the other desktop scenarios share the native driver.
+On Windows, use .NET 10, Ruby 3.4, Python 3.11+, Node.js 22.5+ and npm:
 
-The Windows driver waits for the visible composer before arranging service data,
-then reloads the shell to pick up that data. The fixture reports native WebView2
-navigation events so a reload must finish before the driver uses the new page.
-Editor focus uses a guarded Blindly4 mouse click, followed by observations of
-focus and the exact value. Menus that support expansion but not invocation are
-clicked so they can both open and close. Presses verify the discovered accessible
-description before acting. Bounded retries apply only to transient accessibility
-reads, initial window discovery, and rejected lookups that performed no action;
-input is never replayed after an ambiguous failure. Value assertions wait for the
-exact expected text without restoring focus or retyping. Windows text roles are
-used for heading assertions. These checks use native accessibility and navigation
-events, not JavaScript evaluation or an application test bridge.
+```powershell
+git submodule update --init --recursive
+ruby libs4/ruby/bundle.rb install
+python -m venv libs4/python/.venv
+$env:SAPIENS_PYTHON = (Resolve-Path libs4/python/.venv/Scripts/python.exe).Path
+& $env:SAPIENS_PYTHON -m pip install -r libs4/python/remote-requirements.txt
+& $env:SAPIENS_PYTHON web/shell/build.py
+dotnet build spec/support/windows/CodexFixture.csproj -o tmp/codex-fixture
+$env:SAPIENS_TEST_CODEX = (Resolve-Path tmp/codex-fixture/CodexFixture.exe).Path
+$env:SAPIENS_TEST_BLINDLY4 = 'C:\path\to\blindly4.exe'
+ruby libs4/ruby/bundle.rb exec rspec
+```
 
-Text entry clicks the visible editor and checks the focused control's accessible
-name and editable role before rediscovering it for the value write. A transient
-absence of a focused control is polled without clicking again or typing. Incoming
-messages can move the editor's accessibility index between discovery and input.
-A macOS write rejected because the resolved target is not writable is retried
-only because Blindly4 rejects it before changing any text. Focus or verification
-failures after input begins fail the scenario without replaying input.
+Set `SAPIENS_TEST_WINDOWS_PACKAGE` to a package built with `windows/build.ps1`
+to include packaged-runtime checks. Test ARM64 and x64 on matching systems.
+Use `--tag desktop` for focused UI runs. Missing platform configuration produces
+pending cases; configured permission and interaction errors are failures.
+Failed desktop scenarios write accessible content to `tmp/desktop-failure.txt`.
 
-Corpora selection also runs through real mouse clicks, including saved native
-remote connections and separate drafts after reload. Browser links are clicked
-after opening, resizing and closing the workspace menu. Clicks must land inside
-the fixture window. Accessibility invocation alone can activate an offscreen menu
-item, and finding its accessible label does not establish that a mouse user can
-reach it. Appearance changes require visual comparison with the baseline as well;
-behavior assertions do not establish icon, color or spacing equivalence.
+Use mouse clicks to establish that controls are reachable; accessibility
+invocation alone can activate offscreen controls. Rediscover moving targets and
+verify editor focus and exact values. Retry only observations or rejections known
+to occur before input; never replay an action after an uncertain outcome.
 
-The packaged-window test closes through native Alt+F4. Fixture cleanup waits up
-to ten seconds for Windows to release WebView2 profile files, then fails if a
-sharing violation remains.
+## Coverage limits
 
-## Boundaries and coverage
-
-| Behavior | Scenarios |
-| --- | --- |
-| Sending messages, saved task history, Memo, late task/Memo replies, retry, drafts during send confirmation, search, per-person workspace | `ui_state_spec.rb`, through Blindly4 and the real service |
-| Incoming replies while composing or reading older messages | `chat_scroll_spec.rb`, using native input and accessible on-screen positions |
-| Shared group messages, personal-chat isolation and Group-only task filters | `groups_browser_spec.rb` |
-| Creating/switching corpora, pause/resume, preserving drafts and execution state | `corpora_browser_spec.rb`, plus mouse selection and saved local/remote transitions in `corpora_selection_spec.rb` |
-| Relay JSON validation, save, cancel/confirm switching | `relay_browser_spec.rb` |
-| Matching-code approval, remote message delivery, saved draft and reconnection, invalid invitations | `app_remote_spec.rb`, shipped remote app with real host and relay |
-| Native tabs, unframeable websites, links, bookmarks, text files, reload, menus, resize | `workspace_accessibility_spec.rb` |
-| Installation URLs, manifests, icons, old-link redirects and private-route rejection | `install_spec.rb`, `remote_spec.rb` |
-| Lifecycle, delegation, shared groups, files, scheduling and recovery | Service RSpec files, against public HTTP and external model inputs/outputs |
-| Authentication, tampering, replay, revocation, mailbox delivery and persisted trust | `remote_spec.rb`, `relay_servers_spec.rb`, independent NaCl/WebSocket peer |
-| Source releases, signed macOS builds, selected data retention, packaged Windows runtime | `distribution_spec.rb`, `windows_package_spec.rb` |
-
-`support/remote_peer.py` implements only the public NaCl/WebSocket wire protocol
-using runtime dependencies already in libs4. It imports no Sapiens4 code. Ruby
-owns the assertions. It does not stand in for browser persistence: that behavior
-is exercised through the shipped remote app.
-
-`support/proxy.rb` forwards requests to the real host. A scenario may hold a task
-response or return one failed/malformed response at this network boundary. It
-never manufactures a workspace snapshot or replaces a UI function. This permits
-repeatable request-lifecycle tests while the actual application renders and
-handles user actions.
-
-Offline installation files and SQLite fixtures are permitted as startup inputs,
-not as live assertion shortcuts. Security tests may contain literal markup or
-rejected URL strings as data; they never execute that text as test JavaScript.
-
-The suite retains real minute-based scheduling, source-release startup and signed
-build checks. There is no accelerated application clock or test-only service API.
-Use `--tag '~slow'` for iteration, not as a substitute for the complete run.
-
-## Device validation still required
-
-The removed DOM simulations did not run iOS, Android, camera hardware, service
-workers in an installed app, or operating-system app switching. Desktop results
-must not be presented as coverage of these behaviors. Check them on real devices:
-
-- Install from Safari/Chrome, follow the platform's installation instructions and
-  verify that the browser gate does not reveal saved connections before install.
-- Pair by camera and uploaded QR image; cancel scanning and check the camera turns
-  off. Reject invalid/oversized images and retry a valid invitation.
-- Background and reopen an iOS app while reading older messages, including near
-  the bottom. Keep the same message visible and preserve an unsent draft; respect
-  a subsequent manual scroll while reconnecting.
-- Reopen cached remote history offline, verify writes are unavailable, reconnect
-  and confirm that unsent work was not replayed.
-- Update an installed shell, including an interrupted download. Reload through
-  the logo online/offline and retain the draft and approved connection.
-- Check portrait/landscape pane limits, keyboard resizing, touch scrolling, theme
-  contrast and native PDF presentation visually.
-
-Legacy checks of DOM object identity, mutation counts, CSS properties, listener
-registration, internal state objects and exact helper results were removed rather
-than translated into another language. A passing test should explain a capability
-or failure a person or external client can observe, not a chosen implementation.
+The macOS fixture runs WebKit with the production browser adapter; Windows runs
+MainWindow/WebView2. Remote-browser and HTTP-proxy window cases currently require
+macOS. Reload tests do not establish persistence across an actual app quit/upgrade.
+Validate mobile installation, camera pairing, background/resume, offline launch,
+updates, keyboard/rotation and touch behavior on real devices. Visually compare
+appearance changes; behavioral tests do not prove styling equivalence.

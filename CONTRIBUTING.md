@@ -63,7 +63,7 @@ not hardcoded prompts.
 All automated test cases must be defined and run in **RSpec**, under `spec/`.
 Do not add Python tests, a Python test runner, or a Python bridge that exposes
 private application objects to Ruby. See [Testing](documentation/testing.md) for
-setup, the migration map, platform probes, and known coverage limits.
+setup, platform requirements and coverage limits.
 
 Exercise real service, relay, build, and desktop entrypoints. Assert
 HTTP responses, process output and exit codes, user-visible files, persistence,
