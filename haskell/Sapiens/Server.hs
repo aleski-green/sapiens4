@@ -45,7 +45,7 @@ startHost root requested managed = do
    registry <- if managed then pure Nothing else Just <$> newRegistry service bridge child
    shutdown <- newEmptyMVar
    ready <- newEmptyMVar
-   let settings = setPort port $ setHost "127.0.0.1" $ setGracefulShutdownTimeout (Just 5) $ setInstallShutdownHandler (putMVar shutdown) $ setBeforeMainLoop (putMVar ready ()) defaultSettings
+   let settings = setServerName "Sapiens4" $ setPort port $ setHost "127.0.0.1" $ setGracefulShutdownTimeout (Just 5) $ setInstallShutdownHandler (putMVar shutdown) $ setBeforeMainLoop (putMVar ready ()) defaultSettings
    worker <- async (runSettingsSocket settings socket (application service bridge registry port))
    void (race (wait worker) (takeMVar ready))
    Service.startService service

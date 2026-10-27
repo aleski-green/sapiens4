@@ -20,7 +20,10 @@ RSpec.describe 'Local service contracts' do
   end
 
   it 'reports health, serves the complete UI and refuses a second host for the same workspace' do
-    expect(host.api('GET', '/api/health')).to eq('status' => 'ok', 'provider' => 'codex')
+    code, health, headers = host.request('GET', '/api/health')
+    expect(code).to eq(200)
+    expect(health).to eq('status' => 'ok', 'provider' => 'codex')
+    expect(headers.fetch('server').first).to start_with('Sapiens4')
     %w[/workspace/ /workspace/app.js /workspace/styles.css].each do |path|
       code, body, headers = host.request('GET', path)
       expect(code).to eq(200)
