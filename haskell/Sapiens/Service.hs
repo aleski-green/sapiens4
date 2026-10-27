@@ -10,12 +10,10 @@ import Control.Monad
 import Data.Aeson hiding (pairs)
 import qualified Data.ByteString.Lazy as BL
 import Data.IORef
-import Data.List (find,nub)
 import qualified Data.Map.Strict as M
 import Data.Maybe
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 import Network.URI (unEscapeString)
@@ -75,14 +73,14 @@ openService path = do
       d <- directory s
       saveDirectory s $ foldl (\dir row -> let a=at row "id"; entry=get dir a in put a (put "parent" (if a==chief then Null else get entry "parent" `fallback` str chief) entry) dir) d agents
       mapM_ (E.recover s . (`at` "id")) agents
-      prefs <- DB.singleton s "preferences"
+      prefs <- DB.singleton s DB.Preferences
       let panel=at prefs "panel"; updated=if panel=="mindmap" then put "panel" (str "notes") prefs else if panel `elem` ["cron","log"] then put "panel" (str "chat") prefs else prefs
-      DB.saveSingleton s "preferences" (remove ["work_views"] updated)
+      DB.saveSingleton s DB.Preferences (remove ["work_views"] updated)
       migrateWorkspaces s
-      savedPulse <- DB.singleton s "system_pulse"
+      savedPulse <- DB.singleton s DB.SystemPulse
       identityPulse <- if has savedPulse "pulse" then pure (at savedPulse "pulse") else ("pulse_" <>) <$> newId
       cfg <- corporaSettings s
-      writeIORef pulse (obj [("id",str identityPulse),("running",Bool (at cfg "status"=="active")),("numbers",merge (obj [(k,num 0) | k<-["bpm120","bpm60","bph60"]]) (get savedPulse "numbers"))])
+      writeIORef pulse (obj [("id",str identityPulse),("running",Bool (corporaStatus cfg==Active)),("numbers",merge (obj [(k,num 0) | k<-["bpm120","bpm60","bph60"]]) (get savedPulse "numbers"))])
       R.initializeRoutines s
       D.reconcileWorks s
       D.pendingWorks s
@@ -117,40 +115,40 @@ snapshotUnlocked s = do
  mapM_ (DB.project s . (`at` "id")) rows
  GC.reconcileGroups s
  turns <- DB.turns s
- prefs <- DB.singleton s "preferences"
+ prefs <- DB.singleton s DB.Preferences
  corpora <- corporaIdentity s
  groups <- G.snapshotGroups s
- routines <- DB.values s "scheduled_routines"
+ routines <- DB.values s DB.ScheduledRoutines
  creation <- prompt s "creation-request"
  agentRows <- forM rows $ \row -> put "retired" . Bool <$> retired s (at row "id") <*> pure row
- owner <- maybe Null (str . fst) <$> readIORef (serviceLease s)
+ owner <- maybe Null (toJSON . fst) <$> readIORef (serviceLease s)
  built <- blindly s >>= doesFileExist
- pulses <- take 500 . reverse <$> DB.values s "pulse_calls"
+ pulses <- take 500 . reverse <$> DB.values s DB.PulseCalls
  events <- DB.events s
  pulse <- readIORef (servicePulse s)
  chief <- DB.mainAgent s
- works <- DB.values s "workloads"
+ works <- D.readWorks s
  drafts <- forM (pairs (get prefs "attachment_drafts")) $ \(a,ids) -> (a,) . arr . filter (\x->get x "id" `elem` list ids) <$> DB.attachments s a
  dir <- directory s
  orchestration <- forM rows $ \row -> do
   let a=at row "id"
   policy <- executionSettings s a
   notes <- memoMetadata (workspaceRoot s a)
-  pure (a,obj [("manager",get (get dir a) "parent"),("execution",policy),("notes",notes)])
+  pure (a,obj [("manager",get (get dir a) "parent"),("execution",toJSON policy),("notes",notes)])
  runs <- M.elems <$> readMVar (serviceRuns s)
  activity <- forM runs $ \run -> do
   value <- readIORef (runActivity run)
   stopping <- readIORef (runCancel run)
-  pure (run,merge value (obj [("turn",str (runId run)),("stopping",Bool stopping),("agencyKind",str "chatInput"),("slot",num (runSlot run))]))
+  pure (run,merge value (obj [("turn",str (runIdText (runId run))),("stopping",Bool stopping),("agencyKind",str "chatInput"),("slot",num (runSlot run))]))
  let groupTurns=M.fromList [(at request "id",at g "id") | g<-groups,request<-items g "requests"]
      projected=[maybe t (\gid->put "group" (str gid) t) (M.lookup (at t "id") groupTurns) | t<-turns]
- pure $ obj [("agents",arr agentRows),("turns",arr projected),("preferences",prefs),("corpora",corpora),("groups",arr groups),("routines",arr routines),("creation_template",str (T.strip creation)),("computer",obj [("owner",owner),("built",Bool built),("platform",str (if os=="mingw32" then "win32" else T.pack os))]),("pulses",arr pulses),("events",events),("pulse",pulse),("provider",str "codex"),("activity",obj [(runOwner r,v) | (r,v)<-activity]),("run_activity",obj [(runId r,v) | (r,v)<-activity]),("main_agent_id",str chief),("workloads",arr (D.workSummaries works)),("attachment_drafts",obj drafts),("orchestration",obj orchestration)]
+ pure $ obj [("agents",arr agentRows),("turns",arr projected),("preferences",prefs),("corpora",corpora),("groups",arr groups),("routines",arr routines),("creation_template",str (T.strip creation)),("computer",obj [("owner",owner),("built",Bool built),("platform",str (if os=="mingw32" then "win32" else T.pack os))]),("pulses",arr pulses),("events",events),("pulse",pulse),("provider",str "codex"),("activity",obj [(agentIdText (runOwner r),v) | (r,v)<-activity]),("run_activity",obj [(runIdText (runId r),v) | (r,v)<-activity]),("main_agent_id",str chief),("workloads",arr (D.workSummaries works)),("attachment_drafts",obj drafts),("orchestration",obj orchestration)]
 savePreferences :: Service -> Value -> IO Value
 savePreferences s d = do
  require (all (`elem` ["selected","panel","scope","groupView","panes","drafts","attachment_drafts"]) (keys d)) 400 "Unknown preference field"
  forM_ ["panes","drafts","attachment_drafts"] $ \k -> when (has d k) $ require (case get d k of Object _->True; _->False) 400 (k<>" must be an object")
  rows <- DB.agents s
- groups <- DB.values s "groups"
+ groups <- DB.values s DB.Groups
  when (has d "selected") $ require (get d "selected" `elem` map (`get` "id") (rows++groups)) 400 "Unknown selected Sapi"
  when (get d "groupView"/=Null) $ require (get d "groupView" `elem` map (`get` "id") groups) 400 "Unknown Group view"
  require (get d "panel" `fallback` str "chat" `elem` map str ["chat","tasks","notes","work","updates"]) 400 "Unknown panel"
@@ -158,23 +156,23 @@ savePreferences s d = do
  forM_ (pairs (get d "panes")) $ \(k,v) -> require (k `elem` ["sidebar","chat","workspace"] && (case v of Bool _->True; _->False)) 400 "Invalid panel visibility"
  forM_ (pairs (get d "drafts")) $ \(_,v) -> require (case v of String t->T.length t<=16000; _->False) 400 "Invalid draft"
  forM_ (pairs (get d "attachment_drafts")) $ \(a,ids) -> void (resolveAttachments s a ids False)
- prefs <- DB.singleton s "preferences"
+ prefs <- DB.singleton s DB.Preferences
  let current=merge prefs d
- DB.saveSingleton s "preferences" current
+ DB.saveSingleton s DB.Preferences current
  pure (obj [("saved",Bool True),("preferences",current)])
 dispatch :: Service -> Text -> Text -> Maybe Value -> IO (Int,BL.ByteString,Text)
 dispatch s method target body = locked s $ do
  let (path,query)=T.breakOn "?" target; parts=filter (not . T.null) (T.splitOn "/" path); write=method `elem` ["POST","PUT"]; d=fromMaybe Null body
  when write $ require (case d of Object _->True; _->False) 400 "Expected a JSON object"
  cfg <- corporaSettings s
- when (write && at cfg "status"/="active" && ("/messages" `T.isSuffixOf` path || "/run" `T.isSuffixOf` path || "/turns/" `T.isInfixOf` path)) $ failure 409 "Activate this corpora before starting work"
+ when (write && corporaStatus cfg/=Active && ("/messages" `T.isSuffixOf` path || "/run" `T.isSuffixOf` path || "/turns/" `T.isInfixOf` path)) $ failure 409 "Activate this corpora before starting work"
  let json code action = do value<-action; pure (code,encode value,"application/json; charset=utf-8")
      owner kind a=if kind=="groups" then void (G.getGroup s a False) else void (DB.agent s a)
  case (method,parts) of
   ("GET",["api","health"]) -> json 200 (pure (obj [("status",str "ok"),("provider",str "codex")]))
   ("GET",["api","state"]) -> json 200 (snapshotUnlocked s)
   ("GET",["api","corpora"]) -> json 200 (corporaIdentity s)
-  ("GET",["api","corpora","operations",operation]) -> json 200 $ do identity<-corporaIdentity s; pure (obj [("applied",Bool (has (get cfg "operations") operation)),("corpora",identity)])
+  ("GET",["api","corpora","operations",operation]) -> json 200 $ do identity<-corporaIdentity s; pure (obj [("applied",Bool (has (toJSON (corporaOperations cfg)) operation)),("corpora",identity)])
   ("PUT",["api","corpora","lifecycle"]) -> json 200 (Mgt.lifecycle s d)
   ("GET",["api","decision-prompts"]) -> json 200 (obj . (:[]) . ("prompts",) . arr <$> D.templates s)
   ("PUT",["api","decision-prompts",node]) -> json 200 (D.editTemplate s node d)

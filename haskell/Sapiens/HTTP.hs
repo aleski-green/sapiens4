@@ -2,7 +2,6 @@ module Sapiens.HTTP where
 
 import Sapiens.Types
 import Control.Exception
-import Control.Monad
 import Data.Aeson hiding (pairs)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL

@@ -1,28 +1,30 @@
 # Testing
 
-RSpec owns all scenarios and assertions. Exercise public HTTP, processes, files,
-relay traffic and native user interactions through Blindly4. Do not execute
+RSpec owns integration scenarios and assertions. Exercise public HTTP, processes,
+files, relay traffic and native user interactions through Blindly4. Do not execute
 JavaScript, inspect private application state or assert DOM/CSS implementation.
 Fixtures use temporary data and controlled external model executables, never live
 corpora or paid model calls. Dependencies stay in libs4.
 
+Domain checks also run through public endpoints and saved installation fixtures:
+invalid states and payloads, nonempty histories, retry cleanup, completion criteria,
+and compatibility of stored data and native browser commands.
+
 ## Setup
 
-Use Ruby 3.4, Python 3.11+, Node.js 22.5+ and npm:
+Use GHC 9.14.1, Cabal 3.18.2, Ruby 3.4 and Node.js 22.5+:
 
 ```sh
 git submodule update --init --recursive
 ruby libs4/ruby/bundle.rb install
-python3 -m venv libs4/python/.venv
-libs4/python/.venv/bin/python -m pip install -r libs4/python/remote-requirements.txt
-python3 web/shell/build.py
-export SAPIENS_PYTHON="$PWD/libs4/python/.venv/bin/python"
+runghc haskell/Build.hs
 ruby libs4/ruby/bundle.rb exec rspec
 ```
 
-Set `SAPIENS_PYTHON` to override the test interpreter. Scheduling cases use real
-minute pulses; `--tag '~slow'` is useful for iteration, but run the complete suite
-before submitting. Source-release and platform build checks are included.
+Scheduling cases use real minute pulses; `--tag '~slow'` is useful for iteration,
+but run the complete suite before submitting. Source-release and platform build
+checks are included. Set `SAPIENS_TEST_CABAL_CACHE` to the absolute path of an
+existing `libs4/haskell/.cabal` cache to reuse dependencies in source-release tests.
 
 ## Native desktop tests
 
@@ -35,17 +37,13 @@ export SAPIENS_TEST_BLINDLY4="$PWD/blindly4/.build/release/blindly4"
 ruby libs4/ruby/bundle.rb exec rspec
 ```
 
-On Windows, use .NET 10, Ruby 3.4, Python 3.11+, Node.js 22.5+ and npm:
+On Windows, use the same Haskell, Ruby and Node toolchains:
 
 ```powershell
 git submodule update --init --recursive
 ruby libs4/ruby/bundle.rb install
-python -m venv libs4/python/.venv
-$env:SAPIENS_PYTHON = (Resolve-Path libs4/python/.venv/Scripts/python.exe).Path
-& $env:SAPIENS_PYTHON -m pip install -r libs4/python/remote-requirements.txt
-& $env:SAPIENS_PYTHON web/shell/build.py
-dotnet build spec/support/windows/CodexFixture.csproj -o tmp/codex-fixture
-$env:SAPIENS_TEST_CODEX = (Resolve-Path tmp/codex-fixture/CodexFixture.exe).Path
+runghc haskell/Build.hs
+$env:SAPIENS_TEST_CODEX = (Resolve-Path .build/bin/sapiens-provider.exe).Path
 $env:SAPIENS_TEST_BLINDLY4 = 'C:\path\to\blindly4.exe'
 ruby libs4/ruby/bundle.rb exec rspec
 ```

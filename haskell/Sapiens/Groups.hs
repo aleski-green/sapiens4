@@ -1,12 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Sapiens.Groups (module Sapiens.GroupModel, groupControl, authorize) where
+module Sapiens.Groups (module Sapiens.GroupModel, groupControl) where
 
 import Sapiens.Types
 import Sapiens.GroupModel
 import qualified Sapiens.GroupChat as Chat
 import qualified Sapiens.GroupWork as Work
 
-authorize s group actor management chief = authorizeGroup s group actor (if chief then "chief" else if management then "management" else "member")
 groupControl s actor input = do
  let op = at input "op"; payload = remove ["op","group"] input; gid = at input "group"
  case op of
@@ -14,7 +13,7 @@ groupControl s actor input = do
   "group_update" -> updateGroup s gid payload actor
   _ -> do
    group <- getGroup s gid (op /= "group_get")
-   authorizeGroup s group actor "member"
+   authorizeGroup s group actor Member
    case op of
     "group_get" -> pure group
     "group_message" -> Chat.submitGroup s gid payload actor

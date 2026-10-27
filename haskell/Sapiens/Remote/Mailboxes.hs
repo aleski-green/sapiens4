@@ -6,17 +6,21 @@ import Control.Exception
 import Control.Monad
 import Data.Aeson hiding (pairs)
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Lazy as BL
 import Data.Char
 import Data.Int
 import Data.List (sort)
-import Data.Maybe
 import qualified Data.Text as T
 import Data.Text (Text)
 import qualified Data.Text.Encoding
 import Database.SQLite.Simple
 import System.Directory
 import System.FilePath
+
+data MailboxRole = Desktop | Phone deriving (Eq, Show)
+roleName :: MailboxRole -> Text
+roleName role = case role of Desktop -> "desktop"; Phone -> "phone"
+recipient :: MailboxRole -> MailboxRole
+recipient role = case role of Desktop -> Phone; Phone -> Desktop
 
 openMailboxes :: FilePath -> IO ()
 openMailboxes path = do
@@ -71,21 +75,20 @@ transact path method parts bearer body admin beta = withDB path $ \db -> withImm
    [(d,p)] -> do
     isDesktop <- constantEqual (hashText bearer) d
     isPhone <- constantEqual (hashText bearer) p
-    pure (if isDesktop then "desktop" else if isPhone then "phone" else "")
-   _ -> pure ""
-  require (role /= "") 401 "Unknown or expired mailbox"
-  case (drop 3 parts,method,role :: Text) of
-   (["trust"],"POST","desktop") -> do
+    if isDesktop then pure Desktop else if isPhone then pure Phone else failure 401 "Unknown or expired mailbox"
+   _ -> failure 401 "Unknown or expired mailbox"
+  case (drop 3 parts,method,role) of
+   (["trust"],"POST",Desktop) -> do
     execute db "UPDATE rooms SET expires=NULL WHERE id=?" (Only room)
     execute db "UPDATE corpora SET expires=0 WHERE room=?" (Only room)
     pure (obj [("trusted",Bool True)])
-   ([],"DELETE","desktop") -> do
+   ([],"DELETE",Desktop) -> do
     execute db "DELETE FROM messages WHERE room=?" (Only room)
     execute db "DELETE FROM rooms WHERE id=?" (Only room)
     execute db "UPDATE corpora SET expires=0 WHERE room=?" (Only room)
     pure (obj [("deleted",Bool True)])
    (["messages"],"GET",_) -> do
-    messages <- query db "SELECT id,body FROM messages WHERE room=? AND recipient=? ORDER BY id LIMIT 20" (room,role) :: IO [(Int64,Text)]
+    messages <- query db "SELECT id,body FROM messages WHERE room=? AND recipient=? ORDER BY id LIMIT 20" (room,roleName role) :: IO [(Int64,Text)]
     let bounded _ [] = []
         bounded size ((i,raw):rest) | size > 0 && size + T.length raw > maxFrame = []
                                   | otherwise = obj [("id",toJSON i),("frame",parseJSONText raw)] : bounded (size+T.length raw) rest
@@ -99,16 +102,16 @@ transact path method parts bearer body admin beta = withDB path $ \db -> withImm
     let raw = jsonText body
     [(count,size)] <- query db "SELECT count(*),coalesce(sum(length(body)),0) FROM messages WHERE room=?" (Only room) :: IO [(Int,Int)]
     require (count < 100 && size+T.length raw <= 48000000) 429 "Mailbox full"
-    execute db "INSERT INTO messages(room,recipient,body,expires) VALUES(?,?,?,?)" (room,if role=="desktop" then "phone" else "desktop" :: Text,raw,time+86400)
+    execute db "INSERT INTO messages(room,recipient,body,expires) VALUES(?,?,?,?)" (room,roleName (recipient role),raw,time+86400)
     ident <- lastInsertRowId db
     pure (obj [("id",toJSON ident)])
    (["messages",ident],"DELETE",_) -> do
     require (not (T.null ident) && T.all isDigit ident) 400 "Invalid message ID"
-    execute db "DELETE FROM messages WHERE id=? AND room=? AND recipient=?" (ident,room,role)
+    execute db "DELETE FROM messages WHERE id=? AND room=? AND recipient=?" (ident,room,roleName role)
     pure (obj [("deleted",Bool True)])
    _ -> failure 404 "Not found"
 hashText :: Text -> Text
-hashText = hash . BL.toStrict . BL.fromStrict . Data.Text.Encoding.encodeUtf8
+hashText = hash . Data.Text.Encoding.encodeUtf8
 lookupAddress :: FilePath -> Text -> IO Value
 lookupAddress path address = do
  let suffix = T.drop 6 address

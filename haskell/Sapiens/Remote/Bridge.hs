@@ -108,7 +108,7 @@ createPairing b input = modifyMVar (bridgeConfig b) $ \current -> do
 replyFrame :: Value -> Text -> Value -> IO Value
 replyFrame config ident value = do
  expires <- (+86390) <$> seconds
- pack (get config "private") (get config "peer") (at config "room") "desktop-to-phone" (obj [("id",str ident),("expires",toJSON expires),("kind",str "response"),("result",value)])
+ pack (get config "private") (get config "peer") (at config "room") DesktopToPhone (obj [("id",str ident),("expires",toJSON expires),("kind",str "response"),("result",value)])
 approvePairing :: Bridge -> Value -> IO Value
 approvePairing b input = modifyMVar (bridgeConfig b) $ \config -> do
  time <- seconds
@@ -166,7 +166,7 @@ executeReply b config message = do
 processFrame :: Bridge -> Value -> Value -> IO (Value,Maybe Value)
 processFrame b config frame = do
  let peer = fallback (get config "peer") (get frame "sender")
- (message,plaintext) <- unpackWithPlaintext (get config "private") peer (at config "room") "phone-to-desktop" frame
+ (message,plaintext) <- unpackWithPlaintext (get config "private") peer (at config "room") PhoneToDesktop frame
  time <- seconds
  if get config "peer"==Null then do
   proof <- constantEqual (at message "secret") (at config "secret")
@@ -215,7 +215,7 @@ runBridge b = loop 1
     let receive = do
          active <- modifyMVar (bridgeConfig b) $ \current -> if at current "room"/=at config "room" then pure (current,False) else do
           updated <- if get current "accept"/=Null then do
-           void (socketCall client "send" (obj [("frame",get current "accept")]))
+           void (socketCall client (SendFrame (get current "accept")))
            let next = remove ["accept"] current
            saveConfig b next
            pure next
@@ -229,8 +229,8 @@ runBridge b = loop 1
             (updated,reply) <- case result of
              Right r -> pure r
              Left (errorValue::SomeException) -> rethrowAsync errorValue >> pure (current,Nothing)
-            forM_ reply (\v -> void (socketCall client "send" (obj [("frame",v)])))
-            void (socketCall client "ack" (obj [("message",get incoming "id")]))
+            forM_ reply (\v -> void (socketCall client (SendFrame v)))
+            void (socketCall client (AckMessage (get incoming "id")))
             seconds >>= writeIORef (bridgeContact b) . toJSON
             writeIORef (bridgeError b) ""
             pure updated

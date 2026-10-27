@@ -25,6 +25,7 @@ import Sapiens.Provider
 import Sapiens.GroupModel
 import Sapiens.GroupWork
 
+mentions :: Service -> Value -> Text -> IO [Text]
 mentions s group content = do
  rows <- DB.agents s
  let members = filter ((`elem` items group "members") . (`get` "id")) rows
@@ -38,15 +39,19 @@ mentions s group content = do
    pure True
   else pure False) members
  pure (map (`at` "id") found)
+findRequest :: Service -> RunId -> IO (Maybe (Value,GroupRequest))
 findRequest s rid = do
- groups <- DB.values s "groups"
- pure (listToMaybe [(g,r) | g <- groups,r <- items g "requests",at r "id" == rid])
+ groups <- DB.values s DB.Groups
+ requests <- forM groups $ \g -> map (g,) <$> readRequests g
+ pure (listToMaybe [(g,r) | (g,r) <- concat requests,requestId r == rid])
+activeRoot :: Service -> Text -> Text -> IO Text
 activeRoot s gid actor = if actor == "admin" then pure "" else do
  runs <- Map.elems <$> readMVar (serviceRuns s)
- requests <- mapM (findRequest s . runId) (filter ((== actor) . runOwner) runs)
- pure (fromMaybe "" (listToMaybe [at r "root" | Just (g,r) <- requests,at g "id" == gid]))
+ requests <- mapM (findRequest s . runId) (filter ((== AgentId actor) . runOwner) runs)
+ pure (fromMaybe "" (listToMaybe [at (toJSON r) "root" | Just (g,r) <- requests,at g "id" == gid]))
+submitGroup :: Service -> Text -> Value -> Text -> IO Value
 submitGroup s gid input actor = do
- group <- getGroup s gid True; authorizeGroup s group actor "member"
+ group <- getGroup s gid True; authorizeGroup s group actor Member
  require (all (`elem` ["text","target","attachments"]) (keys input)) 400 "Group messages accept text and optional target"
  let raw = get input "text" `fallback` str ""; content = T.strip (text raw)
  require (case raw of String t -> T.length t <= 16000; _ -> False) 400 "Message must be text, at most 16000 characters"
@@ -70,53 +75,58 @@ submitGroup s gid input actor = do
    dispatchGroups s
    pure entry
 
+dispatchGroups :: Service -> IO ()
 dispatchGroups s = do
  stopping <- readIORef (serviceStopping s)
- unless stopping $ DB.values s "groups" >>= mapM_ dispatch
+ unless stopping $ DB.values s DB.Groups >>= mapM_ dispatch
  where
- dispatch group = unless (boolean (get group "archived")) $ forM_ (items group "requests") $ \request -> when (at request "status" == "queued") $ do
+ dispatch group = unless (boolean (get group "archived")) $ readRequests group >>= mapM_ (dispatchRequest group)
+ dispatchRequest group typed = when (requestStatus typed == Queued) $ do
+  let request=toJSON typed
   let target = if boolean (get request "memo") then at group "lead" else at request "target"
-      actual = put "target" (str target) request
+      actual = toJSON typed { requestTarget=AgentId target }
   when (target /= at request "target") $ do
    latest <- getGroup s (at group "id") False
    storeGroup s (replace "requests" actual latest)
   projected <- DB.turns s
   state <- agentState s target
   runs <- Map.elems <$> readMVar (serviceRuns s)
-  workloads <- DB.values s "workloads"
-  let busy = any ((== target) . runOwner) runs || any ((`elem` ["queued","running"]) . (`at` "status")) (items state "turns") || any (\c -> at c "addressedTo" == target && at c "state" == "Queued") (concatMap (`items` "calls") workloads)
+  workloads <- DB.values s DB.Workloads
+  let busy = any ((== AgentId target) . runOwner) runs || any ((`elem` [Queued,Running]) . turnStatus) (agentTurns state) || any (\c -> at c "addressedTo" == target && at c "state" == "Queued") (concatMap (`items` "calls") workloads)
   unless (busy || isJust (findId (at request "id") projected)) $ do
    entry <- maybe (failure 409 "Group request message is missing") pure (findId (at request "message") (items group "messages"))
    suffix <- Workspace.attachmentPrompt s (items entry "attachments")
    t <- now
    let origin = get request "origin" `fallback` obj [("group",get group "id"),("author",get entry "author")]
        content = at entry "text" <> suffix
-       turn = obj [("id",get request "id"),("flow",str "chat"),("input",str content),("status",str "queued"),("created",str t),("attempt",num 1),("origin",origin),("batchable",Bool (has origin "routine"))]
+       turn = toJSON (newTurn (requestId typed) Chat content t origin (has origin "routine"))
    modifyState s target $ \current -> append "turns" turn current
    DB.project s target
 
-runGroup s run turn _ = do
+runGroup :: Service -> Run -> Turn -> IO (Text,[Value])
+runGroup s run turn = do
  (context,isMemo) <- locked s $ do
-  found <- findRequest s (at turn "id")
-  (group,request) <- maybe (failure 409 "Unknown Group call") pure found
-  require (not (boolean (get group "archived")) && str (runOwner run) `elem` items group "members") 409 "Group is archived or membership changed before execution"
-  let running = put "status" (str "running") request
+  found <- findRequest s (turnId turn)
+  (group,typed) <- maybe (failure 409 "Unknown Group call") pure found
+  let request=toJSON typed
+  require (not (boolean (get group "archived")) && str (agentIdText (runOwner run)) `elem` items group "members") 409 "Group is archived or membership changed before execution"
+  let running = toJSON typed { requestStatus=Running }
   storeGroup s (replace "requests" running group)
   root <- folder s (at group "id")
   memo <- (get <$> readMemo root <*> pure "content") `catch` (\(e::SomeException) -> pure (obj [("path",str (T.pack (root </> "Notes.html"))),("error",str (T.pack (displayException e)))]))
   rows <- DB.agents s; chief <- DB.mainAgent s
   let isMemo = boolean (get request "memo")
   manifests <- forM ["identity","host-control","computer-use"] $ \name -> do
-   let path = agentRoot s (runOwner run) </> "manifests" </> T.unpack name <.> "md"
+   let path = agentRoot s (agentIdText (runOwner run)) </> "manifests" </> T.unpack name <.> "md"
    exists <- doesFileExist path
    value <- if exists then str <$> readText path else pure Null
    pure (name,value)
   let manifest name = fromMaybe Null (lookup name manifests)
-  pure (obj [("group",obj ([(k,get group k) | k <- ["id","name","description","lead","members"]] ++ [("workspace",str (T.pack root))])),("self_id",str (runOwner run)),("chief_id",str chief),("members",arr [r | r <- rows,get r "id" `elem` items group "members"]),("tasks",arr [obj [(k,get task k) | k <- ["id","title","assignee","state","revision","deleted"]] | task <- takeLast 50 (items group "tasks")]),("messages",arr (if isMemo then items group "messages" else takeLast 30 (items group "messages"))),("memo",memo),("request",running),("scheduledExecutionPrompt",get (get turn "origin") "executionPrompt"),("identity",manifest "identity"),("host_control",manifest "host-control"),("computer",manifest "computer-use")],isMemo)
+  pure (obj [("group",obj ([(k,get group k) | k <- ["id","name","description","lead","members"]] ++ [("workspace",str (T.pack root))])),("self_id",str (agentIdText (runOwner run))),("chief_id",str chief),("members",arr [r | r <- rows,get r "id" `elem` items group "members"]),("tasks",arr [select ["id","title","assignee","state","revision","deleted"] task | task <- takeLast 50 (items group "tasks")]),("messages",arr (if isMemo then items group "messages" else takeLast 30 (items group "messages"))),("memo",memo),("request",running),("scheduledExecutionPrompt",get (turnField turn "origin") "executionPrompt"),("identity",manifest "identity"),("host_control",manifest "host-control"),("computer",manifest "computer-use")],isMemo)
  template <- prompt s (if isMemo then "group-memo" else "group-conversation")
  extra <- if isMemo then ("\n\n" <>) . (`render` [("notes_example",T.pack (repositoryRoot s </> "prompts/examples/jarvis-notes.html"))]) <$> prompt s "notes-wiki" else pure ""
- prefix <- if has (get turn "origin") "routine" then (<> "\n\n") <$> prompt s "scheduled-execution" else pure ""
- let renderContext ctx = prefix <> render template [("context",jsonText ctx),("task",at turn "input")] <> extra
+ prefix <- if has (turnField turn "origin") "routine" then (<> "\n\n") <$> prompt s "scheduled-execution" else pure ""
+ let renderContext ctx = prefix <> render template [("context",jsonText ctx),("task",turnInput turn)] <> extra
      fit ctx = let rendered = renderContext ctx in if T.length rendered <= 60000 || null (items ctx "messages") then rendered else fit (put "history_truncated" (Bool True) (put "messages" (arr (drop 1 (items ctx "messages"))) ctx))
  let rendered = fit context
  outcome <- try (invoke s run rendered)
@@ -127,26 +137,29 @@ runGroup s run turn _ = do
   Left (error :: SomeException) -> throwIO (RunFailure (case fromException error of Just (APIError _ reason) -> reason; Nothing -> T.pack (displayException error)) [record])
  where takeLast count values = drop (length values-count) values
 
-reconcileGroups s = DB.values s "groups" >>= mapM_ reconcile
+reconcileGroups :: Service -> IO ()
+reconcileGroups s = DB.values s DB.Groups >>= mapM_ reconcile
  where
  reconcile original = do
   projected <- DB.turns s
-  updated <- foldM (settle projected) original (items original "requests")
+  requests <- readRequests original
+  updated <- foldM (settle projected) original requests
   withMemos <- if boolean (get updated "archived") then pure updated else foldM addMemo updated (items updated "messages")
   when (withMemos /= original) $ do
    t <- now
    storeGroup s (merge withMemos (obj [("revision",num (int (get withMemos "revision")+1)),("updated",str t)]))
  settle projected group initial = do
-  let request = fromMaybe initial (findId (at initial "id") (items group "requests"))
+  let request = fromMaybe (toJSON initial) (findId (runIdText (requestId initial)) (items group "requests"))
   case findId (at request "id") projected of
-   Nothing -> if at request "status" == "cancelled" && not (boolean (get request "settled")) then do
+   Nothing -> if requestStatus initial == Cancelled && not (requestSettled initial) then do
      (changed,_) <- settleTask group request (obj [("status",str "cancelled"),("error",str "Group archived")])
      pure (replace "requests" (put "settled" (Bool True) request) changed)
     else pure group
    Just turn -> do
-    let current = put "status" (get turn "status") request
+    status <- field 500 turn "status"
+    let current = toJSON initial { requestStatus=status }
         changed = replace "requests" current group
-    if at turn "status" `elem` ["queued","running","output_pending"] || boolean (get current "settled") then pure changed else do
+    if activeStatus status || requestSettled initial then pure changed else do
      let settled = merge current (obj ([("settled",Bool True)] ++ [("error",get turn "error") | get turn "error" /= Null]))
          base = replace "requests" settled changed
      if boolean (get request "memo") then do
@@ -180,9 +193,12 @@ reconcileGroups s = DB.values s "groups" >>= mapM_ reconcile
    let request = merge initial (obj [("memo",Bool True),("origin",obj [("group",get group "id"),("author",str "system"),("memo",Bool True)])])
    pure (append "requests" request (replace "messages" (put "memo_pending" (Bool False) entry) group))
 
+actionGroup :: Service -> Text -> Text -> Text -> IO Value
 actionGroup s gid rid action = do
  group <- getGroup s gid (action == "retry")
- request <- maybe (failure 404 "Unknown Group call") pure (findId rid (items group "requests"))
+ requests <- readRequests group
+ typed <- maybe (failure 404 "Unknown Group call") pure (find ((==RunId rid) . requestId) requests)
+ let request=toJSON typed
  turn <- findId rid <$> DB.turns s
  case turn of
   Nothing | action == "cancel" -> void (saveGroup s (replace "requests" (put "status" (str "cancelled") request) group) "admin" "call cancelled" (str rid))
@@ -190,20 +206,21 @@ actionGroup s gid rid action = do
   Just value -> do
    let owner = at request "target"
    Population.requireActive s owner
+   status <- field 500 value "status"
    if action == "retry" then do
     require (get request "target" `elem` items group "members") 409 "The recipient is no longer a Group member"
     require (not (has request "task")) 409 "Start the current task revision from Work instead"
-    require (at value "status" `elem` ["failed","interrupted"]) 409 "Only failed or interrupted batches can be retried"
-    modifyState s owner (mapTurns (\t -> if at t "id" == rid then merge (remove ["error","batch_id","batch_members","agency_kind","slot","pulseId"] t) (obj [("status",str "queued"),("attempt",num (int (get t "attempt")+1))]) else t))
+    require (retryableStatus status) 409 "Only failed or interrupted batches can be retried"
+    modifyTurns s owner (\t -> if turnId t == RunId rid then retryTurn t else t)
     let updated = replace "requests" (merge (remove ["error"] request) (obj [("settled",Bool False),("status",str "queued")])) group
         messages = [if get m "id" == get request "root" && at m "author" == "admin" && not (boolean (get request "memo")) then put "memo_pending" (Bool True) m else m | m <- items updated "messages"]
     void (saveGroup s (put "messages" (arr messages) updated) "admin" "call retried" (str rid))
    else if action == "cancel" then do
-    require (at value "status" `notElem` ["done","output_pending"]) 409 "Completed input cannot be cancelled"
+    require (status `notElem` [Done,OutputPending]) 409 "Completed input cannot be cancelled"
     runs <- readMVar (serviceRuns s)
-    case Map.lookup rid runs of
+    case Map.lookup (RunId rid) runs of
      Just run -> writeIORef (runCancel run) True
-     Nothing -> modifyState s owner (mapTurns (\t -> if at t "id" == rid then put "status" (str "cancelled") t else t))
+     Nothing -> modifyTurns s owner (\t -> if turnId t == RunId rid then t { turnStatus = Cancelled } else t)
     void (saveGroup s group "admin" "call cancelled" (str rid))
    else failure 404 "Unknown turn action"
    DB.project s owner

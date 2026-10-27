@@ -6,7 +6,6 @@ import Control.Exception
 import Control.Monad
 import Data.Aeson hiding (pairs)
 import Data.Char
-import Data.List (find)
 import Data.IORef
 import System.Random (randomRIO)
 import Data.Maybe
@@ -20,7 +19,6 @@ import System.Info
 import Sapiens.Types
 import qualified Sapiens.Store as DB
 import Sapiens.Memo
-import Sapiens.Workspace (workspace)
 
 settings :: Service -> Text -> IO Value
 settings s a = readJSON (agentRoot s a </> "host.json") empty
@@ -37,15 +35,13 @@ resolve s name includeRetired = do
  rows <- DB.agents s
  let exact = filter ((==name) . (`at` "id")) rows
      matches = if null exact then filter ((==T.toCaseFold name) . T.toCaseFold . (`at` "name")) rows else exact
- require (length matches == 1) 400 "Sapi name must identify exactly one existing Sapi; use its ID"
- let a = at (head matches) "id"
+ a <- case matches of
+  [row] -> pure (at row "id")
+  _ -> failure 400 "Sapi name must identify exactly one existing Sapi; use its ID"
  unless includeRetired $ requireActive s a
  pure a
 validName :: Value -> IO Text
-validName d = do
- n <- textField d "name" 24
- require (n == at d "name" && not (T.null n) && T.head n >= 'A' && T.head n <= 'Z' && T.all (\c -> isAscii c && (isAlphaNum c || c `elem` ("_.:#+|()&$^-" :: String))) n) 400 "Name must start with A–Z; use letters, numbers, or - _ . : # + | ( ) & $ ^ (no spaces)"
- pure n
+validName = parseValue 400 nameP
 validateManager :: Service -> Text -> Value -> IO Value
 validateManager s a manager = do
  chief <- DB.mainAgent s
@@ -64,12 +60,11 @@ assignManager s a parent = do
  let entry = get d a; old = get entry "parent"
  saveDirectory s (put a (put "parent" parent entry) d)
  when (old /= parent) $ DB.record s [a] a "sapi.manager.changed" (obj [("previous",old),("manager",parent)]) "admin" Nothing
-executionSettings :: Service -> Text -> IO Value
+executionSettings :: Service -> Text -> IO ExecutionSettings
 executionSettings s a = do
  let p = agentRoot s a </> "run-settings.json"
  exists <- doesFileExist p
- v <- readJSON (if exists then p else agentRoot s a </> "execution.json") empty
- pure $ obj [("mode",str (if at v "mode" == "deep" then "deep" else "normal")),("timeout_seconds",num 1800)]
+ readJSON (if exists then p else agentRoot s a </> "execution.json") (ExecutionSettings Normal)
 ensureAgent :: Service -> Value -> IO ()
 ensureAgent s row = do
  let a = at row "id"; root = agentRoot s a; work = workspaceRoot s a; p = root </> "state.json"
@@ -78,7 +73,7 @@ ensureAgent s row = do
  ensureMemo work (at row "name") (at row "role") `catch` (\(_::APIError) -> pure ())
  exists <- doesFileExist p
  unless exists $ writeJSON p (obj [("schema_version",num 3),("agid",str a),("revision",num 1),("turns",arr []),("chat",arr []),("events",arr []),("event_sequence",num 0),("last_output",Null)])
- v <- agentState s a
+ v <- readJSON p empty
  require (get v "schema_version" `elem` map num [1,2,3]) 500 "Unsupported agent state schema"
  require (at v "agid" == a) 500 "Agent ID does not match saved state"
  when (int (get v "schema_version") < 3) $ do
@@ -86,10 +81,10 @@ ensureAgent s row = do
   backed <- doesFileExist backup
   unless backed $ copyFile p backup
   let old = items v (if version == 1 then "jobs" else "turns")
-      migrate t = let base = obj [(k,get t k) | k <- ["id","flow","status","created","error","warning"],has t k]; input = get t (if version==1 then "task" else "input") in merge (put "input" input base) (if at t "status" == "budget_blocked" then obj [("status",str "interrupted"),("error",str "Former budget block removed; retry to continue")] else empty)
-      state = obj [(k,get v k) | k <- ["agid","revision","chat","events","event_sequence","last_output"]]
+      migrate t = let base = selectPresent ["id","flow","status","created","error","warning"] t; input = get t (if version==1 then "task" else "input") in merge (put "input" input base) (if at t "status" == "budget_blocked" then obj [("status",str "interrupted"),("error",str "Former budget block removed; retry to continue")] else empty)
+      state = select ["agid","revision","chat","events","event_sequence","last_output"] v
       migrateMessage m = if has m "job" then put "turn" (get m "job") (remove ["job"] m) else m
-  saveState s a $ merge state (obj [("schema_version",num 3),("turns",arr [migrate t | t <- old,at t "flow" `elem` ["chat","computer"]]),("chat",arr (map migrateMessage (items v "chat"))),("events",arr (map migrateMessage (items v "events")))])
+  decodeValue 500 (merge state (obj [("schema_version",num 3),("turns",arr [migrate t | t <- old,at t "flow" `elem` ["chat","computer"]]),("chat",arr (map migrateMessage (items v "chat"))),("events",arr (map migrateMessage (items v "events")))])) >>= saveState s a
  d <- directory s
  unless (has d a) $ saveDirectory s (put a (obj [("parent",Null),("scope",str "")]) d)
  setManifests s row
@@ -103,7 +98,7 @@ setManifests s row = do
  computer <- prompt s "computer-use"
  writeText (root </> "computer-use.md") (render computer [("launcher",shellQuote executable <> " computer"),("binary",shellQuote binary)])
  config <- corporaSettings s
- writeText (root </> "corpora-scope.md") (at config "scope")
+ writeText (root </> "corpora-scope.md") (corporaScope config)
 blindly :: Service -> IO FilePath
 blindly s = fromMaybe (repositoryRoot s </> if os == "mingw32" then "blindly4/.build/windows/blindly4.exe" else "blindly4/.build/release/blindly4") <$> lookupEnv "SAPIENS_BLINDLY_BINARY"
 shellQuote :: FilePath -> Text
@@ -161,7 +156,7 @@ updateAgent s a d = do
  role <- textField d "role" 60
  requireActive s a
  state <- agentState s a
- require (not (any ((`elem` ["queued","running"]) . (`at` "status")) (items state "turns"))) 409 "Wait for this Sapi's current turn before changing its identity"
+ require (not (any ((`elem` [Queued,Running]) . turnStatus) (agentTurns state))) 409 "Wait for this Sapi's current turn before changing its identity"
  when (has d "manager") $ validateManager s a (get d "manager") >>= assignManager s a
  when (has d "execution") $ writeJSON (agentRoot s a </> "run-settings.json") (get d "execution")
  DB.executeSQL s "UPDATE agents SET name=?,role=? WHERE id=?" [SQLText name,SQLText role,SQLText a]
@@ -176,7 +171,7 @@ team s = do
   let a = at row "id"
   r <- retired s a
   state <- agentState s a
-  pure $ if r then Nothing else Just (obj [("id",str a),("name",get row "name"),("role",get row "role"),("manager",get (get d a) "parent"),("busy",Bool (any ((`elem` ["queued","running"]) . (`at` "status")) (items state "turns")))])
+  pure $ if r then Nothing else Just (obj [("id",str a),("name",get row "name"),("role",get row "role"),("manager",get (get d a) "parent"),("busy",Bool (any ((`elem` [Queued,Running]) . turnStatus) (agentTurns state)))])
 retiredTeam :: Service -> IO [Value]
 retiredTeam s = do
  rows <- DB.agents s
@@ -192,13 +187,13 @@ changeRetirement s a retire reason = do
  current <- retired s a
  if current == retire then pure (obj [("id",str a),("retired",Bool retire),("changed",Bool False)]) else do
   state <- agentState s a
-  groups <- DB.values s "groups"
-  works <- DB.values s "workloads"
+  groups <- DB.values s DB.Groups
+  works <- DB.values s DB.Workloads
   d <- directory s
   when retire $ do
    require (not (any (\g -> str a `elem` items g "members" && not (boolean (get g "archived"))) groups)) 409 "Remove this Sapi from active Groups before retiring it"
    require (not (any (\c -> at c "addressedTo" == a && at c "state" == "Queued") (concatMap (`items` "calls") works))) 409 "Cancel the accepted handoff before retiring this Sapi"
-   require (not (any ((`elem` ["queued","running","output_pending"]) . (`at` "status")) (items state "turns"))) 409 "Finish or cancel queued work before retiring this Sapi"
+   require (not (any (activeStatus . turnStatus) (agentTurns state))) 409 "Finish or cancel queued work before retiring this Sapi"
    forM_ (pairs d) $ \(child,entry) -> when (at entry "parent" == a) $ retired s child >>= \r -> require r 409 "Reassign this Sapi's direct reports before retiring it"
   time <- now
   cfg <- settings s a
@@ -208,8 +203,8 @@ changeRetirement s a retire reason = do
    unless (T.null parent) $ retired s parent >>= \r -> when r (assignManager s a (str chief))
   DB.record s [a] a (if retire then "sapi.retired" else "sapi.restored") (obj [("reason",str reason)]) "admin" Nothing
   pure (obj [("id",str a),("retired",Bool retire),("changed",Bool True)])
-corporaSettings :: Service -> IO Value
-corporaSettings s = readJSON (serviceRoot s </> "corpora-settings.json") (obj [("name",Null),("device",str "This computer"),("scope",str ""),("status",str "active"),("revision",num 1),("operations",empty)])
+corporaSettings :: Service -> IO CorporaConfig
+corporaSettings s = readJSON (serviceRoot s </> "corpora-settings.json") (CorporaConfig Nothing "This computer" "" Active 1 mempty)
 corporaIdentity :: Service -> IO Value
 corporaIdentity s = do
  cfg <- corporaSettings s
@@ -217,4 +212,4 @@ corporaIdentity s = do
  chief <- DB.mainAgent s
  row <- if T.null chief then pure empty else DB.agent s chief
  template <- prompt s "corpora-settings-request"
- pure $ merge (remove ["operations"] cfg) (obj [("id",get identity "corpora_id"),("name",get cfg "name" `fallback` str ("CORPORA · " <> at row "name")),("chief_id",str chief),("settings_template",str (T.strip template)),("stopping",Bool False)])
+ pure $ merge (remove ["operations"] (toJSON cfg)) (obj [("id",get identity "corpora_id"),("name",toJSON (corporaName cfg) `fallback` str ("CORPORA · " <> at row "name")),("chief_id",str chief),("settings_template",str (T.strip template)),("stopping",Bool False)])

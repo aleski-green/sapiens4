@@ -11,14 +11,12 @@ import Data.Aeson hiding (pairs)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import Data.IORef
-import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Data.Text (Text)
 import qualified Network.HTTP.Client as H
 import Network.HTTP.Client.TLS
 import Network.HTTP.Types.Status
-import Network.URI
 import qualified Network.WebSockets as WS
 import qualified Wuss
 import System.Timeout
@@ -44,13 +42,11 @@ data SocketClient = SocketClient { socketConnection :: WS.Connection, socketRead
 
 openSocket :: Value -> IO SocketClient
 openSocket config = do
- relay <- origin (get config "relay")
- let Just uri = parseURI (T.unpack relay)
-     Just authority = uriAuthority uri
-     secure = uriScheme uri == "https:"
-     port = if null (uriPort authority) then (if secure then 443 else 80) else read (tail (uriPort authority))
-     host = filter (`notElem` ("[]" :: String)) (uriRegName authority)
-     headers = [("Origin",TE.encodeUtf8 relay)]
+ relay <- parseRelayOrigin (get config "relay")
+ let secure = relaySecure relay
+     port = relayPort relay
+     host = relayHost relay
+     headers = [("Origin",TE.encodeUtf8 (relayURL relay))]
      options = WS.defaultConnectionOptions {WS.connectionMessageDataSizeLimit=WS.SizeLimit (fromIntegral (maxFrame+8192))}
  ready <- newEmptyMVar
  messages <- newTBQueueIO 40
@@ -90,10 +86,14 @@ closeSocket :: SocketClient -> IO ()
 closeSocket client = do
  void (timeout 1000000 (WS.sendClose (socketConnection client) (""::Text))) `catch` \(_::SomeException) -> pure ()
  cancel (socketReader client)
-socketCall :: SocketClient -> Text -> Value -> IO Value
-socketCall client kind body = withMVar (socketGuard client) $ \_ -> do
+data SocketCommand = SendFrame Value | AckMessage Value
+socketCall :: SocketClient -> SocketCommand -> IO Value
+socketCall client command = withMVar (socketGuard client) $ \_ -> do
  n <- atomicModifyIORef' (socketSerial client) (\i -> (i+1,i+1))
  let ident = T.pack (show n)
+     (kind,body) = case command of
+      SendFrame frame -> ("send",obj [("frame",frame)])
+      AckMessage message -> ("ack",obj [("message",message)])
  WS.sendTextData (socketConnection client) (encode (merge (obj [("type",str kind),("id",str ident)]) body))
  result <- timeout 10000000 (atomically ((readTQueue (socketResults client)) `orElse` (readTMVar (socketEnded client) >>= throwSTM)))
  case result of
