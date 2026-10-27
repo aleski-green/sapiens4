@@ -24,6 +24,9 @@ RSpec.describe 'Packaged Windows application', :windows do
     killed, error, code = Contract.capture('powershell.exe', '-NoProfile', '-Command', command)
     expect(code).to eq(0), error
     expect(killed.strip).to match(/\A\d+\z/)
+    desktop.click('Workspace options')
+    desktop.click('URL or file path…')
+    Contract.wait(description: 'workspace menu selection') { !desktop.text.include?('Open file…') }
     desktop.fill('Message ChiefSapi', 'Hello from the packaged app')
     desktop.press('Send message')
     expect(desktop.see('Contract test reply')).to include('Hello from the packaged app')

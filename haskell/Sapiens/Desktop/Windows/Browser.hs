@@ -178,6 +178,7 @@ syncBrowser browser message = do
   else do
     writeIORef (latest browser) message
     modifyIORef' (revision browser) (+1)
+    positionGuest browser `catch` reportException
     busy <- readIORef (syncing browser)
     unless busy $ writeIORef (syncing browser) True >> applyLatest browser
 
@@ -239,8 +240,13 @@ positionGuest browser = do
   message <- readIORef (latest browser)
   current <- readIORef (tabs browser)
   dead <- readIORef (disposed browser)
-  unless dead $ when (boolean $ field "visible" message) $
-    forM_ (M.lookup (string (field "owner" message) ++ "/" ++ string (field "active" message)) current) $ \tab -> do
+  let active = string (field "owner" message) ++ "/" ++ string (field "active" message)
+      shown = boolean $ field "visible" message
+  unless dead $ do
+    -- Menus must hide native panes even while tab creation is pending or failed.
+    forM_ (M.toList current) $ \(key, tab) -> unless (shown && key == active) $
+      void $ showWindow (container $ tabView tab) 0
+    when shown $ forM_ (M.lookup active current) $ \tab -> do
       dpi <- windowDpi (window browser)
       shellZoom <- getValue (controller $ shell browser) 7 :: IO Double
       top <- readIORef (shellTop browser)
