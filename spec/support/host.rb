@@ -3,10 +3,9 @@ require_relative 'process'
 class Host
   attr_reader :root, :url, :environment, :provider, :process
 
-  def initialize(start: true, environment: {}, repo: Contract::ROOT, python: Contract::PYTHON, command: nil)
+  def initialize(start: true, environment: {}, repo: Contract::ROOT, command: nil)
     @directory = File.realpath(Dir.mktmpdir('sapiens-contract-'))
     @root, @repo = File.join(@directory, "workspace's é"), repo
-    @python = python
     @command = command
     FileUtils.mkdir_p(File.join(root, 'calls'))
     @provider = {}
@@ -20,7 +19,7 @@ class Host
     end
     @environment = {'SAPIENS_CODEX_BINARY' => binary, 'SAPIENS_CONTRACT_ENV' => root,
       'SAPIENS_CONTRACT_RUBY' => RbConfig.ruby, 'SAPIENS_CONTRACT_PROVIDER' => File.join(__dir__, 'provider.rb'),
-      'PYTHONUTF8' => '1', 'NO_COLOR' => '1', 'SAPIENS_CODEX_MODEL' => 'gpt-6-sol',
+      'NO_COLOR' => '1', 'SAPIENS_CODEX_MODEL' => 'gpt-6-sol',
       'SAPIENS_CODEX_REASONING_EFFORT' => 'high'}.merge(environment)
     self.start if start
   rescue Exception
@@ -34,7 +33,7 @@ class Host
   end
 
   def start
-    @process = Contract::Child.new(*(@command || [@python, '-m', 'sapiens']), '--port', '0',
+    @process = Contract::Child.new(*(@command || [File.join(@repo, '.build/bin', Gem.win_platform? ? 'sapiens4.exe' : 'sapiens4')]), '--port', '0',
       '--data-dir', root, '--desktop', env: environment, chdir: @repo)
     Contract.wait(description: 'host startup: ' + root) do
       match = @process.stdout.match(%r{Sapiens4: (http://127.0.0.1:\d+)})

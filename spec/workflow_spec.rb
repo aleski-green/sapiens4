@@ -16,13 +16,14 @@ RSpec.describe 'Delegation and completion contracts' do
 
   it 'delegates once, attributes the result, and preserves the complete audit after restart' do
     researcher = host.agent
-    route_to(researcher)
+    route_to(researcher, 'Delegation' => {response: decision('HandoffPrepared', request: 'Compare the products.', reason: '  Preserve recorded reasoning.  ')})
     call = host.submit(chief)
     host.idle
     task = tasks.first
     aggregate_failures do
       expect(task['calls'].map { |c| c['addressedTo'] }).to eq([chief, researcher])
       expect(task['calls'].last).to include('causedBy' => call, 'state' => 'Completed')
+      expect(task['calls'].last['handoffReason']).to eq('  Preserve recorded reasoning.  ')
       expect(task['outcome']).to include('author' => researcher, 'reply' => 'Verified comparison')
       expect(task['decisions']).to all(include('accepted' => true))
       expect(task['decisions'].first['renderedPrompt']).to include('Compare the products.')
@@ -85,6 +86,26 @@ RSpec.describe 'Delegation and completion contracts' do
     expect(host.turn(id, 'failed')['error']).to include('Unknown decision event')
     expect(host.calls.size).to eq(1)
     expect(host.state['agents'].size).to eq(1)
+  end
+
+  {
+    'missing reply' => {event: 'FitsSpecialization', mode: 'Repl'},
+    'event from another node' => {event: 'SapiSpecified', name: 'Worker', role: 'Research'},
+    'unknown response field' => {event: 'FitsSpecialization', mode: 'Exec', typo: true}
+  }.each do |behavior, response|
+    it "rejects a decision with #{behavior} before any following step" do
+      host.configure(rules: {'Assessing' => {response: {reason: 'Fixture', evidence: []}.merge(response)}})
+      host.turn(host.submit(chief), 'failed')
+      expect(host.calls.map { |call| call['node'] }).to eq(['Assessing'])
+      expect(host.state['agents'].size).to eq(1)
+    end
+  end
+
+  it 'refuses to execute a task with no completion criteria' do
+    host.configure(rules: {'ReadyToWork' => {response: decision('TaskPrepared', taskType: 'research', specification: {
+      objective: 'Compare products', inputs: [], expectedOutputs: ['Report'], completionCriteria: []})}})
+    host.turn(host.submit(chief), 'failed')
+    expect(host.calls.map { |call| call['node'] }).to eq(%w[Assessing ReadyToWork])
   end
 
   it 'prevents a delegated recipient from reporting completion without an accepted task' do

@@ -11,6 +11,21 @@ RSpec.describe 'Group collaboration contracts' do
   def message(text, **fields); host.api('POST', path + '/messages', {text: text}.merge(fields), status: 202); end
   def task(**fields); host.api('POST', path + '/tasks', {title: 'Compare products', assignee: @member}.merge(fields), status: 201); end
 
+  {'nonboolean deletion' => {deleted: 'false'}, 'fractional revision' => {revision: 1.5}, 'unknown task state' => {state: 'dnoe'}}.each do |behavior, fields|
+    it "rejects #{behavior} without changing the task" do
+      work = task
+      expect(host.request('PUT', path + "/tasks/#{work['id']}", {revision: work['revision']}.merge(fields)).first).to eq(400)
+      expect(group['tasks']).to eq([work])
+    end
+  end
+
+  it 'keeps the established whitespace semantics for task creation and edits' do
+    work = task(title: '  Initial title  ')
+    expect(work['title']).to eq('Initial title')
+    updated = host.api('PUT', path + "/tasks/#{work['id']}", {revision: work['revision'], title: '  Edited title  '})
+    expect(updated['title']).to eq('  Edited title  ')
+  end
+
   it 'introduces the purpose and roster without model calls and persists stable identity after lead transfer' do
     expect(group['messages'].map { |m| m['text'] }.join).to include('Compare products', 'Lead', 'Researcher')
     expect(host.calls).to be_empty

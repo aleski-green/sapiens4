@@ -20,14 +20,17 @@ RSpec.describe 'Local service contracts' do
   end
 
   it 'reports health, serves the complete UI and refuses a second host for the same workspace' do
-    expect(host.api('GET', '/api/health')).to eq('status' => 'ok', 'provider' => 'codex')
+    code, health, headers = host.request('GET', '/api/health')
+    expect(code).to eq(200)
+    expect(health).to eq('status' => 'ok', 'provider' => 'codex')
+    expect(headers.fetch('server').first).to start_with('Sapiens4')
     %w[/workspace/ /workspace/app.js /workspace/styles.css].each do |path|
       code, body, headers = host.request('GET', path)
       expect(code).to eq(200)
       expect(body.size).to be > 100
       expect(headers['x-content-type-options']).to eq(['nosniff'])
     end
-    _, error, code = Contract.capture(Contract::PYTHON, '-m', 'sapiens', '--port', '0', '--data-dir', host.root, env: host.environment)
+    _, error, code = Contract.capture(Contract::BINARY, '--port', '0', '--data-dir', host.root, env: host.environment)
     expect(code).not_to eq(0)
     expect(error).to include('Another Sapiens4 server')
   end
@@ -293,4 +296,27 @@ RSpec.describe 'Local service contracts' do
       expect(host.request('PUT', '/api/preferences', {field => {}}).first).to eq(400)
     end
   end
+  it 'preserves provider transcripts and actor attribution through success, failure and restart' do
+    owner = chief
+    child = host.control(owner, 'create_agent', name: 'Auditor', role: 'Review')['agent']['id']
+    host.configure(mode: 'Exec')
+    completed = host.submit(owner)
+    host.turn(completed)
+    read_run = ->(id) { JSON.parse(File.read(File.join(host.root, 'agentpy/corpora/archive', owner, 'runs', "#{id}.json"))) }
+    saved = read_run.call(completed)
+    expect(saved['logs'].map { |entry| entry['role'] }).to eq(%w[Assessing ReadyToWork Execution])
+    expect(saved['logs']).to all(include('session' => 'fixture-session', 'answer' => a_kind_of(String)))
+    expect(host.state['events'][owner]).to include(hash_including('event' => 'task.completed', 'actor' => owner, 'agency' => 'chatInput'))
+    expect(host.state['events'][child]).to include(hash_including('event' => 'sapi.created', 'actor' => owner))
+    host.configure(fail: true)
+    failed = host.submit(owner, 'Keep the unsuccessful call reviewable')
+    host.turn(failed, 'failed')
+    rejected = read_run.call(failed)
+    expect(rejected['logs'].first).to include('role' => 'Assessing', 'prompt' => a_string_including('Keep the unsuccessful call reviewable'))
+    expect(rejected['error']).to include('Scripted provider failure')
+    host.restart
+    expect(read_run.call(completed)).to eq(saved)
+    expect(read_run.call(failed)).to eq(rejected)
+  end
+
 end

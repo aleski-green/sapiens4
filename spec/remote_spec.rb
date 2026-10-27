@@ -1,5 +1,6 @@
 require_relative 'support/relay'
 require 'sqlite3'
+require 'digest'
 
 RSpec.describe 'Encrypted remote service contracts' do
   before do
@@ -181,6 +182,35 @@ RSpec.describe 'Encrypted remote service contracts' do
     expect(host.state['turns'].size).to eq(1)
   end
 
+  it 'reuses a Python-format receipt hash with nested Unicode data after migration' do
+    pair
+    frame = pack(id: 'legacy-receipt', expires: Time.now.to_i + 120, op: 'api', method: 'POST',
+      path: "/api/agents/#{chief}/messages", data: {text: 'Résumé 中文 😎'},
+      metadata: {z: [1.25, -0.0], a: {second: true, first: 'é'}})
+    send_frame(frame)
+    receipt = receive
+    host.turn(receipt['body']['id'])
+    host.stop
+    saved = JSON.parse(File.read(File.join(host.root, 'remote-device.json')))
+    plaintext = @peer.call('unpack', private: saved['private'], public: @keys['public'], frame: frame)
+    canonical = lambda do |value|
+      case value
+      when Hash then '{' + value.keys.sort.map { |key| key.to_json(ascii_only: true) + ': ' + canonical.call(value[key]) }.join(', ') + '}'
+      when Array then '[' + value.map { |item| canonical.call(item) }.join(', ') + ']'
+      else value.to_json(ascii_only: true)
+      end
+    end
+    digest = Digest::SHA256.hexdigest(canonical.call(plaintext))
+    SQLite3::Database.open(File.join(host.root, 'remote-receipts.sqlite3')) do |db|
+      db.execute('UPDATE receipts SET hash=? WHERE id=?', [digest, 'legacy-receipt'])
+    end
+    host.start
+    send_frame(frame)
+    expect(receive).to eq(receipt)
+    expect(host.calls.size).to eq(1)
+    expect(host.state['turns'].size).to eq(1)
+  end
+
   it 'rejects a changed command reusing a prior request ID and transfers a large authoritative snapshot' do
     pair
     first = pack(id: 'stable-request', op: 'api', method: 'POST', path: "/api/agents/#{chief}/messages", data: {text: 'Original'})
@@ -219,7 +249,7 @@ RSpec.describe 'Encrypted remote service contracts' do
   it 'refuses to replace a corrupt workspace identity silently' do
     host.stop
     File.write(File.join(host.root, 'corpora-identity.json'), '{"version":1,"corpora_id":"broken"}')
-    _, error, code = Contract.capture(Contract::PYTHON, '-m', 'sapiens', '--port', '0', '--data-dir', host.root, env: host.environment)
+    _, error, code = Contract.capture(Contract::BINARY, '--port', '0', '--data-dir', host.root, env: host.environment)
     expect(code).not_to eq(0)
     expect(error).to include('Restore corpora-identity.json')
   end

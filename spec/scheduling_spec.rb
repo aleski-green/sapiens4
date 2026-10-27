@@ -7,6 +7,28 @@ RSpec.describe 'Scheduled work and pulse contracts' do
     host.state['routines'].last
   end
 
+  [0, 525601, '2', 1.5].each do |minutes|
+    it "rejects invalid API interval #{minutes.inspect} without saving a schedule" do
+      expect(host.request('POST', "/api/agents/#{chief}/control", {op: 'routine_create', minutes: minutes, prompt: 'Compare products'}).first).to eq(400)
+      expect(host.state['routines']).to be_empty
+      expect(host.calls).to be_empty
+    end
+  end
+
+  it 'preserves the saved due-time spelling when pausing a routine' do
+    owner = chief
+    item = routine
+    item['nextDue'] = '2030-01-01T12:00:00.000000+00:00'
+    host.stop
+    SQLite3::Database.open(File.join(host.root, 'corpora.sqlite3')) do |db|
+      db.execute('UPDATE scheduled_routines SET value=? WHERE sequence=?', [JSON.generate(item), item['id'].split('_').last.to_i])
+    end
+    host.start
+    paused = host.control(owner, 'routine_pause', id: item['id'])['routine']
+    expect(paused).to include('paused' => true, 'nextDue' => item['nextDue'])
+    expect(host.calls).to be_empty
+  end
+
   it 'creates, edits, pauses and resumes a persistent routine without calling the model' do
     owner = chief
     item = routine

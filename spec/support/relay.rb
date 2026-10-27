@@ -17,7 +17,7 @@ class Relay
     raise
   end
   def start
-    @process = Contract::Child.new(Contract::PYTHON, '-m', 'sapiens.corpora.host.remote_relay',
+    @process = Contract::Child.new(Contract::BINARY, 'relay',
       '--port', @port.to_s, '--origin', url, '--db', File.join(root, 'relay.sqlite3'),
       env: {'SAPIENS_RELAY_ADMIN_TOKEN' => token, 'SAPIENS_RELAY_BETA' => @beta ? '1' : nil,
         'RAILWAY_ENVIRONMENT_ID' => nil, 'PYTHONUTF8' => '1'})
@@ -53,7 +53,8 @@ end
 
 class RemotePeer
   def initialize
-    @input, @output, @error, @process = Open3.popen3(Contract::PYTHON, File.join(__dir__, 'remote_peer.py'))
+    binary = File.join(Contract::ROOT, '.build/bin', Gem.win_platform? ? 'sapiens-peer.exe' : 'sapiens-peer')
+    @input, @output, @error, @process = Open3.popen3([binary, binary])
     @errors = Thread.new { @error.read }
   end
   def call(op, **fields)
