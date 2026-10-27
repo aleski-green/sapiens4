@@ -71,7 +71,7 @@ runDesktop probe = runInBoundThread $ do
         0x02 -> (stop `finally` quitMessage 0) >> pure 0
         0x802A -> runPending >> pure 0
         _ -> defaultProc hwnd message wparam lparam
-  proc <- wrapWindowProc $ \hwnd message wparam lparam -> procedure hwnd message wparam lparam `catch` \(e :: SomeException) -> hPutStrLn stderr (displayException e) >> defaultProc hwnd message wparam lparam
+  proc <- wrapWindowProc $ \hwnd message wparam lparam -> procedure hwnd message wparam lparam `catch` \(e :: SomeException) -> reportException e >> defaultProc hwnd message wparam lparam
   retain memory (freeHaskellFunPtr proc)
   instanceHandle <- moduleHandle nullPtr
   hwnd <- withWide "Sapiens4HaskellWindow" $ \className -> withWide "Sapiens4" $ \title -> allocaBytes 80 $ \klass -> do

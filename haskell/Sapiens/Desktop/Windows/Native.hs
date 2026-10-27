@@ -58,6 +58,7 @@ foreign import ccall unsafe "DestroyIcon" destroyIcon :: Object -> IO Int32
 foreign import ccall safe "DwmSetWindowAttribute" dwmAttribute :: Window -> Word32 -> Ptr Int32 -> Word32 -> IO HRESULT
 foreign import ccall safe "GetOpenFileNameW" getOpenFileName :: Ptr () -> IO Int32
 foreign import ccall safe "MessageBoxW" messageBox :: Window -> Wide -> Wide -> Word32 -> IO Int32
+foreign import ccall safe "OutputDebugStringW" debugString :: Wide -> IO ()
 foreign import ccall safe "hs_webview_bounds" rawBounds :: Object -> Int32 -> Int32 -> Int32 -> Int32 -> IO HRESULT
 foreign import ccall "dynamic" invoke0 :: FunPtr (Object -> IO HRESULT) -> Object -> IO HRESULT
 foreign import ccall "dynamic" invokeRef :: FunPtr (Object -> IO Word32) -> Object -> IO Word32
@@ -154,7 +155,12 @@ callback arena guid invoke = do
   pure object
 
 guardCallback :: IO () -> IO HRESULT
-guardCallback action = (action >> pure 0) `catch` \(e :: SomeException) -> hPutStrLn stderr (displayException e) >> pure (-2147467259)
+guardCallback action = (action >> pure 0) `catch` \(e :: SomeException) -> reportException e >> pure (-2147467259)
+
+reportException :: SomeException -> IO ()
+reportException e = hPutStrLn stderr (displayException e) `catch` \(_ :: IOException) ->
+  -- A GUI launch may have no stderr; never let logging escape a native callback.
+  withWide (displayException e) debugString
 
 onEvent :: Arena -> Object -> Int -> String -> (Object -> IO ()) -> IO ()
 onEvent arena object index iid action = do

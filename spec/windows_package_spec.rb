@@ -2,27 +2,38 @@ require_relative 'support/desktop'
 require_relative 'support/relay'
 
 RSpec.describe 'Packaged Windows application', :windows do
-  it 'opens the shipped window and sends a message using its embedded runtime', :desktop do
+  it 'keeps chat and shutdown responsive after a guest browser fails without a console', :desktop do
     skip 'Windows package required' unless Gem.win_platform? && ENV['SAPIENS_TEST_WINDOWS_PACKAGE']
-    @host = Host.new(start: false)
+    @host = Host.new
+    file = File.join(host.workspace(chief), 'saved.txt')
+    File.write(file, 'Saved workspace document')
+    host.control(chief, 'workspace_open', path: file)
+    host.stop
     binary = File.join(ENV.fetch('SAPIENS_TEST_WINDOWS_PACKAGE'), 'Sapiens4.exe')
-    app = Contract::Child.new(binary, '--data-dir', host.root,
+    quote = ->(value) { "'#{value.gsub("'", "''")}'" }
+    # Launch like Explorer, without the test runner's redirected console handles.
+    command = "$p = Start-Process -FilePath #{quote.call(binary)} -ArgumentList #{quote.call('--data-dir "' + host.root + '"')} -PassThru; $p.Id"
+    output, error, code = Contract.capture('powershell.exe', '-NoProfile', '-Command', command,
       env: host.environment.merge('SAPIENS_PYTHON' => nil, 'SAPIENS_RUNTIME_DIR' => nil))
+    raise error unless code == 0
+    app = Struct.new(:pid).new(Integer(output.strip))
     # The packaged window has no test API. Discover it through the native process.
     @desktop = Desktop.new(process: app, ready: false)
+    desktop.see('Saved workspace document')
+    command = "Get-CimInstance Win32_Process -Filter \"Name='msedgewebview2.exe'\" | Where-Object { $_.ParentProcessId -eq #{app.pid} -and $_.CommandLine.Contains('WebView2\\Guests') -and -not $_.CommandLine.Contains('--type=') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; $_.ProcessId }"
+    killed, error, code = Contract.capture('powershell.exe', '-NoProfile', '-Command', command)
+    expect(code).to eq(0), error
+    expect(killed.strip).to match(/\A\d+\z/)
     desktop.fill('Message ChiefSapi', 'Hello from the packaged app')
     desktop.press('Send message')
     expect(desktop.see('Contract test reply')).to include('Hello from the packaged app')
+    desktop.key('alt+F4')
+    _, error, code = Contract.capture('powershell.exe', '-NoProfile', '-Command',
+      "$p = Get-Process -Id #{app.pid} -ErrorAction SilentlyContinue; if ($p -and -not $p.WaitForExit(10000)) { exit 1 }; exit 0")
+    expect(code).to eq(0), error
+    app = nil
   ensure
-    begin
-      if app && Gem.win_platform? && @desktop
-        desktop.key('alt+F4')
-      elsif app && !Gem.win_platform?
-        app.signal('TERM')
-      end
-    ensure
-      app&.close
-    end
+    system('taskkill', '/PID', app.pid.to_s, '/T', '/F', out: File::NULL, err: File::NULL) if app
   end
 
   it 'preserves remote authority across an embedded-runtime restart' do
