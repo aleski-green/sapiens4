@@ -1,13 +1,27 @@
 require_relative 'support/desktop'
 
 RSpec.describe 'Reading and composing while work arrives', :desktop do
+  it 'restores draft keyboard focus when returning from another Windows window' do
+    skip 'Windows activation contract' unless Gem.win_platform?
+    @host = desktop_host
+    start_desktop
+    desktop.fill('Message ChiefSapi', 'My next thought')
+    other = desktop_host
+    desktop.control('type', '--text', ' continues')
+    expect(desktop.value('Message ChiefSapi', 'My next thought continues')).to eq('My next thought continues')
+    desktop.reload
+    expect(desktop.value('Message ChiefSapi', 'My next thought continues')).to eq('My next thought continues')
+  ensure
+    other&.close
+  end
+
   it 'keeps a draft and its keyboard focus while a new reply arrives' do
     @host = desktop_host
     host.configure(block: true)
     start_desktop
     desktop.fill('Message ChiefSapi', 'Please investigate')
     desktop.press('Send message')
-    desktop.see('Please investigate')
+    desktop.find('Please investigate', role: 'AXStaticText')
     desktop.fill('Message ChiefSapi', 'My next thought')
     host.release
     desktop.see('Contract test reply')

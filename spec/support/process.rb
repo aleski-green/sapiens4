@@ -8,7 +8,7 @@ require 'rbconfig'
 
 module Contract
   ROOT = File.expand_path('../..', __dir__)
-  PYTHON = ENV.fetch('SAPIENS_PYTHON', Gem.win_platform? ? 'python' : 'python3')
+  BINARY = File.join(ROOT, '.build/bin', Gem.win_platform? ? 'sapiens4.exe' : 'sapiens4')
 
   def self.wait(timeout: 20, description: 'condition')
     deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout

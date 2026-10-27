@@ -12,16 +12,12 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Cannot initialize Blindly4' }
         }
         & ./blindly4/windows/build.ps1
+        if ($LASTEXITCODE -ne 0) { throw 'Blindly4 build failed' }
+        & runghc -ihaskell haskell/Build.hs
+        if ($LASTEXITCODE -ne 0) { throw 'Haskell application build failed' }
     }
-    $env:PYTHONUTF8 = '1'
-    if ($env:SAPIENS_PYTHON) { & $env:SAPIENS_PYTHON web/shell/build.py }
-    elseif (Get-Command py -ErrorAction SilentlyContinue) { & py -3 web/shell/build.py }
-    else { & python web/shell/build.py }
-    if ($LASTEXITCODE -ne 0) { throw 'PureScript UI build failed' }
-    $arguments = @('-X', 'utf8', '-m', 'sapiens', '--port', $Port, '--data-dir', $DataDir)
+    $arguments = @('--port', $Port, '--data-dir', $DataDir)
     if ($Open) { $arguments += '--open' }
-    if ($env:SAPIENS_PYTHON) { & $env:SAPIENS_PYTHON @arguments }
-    elseif (Get-Command py -ErrorAction SilentlyContinue) { & py -3 @arguments }
-    else { & python @arguments }
+    & ./.build/bin/sapiens4.exe @arguments
     exit $LASTEXITCODE
 } finally { Pop-Location }

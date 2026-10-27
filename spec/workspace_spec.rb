@@ -1,3 +1,6 @@
+require 'sqlite3'
+require 'digest'
+
 RSpec.describe 'Workspace and memory contracts' do
   def memo(content)
     '<section id="about">Research assistant</section><section id="map">Saved facts</section><section id="content">' + content + '</section>'
@@ -128,4 +131,62 @@ RSpec.describe 'Workspace and memory contracts' do
       expect(host.calls.last['prompt']).not_to include('DO NOT EXPOSE')
     end
   end
+  it 'migrates saved inline browser tabs once and verifies memo provenance against the saved content' do
+    owner = chief
+    folder = host.workspace(owner)
+    content = memo('Preserved notes')
+    file = File.join(folder, 'Notes.html')
+    history = File.join(folder, 'Notes.history.json')
+    File.write(file, content)
+    File.write(history, JSON.generate(created_by: 'Admin', modified_by: 'Verified editor', sha256: Digest::SHA256.hexdigest(content)))
+    expect(host.api('GET', "/api/agents/#{owner}/notes")['metadata']['modified_by']).to eq('Verified editor')
+    host.stop
+    SQLite3::Database.open(File.join(host.root, 'corpora.sqlite3')) do |db|
+      preferences = JSON.parse(db.get_first_value('SELECT value FROM preferences WHERE id=1'))
+      preferences.delete('browser_version')
+      preferences['workspaces'] = {owner => {activeTab: 'legacy', tabs: [{id: 'legacy', type: 'html', html: '<p>Saved 😎</p>'}]}}
+      db.execute('UPDATE preferences SET value=? WHERE id=1', [JSON.generate(preferences)])
+    end
+    host.start
+    workspace = host.control(owner, 'workspace')
+    tab = workspace['tabs'].first
+    expect(workspace['active_tab']).to eq('legacy')
+    expect(tab).to include('zoom' => 1, 'url' => a_string_starting_with('file://'))
+    expect(tab.keys).not_to include('type', 'html')
+    expect(File.read(tab['path'])).to eq('<p>Saved 😎</p>')
+    File.write(file, memo('Changed outside the recorded revision'))
+    expect(host.api('GET', "/api/agents/#{owner}/notes")['metadata']).to include('created_by' => 'Admin', 'modified_by' => nil)
+    host.restart
+    expect(host.control(owner, 'workspace')['tabs'].first).to eq(tab)
+    expect(Dir.children(folder).grep(/\Asaved-tab-.*\.html\z/).size).to eq(1)
+    unless Gem.win_platform?
+      outside = File.join(host.root, 'private-history.json')
+      File.write(outside, JSON.generate(created_by: 'DO NOT EXPOSE'))
+      File.delete(history)
+      File.symlink(outside, history)
+      expect(host.api('GET', "/api/agents/#{owner}/notes")['metadata']['created_by']).to be_nil
+    end
+  end
+
+  it 'parses memo HTML sections across quoting and attribute order while preserving their required sequence' do
+    owner = chief
+    file = File.join(host.workspace(owner), 'Notes.html')
+    about = "<SECTION class='memo' id='about'>Research &amp; review</SECTION>"
+    navigation = "<section data-kind='navigation' id='map'><a href='#saved'>Saved</a></section>"
+    content = "<section id='content'>Saved facts</section>"
+    File.write(file, about + navigation + content)
+    host.restart
+    host.turn(host.submit(owner))
+    context = JSON.parse(host.calls.last['prompt'].split("\nContext:\n", 2).last)
+    notes = JSON.parse(context['conversation']['manifests']['host-facts'])['notes']
+    expect(notes).not_to have_key('error')
+    expect(notes['about']).to include('Research &amp; review')
+    expect(notes['map']).to include('Saved')
+    File.write(file, navigation + about + content)
+    host.restart
+    host.turn(host.submit(owner))
+    context = JSON.parse(host.calls.last['prompt'].split("\nContext:\n", 2).last)
+    expect(JSON.parse(context['conversation']['manifests']['host-facts'])['notes']['error']).to include('requires sections')
+  end
+
 end

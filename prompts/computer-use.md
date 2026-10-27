@@ -1,7 +1,7 @@
 Blindly4 UI wrapper: {launcher}
-Start every wrapper call with that entire launcher, including the Python executable;
-append the operation and arguments. Never invoke commands.py or another .py file
-directly: on Windows this can open the app picker instead of running Python.
+Start every wrapper call with that entire launcher, including the executable and
+computer subcommand; append the operation and arguments. On Windows keep the
+leading & and quoted executable path. Run the executable, never a .py file.
 Command help: {binary} schema (filter JSON commands by name).
 Wrapper: launch 'App'; blindly COMMAND ARGS;
 Subtree example: {launcher} read --pid PID --path PATH --depth 12

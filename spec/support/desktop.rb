@@ -9,16 +9,11 @@ class Desktop
 
   def self.binary
     return @binary if @binary
-    @build = Dir.mktmpdir('sapiens desktop ')
-    @binary = File.join(@build, Gem.win_platform? ? 'Probe.exe' : 'desktop')
-    command = if Gem.win_platform?
-      ['dotnet', 'build', 'spec/support/windows_accessibility/Probe.csproj', '-o', @build]
-    else
-      ['xcrun', 'swiftc', '-framework', 'Cocoa', '-framework', 'WebKit',
-        'macos/Browser.swift', 'spec/support/macos/Desktop.swift', '-o', @binary]
+    @binary = File.join(Contract::ROOT, '.build/bin', Gem.win_platform? ? 'sapiens-windows-probe.exe' : 'sapiens-macos')
+    unless File.executable?(@binary)
+      out, error, code = Contract.capture('runghc', '-ihaskell', 'haskell/Build.hs', timeout: 600)
+      raise out + error unless code == 0
     end
-    out, error, code = Contract.capture(*command, timeout: 90)
-    raise out + error unless code == 0
     @binary
   end
 
@@ -101,6 +96,9 @@ class Desktop
 
   def fill(text, value)
     editable = %w[AXTextField AXTextArea AXComboBox]
+    act_on(text, role: editable) { |node| control('set-value', '--path', node.fetch('path'), '--value', value) }
+    self.value(text, value)
+    # UIA SetValue can blur WebView2; establish keyboard focus after it completes.
     target = find(text, role: editable)
     click_node(target)
     Contract.wait(description: "focused #{text.inspect}") do
@@ -110,18 +108,17 @@ class Desktop
       raise unless error.message.start_with?('Blindly4 focused: ') && error.message.include?('"code":"focus_unavailable"')
       false
     end
-    act_on(text, role: editable) { |node| control('set-value', '--path', node.fetch('path'), '--value', value) }
-    self.value(text, value)
+    value
   end
 
   # A loading page may replace an accessible element between discovery and action.
-  # Retry only a lookup failure, for which Blindly4 has performed no action.
+  # Retry only lookup or writable-control validation failures before any input.
   def act_on(text, role: nil)
     Contract.wait(description: "stable accessible #{text}") do
       begin
         yield find(text, role: role)
       rescue RuntimeError => error
-        raise unless error.message.match?(/Path .* (does not|no longer) exist|press target does not match --expect-description|\ABlindly4 set-value: Error: Target is not a writable text control\s*\z/)
+        raise unless error.message.match?(/Path .* (does not|no longer) exist|press target does not match --expect-description|\ABlindly4 set-value: Error: Target is not a writable text control\s*\z|\ABlindly4 set-value: \{"code":"usage_error","error":"Target is not a writable UI Automation text control"\}\s*\z/)
         false
       end
     end

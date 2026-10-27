@@ -21,6 +21,16 @@ RSpec.describe 'Working with browser tabs and documents', :desktop do
     expect(desktop.see('Pause First')).to include('First player')
   end
 
+  it 'restores guest keyboard focus when returning from another Windows window' do
+    skip 'Windows activation contract' unless Gem.win_platform?
+    desktop.fill('First input', 'Website draft')
+    other = desktop_host
+    desktop.control('type', '--text', ' continues')
+    expect(desktop.value('First input', 'Website draft continues')).to eq('Website draft continues')
+  ensure
+    other&.close
+  end
+
   it 'lets the person add a tab, navigate, and close it to return to the previous page' do
     desktop.press('Add workspace tab')
     desktop.fill('URL or file path', @pages.url + '/second')
@@ -60,7 +70,8 @@ RSpec.describe 'Working with browser tabs and documents', :desktop do
     desktop.press('Show workspace')
     desktop.press('Workspace options')
     desktop.press('★ First player')
-    expect(desktop.see('Play First')).to include('Unbookmark First player')
+    desktop.see('Play First')
+    expect(desktop.see('Unbookmark First player')).to include('Play First')
   end
 
   it 'reads a text file literally and reloads changes from disk' do
