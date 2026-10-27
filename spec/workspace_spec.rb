@@ -56,10 +56,26 @@ RSpec.describe 'Workspace and memory contracts' do
     expect(host.request('GET', path.sub(tab['id'], 'missing')).first).to eq(404)
     File.binwrite(file, "\xff\x00")
     expect(host.request('GET', path).first).to eq(415)
+    File.write(file, 'x' * 2_000_000)
+    expect(host.api('GET', path)['content'].bytesize).to eq(2_000_000)
     File.write(file, 'x' * 2_000_001)
     expect(host.request('GET', path).first).to eq(413)
     File.delete(file)
     expect(host.request('GET', path).first).to eq(404)
+  end
+
+  it 'rejects oversized previews within a bounded heap and keeps the service usable' do
+    @host.close
+    @host = Host.new(command: [Contract::BINARY, '+RTS', '-M32m', '-RTS'])
+    owner = chief
+    file = File.join(host.workspace(owner), 'large.txt')
+    File.open(file, 'wb') { |stream| stream.truncate(64 * 1024 * 1024) }
+    tab = host.control(owner, 'workspace_open', path: file)['workspace']['tabs'].first
+    path = "/api/agents/#{owner}/browser/#{tab['id']}/content"
+    expect(host.request('GET', path).first).to eq(413)
+    expect(host.api('GET', '/api/health')['status']).to eq('ok')
+    File.write(file, "\uFEFFStill usable 😎")
+    expect(host.api('GET', path)['content']).to eq('Still usable 😎')
   end
 
   [

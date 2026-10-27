@@ -18,6 +18,7 @@ import Network.URI
 import System.Directory
 import System.FilePath
 import System.Info (os)
+import System.IO (IOMode(ReadMode), withBinaryFile)
 import Sapiens.Types
 import qualified Sapiens.Store as DB
 
@@ -126,7 +127,7 @@ workspaceText s a i = do
  w <- workspace s a
  tab <- maybe (failure 404 "Unknown local file tab") pure (findId i (items w "tabs"))
  require (has tab "path") 404 "Unknown local file tab"
- raw <- BS.readFile (T.unpack (at tab "path")) `catch` (\(_ :: IOException) -> failure 404 "File not found or unreadable")
+ raw <- withBinaryFile (T.unpack (at tab "path")) ReadMode (`BS.hGet` 2000001) `catch` (\(_ :: IOException) -> failure 404 "File not found or unreadable")
  require (BS.length raw <= 2000000) 413 "This file is too large for the text preview; open it in the desktop app"
  content <- either (const (failure 415 "This file is not UTF-8 text; open it in the desktop app")) pure (TE.decodeUtf8' raw)
  require (not (T.any (== '\0') content)) 415 "This file is not UTF-8 text; open it in the desktop app"
