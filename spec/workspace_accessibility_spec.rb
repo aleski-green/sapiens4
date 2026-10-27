@@ -60,7 +60,8 @@ RSpec.describe 'Working with browser tabs and documents', :desktop do
     desktop.press('Show workspace')
     desktop.press('Workspace options')
     desktop.press('★ First player')
-    expect(desktop.see('Play First')).to include('Unbookmark First player')
+    desktop.see('Play First')
+    expect(desktop.see('Unbookmark First player')).to include('Play First')
   end
 
   it 'reads a text file literally and reloads changes from disk' do

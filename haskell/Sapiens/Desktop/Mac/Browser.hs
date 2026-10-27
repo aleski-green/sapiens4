@@ -17,6 +17,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Foreign hiding (void, new)
 import Sapiens.Desktop.Mac.ObjC
+import Sapiens.Domain (BrowserCommand(..), BrowserAction(..))
 import System.FilePath
 
 field name (Object value) = fromMaybe Null (M.lookup (K.fromText name) value)
@@ -116,7 +117,13 @@ sync browser input = do
     writeIORef (current browser) selected
     alive <- fmap concat $ forM workspaces $ \(owner,workspace) -> forM (array (field "tabs" workspace)) $ \item -> do
         let ident = text (field "id" item); address = text (field "url" item)
-            command = field "command" item; sequence = text (field "seq" command); identity = owner <> ":" <> ident
+            identity = owner <> ":" <> ident
+        command <- case field "command" item of
+            Null -> pure Nothing
+            value -> case fromJSON value of
+                Success parsed -> pure (Just parsed)
+                Error reason -> ioError (userError reason)
+        let sequence = maybe "" browserSequence command
         stored <- Map.lookup identity <$> readIORef (tabs browser)
         tab <- maybe (createTab browser owner ident) pure stored
         when (isNothing stored) $ do
@@ -131,13 +138,14 @@ sync browser input = do
         when (tabSequence tab /= sequence) $ do
             let pending = tab { tabSequence = sequence, tabError = "", tabAwaiting = True }
             save browser pending
-            if isNothing stored || text (field "action" command) == "navigate" then load browser pending address else case text (field "action" command) of
-                "reload" -> do
+            if isNothing stored || fmap browserAction command == Just Navigate then load browser pending address else case fmap browserAction command of
+                Just Reload -> do
                     u <- obj0 (tabView tab) "URL"; raw <- textProp u "absoluteString"; normal <- fileAddress raw; actual <- url normal; scheme <- textProp actual "scheme"
                     if scheme == "file" then load browser pending normal else void (obj0 (tabView tab) "reload")
-                "back" -> history browser pending "canGoBack" "goBack"
-                "forward" -> history browser pending "canGoForward" "goForward"
-                _ -> pure ()
+                Just Back -> history browser pending "canGoBack" "goBack"
+                Just Forward -> history browser pending "canGoForward" "goForward"
+                Just Navigate -> load browser pending address
+                Nothing -> pure ()
         let hidden = identity /= selected || not visible
         when hidden $ returnFocus browser (tabView tab)
         void (obj1 (tabView tab) "setHidden:" (flag hidden))

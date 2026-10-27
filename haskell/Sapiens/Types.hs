@@ -2,14 +2,17 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-module Sapiens.Types where
+{-# OPTIONS_GHC -Werror=incomplete-patterns #-}
+module Sapiens.Types (module Sapiens.Types, module Sapiens.Domain) where
+
+import Sapiens.Domain
 
 import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Exception
 import Control.Monad
 import Data.Aeson hiding (pairs)
-import qualified Data.Aeson.Key as K
+import Data.Aeson.Types (Parser, parseEither)
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
 import Data.IORef
@@ -17,7 +20,6 @@ import Data.List (find)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import Data.Maybe
-import Data.Scientific (toBoundedInteger)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -26,13 +28,11 @@ import Data.Typeable
 import Data.Word (Word64)
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
-import qualified Data.Vector as V
 import System.Directory
 import System.FileLock
 import System.FilePath
 import System.IO
 import System.Process
-import System.IO.Error
 #ifdef mingw32_HOST_OS
 import Foreign.C
 foreign import ccall unsafe "_wopen" syncOpen :: CWString -> CInt -> CInt -> IO CInt
@@ -50,68 +50,22 @@ instance Exception APIError
 data RunFailure = RunFailure Text [Value] deriving (Show,Typeable)
 instance Exception RunFailure
 
-data Run = Run { runOwner :: Text, runId :: Text, runSlot :: Int, runCancel :: IORef Bool, runProcess :: MVar (Maybe ProcessHandle), runActivity :: IORef Value, runDeadline :: Word64 }
-data Service = Service { serviceRoot :: FilePath, repositoryRoot :: FilePath, serviceGuard :: MVar (), serviceFileLock :: FileLock, serviceStopping :: IORef Bool, serviceWorker :: MVar (Maybe (Async ())), serviceRuns :: MVar (Map Text Run), serviceLease :: IORef (Maybe (Text, Text)), serviceEndpoint :: IORef Text, servicePulse :: IORef Value, serviceActors :: MVar (Map ThreadId (Text,Maybe Text)) }
+data Run = Run { runOwner :: AgentId, runId :: RunId, runSlot :: Int, runCancel :: IORef Bool, runProcess :: MVar (Maybe ProcessHandle), runActivity :: IORef Value, runDeadline :: Word64 }
+data Service = Service { serviceRoot :: FilePath, repositoryRoot :: FilePath, serviceGuard :: MVar (), serviceFileLock :: FileLock, serviceStopping :: IORef Bool, serviceWorker :: MVar (Maybe (Async ())), serviceRuns :: MVar (Map RunId Run), serviceLease :: IORef (Maybe (AgentId, RunId)), serviceEndpoint :: IORef Text, servicePulse :: IORef Value, serviceActors :: MVar (Map ThreadId (Text,Maybe Text)) }
 
-obj :: [(Text, Value)] -> Value
-obj = Object . KM.fromList . map (\(k,v) -> (K.fromText k,v))
-arr :: [Value] -> Value
-arr = Array . V.fromList
-str :: Text -> Value
-str = String
-num :: Int -> Value
-num = toJSON
-get :: Value -> Text -> Value
-get (Object o) k = fromMaybe Null (KM.lookup (K.fromText k) o)
-get _ _ = Null
-text :: Value -> Text
-text (String s) = s
-text _ = ""
-int :: Value -> Int
-int (Number n) = fromMaybe 0 (toBoundedInteger n)
-int _ = 0
-boolean :: Value -> Bool
-boolean (Bool b) = b
-boolean _ = False
-list :: Value -> [Value]
-list (Array a) = V.toList a
-list _ = []
-pairs :: Value -> [(Text,Value)]
-pairs (Object o) = map (\(k,v) -> (K.toText k,v)) (KM.toList o)
-pairs _ = []
-keys :: Value -> [Text]
-keys = map fst . pairs
-has :: Value -> Text -> Bool
-has (Object o) k = KM.member (K.fromText k) o
-has _ _ = False
-put :: Text -> Value -> Value -> Value
-put k v (Object o) = Object (KM.insert (K.fromText k) v o)
-put k v _ = obj [(k,v)]
-merge :: Value -> Value -> Value
-merge a b = foldl (\x (k,v) -> put k v x) a (pairs b)
-remove :: [Text] -> Value -> Value
-remove ks = obj . filter ((`notElem` ks) . fst) . pairs
-at :: Value -> Text -> Text
-at v = text . get v
-items :: Value -> Text -> [Value]
-items v = list . get v
-fallback :: Value -> Value -> Value
-fallback Null b = b
-fallback a _ = a
-empty :: Value
-empty = obj []
-jsonText :: Value -> Text
-jsonText = TE.decodeUtf8 . BL.toStrict . encode
-parseJSONText :: Text -> Value
-parseJSONText = fromMaybe Null . decode . BL.fromStrict . TE.encodeUtf8
+decodeValue :: FromJSON a => Int -> Value -> IO a
+decodeValue code = parseValue code parseJSON
+parseValue :: Int -> (Value -> Parser a) -> Value -> IO a
+parseValue code parser = either (failure code . T.pack) pure . parseEither parser
+field :: FromJSON a => Int -> Value -> Text -> IO a
+field code value key = decodeValue code (get value key)
+
 failure :: Int -> Text -> IO a
 failure n = throwIO . APIError n
 require :: Bool -> Int -> Text -> IO ()
 require p n m = unless p (failure n m)
 textField :: Value -> Text -> Int -> IO Text
-textField v k n = case get v k of
- String s | not (T.null (T.strip s)) && T.length s <= n -> pure (T.strip s)
- _ -> failure 400 (k <> " must be nonempty text, at most " <> T.pack (show n) <> " characters")
+textField v k n = parseValue 400 (textFieldP k n) v
 now :: IO Text
 now = timestamp <$> getCurrentTime
 timestamp :: UTCTime -> Text
@@ -122,7 +76,7 @@ newId :: IO Text
 newId = T.filter (/= '-') . UUID.toText <$> UUID.nextRandom
 fresh :: Text -> IO Text
 fresh prefix = (prefix <>) . T.take 12 <$> newId
-readJSON :: FilePath -> Value -> IO Value
+readJSON :: FromJSON a => FilePath -> a -> IO a
 readJSON p def = do
  exists <- doesFileExist p
  if exists then either (throwIO . userError) pure . eitherDecode =<< BL.readFile p else pure def
@@ -149,7 +103,7 @@ atomicBytes p bytes = do
   renameFile f p
   bracket (Posix.openFd (takeDirectory p) Posix.ReadOnly Posix.defaultFileFlags) Posix.closeFd Posix.fileSynchronise
 #endif
-writeJSON :: FilePath -> Value -> IO ()
+writeJSON :: ToJSON a => FilePath -> a -> IO ()
 writeJSON p = atomicBytes p . encode
 locked :: Service -> IO a -> IO a
 locked s = withMVar (serviceGuard s) . const
@@ -157,14 +111,14 @@ agentRoot :: Service -> Text -> FilePath
 agentRoot s a = serviceRoot s </> "agentpy/agents" </> T.unpack a
 workspaceRoot :: Service -> Text -> FilePath
 workspaceRoot s a = serviceRoot s </> "workspaces" </> T.unpack a
-agentState :: Service -> Text -> IO Value
-agentState s a = readJSON (agentRoot s a </> "state.json") empty
-saveState :: Service -> Text -> Value -> IO ()
-saveState s a v = writeJSON (agentRoot s a </> "state.json") (put "revision" (num (int (get v "revision") + 1)) v)
+agentState :: Service -> Text -> IO AgentState
+agentState s a = readJSON (agentRoot s a </> "state.json") (AgentState [] KM.empty)
+saveState :: Service -> Text -> AgentState -> IO ()
+saveState s a v = writeJSON (agentRoot s a </> "state.json") (put "revision" (num (int (get (stateJSON v) "revision") + 1)) (stateJSON v))
 modifyState :: Service -> Text -> (Value -> Value) -> IO ()
-modifyState s a f = agentState s a >>= saveState s a . f
-mapTurns :: (Value -> Value) -> Value -> Value
-mapTurns f v = put "turns" (arr (map f (items v "turns"))) v
+modifyState s a f = agentState s a >>= decodeValue 500 . f . stateJSON >>= saveState s a
+modifyTurns :: Service -> Text -> (Turn -> Turn) -> IO ()
+modifyTurns s a f = agentState s a >>= saveState s a . mapTurns f
 archivePath :: Service -> Text -> Text -> FilePath
 archivePath s a k = serviceRoot s </> "agentpy/corpora/archive" </> T.unpack a </> T.unpack k <.> "json"
 findId :: Text -> [Value] -> Maybe Value

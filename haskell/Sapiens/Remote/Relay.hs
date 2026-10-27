@@ -14,7 +14,6 @@ import Data.Aeson hiding (pairs)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import Data.Char
-import Data.IORef
 import Data.List (sortOn)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S

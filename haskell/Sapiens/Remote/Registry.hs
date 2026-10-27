@@ -8,7 +8,6 @@ import Sapiens.Remote.Client
 import Sapiens.Remote.Crypto (confirmationCode)
 import Sapiens.Remote.Setup
 import Control.Concurrent
-import Control.Concurrent.Async
 import Control.Exception
 import Control.Monad
 import Data.Aeson hiding (pairs)
@@ -88,6 +87,8 @@ registryRecords registry = registryLock registry $ do
  let remoteRecords = [put "location" (str "Remote") (get config "corpora") | (_,config) <- pairs (get saved "remotes")]
  pure $ obj [("local_available",Bool localAvailable),("corpora",arr (localRecords ++ remoteRecords))]
 
+data RouteTarget = LocalTarget Service Bridge | RemoteTarget Client
+
 registryRoute :: Registry -> Text -> Text -> Text -> Maybe Value -> IO (Int, BL.ByteString, Text)
 registryRoute registry identity method path input = do
  target <- registryLock registry $ do
@@ -100,21 +101,22 @@ registryRoute registry identity method path input = do
      value <- newClient (get (get saved "remotes") identity)
      modifyIORef' (registryClients registry) (M.insert identity value)
      pure value
-   pure (Right client)
+   pure (RemoteTarget client)
   else do
    require localAvailable 404 "Local corpora are unavailable on this device"
-   Left <$> local registry identity
+   (service,bridge,_) <- local registry identity
+   pure (LocalTarget service bridge)
  require ("/api/" `T.isPrefixOf` path && not ("/api/host" `T.isPrefixOf` path) && not (T.any (=='%') $ T.takeWhile (/='?') path) && not (".." `T.isInfixOf` path) && not (T.any (=='\\') path)) 400 "Invalid corpora API path"
  if "/api/remote" `T.isPrefixOf` path then case target of
-  Right _ -> failure 403 "Pairing approval is available on the host only"
-  Left (_,bridge,_) -> do
+  RemoteTarget _ -> failure 403 "Pairing approval is available on the host only"
+  LocalTarget _ bridge -> do
    value <- if path == "/api/remote" && method == "GET" then bridgeStatus bridge
     else if method == "POST" then remoteAction registry bridge path (fromMaybe empty input)
     else failure 404 "Not found"
    pure (200,encode value,"application/json")
  else case target of
-  Left (service,_,_) -> Service.dispatch service method path input
-  Right client -> do
+  LocalTarget service _ -> Service.dispatch service method path input
+  RemoteTarget client -> do
    result@(status,body,_) <- clientRequest client method path input
    registryLock registry $ do
     saved <- readIORef (registrySaved registry)

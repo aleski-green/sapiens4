@@ -2,8 +2,6 @@
 module Sapiens.Remote.Crypto where
 
 import Sapiens.Types
-import Control.Exception
-import Control.Monad
 import Data.Aeson hiding (pairs)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
@@ -30,6 +28,13 @@ foreign import ccall unsafe "sodium_memcmp" sodiumCompare :: Ptr Word8 -> Ptr Wo
 
 protocol :: Text
 protocol = "sapiens-remote-box-v1"
+data Direction = PhoneToDesktop | DesktopToPhone deriving (Eq, Show, Enum, Bounded)
+instance Wire Direction where
+ wireName direction = case direction of PhoneToDesktop -> "phone-to-desktop"; DesktopToPhone -> "desktop-to-phone"
+instance ToJSON Direction where toJSON = str . wireName
+instance FromJSON Direction where parseJSON = parseWire
+
+data RelayOrigin = RelayOrigin { relayURL :: Text, relayHost :: String, relayPort :: Int, relaySecure :: Bool } deriving (Eq, Show)
 maxFrame, maxPlaintext, pairingTTL :: Int
 maxFrame = 22000000
 maxPlaintext = 16000000
@@ -89,24 +94,29 @@ publicId identity = case UUID.fromText identity of
                    in digits (i-1) (n `div` base) ++ [alphabet !! fromInteger (n `mod` base)]
   pure ("sapi4_" <> T.pack (digits (8::Int) value))
 origin :: Value -> IO Text
-origin (String value) = case parseURI (T.unpack value) of
+origin = fmap relayURL . parseRelayOrigin
+parseRelayOrigin :: Value -> IO RelayOrigin
+parseRelayOrigin (String value) = case parseURI (T.unpack value) of
  Just u | Just auth <- uriAuthority u, uriScheme u `elem` ["http:","https:"], null (uriUserInfo auth),
           not (null (uriRegName auth)), uriPath u `elem` ["","/"], null (uriQuery u), null (uriFragment u),
           uriScheme u == "https:" || uriRegName auth `elem` ["localhost","127.0.0.1","[::1]"] -> do
-   let port = uriPort auth
-   require (null port || case reads (drop 1 port) of [(n,"")] -> (n::Int) >= 1 && n <= 65535; _ -> False) 400 "Invalid relay port"
-   pure (T.dropWhileEnd (=='/') value)
+   let secure = uriScheme u == "https:"
+   port <- case uriPort auth of
+    "" -> pure (if secure then 443 else 80)
+    ':':raw | [(n,"")] <- reads raw, n >= 1 && n <= 65535 -> pure n
+    _ -> failure 400 "Invalid relay port"
+   pure (RelayOrigin (T.dropWhileEnd (=='/') value) (filter (`notElem` ("[]" :: String)) (uriRegName auth)) port secure)
  _ -> failure 400 "Use an HTTPS relay origin (HTTP is allowed only on loopback for testing)"
-origin _ = failure 400 "Relay must be an HTTPS origin"
+parseRelayOrigin _ = failure 400 "Relay must be an HTTPS origin"
 constantEqual :: Text -> Text -> IO Bool
 constantEqual a b = let x = TE.encodeUtf8 a; y = TE.encodeUtf8 b in
  if B.length x /= B.length y then pure False else withBytes x $ \px -> withBytes y $ \py -> (==0) <$> sodiumCompare px py (fromIntegral (B.length x))
-pack :: Value -> Value -> Text -> Text -> Value -> IO Value
+pack :: Value -> Value -> Text -> Direction -> Value -> IO Value
 pack secret peer room direction payload = do
  sk <- unb64 secret (Just 32)
  pk <- unb64 peer (Just 32)
  nonce <- randomData 24
- let raw = BL.toStrict (encode (merge (obj [("v",str protocol),("room",str room),("direction",str direction)]) payload))
+ let raw = BL.toStrict (encode (merge (obj [("v",str protocol),("room",str room),("direction",toJSON direction)]) payload))
  require (B.length raw <= maxPlaintext) 400 "Remote response is too large"
  withBytes sk $ \ps -> withBytes pk $ \pp -> withBytes nonce $ \pn -> withBytes raw $ \pm ->
   allocaBytes (B.length raw+16) $ \pc -> allocaBytes 32 $ \pub -> do
@@ -116,9 +126,9 @@ pack secret peer room direction payload = do
    sender <- b64 <$> B.packCStringLen (castPtr pub,32)
    cipher <- b64 <$> B.packCStringLen (castPtr pc,B.length raw+16)
    pure (obj [("sender",str sender),("nonce",str (b64 nonce)),("ciphertext",str cipher)])
-unpack :: Value -> Value -> Text -> Text -> Value -> IO Value
+unpack :: Value -> Value -> Text -> Direction -> Value -> IO Value
 unpack secret peer room direction frame = fst <$> unpackWithPlaintext secret peer room direction frame
-unpackWithPlaintext :: Value -> Value -> Text -> Text -> Value -> IO (Value,B.ByteString)
+unpackWithPlaintext :: Value -> Value -> Text -> Direction -> Value -> IO (Value,B.ByteString)
 unpackWithPlaintext secret peer room direction frame = do
  require (get frame "sender" == peer) 400 "Unexpected sender"
  sk <- unb64 secret (Just 32)
@@ -132,7 +142,7 @@ unpackWithPlaintext secret peer room direction frame = do
    require (code == 0) 400 "Invalid encrypted message"
    B.packCStringLen (castPtr pm,B.length cipher-16)))))
  body <- either (const (failure 400 "Invalid JSON")) pure (eitherDecodeStrict raw)
- require (get body "v" == str protocol && at body "room" == room && at body "direction" == direction) 400 "Wrong message context"
+ require (get body "v" == str protocol && at body "room" == room && get body "direction" == toJSON direction) 400 "Wrong message context"
  time <- seconds
  let expiry = case get body "expires" of Number n -> realToFrac n; _ -> 0
  require (not (T.null (at body "id")) && T.length (at body "id") <= 80 && expiry > time && expiry <= time + fromIntegral (if at body "kind" == "pair" then pairingTTL else 86400)) 400 "Expired or invalid message"

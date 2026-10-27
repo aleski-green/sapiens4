@@ -40,7 +40,7 @@ exchange c payload duration = withMVar (clientGuard c) $ \_ -> do
  hostname <- maybe "" T.pack <$> lookupEnv "HOSTNAME"
  let body = merge (obj [("id",str ident),("expires",toJSON (time+duration)),("corpora_id",get (get config "corpora") "id"),("connection_id",str connection),
              ("device_info",obj [("name",str hostname),("platform",str (T.pack os)),("client",str "Sapiens4 desktop")])]) payload
- frame <- pack (get config "private") (get config "desktop") (at config "room") "phone-to-desktop" body
+ frame <- pack (get config "private") (get config "desktop") (at config "room") PhoneToDesktop body
  let transport action = action `catch` \(APIError _ message) -> ioError (userError $ T.unpack message)
      unreachable (errorValue::SomeException) = case fromException errorValue :: Maybe SomeAsyncException of
       Just _ -> throwIO errorValue
@@ -55,7 +55,7 @@ exchange c payload duration = withMVar (clientGuard c) $ \_ -> do
     pure (Just socket,socket)
   nowRevoked <- readIORef (clientRevoked c)
   when nowRevoked (closeClient c >> failure 410 "Remote connection was revoked")
-  void $ transport $ socketCall socket "send" (obj [("frame",frame)])
+  void $ transport $ socketCall socket (SendFrame frame)
   let wait = do
        nowTime <- seconds
        unless (nowTime < time+duration) $ ioError (userError "Host did not respond")
@@ -63,8 +63,8 @@ exchange c payload duration = withMVar (clientGuard c) $ \_ -> do
        case incoming of
         Nothing -> wait
         Just item -> do
-         decoded <- try (unpack (get config "private") (get config "desktop") (at config "room") "desktop-to-phone" (get item "frame"))
-         void $ transport $ socketCall socket "ack" (obj [("message",get item "id")])
+         decoded <- try (unpack (get config "private") (get config "desktop") (at config "room") DesktopToPhone (get item "frame"))
+         void $ transport $ socketCall socket (AckMessage (get item "id"))
          case decoded of
           Right response | at response "id"==ident && at response "kind"=="response" -> do
            let result = get response "result"

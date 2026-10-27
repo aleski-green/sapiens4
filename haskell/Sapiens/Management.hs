@@ -7,7 +7,6 @@ import Control.Exception
 import Control.Monad
 import Data.Aeson hiding (pairs)
 import Data.IORef
-import Data.List (find)
 import qualified Data.Map.Strict as M
 import Data.Maybe
 import Data.Text (Text)
@@ -26,7 +25,7 @@ import qualified Sapiens.Groups as G
 activeTurn :: Service -> Text -> Maybe Text -> IO (Maybe Text)
 activeTurn s a specific = do
  state <- agentState s a
- pure $ listToMaybe [at t "id" | t<-items state "turns",at t "status"=="running",maybe True (==at t "id") specific]
+ pure $ listToMaybe [runIdText (turnId t) | t<-agentTurns state,turnStatus t==Running,maybe True ((==turnId t) . RunId) specific]
 status :: Service -> Text -> IO Value
 status s a = do
  chief <- DB.mainAgent s
@@ -86,8 +85,10 @@ control s a payload = do
    rows <- DB.agents s
    let matches=filter ((==T.toCaseFold name) . T.toCaseFold . (`at` "name")) rows
    (row,created) <- if null matches then (,True) <$> createAgent s (obj [("name",str name),("role",str role),("manager",str parent)]) else do
-    require (length matches==1 && at (head matches) "role"==role && at (head matches) "id"/=a) 409 "Name already exists with a different role; use status to inspect it"
-    let row=head matches; child=at row "id"
+    row <- case matches of
+     [candidate] | at candidate "role"==role && at candidate "id"/=a -> pure candidate
+     _ -> failure 409 "Name already exists with a different role; use status to inspect it"
+    let child=at row "id"
     requireActive s child
     dir <- directory s
     require (at (get dir child) "parent"==parent) 409 "Name already exists with a different manager"
@@ -105,11 +106,11 @@ control s a payload = do
   "computer_acquire" -> do
    identity <- maybe (failure 409 "Computer access requires a running Sapi turn") pure current
    lease <- readIORef (serviceLease s)
-   require (maybe True ((==a) . fst) lease) 409 "Shared computer is busy with another Sapi. Continue non-UI work or report the blocker; do not retry in a loop."
-   require (maybe True ((==identity) . snd) lease) 409 "Shared computer is busy with another AgencyRun"
-   writeIORef (serviceLease s) (Just (a,identity))
+   require (maybe True ((==AgentId a) . fst) lease) 409 "Shared computer is busy with another Sapi. Continue non-UI work or report the blocker; do not retry in a loop."
+   require (maybe True ((==RunId identity) . snd) lease) 409 "Shared computer is busy with another AgencyRun"
+   writeIORef (serviceLease s) (Just (AgentId a,RunId identity))
    pure (obj [("owner",str a)])
-  "routines" -> obj . (:[]) . ("routines",) . arr . filter ((==a) . (`at` "owner")) <$> DB.values s "scheduled_routines"
+  "routines" -> obj . (:[]) . ("routines",) . arr . filter ((==a) . (`at` "owner")) <$> DB.values s DB.ScheduledRoutines
   "routine_create" -> receipt . obj . (:[]) . ("routine",) <$> R.save s a (get d "minutes") (get d "prompt") Nothing Nothing current
   "routine_update" -> do i<-textField d "id" 80; receipt . obj . (:[]) . ("routine",) <$> R.save s a (get d "minutes") (get d "prompt") (Just i) Nothing current
   "routine_pause" -> pause receipt True
@@ -118,7 +119,7 @@ control s a payload = do
   _ | op=="workspace" || "workspace_" `T.isPrefixOf` op -> do
    owner <- if has d "group" then do
     g <- G.getGroup s (at d "group") True
-    G.authorize s g a False False
+    G.authorizeGroup s g a Member
     pure (at d "group")
     else pure a
    if op=="workspace" then workspace s owner else receipt . obj . (:[]) . ("workspace",) <$> workspaceControl s owner (T.drop 10 op) d
@@ -134,14 +135,19 @@ updateCorpora :: Service -> Value -> IO Value
 updateCorpora s d = do
  require (not (null (keys d)) && all (`elem` ["name","device","scope","revision","archived"]) (keys d)) 400 "Unknown corpora setting"
  cfg <- corporaSettings s
- require (get d "revision"==get cfg "revision") 409 "Corpora changed. Read its settings again."
+ require (get d "revision"==num (corporaRevision cfg)) 409 "Corpora changed. Read its settings again."
  forM_ [("name",200),("device",200),("scope",16000)] $ \(k,limit) -> when (has d k) $ require (case get d k of String value -> T.length (T.strip value)<=limit && (k=="scope" || not (T.null (T.strip value))); _ -> False) 400 ("Invalid "<>k)
  when (has d "archived") $ do
   require (case get d "archived" of Bool _ -> True; _ -> False) 400 "archived must be a boolean"
   when (boolean (get d "archived")) $ readMVar (serviceRuns s) >>= mapM_ (\r->writeIORef (runCancel r) True) . M.elems
- let updated=merge cfg (obj ([(k,str (T.strip (at d k))) | k<- ["name","device","scope"],has d k]++[("revision",num (int (get cfg "revision")+1))]++[("status",str (if boolean (get d "archived") then "archived" else "paused")) | has d "archived"]))
+ let updated=cfg
+      { corporaName=if has d "name" then Just (T.strip (at d "name")) else corporaName cfg
+      , corporaDevice=if has d "device" then T.strip (at d "device") else corporaDevice cfg
+      , corporaScope=if has d "scope" then T.strip (at d "scope") else corporaScope cfg
+      , corporaRevision=corporaRevision cfg+1
+      , corporaStatus=if has d "archived" then if boolean (get d "archived") then Archived else Paused else corporaStatus cfg }
  writeJSON (serviceRoot s </> "corpora-settings.json") updated
- modifyIORef' (servicePulse s) (put "running" (Bool (at updated "status"=="active")))
+ modifyIORef' (servicePulse s) (put "running" (Bool (corporaStatus updated==Active)))
  DB.agents s >>= mapM_ (setManifests s)
  corporaIdentity s
 lifecycle :: Service -> Value -> IO Value
@@ -149,13 +155,13 @@ lifecycle s d = do
  let operation=at d "operation"; action=at d "action"
  require (all (`elem` ["operation","action","revision"]) (keys d) && action `elem` ["pause","activate"] && T.length operation>=8 && T.length operation<=80) 400 "Provide an operation ID and pause or activate"
  cfg <- corporaSettings s
- let previous=get (get cfg "operations") operation; intent=arr [str action,get d "revision"]
+ let previous=fromMaybe Null (M.lookup operation (corporaOperations cfg)); intent=arr [str action,get d "revision"]
  if previous/=Null then require (previous==intent) 409 "Operation ID was reused" >> corporaIdentity s else do
-  require (get d "revision"==get cfg "revision") 409 "Corpora changed. Refresh before trying again."
-  require (at cfg "status"/="archived") 409 "Restore this archived corpora before activating it"
+  require (get d "revision"==num (corporaRevision cfg)) 409 "Corpora changed. Refresh before trying again."
+  require (corporaStatus cfg/=Archived) 409 "Restore this archived corpora before activating it"
   runs <- readMVar (serviceRuns s)
-  when (action=="activate" && at cfg "status"/="active") $ require (M.null runs) 409 "Work is still stopping. Try again shortly."
-  let updated=merge cfg (obj [("status",str (if action=="pause" then "paused" else "active")),("revision",num (int (get cfg "revision")+1)),("operations",put operation intent (get cfg "operations"))])
+  when (action=="activate" && corporaStatus cfg/=Active) $ require (M.null runs) 409 "Work is still stopping. Try again shortly."
+  let updated=cfg { corporaStatus=if action=="pause" then Paused else Active, corporaRevision=corporaRevision cfg+1, corporaOperations=M.insert operation intent (corporaOperations cfg) }
   writeJSON (serviceRoot s </> "corpora-settings.json") updated
   modifyIORef' (servicePulse s) (put "running" (Bool (action=="activate")))
   when (action=="pause") $ forM_ (M.elems runs) $ \r -> writeIORef (runCancel r) True

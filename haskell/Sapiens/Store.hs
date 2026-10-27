@@ -11,10 +11,23 @@ import Data.Maybe
 import Data.String (fromString)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding
 import Database.SQLite.Simple hiding (withTransaction)
-import Database.SQLite.Simple (SQLData(..))
 import System.FilePath
+import Text.Read (readMaybe)
 import Sapiens.Types
+
+-- Only these tables contain JSON documents; callers cannot interpolate SQL names.
+data Collection = Workloads | Groups | ScheduledRoutines | PulseCalls | TurnDetails | Preferences | SystemPulse deriving (Eq, Show)
+tableName :: Collection -> Text
+tableName table = case table of
+ Workloads -> "workloads"
+ Groups -> "groups"
+ ScheduledRoutines -> "scheduled_routines"
+ PulseCalls -> "pulse_calls"
+ TurnDetails -> "turn_details"
+ Preferences -> "preferences"
+ SystemPulse -> "system_pulse"
 
 connection :: Service -> (Connection -> IO a) -> IO a
 connection s = bracket (open (serviceRoot s </> "corpora.sqlite3")) close . (\f db -> execute_ db "PRAGMA busy_timeout=10000" >> execute_ db "PRAGMA foreign_keys=ON" >> f db)
@@ -34,14 +47,16 @@ sql (String t) = SQLText t
 sql (Number n) = SQLInteger (fromIntegral (int (Number n)))
 sql (Bool b) = SQLInteger (if b then 1 else 0)
 sql v = SQLText (jsonText v)
-values :: Service -> Text -> IO [Value]
-values s table = map (parseJSONText . (`at` "value")) <$> queryRows s ("SELECT value FROM " <> table <> " ORDER BY rowid") ["value"] []
-putValue :: Service -> Text -> Text -> Value -> IO ()
-putValue s table i v = executeSQL s ("INSERT INTO " <> table <> " VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value") [SQLText i,SQLText (jsonText v)]
-singleton :: Service -> Text -> IO Value
+values :: Service -> Collection -> IO [Value]
+values s table = queryRows s ("SELECT value FROM " <> tableName table <> " ORDER BY rowid") ["value"] [] >>= traverse (decodeStored . (`at` "value"))
+decodeStored :: FromJSON a => Text -> IO a
+decodeStored raw = either (failure 500 . T.pack) pure (eitherDecodeStrict (Data.Text.Encoding.encodeUtf8 raw))
+putValue :: Service -> Collection -> Text -> Value -> IO ()
+putValue s table i v = executeSQL s ("INSERT INTO " <> tableName table <> " VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value") [SQLText i,SQLText (jsonText v)]
+singleton :: Service -> Collection -> IO Value
 singleton s table = fromMaybe empty . listToMaybe <$> values s table
-saveSingleton :: Service -> Text -> Value -> IO ()
-saveSingleton s table v = executeSQL s ("INSERT INTO " <> table <> " VALUES (1,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value") [SQLText (jsonText v)]
+saveSingleton :: Service -> Collection -> Value -> IO ()
+saveSingleton s table v = executeSQL s ("INSERT INTO " <> tableName table <> " VALUES (1,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value") [SQLText (jsonText v)]
 initialize :: Service -> IO ()
 initialize s = connection s $ \db -> do
  execute_ db "PRAGMA journal_mode=WAL"
@@ -97,18 +112,19 @@ events s = do
 project :: Service -> Text -> IO ()
 project s a = do
  state <- agentState s a
- forM_ (items state "turns") $ \turn -> do
+ forM_ (agentTurns state) $ \typed -> do
+  let turn=toJSON typed
   previous <- queryRows s "SELECT status FROM turns WHERE id=?" ["status"] [sql (get turn "id")]
-  let status = if at turn "status" == "done" && get turn "warning" /= Null then "warning" else at turn "status"
+  let status = wireName (if turnStatus typed == Done && get turn "warning" /= Null then Warning else turnStatus typed)
       origin = get turn "origin" `fallback` empty
       owners = a : [at origin "group" | has origin "group"]
       old = maybe Null (get `flip` "status") (listToMaybe previous)
       actor = if status == "queued" then if has origin "routine" then "system" else at (put "author" (get origin "author" `fallback` str "admin") origin) "author" else a
   when (old /= str status) $ record s owners (at turn "id") ("call." <> status) (obj [("previous",old),("origin",origin),("error",get turn "error"),("warning",get turn "warning")]) actor (Just (if has turn "output_order" then "chatOutput" else at turn "agency_kind"))
-  let details = obj [(k,get turn k) | k <- ["origin","batch_id","batch_members","agency_kind","slot","pulseId","output_at","output_order"],has turn k]
-  putValue s "turn_details" (at turn "id") details
-  let output = listToMaybe [get m "content" | m <- items state "chat",get m "turn" == get turn "id",at m "role" == "agent"]
-  archived <- if isNothing output && status `elem` ["done","warning"] && get turn "batch_id" `fallback` get turn "id" == get turn "id" then readJSON (archivePath s a ("runs/" <> at turn "id")) empty else pure empty
+  let details = selectPresent ["origin","batch_id","batch_members","agency_kind","slot","pulseId","output_at","output_order"] turn
+  putValue s TurnDetails (at turn "id") details
+  let output = listToMaybe [get m "content" | m <- items (stateJSON state) "chat",get m "turn" == get turn "id",at m "role" == "agent"]
+  archived <- if isNothing output && status `elem` ["done","warning"] && batchLeader typed == turnId typed then readJSON (archivePath s a ("runs/" <> at turn "id")) empty else pure empty
   executeSQL s "INSERT INTO turns VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,output=COALESCE(excluded.output,turns.output),error=excluded.error" [sql (get turn "id"),SQLText a,sql (get turn "flow"),sql (get turn "input"),SQLText status,sql (fromMaybe (get archived "output") output),sql (get turn "error" `fallback` get turn "warning"),SQLInteger 0,sql (get turn "created")]
 turns :: Service -> IO [Value]
 turns s = do
@@ -119,13 +135,13 @@ turns s = do
  where asJSON (String t) _ = parseJSONText t; asJSON _ def = def
 saveRoutine :: Service -> Value -> IO Value
 saveRoutine s v = connection s $ \db -> do
- sequenceId <- if has v "id" then pure (read (T.unpack (last (T.splitOn "_" (at v "id")))) :: Int64) else execute_ db "INSERT INTO scheduled_routines(value) VALUES ('{}')" >> lastInsertRowId db
+ sequenceId <- if has v "id" then maybe (failure 500 "Invalid scheduled routine ID") pure (T.stripPrefix "routine_sch_" (at v "id") >>= readMaybe . T.unpack :: Maybe Int64) else execute_ db "INSERT INTO scheduled_routines(value) VALUES ('{}')" >> lastInsertRowId db
  let i = "routine_sch_" <> T.justifyRight 5 '0' (T.pack (show sequenceId)); value = put "id" (str i) v
  execute db "UPDATE scheduled_routines SET value=? WHERE sequence=?" (jsonText value,sequenceId)
  pure value
-pulseCall :: Service -> Value -> Text -> Text -> Int -> [Text] -> IO ()
+pulseCall :: Service -> Pulse -> Text -> Text -> Int -> [Text] -> IO ()
 pulseCall s tick a kind slot groups = do
  t <- now
- let v = merge tick (obj [("agent",str a),("agencyKind",str kind),("slot",num slot),("timestamp",str t)])
+ let v = merge (toJSON tick) (obj [("agent",str a),("agencyKind",str kind),("slot",num slot),("timestamp",str t)])
  executeSQL s "INSERT INTO pulse_calls(value) VALUES (?)" [SQLText (jsonText v)]
  record s (a:groups) a "pulse.dispatched" v "system" (Just kind)

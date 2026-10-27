@@ -10,14 +10,12 @@ import Data.Aeson hiding (pairs)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.Char
-import Data.List (find)
 import Data.Maybe
 import qualified Data.Map.Strict as M
 import Text.HTML.TagSoup (Tag(..),parseTags,renderTags)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import Data.Time
 import System.Directory
 import System.FilePath
 import Sapiens.Types
@@ -89,7 +87,7 @@ memoContext root = work `catch` (\(APIError _ e) -> pure (obj [("path",str (T.pa
         let section=T.toLower name=="section"
             identity=lookup "id" [(T.toLower key,value) | (key,value)<-attributes]
             next=if section && identity `elem` map Just ["about","map","content"] then identity else capture
-            saved=if section && identity `elem` map Just ["about","map","content"] then M.insert (fromJust identity) "" sections else sections
+            saved=if section && identity `elem` map Just ["about","map","content"] then maybe sections (\key -> M.insert key "" sections) identity else sections
         in (append next (renderTags [tag]) saved,next,if section then order++[identity] else order)
        TagClose name -> (append capture (renderTags [TagClose (T.toLower name)]) sections,if T.toLower name=="section" then Nothing else capture,order)
        TagText value -> (append capture (escape value) sections,capture,order)
@@ -105,6 +103,7 @@ memoImage root name = do
  exists <- doesFileExist p
  size <- if exists then getFileSize p else pure 0
  require (exists && size <= 10000000 && isJust mime) 404 "Notes image not found or too large"
+ contentType <- maybe (failure 404 "Notes image not found or too large") pure mime
  bytes <- BL.readFile p
- pure (bytes,fromJust mime)
+ pure (bytes,contentType)
  where isPrefix a b = take (length a) b == a

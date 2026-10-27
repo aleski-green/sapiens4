@@ -22,7 +22,7 @@ import qualified Sapiens.Store as DB
 
 migrateWorkspaces :: Service -> IO ()
 migrateWorkspaces s = do
- prefs <- DB.singleton s "preferences"
+ prefs <- DB.singleton s DB.Preferences
  unless (get prefs "browser_version"==num 1) $ do
   workspaces <- forM (pairs (get prefs "workspaces")) $ \(owner,workspace) -> do
    tabs <- forM (items workspace "tabs") $ \tab -> do
@@ -37,7 +37,7 @@ migrateWorkspaces s = do
     let url=if not (T.null (at converted "path")) then fileURL (T.unpack (at converted "path")) else if T.null (at converted "url") then "about:blank" else at converted "url"
     pure (merge (remove ["type","artifact","html"] converted) (obj [("url",str url),("zoom",num 1),("command",obj [("seq",str identity),("action",str "navigate")])]))
    pure (owner,merge workspace (obj [("tabs",arr tabs),("bookmarks",get workspace "bookmarks" `fallback` arr [])]))
-  DB.saveSingleton s "preferences" (merge prefs (obj [("workspaces",obj workspaces),("browser_version",num 1),("workspace_revision",num (int (get prefs "workspace_revision")+1))]))
+  DB.saveSingleton s DB.Preferences (merge prefs (obj [("workspaces",obj workspaces),("browser_version",num 1),("workspace_revision",num (int (get prefs "workspace_revision")+1))]))
 httpURL :: Text -> Bool
 httpURL s = case parseURI (T.unpack s) of
  Just u -> uriScheme u `elem` ["http:","https:"] && maybe False (\a -> not (null (uriRegName a)) && null (uriUserInfo a)) (uriAuthority u)
@@ -64,25 +64,25 @@ destination s a d checkFile = do
   pure $ obj [("url",str t),("title",str (T.pack (maybe "" (maybe "" uriRegName . uriAuthority) uri)))]
 workspace :: Service -> Text -> IO Value
 workspace s a = do
- p <- DB.singleton s "preferences"
+ p <- DB.singleton s DB.Preferences
  let w = get (get p "workspaces") a
  pure $ obj [("active_tab",get w "activeTab"),("tabs",get w "tabs" `fallback` arr []),("bookmarks",get w "bookmarks" `fallback` arr [])]
 persistWorkspace :: Service -> Text -> Value -> Value -> IO ()
-persistWorkspace s a w prefs = DB.saveSingleton s "preferences" $ merge prefs (obj [("workspaces",put a w (get prefs "workspaces")),("workspace_revision",num (int (get prefs "workspace_revision")+1)),("browser_version",num 1)])
+persistWorkspace s a w prefs = DB.saveSingleton s DB.Preferences $ merge prefs (obj [("workspaces",put a w (get prefs "workspaces")),("workspace_revision",num (int (get prefs "workspace_revision")+1)),("browser_version",num 1)])
 workspaceControl :: Service -> Text -> Text -> Value -> IO Value
 workspaceControl s a action d = do
- prefs <- DB.singleton s "preferences"
+ prefs <- DB.singleton s DB.Preferences
  let w = get (get prefs "workspaces") a `fallback` obj [("tabs",arr []),("bookmarks",arr [])]
      tabs = items w "tabs"
      tid = text (get d "id" `fallback` get w "activeTab")
      found = if action=="open" && not (has d "id") then Nothing else findId tid tabs
  seqId <- newId
- let command act = obj [("seq",str seqId),("action",str act)]
+ let command act = toJSON (BrowserCommand seqId act)
  w' <- if action == "open" then do
   dest <- destination s a d True
   when (has d "id") (require (isJust found) 404 "Unknown browser tab")
   i <- maybe (("tab-" <>) <$> newId) (pure . (`at` "id")) found
-  let tab = merge (remove ["path"] (fromMaybe (obj [("id",str i),("zoom",num 1)]) found)) $ merge dest (obj [("error",str ""),("loading",Bool True),("can_back",Bool False),("can_forward",Bool False),("command",command "navigate")])
+  let tab = merge (remove ["path"] (fromMaybe (obj [("id",str i),("zoom",num 1)]) found)) $ merge dest (obj [("error",str ""),("loading",Bool True),("can_back",Bool False),("can_forward",Bool False),("command",command Navigate)])
   pure $ merge w (obj [("activeTab",str i),("tabs",arr (if isJust found then map (\t -> if at t "id" == i then tab else t) tabs else tabs++[tab]))])
  else if action == "unbookmark" then pure (put "bookmarks" (arr (filter ((/= tid) . (`at` "id")) (items w "bookmarks"))) w) else do
   tab <- maybe (failure 404 "Unknown browser tab") pure found
@@ -99,13 +99,15 @@ workspaceControl s a action d = do
     let bookmarks = items w "bookmarks"; existing = find (\b -> get b "url" == get tab "url") bookmarks
         saved = put "tab_id" (str tid) $ fromMaybe (obj (("id",str i):[(k,get tab k) | k <- ["url","title","path"],has tab k])) existing
     pure $ put "bookmarks" (arr (if isJust existing then map (\b -> if get b "url" == get tab "url" then saved else b) bookmarks else bookmarks ++ [saved])) w
-   _ | action `elem` ["reload","back","forward"] -> pure (update (put "command" (command action) tab))
+   _ | action `elem` ["reload","back","forward"] -> do
+    instruction <- decodeValue 400 (str action)
+    pure (update (put "command" (command instruction) tab))
    _ -> failure 400 "Unknown browser action"
  persistWorkspace s a w' prefs
  workspace s a
 workspaceObserved :: Service -> Text -> Value -> IO Value
 workspaceObserved s a d = do
- prefs <- DB.singleton s "preferences"
+ prefs <- DB.singleton s DB.Preferences
  let w = get (get prefs "workspaces") a; tabs = items w "tabs"
  case findId (at d "id") tabs of
   Just tab | get d "seq" == get (get tab "command") "seq" -> do
@@ -164,4 +166,4 @@ attachmentPrompt :: Service -> [Value] -> IO Text
 attachmentPrompt _ [] = pure ""
 attachmentPrompt s rows = do
  p <- prompt s "attachments"
- pure (p <> jsonText (arr [obj [(k,get row k) | k <- ["kind","name","value"]] | row <- rows]))
+ pure (p <> jsonText (arr [select ["kind","name","value"] row | row <- rows]))

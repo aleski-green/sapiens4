@@ -9,7 +9,6 @@ import Data.Char
 import Data.List
 import Data.Maybe
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
 import Data.Text (Text)
 import Data.Time
 import Data.Time.Clock.POSIX

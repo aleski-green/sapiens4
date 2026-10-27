@@ -10,13 +10,10 @@ import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Exception
 import Control.Monad
-import Data.Aeson hiding (pairs)
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Lazy as BL
 import Data.IORef
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import Data.Text (Text)
 import Network.HTTP.Types
 import Network.Wai
 import Network.Wai.Handler.Warp
@@ -48,7 +45,7 @@ startHost root requested managed = do
    registry <- if managed then pure Nothing else Just <$> newRegistry service bridge child
    shutdown <- newEmptyMVar
    ready <- newEmptyMVar
-   let settings = setPort port $ setHost "127.0.0.1" $ setGracefulShutdownTimeout (Just 5) $ setInstallShutdownHandler (putMVar shutdown) $ setBeforeMainLoop (putMVar ready ()) defaultSettings
+   let settings = setServerName "Sapiens4" $ setPort port $ setHost "127.0.0.1" $ setGracefulShutdownTimeout (Just 5) $ setInstallShutdownHandler (putMVar shutdown) $ setBeforeMainLoop (putMVar ready ()) defaultSettings
    worker <- async (runSettingsSocket settings socket (application service bridge registry port))
    void (race (wait worker) (takeMVar ready))
    Service.startService service
@@ -78,7 +75,7 @@ application service bridge registry port req respond = respond =<< respondError 
  body <- if write then Just <$> bodyObject (if "/attachments" `T.isSuffixOf` path then 15000000 else 2000000) req else pure Nothing
  let data_ = maybe empty id body
  if "/api/host" `T.isPrefixOf` path && maybe False (const True) registry then do
-  let Just r = registry
+  r <- maybe (failure 404 "Host registry unavailable") pure registry
   stopping <- readIORef (serviceStopping service)
   when write (require (not stopping) 503 "Host is shutting down")
   case (method,T.splitOn "/" path) of

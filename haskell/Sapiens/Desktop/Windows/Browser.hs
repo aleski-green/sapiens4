@@ -11,6 +11,7 @@ import Data.Int
 import Data.Maybe
 import Foreign hiding (void)
 import Numeric
+import Sapiens.Domain (BrowserCommand(..), BrowserAction(..))
 import Sapiens.Desktop.Windows.Host
 import Sapiens.Desktop.Windows.Native
 import qualified Sapiens.Desktop.Windows.Navigation as Navigation
@@ -206,22 +207,26 @@ applyLatest browser = do
 applySpec :: Browser -> Tab -> Value -> IO ()
 applySpec browser tab spec = do
   when (field "zoom" spec /= Null) $ zoom (tabView tab) $ number $ field "zoom" spec
-  let command = field "command" spec
-      sequenceId = string $ field "seq" command
-  oldSequence <- readIORef (tabSequence tab)
-  when (command /= Null && oldSequence /= sequenceId) $ do
-    writeIORef (tabSequence tab) sequenceId
-    let web = core $ tabView tab
-    case string (field "action" command) of
-      "navigate" -> do
-        base <- readIORef (origin $ host browser)
-        let url = string $ field "url" spec
-        if Navigation.guest base url then navigate (tabView tab) url
-          else writeIORef (tabError tab) "Unsupported destination" >> observe browser tab
-      "reload" -> call0 web 31
-      "back" -> (getValue web 38 :: IO Int32) >>= \allowed -> if allowed /= 0 then call0 web 40 else observe browser tab
-      "forward" -> (getValue web 39 :: IO Int32) >>= \allowed -> if allowed /= 0 then call0 web 41 else observe browser tab
-      _ -> pure ()
+  command <- case field "command" spec of
+    Null -> pure Nothing
+    value -> case fromJSON value of
+      Success parsed -> pure (Just parsed)
+      Error reason -> ioError (userError reason)
+  forM_ command $ \instruction -> do
+    let sequenceId = T.unpack (browserSequence instruction)
+    oldSequence <- readIORef (tabSequence tab)
+    when (oldSequence /= sequenceId) $ do
+      writeIORef (tabSequence tab) sequenceId
+      let web = core $ tabView tab
+      case browserAction instruction of
+        Navigate -> do
+          base <- readIORef (origin $ host browser)
+          let url = string $ field "url" spec
+          if Navigation.guest base url then navigate (tabView tab) url
+            else writeIORef (tabError tab) "Unsupported destination" >> observe browser tab
+        Reload -> call0 web 31
+        Back -> (getValue web 38 :: IO Int32) >>= \allowed -> if allowed /= 0 then call0 web 40 else observe browser tab
+        Forward -> (getValue web 39 :: IO Int32) >>= \allowed -> if allowed /= 0 then call0 web 41 else observe browser tab
 
 positionGuest :: Browser -> IO ()
 positionGuest browser = do
