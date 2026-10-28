@@ -39,7 +39,7 @@ Copy-Item -LiteralPath (Join-Path $BlindlySource 'license') -Destination (Join-P
 Copy-Item -LiteralPath (Join-Path $BlindlySource 'README.md') -Destination (Join-Path $payload 'submodules/blindly4/README.md') -Force
 $libsOutput = Join-Path $payload 'submodules/libs4'
 New-Item -ItemType Directory -Force -Path $libsOutput | Out-Null
-foreach ($folder in @('app','license')) {
+foreach ($folder in @('web','license')) {
     Copy-Item -LiteralPath (Join-Path $repo "submodules/libs4/$folder") -Destination $libsOutput -Recurse -Force
 }
 Copy-Item -LiteralPath (Join-Path $repo 'submodules/libs4/README.md') -Destination $libsOutput -Force
