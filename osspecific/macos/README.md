@@ -11,7 +11,7 @@ From the repository root:
 ```sh
 git submodule update --init --recursive
 ./blindly4/macos/build.sh
-./macos/build.sh
+./osspecific/macos/build.sh
 open .build/macos/Sapiens4.app
 ```
 
@@ -36,7 +36,7 @@ app, and gracefully stop its backend before opening the replacement. Reuse the
 exact data directory recorded by the old installation:
 
 ```sh
-SAPIENS_DATA_DIR="/absolute/path/to/existing/data" ./macos/build.sh
+SAPIENS_DATA_DIR="/absolute/path/to/existing/data" ./osspecific/macos/build.sh
 open .build/macos/Sapiens4.app
 ```
 
@@ -56,4 +56,4 @@ codesign --verify --strict .build/macos/Sapiens4.app
 ```
 
 Tests use temporary data and controlled model executables; see
-[coverage and platform requirements](../documentation/testing.md).
+[coverage and platform requirements](../../documentation/testing.md).

@@ -9,8 +9,8 @@ independent judgment with human oversight.
 
 | Platform | Setup |
 | --- | --- |
-| macOS 13+ | [Build and run the desktop app](macos/README.md) |
-| Windows 10/11, ARM64 or x64 | [Portable packages and source setup](windows/README.md) |
+| macOS 13+ | [Build and run the desktop app](osspecific/macos/README.md) |
+| Windows 10/11, ARM64 or x64 | [Portable packages and source setup](osspecific/windows/README.md) |
 | Remote browser or mobile app | [Pairing and relay setup](documentation/remote.md) |
 
 Source builds require GHC 9.14.1, Cabal 3.18.2, Git, authenticated Codex CLI
@@ -40,9 +40,9 @@ the host. Each corpora supports one approved remote device.
 ## Documentation
 
 Source is grouped by responsibility: `sapiens/` contains State, Work and Host;
-`web/` contains shell, features and theme; `macos/` and `windows/` contain native
-integration and packaging. `Build.hs` builds the application using dependency
-manifests in `libs4`. Tests and their helpers live in `spec/`.
+`web/` contains shell, features and theme; `osspecific/` contains native
+integration and packaging for macOS and Windows. `Build.hs` builds the application
+using dependency manifests in `libs4`. Tests and their helpers live in `spec/`.
 
 - [Usage, configuration, data and API](documentation/reference.md)
 - [UI architecture](documentation/ui.md)

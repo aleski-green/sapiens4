@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$ROOT"
 if [ ! -f "$ROOT/libs4/web/remote-vendor.js" ]; then
   git -C "$ROOT" submodule update --init --recursive -- libs4

@@ -28,7 +28,7 @@ Use x64 GHC and Node on ARM PCs. Add the matching Rust target, such as
 git clone --recurse-submodules https://github.com/aleski-green/sapiens4.git
 cd sapiens4
 .\start.ps1 -Open
-.\windows\build.ps1 -Runtime win-x64
+.\osspecific\windows\build.ps1 -Runtime win-x64
 .\.build\Sapiens4-win-x64\Sapiens4.exe
 ```
 
@@ -45,7 +45,7 @@ The Haskell build regenerates icons from the favicons using the libs4 Node tool.
 
 ## Tests and desktop access
 
-Follow [Testing](../documentation/testing.md). Set `SAPIENS_TEST_WINDOWS_PACKAGE`
+Follow [Testing](../../documentation/testing.md). Set `SAPIENS_TEST_WINDOWS_PACKAGE`
 to the built package directory for packaged-runtime tests; run ARM64 and x64 on
 matching machines. Tests use temporary data and controlled model executables.
 

@@ -45,7 +45,7 @@ main = do
    callProcess "make" ["-j4"]
  when (os=="mingw32") $ do
   createDirectoryIfMissing True build
-  callProcess "windres" ["-I",root</>"windows",root</>"windows/resources.rc","-O","coff","-o",build</>"windows-resources.o"]
+  callProcess "windres" ["-I",root</>"osspecific/windows",root</>"osspecific/windows/resources.rc","-O","coff","-o",build</>"windows-resources.o"]
  let cabal args = callProcess "cabal" (["--project-file="<>project</>"cabal.project","--builddir="<>build]++args)
  cabal (["build"]++map ("exe:"++) (filter (/="sapiens-windows") targets))
  -- The desktop resource already contains the application's DPI/UAC manifest.
@@ -64,8 +64,8 @@ main = do
   -- Windows PowerShell must not inherit PowerShell 7's incompatible modules.
   unsetEnv "PSModulePath"
   callProcess "powershell" ["-NoProfile","-ExecutionPolicy","Bypass","-File",root</>"libs4/windows/webview2.ps1","-Runtime",runtime,"-Destination",root</>".build/bin"]
-  callProcess "node" [root</>"libs4/tools/svg-to-ico.cjs",root</>"web/shell/favicon.svg",root</>"windows/AppIcon.ico"]
-  callProcess "node" [root</>"libs4/tools/svg-to-ico.cjs",root</>"web/shell/favicon-dark.svg",root</>"windows/AppIconDark.ico"]
+  callProcess "node" [root</>"libs4/tools/svg-to-ico.cjs",root</>"web/shell/favicon.svg",root</>"osspecific/windows/AppIcon.ico"]
+  callProcess "node" [root</>"libs4/tools/svg-to-ico.cjs",root</>"web/shell/favicon-dark.svg",root</>"osspecific/windows/AppIconDark.ico"]
 trim :: String -> String
 trim = dropWhileEnd (`elem` "\r\n \t") . dropWhile (`elem` "\r\n \t")
 buildPath :: FilePath -> IO FilePath

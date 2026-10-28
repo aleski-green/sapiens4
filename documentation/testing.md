@@ -48,7 +48,7 @@ $env:SAPIENS_TEST_BLINDLY4 = 'C:\path\to\blindly4.exe'
 ruby libs4/ruby/bundle.rb exec rspec
 ```
 
-Set `SAPIENS_TEST_WINDOWS_PACKAGE` to a package built with `windows/build.ps1`
+Set `SAPIENS_TEST_WINDOWS_PACKAGE` to a package built with `osspecific/windows/build.ps1`
 to include packaged-runtime checks. Test ARM64 and x64 on matching systems.
 Use `--tag desktop` for focused UI runs. Missing platform configuration produces
 pending cases; configured permission and interaction errors are failures.

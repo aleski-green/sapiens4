@@ -92,8 +92,8 @@ runDesktop probe = runInBoundThread $ do
     createWindow 0 className title 0x50000201 0 0 1440 960 hwnd nullPtr instanceHandle nullPtr
   writeIORef statusRef label
   resize hwnd
-  light <- loadIconFile $ runtimeDirectory host </> "windows/AppIcon.ico"
-  dark <- loadIconFile $ runtimeDirectory host </> "windows/AppIconDark.ico"
+  light <- loadIconFile $ runtimeDirectory host </> "osspecific/windows/AppIcon.ico"
+  dark <- loadIconFile $ runtimeDirectory host </> "osspecific/windows/AppIconDark.ico"
   mapM_ (\icon -> when (icon /= nullPtr) $ retain memory (void $ destroyIcon icon)) [light, dark]
   setIcon hwnd light
   lastTheme <- newIORef Nothing

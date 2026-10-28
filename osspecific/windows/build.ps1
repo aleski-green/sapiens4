@@ -1,11 +1,11 @@
 param(
     [ValidateSet('win-x64','win-arm64')][string]$Runtime,
     [string]$OutputDirectory,
-    [string]$BlindlySource = (Join-Path $PSScriptRoot '../blindly4'),
+    [string]$BlindlySource = (Join-Path $PSScriptRoot '../../blindly4'),
     [ValidateSet('msvc','gnullvm')][string]$BlindlyToolchain = 'msvc'
 )
 $ErrorActionPreference = 'Stop'
-$repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $target = & ghc --print-target-platform
 if ($LASTEXITCODE -ne 0) { throw 'GHC is required to build the Haskell application' }
 if (-not $Runtime) {
@@ -46,7 +46,7 @@ Copy-Item -LiteralPath (Join-Path $repo 'libs4/README.md') -Destination $libsOut
 foreach ($folder in @('prompts','web')) {
     Copy-Item -LiteralPath (Join-Path $repo $folder) -Destination $payload -Recurse -Force
 }
-foreach ($folder in @('.build/bin','.build/web','windows')) {
+foreach ($folder in @('.build/bin','.build/web','osspecific/windows')) {
     New-Item -ItemType Directory -Force -Path (Join-Path $payload $folder) | Out-Null
 }
 Copy-Item -LiteralPath (Join-Path $repo '.build/bin/sapiens4.exe') -Destination (Join-Path $payload '.build/bin') -Force
@@ -54,7 +54,7 @@ foreach ($asset in @('app.js','sw.js','guest.js')) {
     Copy-Item -LiteralPath (Join-Path $repo ".build/web/$asset") -Destination (Join-Path $payload '.build/web') -Force
 }
 foreach ($icon in @('AppIcon.ico','AppIconDark.ico')) {
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $icon) -Destination (Join-Path $payload 'windows') -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $icon) -Destination (Join-Path $payload 'osspecific/windows') -Force
 }
 & (Join-Path $repo 'libs4/windows/webview2.ps1') -Runtime $Runtime -Destination $destination
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.md') -Destination (Join-Path $destination 'README.md') -Force

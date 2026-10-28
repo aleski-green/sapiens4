@@ -19,9 +19,10 @@ explicitly modeled as ternary, not every filesystem directory. Expand recursive
 visualizations only to the depth needed for the current view.
 
 Application responsibilities are behavior (`sapiens/`), presentation (`web/`),
-and native integration (the platform-specific `macos/` and `windows/` collections).
-Keep native source with its platform's launcher, resources and packaging. The two
-platform roots are a required platform split, not an artificial third platform.
+and native integration (`osspecific/`). Keep native source with its platform's
+launcher, resources and packaging under `osspecific/macos/` or
+`osspecific/windows/`. Add `osspecific/linux/` when Linux integration exists;
+do not create an empty platform placeholder.
 There is no application source directory named after its implementation language.
 
 The backend has three responsibility groups:

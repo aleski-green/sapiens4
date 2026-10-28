@@ -56,7 +56,7 @@ startServer application = do
     dataDirectory <- T.unpack <$> configurationValue application "DataDirectory"
     configuredPath <- T.unpack <$> configurationValue application "Path"
     present <- doesFileExist executable
-    unless present $ ioError (userError "Repository or Haskell executable was moved. Rebuild the app with macos/build.sh.")
+    unless present $ ioError (userError "Repository or Haskell executable was moved. Rebuild the app with osspecific/macos/build.sh.")
     let destination = if null dataDirectory then root </> ".sapiens4" else dataDirectory
     createDirectoryIfMissing True destination
     logFile <- openFile (destination </> "desktop-server.log") AppendMode
