@@ -33,7 +33,6 @@ interacting with fixture windows. On macOS:
 
 ```sh
 ./submodules/blindly4/macos/build.sh
-export SAPIENS_TEST_BLINDLY4="$PWD/submodules/blindly4/.build/release/blindly4"
 ruby submodules/libs4/ruby/bundle.rb exec rspec
 ```
 
@@ -50,8 +49,11 @@ ruby submodules/libs4/ruby/bundle.rb exec rspec
 
 Set `SAPIENS_TEST_WINDOWS_PACKAGE` to a package built with `environments/windows/build.ps1`
 to include packaged-runtime checks. Test ARM64 and x64 on matching systems.
-Use `--tag desktop` for focused UI runs. Missing platform configuration produces
-pending cases; configured permission and interaction errors are failures.
+Use `--tag desktop` for focused UI runs. Desktop tests automatically use the bundled
+Blindly4 build on macOS and Windows; `SAPIENS_TEST_BLINDLY4` optionally selects a
+different executable. A missing driver or a permission or interaction error fails
+the test instead of silently skipping it. Unsupported platforms and Windows-only
+contracts remain pending on macOS.
 Failed desktop scenarios write accessible content to `tmp/desktop-failure.txt`.
 
 Use mouse clicks to establish that controls are reachable; accessibility

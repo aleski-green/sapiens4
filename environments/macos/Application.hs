@@ -140,8 +140,9 @@ menus application target = do
         menuItem appMenu (native application) "About Sapiens4" "orderFrontStandardAboutPanel:" ""
         separator <- cls "NSMenuItem" >>= \c -> obj0 c "separatorItem"; void (obj1 appMenu "addItem:" separator)
         menuItem appMenu target "Quit Sapiens4" "quit" "q"
-        edit <- subMenu root "Edit"
-        forM_ [("Undo","undo:","z"),("Cut","cut:","x"),("Copy","copy:","c"),("Paste","paste:","v"),("Select All","selectAll:","a")] $ \(title,action,key) -> menuItem edit nullPtr title action key
+    edit <- subMenu root "Edit"
+    forM_ [("Undo","undo:","z"),("Cut","cut:","x"),("Copy","copy:","c"),("Paste","paste:","v"),("Select All","selectAll:","a")] $ \(title,action,key) -> menuItem edit nullPtr title action key
+    unless (fixture application) $ do
         view <- subMenu root "View"
         forM_ [("Reload Tab","reloadTab","r"),("Reload App","reloadWorkspace",""),("Zoom In","zoomIn","="),("Zoom Out","zoomOut","-"),("Actual Size","resetZoom","0")] $ \(title,action,key) -> menuItem view target title action key
     void (obj1 (native application) "setMainMenu:" root)

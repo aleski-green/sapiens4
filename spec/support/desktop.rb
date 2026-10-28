@@ -4,7 +4,14 @@ class Desktop
   attr_reader :process
 
   def self.available?
-    (RUBY_PLATFORM.include?('darwin') || Gem.win_platform?) && ENV['SAPIENS_TEST_BLINDLY4']
+    RUBY_PLATFORM.include?('darwin') || Gem.win_platform?
+  end
+
+  def self.driver
+    File.expand_path(ENV.fetch('SAPIENS_TEST_BLINDLY4') {
+      File.join(Contract::ROOT, 'submodules/blindly4/.build',
+        Gem.win_platform? ? 'windows/blindly4.exe' : 'release/blindly4')
+    })
   end
 
   def self.binary
@@ -32,8 +39,8 @@ class Desktop
   end
 
   def control(command, *args)
-    out, error, code = Contract.capture(ENV.fetch('SAPIENS_TEST_BLINDLY4'), command,
-      '--pid', process.pid.to_s, *args, timeout: 15, chdir: File.dirname(ENV.fetch('SAPIENS_TEST_BLINDLY4')))
+    out, error, code = Contract.capture(self.class.driver, command,
+      '--pid', process.pid.to_s, *args, timeout: 15, chdir: File.dirname(self.class.driver))
     raise "Blindly4 #{command}: #{out}#{error}" unless code == 0
     JSON.parse(out)
   end
@@ -96,7 +103,23 @@ class Desktop
 
   def fill(text, value)
     editable = %w[AXTextField AXTextArea AXComboBox]
-    act_on(text, role: editable) { |node| control('set-value', '--path', node.fetch('path'), '--value', value) }
+    if Gem.win_platform?
+      act_on(text, role: editable) { |node| control('set-value', '--path', node.fetch('path'), '--value', value) }
+    else
+      # Clear through keyboard editing so WebKit updates controlled form state.
+      # AXValue writes alone can be reverted by the next render.
+      node = find(text, role: editable)
+      click_node(node)
+      node = find(text, role: editable)
+      unless node['value'].to_s.empty?
+        previous = node.fetch('value')
+        act_on(text, role: editable) { |current| control('key', '--key', 'command+a', '--target-path', current.fetch('path'), '--require-value', previous) }
+        act_on(text, role: editable) { |current| control('key', '--key', 'backspace', '--target-path', current.fetch('path'), '--require-value', previous) }
+        self.value(text, '')
+      end
+      node = find(text, role: editable)
+      control('paste', '--target-path', node.fetch('path'), '--text', value)
+    end
     self.value(text, value)
     # UIA SetValue can blur WebView2; establish keyboard focus after it completes.
     target = find(text, role: editable)
@@ -204,7 +227,8 @@ end
 RSpec.configure do |config|
   config.include DesktopExamples, :desktop
   config.before(:each, :desktop) do
-    skip 'Requires macOS/Windows and SAPIENS_TEST_BLINDLY4 with accessibility access' unless Desktop.available?
+    skip 'Native desktop tests require macOS or Windows' unless Desktop.available?
+    raise "Desktop driver missing: #{Desktop.driver}. Build submodules/blindly4 or set SAPIENS_TEST_BLINDLY4." unless File.executable?(Desktop.driver)
   end
   config.after(:each, :desktop) do |example|
     if example.exception && @desktop
