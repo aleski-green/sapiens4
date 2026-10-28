@@ -3,8 +3,8 @@ RSpec.describe 'Source distribution contract' do
     @folder = File.realpath(Dir.mktmpdir('sapiens source release '))
     @release = File.join(@folder, 'source')
     files, error, code = Contract.capture('git', 'ls-files', '--recurse-submodules',
-      'Build.hs', 'sapiens', 'osspecific', 'web', 'prompts',
-      'license', 'README.md', 'blindly4/license', 'blindly4/README.md', 'libs4')
+      'build', 'corpora', 'remote', 'environments', 'app',
+      'license', 'README.md', 'submodules/blindly4/license', 'submodules/blindly4/README.md', 'submodules/libs4')
     expect(code).to eq(0), error
     files.lines.map(&:strip).each do |file|
       next if file.end_with?('.py', '.swift', '.cs')
@@ -14,7 +14,7 @@ RSpec.describe 'Source distribution contract' do
     end
     if ENV['SAPIENS_TEST_CABAL_CACHE']
       cache = File.realpath(ENV['SAPIENS_TEST_CABAL_CACHE'])
-      destination = File.join(@release, 'libs4/haskell/.cabal')
+      destination = File.join(@release, 'submodules/libs4/haskell/.cabal')
       if Gem.win_platform?
         FileUtils.cp_r(cache, destination)
       else
@@ -29,7 +29,7 @@ RSpec.describe 'Source distribution contract' do
       FileUtils.mkdir_p(File.join(@app, 'Contents/Resources'))
       File.write(File.join(@app, 'Contents/Resources/obsolete-helper.py'), 'Old build artifact')
     end
-    command = RUBY_PLATFORM.include?('darwin') ? ['sh', 'osspecific/macos/build.sh'] : ['runghc', 'Build.hs']
+    command = RUBY_PLATFORM.include?('darwin') ? ['sh', 'environments/macos/build.sh'] : ['runghc', 'build/Build.hs']
     out, error, code = Contract.capture(*command, chdir: @release, timeout: 1200,
       env: {'SAPIENS_DATA_DIR' => @data})
     expect(code).to eq(0), out + error
@@ -70,14 +70,14 @@ RSpec.describe 'Source distribution contract' do
       expect(isolated.turn(id)['output']).to eq('Contract test reply')
       example = isolated.calls.first['prompt'][/read the worked example at (.*?)\. It demonstrates/m, 1]
       expect(example).not_to be_nil
-      expect(File.identical?(example, File.join(@release, 'prompts/examples/jarvis-notes.html'))).to eq(true)
+      expect(File.identical?(example, File.join(@release, 'corpora/prompts/examples/jarvis-notes.html'))).to eq(true)
       %w[/workspace/ /workspace/app.js /workspace/guest.js /sw.js /remote-vendor.js /workspace/styles.css].each do |path|
         status, body = isolated.request('GET', path)
         expect(status).to eq(200)
         expect(body).not_to be_empty
       end
-      expect(isolated.request('GET', '/libs4/package.json').first).to eq(404)
-      expect(isolated.request('GET', '/libs4/.git').first).to eq(404)
+      expect(isolated.request('GET', '/submodules/libs4/package.json').first).to eq(404)
+      expect(isolated.request('GET', '/submodules/libs4/.git').first).to eq(404)
       expect(File.exist?(File.join(@release, '.git'))).to eq(false)
     ensure
       isolated.close

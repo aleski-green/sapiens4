@@ -11,7 +11,7 @@ class Desktop
     return @binary if @binary
     @binary = File.join(Contract::ROOT, '.build/bin', Gem.win_platform? ? 'sapiens-windows-probe.exe' : 'sapiens-macos')
     unless File.executable?(@binary)
-      out, error, code = Contract.capture('runghc', 'Build.hs', timeout: 600)
+      out, error, code = Contract.capture('runghc', 'build/Build.hs', timeout: 600)
       raise out + error unless code == 0
     end
     @binary

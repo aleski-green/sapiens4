@@ -28,8 +28,8 @@ __pycache__/
 node_modules/
 
 # Windows build output
-osspecific/windows/bin/
-osspecific/windows/obj/
+environments/windows/bin/
+environments/windows/obj/
 
 # Local RSpec results and Ruby dependencies
 tmp/

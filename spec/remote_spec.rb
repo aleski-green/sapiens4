@@ -359,7 +359,7 @@ RSpec.describe 'Encrypted remote service contracts' do
     expect(@relay.request('GET', '/healthz', nil, headers: {'Host' => 'healthcheck.railway.app'}).first).to eq(200)
     expect(@relay.request('GET', '/', nil, headers: {'Host' => 'evil.example'}).first).to eq(403)
     expect(@relay.request('GET', '/', nil, headers: {'Origin' => 'https://evil.example'}).first).to eq(403)
-    %w[/api/state /api/remote /relay.connection.json /sapiens/Host/Service.hs /web/shell/BuildUI.hs /Build.hs].each do |path|
+    %w[/api/state /api/remote /relay.connection.json /corpora/host/Service.hs /remote/relay/Server.hs /corpora/prompts/conversation.md /build/BuildUI.hs /build/Build.hs /submodules/libs4/package.json].each do |path|
       expect(@relay.request('GET', path).first).to eq(404)
     end
     manifest = @relay.request('GET', '/manifest.webmanifest')[1]

@@ -9,9 +9,9 @@ independent judgment with human oversight.
 
 | Platform | Setup |
 | --- | --- |
-| macOS 13+ | [Build and run the desktop app](osspecific/macos/README.md) |
-| Windows 10/11, ARM64 or x64 | [Portable packages and source setup](osspecific/windows/README.md) |
-| Remote browser or mobile app | [Pairing and relay setup](documentation/remote.md) |
+| macOS 13+ | [Build and run the desktop app](environments/macos/README.md) |
+| Windows 10/11, ARM64 or x64 | [Portable packages and source setup](environments/windows/README.md) |
+| Remote browser or mobile app | [Pairing and relay setup](docs/remote.md) |
 
 Source builds require GHC 9.14.1, Cabal 3.18.2, Git, authenticated Codex CLI
 0.156.1+, stable Rust, Node.js 22.5+ and npm. Platform build tools are listed in
@@ -21,10 +21,10 @@ the setup guides. Portable Windows packages bundle the native host and Blindly4.
 git clone --recurse-submodules https://github.com/aleski-green/sapiens4.git
 cd sapiens4
 codex login
-./start.sh --open
+./build/start.sh --open
 ```
 
-On Windows, use `.\start.ps1 -Open`. The local UI opens at
+On Windows, use `.\build\start.ps1 -Open`. The local UI opens at
 http://127.0.0.1:4174/workspace/. Existing checkouts initialize dependencies with
 `git submodule update --init --recursive`.
 
@@ -39,15 +39,15 @@ the host. Each corpora supports one approved remote device.
 
 ## Documentation
 
-Source is grouped by responsibility: `sapiens/` contains State, Work and Host;
-`web/` contains shell, features and theme; `osspecific/` contains native
-integration and packaging for macOS and Windows. `Build.hs` builds the application
-using dependency manifests in `libs4`. Tests and their helpers live in `spec/`.
+Application source lives in `corpora/` (state and work), `app/` (the UI),
+`remote/` (relay, control and protocol) and `environments/` (native integration).
+Shared build tools and launchers live in `build/`; tests live in `spec/`.
+Dependencies retain their own layout under `submodules/`.
 
-- [Usage, configuration, data and API](documentation/reference.md)
-- [UI architecture](documentation/ui.md)
-- [Running behavior tests](documentation/testing.md)
-- [Contributing](CONTRIBUTING.md)
+- [Usage, configuration, data and API](docs/reference.md)
+- [UI architecture](docs/ui.md)
+- [Running behavior tests](docs/testing.md)
+- [Contributing](docs/contributing.md)
 
 Windows support was contributed through the
 [fatmahalqaisi-code/sapiens4 fork](https://github.com/fatmahalqaisi-code/sapiens4).

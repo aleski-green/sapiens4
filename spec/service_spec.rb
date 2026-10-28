@@ -45,9 +45,12 @@ RSpec.describe 'Local service contracts' do
     'JSON array' => ['POST', '/api/agents', '[]', {}, 400],
     'database download' => ['GET', '/corpora.sqlite3', nil, {}, 404],
     'repository files' => ['GET', '/.git/config', nil, {}, 404],
-    'backend source files' => ['GET', '/sapiens/Host/Service.hs', nil, {}, 404],
-    'UI build source' => ['GET', '/web/shell/BuildUI.hs', nil, {}, 404],
-    'build entrypoint' => ['GET', '/Build.hs', nil, {}, 404]
+    'backend source files' => ['GET', '/corpora/host/Service.hs', nil, {}, 404],
+    'UI build source' => ['GET', '/build/BuildUI.hs', nil, {}, 404],
+    'build entrypoint' => ['GET', '/build/Build.hs', nil, {}, 404],
+    'relay server source' => ['GET', '/remote/relay/Server.hs', nil, {}, 404],
+    'model prompt files' => ['GET', '/corpora/prompts/conversation.md', nil, {}, 404],
+    'dependency manifests' => ['GET', '/submodules/libs4/package.json', nil, {}, 404]
   }.each do |behavior, (method, path, body, headers, status)|
     it "rejects #{behavior} without changing the team" do
       before = host.state['agents']
