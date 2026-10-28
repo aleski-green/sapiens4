@@ -74,7 +74,7 @@ one data directory. Install new versions manually using the platform setup guide
 
 The header corpora picker changes the viewed workspace; Pause and Activate control
 execution separately. Drafts and layout are stored on the viewing device. Cached
-remote snapshots are read-only until reconnection. See [remote setup](specs/RemoteMVP.md)
+remote snapshots are read-only until reconnection. See [remote setup](remote.md)
 for pairing, revocation and relay deployment.
 
 ## HTTP API

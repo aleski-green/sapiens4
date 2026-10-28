@@ -7,5 +7,5 @@ if [ "$(uname -s)" = Darwin ]; then
 else
   echo "Blindly4 computer tasks require macOS. Chat is available on this platform."
 fi
-runghc -ihaskell haskell/Build.hs
+runghc Build.hs
 exec .build/bin/sapiens4 "$@"

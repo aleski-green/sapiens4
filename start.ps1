@@ -13,7 +13,7 @@ try {
         }
         & ./blindly4/windows/build.ps1
         if ($LASTEXITCODE -ne 0) { throw 'Blindly4 build failed' }
-        & runghc -ihaskell haskell/Build.hs
+        & runghc Build.hs
         if ($LASTEXITCODE -ne 0) { throw 'Haskell application build failed' }
     }
     $arguments = @('--port', $Port, '--data-dir', $DataDir)

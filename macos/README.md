@@ -1,7 +1,8 @@
 # Sapiens4 for macOS
 
 An AppKit/WebKit window with a Dock icon. Requires macOS 13+, Command Line Tools,
-stable Rust, Python 3.9+, Node.js 22.5+, npm, Git and authenticated Codex CLI 0.156.1 or newer.
+stable Rust, GHC 9.14.1, Cabal 3.18.2, Node.js 22.5+, npm, Git and authenticated
+Codex CLI 0.156.1 or newer.
 
 ## Build and open
 
@@ -14,8 +15,8 @@ git submodule update --init --recursive
 open .build/macos/Sapiens4.app
 ```
 
-Set `SAPIENS_PYTHON` to choose Python. The build records that executable, PATH,
-repository location and data directory. Keep the checkout and Python in place.
+The build records the compiled backend executable, PATH, repository location
+and data directory. Keep the checkout and its build output in place.
 The app starts the local backend when needed; closing or quitting its window
 leaves the backend running so conversations can finish. It installs no login item.
 Right-click the Dock icon → Options → Keep in Dock.
@@ -35,7 +36,7 @@ app, and gracefully stop its backend before opening the replacement. Reuse the
 exact data directory recorded by the old installation:
 
 ```sh
-SAPIENS_DATA_DIR="$(python3 -c 'import json,pathlib; print(json.loads((pathlib.Path.home()/"Library/Application Support/Sapiens4/config.json").read_text())["data"])')" ./macos/build.sh
+SAPIENS_DATA_DIR="/absolute/path/to/existing/data" ./macos/build.sh
 open .build/macos/Sapiens4.app
 ```
 

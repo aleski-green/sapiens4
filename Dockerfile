@@ -6,11 +6,10 @@ COPY --from=node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
 WORKDIR /app
 COPY libs4/ ./libs4/
-COPY haskell/ ./haskell/
-COPY sapiens/corpora/host/routine/ ./sapiens/corpora/host/routine/
-COPY spec/support/haskell/ ./spec/support/haskell/
+COPY Build.hs ./Build.hs
+COPY sapiens/ ./sapiens/
 COPY web/ ./web/
-RUN runghc -ihaskell haskell/Build.hs
+RUN runghc Build.hs
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libgmp10 zlib1g libffi8 libnuma1 && rm -rf /var/lib/apt/lists/*

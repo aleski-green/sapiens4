@@ -20,7 +20,7 @@ if (-not (Test-Path (Join-Path $BlindlySource 'windows/Cargo.toml'))) { throw 'I
 if (-not (Test-Path (Join-Path $repo 'libs4/web/remote-vendor.js'))) { throw 'Initialize dependencies with git submodule update --init --recursive first' }
 Push-Location $repo
 try {
-    & runghc -ihaskell haskell/Build.hs
+    & runghc Build.hs
     if ($LASTEXITCODE -ne 0) { throw 'Haskell application build failed' }
 } finally { Pop-Location }
 & (Join-Path $BlindlySource 'windows/build.ps1') -Runtime $Runtime -Toolchain $BlindlyToolchain

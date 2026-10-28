@@ -18,25 +18,39 @@ boundaries with focused tests; check the three-child invariant only for structur
 explicitly modeled as ternary, not every filesystem directory. Expand recursive
 visualizations only to the depth needed for the current view.
 
-The owned source roots are `sapiens/` (behavior), `web/` (presentation), and
-`macos/` (native app and distribution). Python responsibilities are `corpora/`,
-`runtime/`, and `computer/`; CORPORA divides into `sapis/`, `browser.py`, and
-`host/`. Web responsibilities are `shell/`, `features/`, and `theme/`.
+Application responsibilities are behavior (`sapiens/`), presentation (`web/`),
+and native integration (the platform-specific `macos/` and `windows/` collections).
+Keep native source with its platform's launcher, resources and packaging. The two
+platform roots are a required platform split, not an artificial third platform.
+There is no application source directory named after its implementation language.
 
-`windows/` is an additional platform collection required for native Windows
-distribution. Its leaves cover the Python host lifecycle, trusted app shell and
-isolated guest browser views, plus build and validation entrypoints. It does not
-change the three-way split of platform-independent behavior or presentation.
+The backend has three responsibility groups:
 
-Runtime accepts state and prepared context; it must not import CORPORA or desktop
-code. The host composes these responsibilities. Sapi persistence may use runtime
-contracts, but cannot import execution or host implementations. Keep shared file,
-clock, path, prompt and validation primitives independent of their consumers.
+- `sapiens/State/`: domain values, shared state/file primitives, persistence,
+  population, Notes, workspace records and group models.
+- `sapiens/Work/`: model and computer execution, delegation, group conversations
+  and work, and scheduled routines. `Schedule/` contains the command parser,
+  response codec and standalone command entrypoint together.
+- `sapiens/Host/`: service lifecycle, management, HTTP/assets and remote access.
+  `Remote/` is a cohesive collection of pairing, transport and relay modules.
+
+State must not import Work or Host. Work consumes State and must not import Host
+or native desktop implementations. Host composes both; remote registration may
+call the service, while the service remains independent of remote transports.
+Native shells share the pure `State.Domain` codecs. These are dependency
+boundaries, not a requirement to split every module into three files.
+
+Web responsibilities remain `shell/`, `features/`, and `theme/`; shell divides
+model, interaction and rendering, with entrypoints/assets as leaves. Its UI build
+helper lives with the shell. Root `Build.hs` orchestrates application builds.
+Test helpers live directly in `spec/support/`, regardless of their language.
+Prompts, tests, documentation and licenses are cohesive collections. External
+`libs4` and `blindly4` repositories retain their own layout; language-specific
+dependency manifests and caches are tool-owned, not application divisions.
+
 Review changes against these boundaries; tests exercise public behavior rather
 than asserting the names, shape, or import graph of private implementation code.
-
-Import host modules from `sapiens/corpora/host/` directly. Persistent `agentpy/`
-data paths remain unchanged even though the old Python package is removed.
+Persistent `agentpy/` data paths remain unchanged by source reorganization.
 
 ## Third-party dependencies
 

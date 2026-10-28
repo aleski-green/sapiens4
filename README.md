@@ -11,11 +11,11 @@ independent judgment with human oversight.
 | --- | --- |
 | macOS 13+ | [Build and run the desktop app](macos/README.md) |
 | Windows 10/11, ARM64 or x64 | [Portable packages and source setup](windows/README.md) |
-| Remote browser or mobile app | [Pairing and relay setup](documentation/specs/RemoteMVP.md) |
+| Remote browser or mobile app | [Pairing and relay setup](documentation/remote.md) |
 
-Source builds require Python 3.9+, Git, authenticated Codex CLI 0.156.1+, stable
-Rust, Node.js 22.5+ and npm. Platform build tools are listed in the setup guides.
-Portable Windows packages bundle Python, .NET and Blindly4.
+Source builds require GHC 9.14.1, Cabal 3.18.2, Git, authenticated Codex CLI
+0.156.1+, stable Rust, Node.js 22.5+ and npm. Platform build tools are listed in
+the setup guides. Portable Windows packages bundle the native host and Blindly4.
 
 ```sh
 git clone --recurse-submodules https://github.com/aleski-green/sapiens4.git
@@ -38,6 +38,11 @@ and open the Home Screen app before pairing, then approve the matching code on
 the host. Each corpora supports one approved remote device.
 
 ## Documentation
+
+Source is grouped by responsibility: `sapiens/` contains State, Work and Host;
+`web/` contains shell, features and theme; `macos/` and `windows/` contain native
+integration and packaging. `Build.hs` builds the application using dependency
+manifests in `libs4`. Tests and their helpers live in `spec/`.
 
 - [Usage, configuration, data and API](documentation/reference.md)
 - [UI architecture](documentation/ui.md)

@@ -17,7 +17,7 @@ Use GHC 9.14.1, Cabal 3.18.2, Ruby 3.4 and Node.js 22.5+:
 ```sh
 git submodule update --init --recursive
 ruby libs4/ruby/bundle.rb install
-runghc haskell/Build.hs
+runghc Build.hs
 ruby libs4/ruby/bundle.rb exec rspec
 ```
 
@@ -42,7 +42,7 @@ On Windows, use the same Haskell, Ruby and Node toolchains:
 ```powershell
 git submodule update --init --recursive
 ruby libs4/ruby/bundle.rb install
-runghc haskell/Build.hs
+runghc Build.hs
 $env:SAPIENS_TEST_CODEX = (Resolve-Path .build/bin/sapiens-provider.exe).Path
 $env:SAPIENS_TEST_BLINDLY4 = 'C:\path\to\blindly4.exe'
 ruby libs4/ruby/bundle.rb exec rspec

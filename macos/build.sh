@@ -6,7 +6,7 @@ if [ ! -f "$ROOT/libs4/web/remote-vendor.js" ]; then
   git -C "$ROOT" submodule update --init --recursive -- libs4
   test -f "$ROOT/libs4/web/remote-vendor.js"
 fi
-runghc -ihaskell haskell/Build.hs
+runghc Build.hs
 BUILD="$ROOT/.build/macos"
 APP="$BUILD/Sapiens4.app"
 rm -rf "$APP"

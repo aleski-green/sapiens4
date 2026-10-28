@@ -3,7 +3,7 @@ RSpec.describe 'Source distribution contract' do
     @folder = File.realpath(Dir.mktmpdir('sapiens source release '))
     @release = File.join(@folder, 'source')
     files, error, code = Contract.capture('git', 'ls-files', '--recurse-submodules',
-      'haskell', 'sapiens/corpora/host/routine', 'macos', 'windows', 'web', 'prompts',
+      'Build.hs', 'sapiens', 'macos', 'windows', 'web', 'prompts',
       'license', 'README.md', 'blindly4/license', 'blindly4/README.md', 'libs4')
     expect(code).to eq(0), error
     files.lines.map(&:strip).each do |file|
@@ -29,7 +29,7 @@ RSpec.describe 'Source distribution contract' do
       FileUtils.mkdir_p(File.join(@app, 'Contents/Resources'))
       File.write(File.join(@app, 'Contents/Resources/obsolete-helper.py'), 'Old build artifact')
     end
-    command = RUBY_PLATFORM.include?('darwin') ? ['sh', 'macos/build.sh'] : ['runghc', '-ihaskell', 'haskell/Build.hs']
+    command = RUBY_PLATFORM.include?('darwin') ? ['sh', 'macos/build.sh'] : ['runghc', 'Build.hs']
     out, error, code = Contract.capture(*command, chdir: @release, timeout: 1200,
       env: {'SAPIENS_DATA_DIR' => @data})
     expect(code).to eq(0), out + error
