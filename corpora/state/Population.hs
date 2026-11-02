@@ -95,7 +95,8 @@ setManifests s row = do
  writeText (root </> "identity.md") (render identity [(k,at row k) | k <- ["name","role","face"]])
  binary <- blindly s
  executable <- getExecutablePath
- computer <- prompt s "computer-use"
+ headless <- if os == "linux" then (== Just "headless") <$> lookupEnv "SAPIENS_LINUX_BACKEND" else pure False
+ computer <- prompt s (if headless then "computer-linux" else "computer-use")
  writeText (root </> "computer-use.md") (render computer [("launcher",shellCommand executable <> " computer"),("binary",shellCommand binary)])
  config <- corporaSettings s
  writeText (root </> "corpora-scope.md") (corporaScope config)

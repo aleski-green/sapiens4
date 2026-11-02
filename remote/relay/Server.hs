@@ -80,7 +80,7 @@ relayAsset :: Relay -> Request -> IO (Maybe Response)
 relayAsset relay req = do
  let path = TE.decodeUtf8 (rawPathInfo req)
      platform = T.dropAround (=='/') path
-     platforms = ["ios","android","mac","windows"]
+     platforms = ["ios","android","mac","windows","linux"]
      entry = platform `elem` platforms || path == "/beta"
  found <- asset (relayRepo relay) (if entry then "/" else path)
  case found of

@@ -37,6 +37,7 @@ handle runtime dispatch action = case action of
       when (kind == M.ConnectRemote && M.remote m) $ liftEffect $ B.historyPush $ D.json {dialog: true}
       E.sync
       case kind of
+        M.Computer | D.str (D.at ["computer","platform"] m.snapshot) == "linux" -> receive d.identity (\value -> E.modifyDialog d.identity _ {content=value,error=""}) $ E.api runtime m "/api/computer" "GET" D.null
         M.DecisionPrompts -> receive d.identity (\value -> E.modifyDialog d.identity _ {content=value,fields=D.first $ D.rows "prompts" value,error=""}) $ E.api runtime m "/api/decision-prompts" "GET" D.null
         M.RelayList -> receive d.identity (\value -> E.modifyDialog d.identity _ {content=value,error=""}) $ C.json "/api/host/relays" "GET" D.null
         M.HostPairing -> dispatch $ HostPairPoll d.identity

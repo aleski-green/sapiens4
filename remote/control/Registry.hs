@@ -41,7 +41,7 @@ data Registry = Registry
 registryPath :: Registry -> FilePath
 registryPath registry = serviceRoot (registryService registry) </> "host-corpora.json"
 localAvailable :: Bool
-localAvailable = os `elem` ["darwin", "mingw32"]
+localAvailable = os `elem` ["darwin", "mingw32", "linux"]
 registryLock :: Registry -> IO a -> IO a
 registryLock registry = withMVar (registryGuard registry) . const
 saveRegistry :: Registry -> IO ()

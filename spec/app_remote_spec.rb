@@ -3,11 +3,11 @@ require_relative 'support/relay'
 
 RSpec.describe 'Connecting from the shipped remote app', :desktop do
   before do
-    skip 'Remote WebKit fixture currently runs on macOS' if Gem.win_platform?
+    skip 'Remote WebKit fixture requires macOS or Linux' if Gem.win_platform?
     @relay = Relay.new
     @host = Host.new
     @invitation = host.api('POST', '/api/remote/pair', {relay: @relay.url, token: @relay.token}, status: 201)['qr']
-    start_desktop(@relay.url + '/mac')
+    start_desktop(@relay.url + (Desktop.linux? ? '/linux' : '/mac'))
   end
   after { @relay&.close }
 

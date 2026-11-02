@@ -64,7 +64,7 @@ RSpec.describe 'Navigating work', :desktop do
     proxy = HostProxy.new(host) do |request, response|
       if request.path.end_with?('/tasks')
         requested << true
-        Timeout.timeout(15) { release.pop }
+        Timeout.timeout(Desktop.linux? ? 60 : 15) { release.pop }
       end
       response
     end
@@ -89,7 +89,7 @@ RSpec.describe 'Navigating work', :desktop do
     proxy = HostProxy.new(host) do |request, response|
       if request.path.start_with?(old_route) && request.path.end_with?('/tasks')
         requested << true
-        Timeout.timeout(15) { release.pop }
+        Timeout.timeout(Desktop.linux? ? 60 : 15) { release.pop }
         returned << true
       end
       response

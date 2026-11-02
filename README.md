@@ -11,6 +11,7 @@ independent judgment with human oversight.
 | --- | --- |
 | macOS 13+ | [Build and run the desktop app](environments/macos/README.md) |
 | Windows 10/11, ARM64 or x64 | [Portable packages and source setup](environments/windows/README.md) |
+| Ubuntu 22.04 / 24.04, x86-64 GNOME and WSL2 (development adapter) | [Headless and desktop Linux setup](environments/linux/README.md) |
 | Remote browser or mobile app | [Pairing and relay setup](docs/remote.md) |
 
 Source builds require GHC 9.14.1, Cabal 3.18.2, Git, authenticated Codex CLI

@@ -67,6 +67,7 @@ body :: M.Model -> M.Dialog -> V.Html
 body m d = case d.kind of
   M.AppMenu -> V.node "nav" [V.label "Corpora menu"] [V.button "app-menu-row" "Workspace & settings" $ OpenDialog M.WorkspaceSettings D.empty,V.button "app-menu-row" "Shared computer" $ OpenDialog M.Computer D.empty]
   M.WorkspaceSettings -> V.div "" [V.p "" "Talk to your Sapis in chat, manage their notes, and save documents in their workspaces. Sapis can delegate requests through ChiefSapi.",V.p "" "Use the corpora menu to switch workspaces. Active and Paused describe execution on the host; Connecting means this device is restoring its connection.",V.button "button" "Edit decision prompts" $ OpenDialog M.DecisionPrompts D.empty]
+  M.Computer | D.str (D.at ["computer","platform"] m.snapshot) == "linux" -> linuxComputer m d
   M.Computer -> V.div "" [V.p "" "Blindly4 is the main computer-use tool. Ask a Sapi in chat to work on your computer.",V.div "settings-row" [V.span [] (if D.flag $ D.at ["computer","built"] m.snapshot then "Blindly4 is built" else "Build required: run " <> if windows then ".\\start.ps1" else "./start.sh"),V.span [V.cls "tag"] (if owner == "" then "Available" else "In use · " <> D.s "name" (M.agent m owner))],V.p "" $ "Sapis share one computer. " <> if windows then "Windows UI Automation works with accessible apps on your desktop. Elevated apps and secure system dialogs cannot be controlled." else "macOS Accessibility access is required for desktop interaction; permission failures appear in chat."]
   M.AgentSettings -> form "Save"
     [V.node "div" [V.cls "settings-tabs",V.attr "role" "tablist",V.label "Sapi settings"] $ map (\caption -> V.textNode "button" [V.attr "type" "button",V.attr "role" "tab",V.attr "aria-selected" $ show $ caption == "Profile",V.disabled $ caption /= "Profile"] (caption)) ["Profile","Context","Usage","Limits"]
@@ -99,7 +100,7 @@ body m d = case d.kind of
       [V.div "" [V.control [V.id "scan-qr",V.disabled $ d.busy || D.b "scanning" d.fields] "Scan QR" (ScanQR),V.button "qr-upload" "Upload QR" UploadQR]
       ,V.node "div" [V.id "scanner",V.hidden $ not $ D.b "scanning" d.fields] [V.node "video" [V.id "qr-camera",V.bool "autoplay" true,V.bool "playsInline" true,V.bool "muted" true] [],V.button "" "Cancel scan" StopScan]
       ,V.node "form" [V.id "paste-invitation",V.submit Pair] [textarea "Or paste an invitation" "invitation" 2 [V.bool "required" true,V.bool "spellcheck" false,V.attr "autocomplete" "off"],V.textNode "button" [V.attr "type" "submit",V.disabled d.busy] "Connect"]]
-    ,V.node "section" [V.id "verify-panel",V.hidden $ field "code" == ""] [V.p "" "Approve this matching code on the host.",V.textNode "strong" [V.id "confirmation-code"] (field "code")]]
+    ,V.node "section" [V.id "verify-panel",V.hidden $ field "code" == ""] [V.p "" "Approve this matching code on the host.",V.textNode "strong" [V.id "confirmation-code",V.label $ field "code"] (field "code")]]
   M.HostPairing -> hostPairing m d
   M.RelayList -> relayList d
   M.RelayAdd -> form "Save" [V.p "" "",V.link "https://github.com/aleski-green/sapiens4/blob/codex/remote-control-mvp/documentation/specs/RemoteMVP.md" "Deploy on GitHub ↗",input "Name" "name" [V.bool "required" true,V.attr "maxlength" "200",V.attr "autocomplete" "off"],textarea "Connection JSON" "connection" 6 [V.bool "required" true,V.bool "spellcheck" false,V.attr "maxlength" "4096",V.attr "placeholder" "Paste your relay.connection.json"],V.button "qr-upload" "Import JSON" $ DialogCommand "relay-import" D.empty,V.p "relay-private" "Stored privately on this desktop.",V.button "" "Cancel" $ DialogCommand "relay-back" D.empty]
@@ -123,6 +124,22 @@ body m d = case d.kind of
   suggestions = map (\pool -> let available = A.filter (\name -> not $ A.any (( _ == S.toLower name) <<< S.toLower <<< D.s "name") m.agents) pool in fromMaybe "Sage" $ A.index (if A.null available then map (_ <> "-" <> show d.identity) pool else available) (mod d.identity $ max 1 $ A.length available)) pools
   ios = N.ios m.env
 
+linuxComputer :: M.Model -> M.Dialog -> V.Html
+linuxComputer m d = V.div ""
+  [V.p "" $ if headless then "Sapis use an owned headless browser. Ask a Sapi in chat to browse or work with a web page." else "Sapis use Blindly4 and Linux accessibility (AT-SPI) to work with applications on this desktop."
+  ,V.p "" $ if owner == "" then "Computer ownership: available" else "In use · " <> D.s "name" (M.agent m owner)
+  ,if not (D.valid d.content) then V.p "" "Checking computer access…" else V.div ""
+    [V.p "" $ if D.b "built" d.content then "Computer backend is installed" else "Build required: follow the Linux setup guide"
+    ,V.p "" $ if headless then (if D.b "trusted" d.content then "Owned browser session is connected" else "Owned browser session is unavailable") else (if D.b "trusted" d.content then "AT-SPI accessibility is available" else "AT-SPI accessibility is unavailable")
+    ,V.when (not headless) $ V.p "" $ if D.b "foregroundAvailable" d.content then "Foreground window verification is available" else "No foreground window can currently be verified"
+    ,V.when (not headless && D.s "session" d.content == "wayland") $ V.p "" $ if D.b "inputAvailable" d.content then "Consented input helper is connected" else "Keyboard and pointer input need a consented input helper"
+    ,V.when (D.s "error" d.content /= "") $ V.p "" $ D.s "error" d.content]
+  ,V.p "" $ if headless then "This session controls its browser only. Browser profiles are temporary; native desktop applications are unavailable." else "Wayland requires the optional GNOME foreground extension. Keyboard and pointer input also require desktop portal consent. Xorg uses native window ownership checks."
+  ,V.p "" "Sapis share one computer. Access is checked again for each action; these observations do not grant permission."]
+  where
+  headless = D.str (D.at ["computer","backend"] m.snapshot) == "headless"
+  owner = D.str $ D.at ["computer","owner"] m.snapshot
+
 relayList :: M.Dialog -> V.Html
 relayList d = if not (D.valid d.content) then V.p "" "Loading…" else V.div ""
   [V.node "div" [V.id "relay-list",V.cls $ "relay-list " <> if A.length rows >= 3 then "relay-scroll" else "",V.attr "role" "group",V.label "Relay servers"] $ map row rows
@@ -140,7 +157,7 @@ hostPairing :: M.Model -> M.Dialog -> V.Html
 hostPairing m d = if not (D.valid data_) then V.p "" "Loading…" else V.div ""
   [if D.valid (D.get "available" data_) && not (D.b "available" data_) then V.p "" "Remote control is unavailable. Install the remote dependencies and restart Sapiens4."
    else if D.b "paired" data_ then V.div "" [V.p "pairing-corpora" $ D.s "name" d.record,V.node "dl" [V.cls "pairing-details"] $ A.concatMap (\(Tuple label text) -> [V.textNode "dt" [] (label),V.textNode "dd" [] (text)]) [Tuple "Device" $ D.fallback "Not recorded" $ D.str $ D.at ["device_info","name"] data_,Tuple "Device info" $ D.fallback "Not recorded" $ S.joinWith " · " $ A.filter (_ /= "") $ map (\key -> D.str $ D.at ["device_info",key] data_) ["platform","client"],Tuple "Paired" $ date "paired_at",Tuple "Last connected" $ date "last_connected_at"],V.div "pairing-actions" [action "replace" "Replace remote",action "revoke" "Revoke remote"]]
-   else if D.valid $ D.get "pending" data_ then V.div "" [V.p "" "Approve only if this code matches your remote device.",V.textNode "strong" [] (D.str $ D.at ["pending","confirmation_code"] data_),V.control [V.disabled $ D.str (D.at ["pending","confirmation_code"] data_) == "" || d.busy] "Approve device" (DialogCommand "host-approve" $ D.get "pending" data_)]
+   else if D.valid $ D.get "pending" data_ then V.div "" [V.p "" "Approve only if this code matches your remote device.",V.textNode "strong" [V.label $ D.str $ D.at ["pending","confirmation_code"] data_] (D.str $ D.at ["pending","confirmation_code"] data_),V.control [V.disabled $ D.str (D.at ["pending","confirmation_code"] data_) == "" || d.busy] "Approve device" (DialogCommand "host-approve" $ D.get "pending" data_)]
    else if D.b "enabled" data_ && D.n "expires" invitation > m.now/1000.0 then V.div "" [V.p "" "In the installed app, choose Connect remote corpora and scan this QR.",V.node "img" [V.id "host-pair-qr",V.attr "alt" "Pairing QR",V.attr "src" $ D.s "qr" d.fields] [],V.p "" $ "Expires " <> B.formatDate "" D.empty (D.s "expiration" d.fields),V.div "pairing-actions" [V.button "" "Show link" $ Field "showLink" "true",V.textNode "a" [V.id "download-pair-qr",V.attr "download" "sapiens4-pairing.png",V.attr "href" $ D.s "qr" d.fields] "Download QR",V.link (D.s "relay" invitation) "Open app ↗",action "revoke" "Cancel invitation"],V.node "input" [V.id "host-pair-link",V.label "Pairing link",V.bool "readOnly" true,V.hidden $ D.s "showLink" d.fields /= "true",V.value $ Remote.invitationLink invitation] []]
    else if D.b "enabled" data_ then V.div "" [V.p "" "Invitation expired.",action "revoke" "Cancel invitation"]
    else V.div "pairing-actions" [action "pair" "Show QR",V.button "" "Relay servers" $ OpenDialog M.RelayList d.record]

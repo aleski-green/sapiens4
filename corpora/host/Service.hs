@@ -26,6 +26,7 @@ import System.Info
 import System.Posix.Files (setFileMode)
 #endif
 import Types
+import qualified Computer
 import qualified Store as DB
 import Population
 import Workspace
@@ -124,6 +125,7 @@ snapshotUnlocked s = do
  agentRows <- forM rows $ \row -> put "retired" . Bool <$> retired s (at row "id") <*> pure row
  owner <- maybe Null (toJSON . fst) <$> readIORef (serviceLease s)
  built <- blindly s >>= doesFileExist
+ backend <- if os=="linux" then fromMaybe "native" <$> lookupEnv "SAPIENS_LINUX_BACKEND" else pure "native"
  pulses <- DB.recentPulses s
  events <- DB.events s
  pulse <- readIORef (servicePulse s)
@@ -143,7 +145,7 @@ snapshotUnlocked s = do
   pure (run,merge value (obj [("turn",str (runIdText (runId run))),("stopping",Bool stopping),("agencyKind",str "chatInput"),("slot",num (runSlot run))]))
  let groupTurns=M.fromList [(at request "id",at g "id") | g<-groups,request<-items g "requests"]
      projected=[maybe t (\gid->put "group" (str gid) t) (M.lookup (at t "id") groupTurns) | t<-turns]
- pure $ obj [("agents",arr agentRows),("turns",arr projected),("preferences",prefs),("corpora",corpora),("groups",arr groups),("routines",arr routines),("creation_template",str (T.strip creation)),("computer",obj [("owner",owner),("built",Bool built),("platform",str (if os=="mingw32" then "win32" else T.pack os))]),("pulses",arr pulses),("events",events),("pulse",pulse),("provider",str "codex"),("activity",obj [(agentIdText (runOwner r),v) | (r,v)<-activity]),("run_activity",obj [(runIdText (runId r),v) | (r,v)<-activity]),("main_agent_id",str chief),("workloads",arr (D.workSummaries works)),("attachment_drafts",obj drafts),("orchestration",obj orchestration)]
+ pure $ obj [("agents",arr agentRows),("turns",arr projected),("preferences",prefs),("corpora",corpora),("groups",arr groups),("routines",arr routines),("creation_template",str (T.strip creation)),("computer",obj [("owner",owner),("built",Bool built),("backend",str (T.pack backend)),("platform",str (if os=="mingw32" then "win32" else T.pack os))]),("pulses",arr pulses),("events",events),("pulse",pulse),("provider",str "codex"),("activity",obj [(agentIdText (runOwner r),v) | (r,v)<-activity]),("run_activity",obj [(runIdText (runId r),v) | (r,v)<-activity]),("main_agent_id",str chief),("workloads",arr (D.workSummaries works)),("attachment_drafts",obj drafts),("orchestration",obj orchestration)]
 savePreferences :: Service -> Value -> IO Value
 savePreferences s d = do
  require (all (`elem` ["selected","panel","scope","groupView","panes","drafts","attachment_drafts"]) (keys d)) 400 "Unknown preference field"
@@ -172,6 +174,7 @@ dispatch s method target body = locked s $ do
  case (method,parts) of
   ("GET",["api","health"]) -> json 200 (pure (obj [("status",str "ok"),("provider",str "codex")]))
   ("GET",["api","state"]) -> json 200 (snapshotUnlocked s)
+  ("GET",["api","computer"]) -> json 200 (Computer.computerStatus (repositoryRoot s))
   ("GET",["api","corpora"]) -> json 200 (corporaIdentity s)
   ("GET",["api","corpora","operations",operation]) -> json 200 $ do identity<-corporaIdentity s; pure (obj [("applied",Bool (has (toJSON (corporaOperations cfg)) operation)),("corpora",identity)])
   ("PUT",["api","corpora","lifecycle"]) -> json 200 (Mgt.lifecycle s d)

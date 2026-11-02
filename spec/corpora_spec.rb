@@ -64,6 +64,7 @@ RSpec.describe 'Corpora lifecycle and device registry', :host do
 
   it 'creates isolated local corpora without moving or renaming the existing workspace' do
     capabilities = host.api('GET', '/api/host')
+    expect(capabilities['local_available']).to eq(true) if RUBY_PLATFORM.match?(/linux|darwin/) || Gem.win_platform?
     unless capabilities['local_available']
       expect(capabilities['corpora']).to be_empty
       expect(host.request('POST', '/api/host/local', {name: 'Studio', scope: 'Design'}).first).to eq(403)
