@@ -120,6 +120,33 @@ RSpec.describe 'Encrypted remote service contracts' do
     expect(state['turns'].first).to include('input' => 'Encrypted phone message', 'output' => 'Contract test reply')
     expect(state['corpora']).to eq(host.state['corpora'])
   end
+  
+  it 'uploads a large attachment through the encrypted channel without stalling the host' do
+    pair
+    bytes = 'x' * 1_048_576
+    send_frame(pack(op: 'api', method: 'POST', path: "/api/agents/#{chief}/attachments",
+      data: {kind: 'document', name: 'large.txt', data: [bytes].pack('m0')}))
+    upload = receive
+    expect(upload['status']).to eq(201)
+    expect(upload['body']).to include('name' => 'large.txt', 'size' => bytes.bytesize)
+    send_frame(pack(op: 'api', method: 'GET', path: '/api/state'))
+    expect(receive['body']).to have_key('turns')
+  end
+  
+  it 'rejects a large changed command reusing a request ID without stalling the host' do
+    pair
+    upload = lambda do |content|
+      pack(id: 'large-reused', op: 'api', method: 'POST', path: "/api/agents/#{chief}/attachments",
+        data: {kind: 'document', name: 'large.txt', data: [content].pack('m0')})
+    end
+    send_frame(upload.call('a' * 1_048_576))
+    expect(receive['status']).to eq(201)
+    send_frame(upload.call('b' * 1_048_576))
+    send_frame(pack(op: 'api', method: 'GET', path: '/api/state'))
+    expect(receive['body']).to have_key('turns')
+    stored = Dir.glob(File.join(host.root, 'uploads', '**', 'large.txt'))
+    expect(stored.map { |path| File.read(path, 1) }).to eq(['a'])
+  end
 
   it 'uploads an attachment through the encrypted channel and sends it with a message' do
     pair
