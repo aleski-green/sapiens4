@@ -47,8 +47,10 @@ callName = case _ of
 blocksChat :: Turn -> Boolean
 blocksChat request = A.elem request.status [Queued,Running,OutputPending]
 
+-- | Voice messages also carry their length and the transcript the host writes as Whisper finishes.
 type Attachment =
-  { id :: String, kind :: AttachmentKind, name :: String, value :: String }
+  { id :: String, kind :: AttachmentKind, name :: String, value :: String
+  , durationMs :: Number, transcript :: String, transcriptStatus :: String, recording :: String }
 
 attachment :: Json -> Attachment
 attachment value =
@@ -56,6 +58,10 @@ attachment value =
   , kind: attachmentKind $ D.s "kind" value
   , name: D.s "name" value
   , value: D.s "value" value
+  , durationMs: D.n "duration_ms" value
+  , transcript: D.s "transcript" value
+  , transcriptStatus: D.s "transcript_status" value
+  , recording: D.s "recording" value
   }
 
 type Origin =
@@ -545,7 +551,7 @@ mapValues check value = case toObject value of
   Just values -> void $ traverse check values
 
 checkAttachment :: Check
-checkAttachment = record [optional "id" stringValue, optional "kind" stringValue, optional "name" stringValue, optional "value" stringValue]
+checkAttachment = record [optional "id" stringValue, optional "kind" stringValue, optional "name" stringValue, optional "value" stringValue, optional "duration_ms" numberValue, optional "transcript" stringValue, optional "transcript_status" stringValue, optional "recording" stringValue]
 
 checkOrigin :: Check
 checkOrigin = record [optional "agent" stringValue, optional "call" stringValue, optional "group" stringValue, optional "caller" stringValue]
@@ -618,7 +624,7 @@ metadataField key value = if O.member key (fromMaybe O.empty $ toObject value) t
 withMetadata :: Notes -> NoteMetadata -> Notes
 withMetadata original patch = { revision: fromMaybe original.revision patch.revision, path: fromMaybe original.path patch.path, workspace: fromMaybe original.workspace patch.workspace, modified_at: fromMaybe original.modified_at patch.modified_at, modified_by: fromMaybe original.modified_by patch.modified_by, created_at: fromMaybe original.created_at patch.created_at, created_by: fromMaybe original.created_by patch.created_by }
 
-data AttachmentKind = ImageAttachment | DocumentAttachment | LinkAttachment | FileAttachment | OtherAttachment String
+data AttachmentKind = ImageAttachment | DocumentAttachment | LinkAttachment | FileAttachment | VoiceAttachment | OtherAttachment String
 derive instance eqAttachmentKind :: Eq AttachmentKind
 
 attachmentKind :: String -> AttachmentKind
@@ -627,6 +633,7 @@ attachmentKind = case _ of
   "document" -> DocumentAttachment
   "link" -> LinkAttachment
   "filepath" -> FileAttachment
+  "voice" -> VoiceAttachment
   value -> OtherAttachment value
 
 attachmentKindName :: AttachmentKind -> String
@@ -635,6 +642,7 @@ attachmentKindName = case _ of
   DocumentAttachment -> "document"
   LinkAttachment -> "link"
   FileAttachment -> "filepath"
+  VoiceAttachment -> "voice"
   OtherAttachment value -> value
 
 instance encodeAttachmentKind :: EncodeJson AttachmentKind where

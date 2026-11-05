@@ -212,4 +212,8 @@ attachmentPrompt :: Service -> [Value] -> IO Text
 attachmentPrompt _ [] = pure ""
 attachmentPrompt s rows = do
  p <- prompt s "attachments"
- pure (p <> jsonText (arr [select ["kind","name","value"] row | row <- rows]))
+ pure (p <> jsonText (arr [describe row | row <- rows]))
+ where
+ -- A voice message is already transcribed on this computer: the Sapi gets the spoken words,
+ -- not the audio file, so it answers the message instead of re-processing the recording.
+ describe row = if at row "kind" == "voice" then select ["kind","name","transcript"] row else select ["kind","name","value"] row

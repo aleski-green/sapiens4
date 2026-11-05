@@ -1,8 +1,10 @@
 require_relative 'support/relay'
+require_relative 'support/voice'
 require 'sqlite3'
 require 'digest'
 
 RSpec.describe 'Encrypted remote service contracts' do
+  include VoiceAudio
   before do
     @relay = Relay.new
     @host = Host.new
@@ -119,6 +121,62 @@ RSpec.describe 'Encrypted remote service contracts' do
     state = receive['body']
     expect(state['turns'].first).to include('input' => 'Encrypted phone message', 'output' => 'Contract test reply')
     expect(state['corpora']).to eq(host.state['corpora'])
+  end
+  
+  it 'uploads a large attachment through the encrypted channel without stalling the host' do
+    pair
+    bytes = 'x' * 1_048_576
+    send_frame(pack(op: 'api', method: 'POST', path: "/api/agents/#{chief}/attachments",
+      data: {kind: 'document', name: 'large.txt', data: [bytes].pack('m0')}))
+    upload = receive
+    expect(upload['status']).to eq(201)
+    expect(upload['body']).to include('name' => 'large.txt', 'size' => bytes.bytesize)
+    send_frame(pack(op: 'api', method: 'GET', path: '/api/state'))
+    expect(receive['body']).to have_key('turns')
+  end
+  
+  it 'rejects a large changed command reusing a request ID without stalling the host' do
+    pair
+    upload = lambda do |content|
+      pack(id: 'large-reused', op: 'api', method: 'POST', path: "/api/agents/#{chief}/attachments",
+        data: {kind: 'document', name: 'large.txt', data: [content].pack('m0')})
+    end
+    send_frame(upload.call('a' * 1_048_576))
+    expect(receive['status']).to eq(201)
+    send_frame(upload.call('b' * 1_048_576))
+    send_frame(pack(op: 'api', method: 'GET', path: '/api/state'))
+    expect(receive['body']).to have_key('turns')
+    stored = Dir.glob(File.join(host.root, 'uploads', '**', 'large.txt'))
+    expect(stored.map { |path| File.read(path, 1) }).to eq(['a'])
+  end
+
+  it 'streams voice pieces through the encrypted channel into one-minute voice messages' do
+    pair
+    recording = SecureRandom.uuid
+    piece = ->(index) { {recording: recording, index: index, final: index == 30, data: voice_piece(2)} }
+    replies = (0..30).map do |index|
+      send_frame(pack(op: 'api', method: 'POST', path: "/api/agents/#{chief}/voice", data: piece.(index)))
+      receive
+    end
+    expect(replies.map { |reply| reply['status'] }).to all(eq(200))
+    messages = replies.flat_map { |reply| reply['body']['messages'] }
+    expect(messages.map { |m| [m['kind'], m['part'], m['duration_ms']] }).to eq([['voice', 0, 60000], ['voice', 1, 2000]])
+    # The phone resends the last piece after a reconnect, with a new request id.
+    send_frame(pack(op: 'api', method: 'POST', path: "/api/agents/#{chief}/voice", data: piece.(30)))
+    expect(receive['body']).to include('duplicate' => true, 'messages' => [])
+  end
+
+  it 'keeps voice audio and its request unreadable on the relay' do
+    pair
+    audio = voice_piece(2)
+    send_frame(pack(op: 'api', method: 'POST', path: "/api/agents/#{chief}/voice", data: {recording: SecureRandom.uuid, index: 0, final: false, data: audio}))
+    expect(receive['status']).to eq(200)
+    stored = Dir[File.join(@relay.root, 'relay.sqlite3*')].map { |file| File.binread(file) }.join
+    aggregate_failures do
+      expect(stored).not_to include(audio[0, 64])
+      expect(stored).not_to include([0, 1000, 0, -1000].pack('s<*') * 8)
+      expect(stored).not_to include("/api/agents/#{chief}/voice")
+    end
   end
 
   it 'uploads an attachment through the encrypted channel and sends it with a message' do

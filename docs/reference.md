@@ -6,7 +6,8 @@ See the [README](../README.md) for startup and platform requirements.
 
 ChiefSapi manages the team and can delegate to specialists. Specialists can refer
 work to Chief; accepted handoffs retain task identity and return the responsible
-Sapi's result to the original chat. **Answer Chief** continues a clarification.
+Sapi's result to the original chat. When Chief needs clarification, it asks in the
+chat; answer there like any other message.
 Creating a Sapi or Group does not itself start work.
 
 Personal Tasks offers Upcoming and Past, with read-only YAML specifications and

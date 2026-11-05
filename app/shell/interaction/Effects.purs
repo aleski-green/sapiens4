@@ -155,7 +155,7 @@ runUpdate runtime dispatch action = do
       runUpdate runtime dispatch <<< U.ReceiveDocument request <<< either (Left <<< message) (M.decodeDocument request)
     U.LoadMemoImages request document -> memoImages runtime request document
     U.SendMessage request ->
-      let payload = D.obj $ [Tuple "text" (D.text request.text),Tuple "attachments" (D.array $ map D.text request.attachments)] <> maybe [] (\id -> [Tuple "workload" $ D.text id]) request.workload
+      let payload = D.obj $ [Tuple "text" (D.text request.text),Tuple "attachments" (D.array $ map D.text request.attachments)]
       in attempt (api runtime requested request.path "POST" payload) $
         runUpdate runtime dispatch <<< U.MessageReceived request <<< either (Left <<< message) (const $ Right unit)
     U.Notify caption -> notify caption

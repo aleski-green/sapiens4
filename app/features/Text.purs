@@ -2,6 +2,7 @@ module Sapiens.Text where
 
 import Prelude
 import Data.Array as A
+import Data.Int as I
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String as S
 import Data.String.CodeUnits as CU
@@ -89,7 +90,32 @@ time :: String -> String
 time = B.formatDate "" $ D.json {hour: "2-digit", minute: "2-digit"}
 
 attachment :: X.Attachment -> V.Html
-attachment item = if item.kind == X.LinkAttachment then V.link (item.value) (caption <> " ↗") else V.span [V.cls "attachment-item",V.attr "title" (item.value)] (caption)
+attachment item = case item.kind of
+  X.LinkAttachment -> V.link (item.value) (caption <> " ↗")
+  X.VoiceAttachment -> V.node "span" [V.cls "attachment-item voice-card",V.attr "title" item.name]
+    [V.node "span" [V.cls "voice-head"]
+      [V.textNode "span" [V.cls "voice-icon",V.attr "aria-hidden" "true"] "🎤"
+      ,V.textNode "strong" [] "Voice message"
+      ,V.textNode "span" [V.cls "voice-length"] (clock item.durationMs)
+      ,V.textNode "span" [V.cls ("voice-status " <> status)] statusLabel]
+    ,V.when (status /= "pending") $ V.textNode "span" [V.cls "voice-transcript"] transcript]
+  _ -> V.span [V.cls "attachment-item",V.attr "title" (item.value)] (caption)
   where
   kind = X.attachmentKindName item.kind
   caption = S.toUpper (S.take 1 kind) <> S.drop 1 kind <> " · " <> item.name
+  status = case item.transcriptStatus of
+    "done" -> "done"
+    "failed" -> "failed"
+    _ -> "pending"
+  statusLabel = case status of
+    "done" -> "Transcribed"
+    "failed" -> "Failed"
+    _ -> "Transcribing…"
+  transcript = if status == "failed" then "Couldn't transcribe this one. The audio is still attached." else D.fallback "(No speech detected)" item.transcript
+
+-- | Milliseconds as a clock: 65000.0 → "1:05".
+clock :: Number -> String
+clock ms = show (total / 60) <> ":" <> (if seconds < 10 then "0" else "") <> show seconds
+  where
+  total = I.floor (ms / 1000.0)
+  seconds = total `mod` 60

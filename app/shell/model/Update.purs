@@ -35,7 +35,6 @@ data Action
   | ChooseMention Int
   | MoveMention Int
   | DismissMention
-  | SetClarification X.Workload
   | PrepareDraft String String
   | SetMenu String
   | CloseMenu
@@ -101,7 +100,7 @@ data Command
 
 type Submission =
   { epoch :: Int, owner :: String, text :: String, attachments :: Array String
-  , workload :: Maybe String, path :: String }
+  , path :: String }
 
 submission :: M.Model -> Maybe Submission
 submission m =
@@ -109,9 +108,7 @@ submission m =
       items = M.attachments m
       owner = M.selected m
   in if (text == "" && A.null items) || Set.member m.selected m.sending || m.uploading > 0 || not (M.online m) || (M.busy m) || owner.retired || owner.archived || A.elem (m.snapshot.corpora.status) [X.Paused,X.Archived] then Nothing
-     else Just {epoch:m.epoch,owner:m.selected,text,attachments:map (_.id) items,path:M.ownerPath m <> "/messages",workload:case m.clarification of
-       Just work | work.owner == m.selected -> Just $ work.id
-       _ -> Nothing}
+     else Just {epoch:m.epoch,owner:m.selected,text,attachments:map (_.id) items,path:M.ownerPath m <> "/messages"}
 
 data Transition = Unchanged | Changed M.Model (Array Command) | Commands (Array Command)
 
@@ -216,7 +213,8 @@ update action m = case action of
     | otherwise ->
       let updated = case result of
             Left _ -> m {saving=false}
-            Right response -> (M.withWorkspaces (X.preferences false $ D.get "preferences" response) m) {saving=false,preferencesSaved=value}
+            Right response -> (M.withWorkspaces (X.preferences false $ D.get "preferences" response) m) {saving=false,preferencesSaved=value
+              ,attachments=M.dropRejected (D.get "attachment_drafts" $ D.parse value) (D.get "attachment_drafts" $ D.get "preferences" response) m.attachments}
           commands = case result of
             Left failure -> [Notify $ "Settings are not saved yet: " <> failure]
             Right _ -> []
@@ -242,7 +240,6 @@ update action m = case action of
     Just menu | not (A.null menu.choices) -> Changed (m {mention=Just $ menu {index=mod (menu.index+delta+A.length menu.choices) (A.length menu.choices)}}) []
     _ -> Unchanged
   DismissMention -> Changed (m {mention=Nothing}) []
-  SetClarification work -> Changed (m {clarification=Just work}) [Focus "#message-input"]
   PrepareDraft preset placeholder ->
     let start = CU.length (M.draft m) + if M.draft m == "" then 0 else 2
         value = M.draft m <> (if M.draft m == "" then "" else "\n\n") <> preset
@@ -287,6 +284,8 @@ update action m = case action of
         _ -> Unchanged
   RetryDocument key -> Changed (m {documents=O.delete key m.documents}) [LoadDocument]
   Draft value -> Changed (m {drafts=O.insert m.selected value m.drafts}) [ResizeComposer,UpdateMention,SavePreferences]
+  -- Voice messages go out one by one, in order, as each transcript is ready (Sapiens.Voice).
+  Send | A.any ((_ == X.VoiceAttachment) <<< _.kind) (M.attachments m) -> Commands [Dispatch Shell.VoiceSend]
   Send -> case submission m of
     Nothing -> Unchanged
     Just request -> Changed (m {sending=Set.insert m.selected m.sending,mention=Nothing}) [SendMessage request]
@@ -298,8 +297,7 @@ update action m = case action of
           Left failure -> Changed current [Notify failure]
           Right _ -> Changed
             (current {drafts=if S.trim (fromMaybe "" $ O.lookup request.owner m.drafts) == request.text then O.insert request.owner "" m.drafts else m.drafts
-              , attachments=O.insert request.owner (A.filter (\item -> not $ A.elem (item.id) request.attachments) $ fromMaybe [] $ O.lookup request.owner m.attachments) m.attachments
-              , clarification=Nothing})
+              , attachments=O.insert request.owner (A.filter (\item -> not $ A.elem (item.id) request.attachments) $ fromMaybe [] $ O.lookup request.owner m.attachments) m.attachments})
             [SavePreferences,ScrollToBottom,PollNow]
   RemoveAttachment id -> Changed (m {attachments=O.alter (Just <<< A.filter ((_ /= id) <<< _.id) <<< fromMaybe []) m.selected m.attachments}) [SavePreferences]
   ToggleExpanded key -> Changed (m {expanded=(if Set.member key m.expanded then Set.delete else Set.insert) key m.expanded}) []
