@@ -84,6 +84,7 @@ submitTurn s a d = do
     agentState s a >>= saveState s a . enqueueTurn (RunId i) flow message time
     pure i
    DB.message s i input attachments
+   DB.forgetDrafts s a attachments
    DB.project s a
    trimConversation s a
    pure (obj [("id",str i),("agent",str a),("status",str "queued"),("flow",toJSON flow)])

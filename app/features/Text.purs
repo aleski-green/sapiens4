@@ -2,6 +2,7 @@ module Sapiens.Text where
 
 import Prelude
 import Data.Array as A
+import Data.Int as I
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String as S
 import Data.String.CodeUnits as CU
@@ -89,7 +90,33 @@ time :: String -> String
 time = B.formatDate "" $ D.json {hour: "2-digit", minute: "2-digit"}
 
 attachment :: X.Attachment -> V.Html
-attachment item = if item.kind == X.LinkAttachment then V.link (item.value) (caption <> " ↗") else V.span [V.cls "attachment-item",V.attr "title" (item.value)] (caption)
+attachment item = case item.kind of
+  X.LinkAttachment -> V.link (item.value) (caption <> " ↗")
+  X.VoiceAttachment note -> V.node "span" [V.cls "attachment-item voice-card",V.attr "title" item.name]
+    [V.node "span" [V.cls "voice-head"]
+      [V.textNode "span" [V.cls "voice-icon",V.attr "aria-hidden" "true"] "🎤"
+      ,V.textNode "strong" [] "Voice message"
+      ,V.textNode "span" [V.cls "voice-length"] (clock note.durationMs)
+      ,V.textNode "span" [V.cls ("voice-status " <> (voiceStatus note.transcription).css)] (voiceStatus note.transcription).label]
+    ,case note.transcription of
+      X.TranscriptPending -> V.empty
+      X.Transcribed words -> V.textNode "span" [V.cls "voice-transcript"] (D.fallback "(No speech detected)" words)
+      X.TranscriptFailed _ -> V.textNode "span" [V.cls "voice-transcript"] "Couldn't transcribe this voice message. Retry it, or remove it."]
+  _ -> V.span [V.cls "attachment-item",V.attr "title" (item.value)] (caption)
   where
   kind = X.attachmentKindName item.kind
   caption = S.toUpper (S.take 1 kind) <> S.drop 1 kind <> " · " <> item.name
+
+-- | The badge on a voice card: its CSS state and its label.
+voiceStatus :: X.Transcription -> { css :: String, label :: String }
+voiceStatus = case _ of
+  X.TranscriptPending -> { css: "pending", label: "Transcribing…" }
+  X.Transcribed _ -> { css: "done", label: "Transcribed" }
+  X.TranscriptFailed _ -> { css: "failed", label: "Failed" }
+
+-- | Milliseconds as a clock: 65000.0 → "1:05".
+clock :: Number -> String
+clock ms = show (total / 60) <> ":" <> (if seconds < 10 then "0" else "") <> show seconds
+  where
+  total = I.floor (ms / 1000.0)
+  seconds = total `mod` 60

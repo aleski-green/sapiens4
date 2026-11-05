@@ -29,6 +29,7 @@ import Types
 import qualified Store as DB
 import Population
 import Workspace
+import Voice (receivePiece, cancelRecording, retryTranscription, draftable)
 import Memo
 import qualified Management as Mgt
 import qualified Execution as E
@@ -164,9 +165,9 @@ savePreferences s d = do
  rows <- DB.agents s
  groups <- DB.values s DB.Groups
  validated (validatePreferences rows groups d)
- forM_ (pairs (get d "attachment_drafts")) $ \(a,ids) -> void (resolveAttachments s a ids False)
+ drafts <- forM (pairs (get d "attachment_drafts")) $ \(a,ids) -> (\found -> (a, arr [get r "id" | r <- found, draftable r])) <$> resolveAttachments s a ids False
  prefs <- DB.singleton s DB.Preferences
- let current=merge prefs d
+ let current=merge prefs (if has d "attachment_drafts" then put "attachment_drafts" (obj drafts) d else d)
  DB.saveSingleton s DB.Preferences current
  pure (obj [("saved",Bool True),("preferences",current)])
 dispatch :: Service -> Text -> Text -> Maybe Value -> IO (Int,BL.ByteString,Text)
@@ -211,6 +212,9 @@ dispatch s method target body = locked s $ do
   ("POST",["api","agents",a,"turns",tid,action]) -> json 200 (E.turnAction s a tid action)
   ("PUT",["api","preferences"]) -> json 200 (savePreferences s d)
   ("POST",["api",kind,a,"attachments"]) | kind `elem` ["agents","groups"] -> owner kind a >> json 201 (createAttachment s a d)
+  ("POST",["api",kind,a,"voice"]) | kind `elem` ["agents","groups"] -> owner kind a >> json 200 (receivePiece s a d)
+  ("POST",["api",kind,a,"voice",recording,"cancel"]) | kind `elem` ["agents","groups"] -> owner kind a >> json 200 (cancelRecording s a recording)
+  ("POST",["api",kind,a,"attachments",i,"transcribe"]) | kind `elem` ["agents","groups"] -> owner kind a >> json 200 (retryTranscription s a i)
   ("POST",["api",kind,a,"browser"]) | kind `elem` ["agents","groups"] -> owner kind a >> json 200 (workspaceObserved s a d)
   ("POST",["api","groups",gid,"control"]) -> do
    void (G.getGroup s gid True)

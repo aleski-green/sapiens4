@@ -216,7 +216,8 @@ update action m = case action of
     | otherwise ->
       let updated = case result of
             Left _ -> m {saving=false}
-            Right response -> (M.withWorkspaces (X.preferences false $ D.get "preferences" response) m) {saving=false,preferencesSaved=value}
+            Right response -> (M.withWorkspaces (X.preferences false $ D.get "preferences" response) m) {saving=false,preferencesSaved=value
+              ,attachments=M.dropRejected (D.get "attachment_drafts" $ D.parse value) (D.get "attachment_drafts" $ D.get "preferences" response) m.attachments}
           commands = case result of
             Left failure -> [Notify $ "Settings are not saved yet: " <> failure]
             Right _ -> []
@@ -287,6 +288,8 @@ update action m = case action of
         _ -> Unchanged
   RetryDocument key -> Changed (m {documents=O.delete key m.documents}) [LoadDocument]
   Draft value -> Changed (m {drafts=O.insert m.selected value m.drafts}) [ResizeComposer,UpdateMention,SavePreferences]
+  -- Voice messages go out one by one, in order, as each transcript is ready (Sapiens.Voice).
+  Send | A.any X.isVoice (M.attachments m) -> Commands [Dispatch Shell.VoiceSend]
   Send -> case submission m of
     Nothing -> Unchanged
     Just request -> Changed (m {sending=Set.insert m.selected m.sending,mention=Nothing}) [SendMessage request]

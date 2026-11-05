@@ -4,7 +4,7 @@ import Sapiens.Form as F
 import Prelude
 import Data.Array as A
 import Data.Int as I
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set as Set
 import Data.String as S
 import Data.Tuple (Tuple(..))
@@ -93,10 +93,25 @@ rows m =
 
 composer :: M.Model -> V.Html
 composer m = V.node "div" [V.cls "composer-area",V.id "composer-area",V.hidden $ m.activity /= N.Chat N.Conversation || a.archived]
-  [ V.node "div" [V.id "attachment-chip"] $ map (\item -> V.div "attachment-chip" [T.attachment item,V.icon ("Remove " <> item.name) "×" $ RemoveAttachment $ item.id]) $ M.attachments m
+  [ case O.lookup m.selected m.outboxes of
+      Just o -> V.p "voice-outbox" ("Sending voice messages in order as each transcript is ready · " <> show (A.length o.voices) <> " left")
+      Nothing -> V.empty
+  , V.node "div" [V.id "attachment-chip"] $ map chip $ M.attachments m
   , V.node "form" [V.cls "composer",V.id "chat-form",V.submit Send]
       [V.node "textarea" [V.attr "rows" "2",V.id "message-input",V.attr "maxlength" "16000",V.attr "placeholder" placeholder,V.label $ "Message " <> a.name,V.value $ M.draft m,V.input Draft,V.on "keydown" MessageKey,V.click MentionCursor,V.attr "aria-expanded" $ show $ m.mention /= Nothing] []
-      ,V.div "composer-bottom" [V.icon "Add attachment" "＋" $ OpenDialog M.Attach F.NoRecord,V.textNode "button" [V.attr "type" "submit",V.cls "send-button",V.label "Send message",V.disabled blocked] "↑"]
+      ,case m.voice of
+        -- While recording here: red dot, live timer, Cancel (discard), Stop (finish and review) and Send (finish and send).
+        Just v | v.owner == m.selected -> V.node "div" [V.cls "voice-bar",V.attr "role" "status",V.attr "aria-live" "polite"]
+          [V.span [V.cls "voice-dot",V.attr "aria-hidden" "true"] ""
+          ,V.textNode "strong" [V.cls "voice-clock"] (T.clock v.elapsed)
+          ,V.span [V.cls "voice-hint"] (case v.phase of
+              M.Stopping M.SendAfter -> "Sending…"
+              M.Stopping M.Review -> "Finishing…"
+              _ -> "Recording")
+          ,V.button "button voice-cancel" "Cancel" VoiceCancel
+          ,V.when (not (M.isStopping v.phase)) $ V.button "button voice-stop" "Stop" VoiceStop
+          ,V.when (not (M.isStopping v.phase)) $ V.button "button primary voice-send" "Send" VoiceStopSend]
+        _ -> V.div "composer-bottom" [V.icon "Add attachment" "＋" $ OpenDialog M.Attach F.NoRecord,voiceButton,V.textNode "button" [V.attr "type" "submit",V.cls "send-button",V.label "Send message",V.disabled blocked] "↑"]
       ,case m.mention of
         Nothing -> V.empty
         Just menu -> V.node "div" [V.cls "mention-suggestions",V.id "mention-suggestions",V.attr "role" "listbox",V.label "Sapis"] $ if A.null menu.choices then [V.div "empty" [V.text "No matching Sapis."]] else A.mapWithIndex (\i entity -> V.node "button" [V.attr "type" "button",V.attr "role" "option",V.id $ "mention-option-" <> show i,V.attr "aria-selected" $ show $ i == menu.index,V.click $ MentionChoice i] [V.textNode "strong" [] ("@" <> entity.name),V.textNode "small" [] "Sapi"]) menu.choices
@@ -104,7 +119,17 @@ composer m = V.node "div" [V.cls "composer-area",V.id "composer-area",V.hidden $
   ]
   where
   a = M.selected m
+  -- While recording here the voice bar replaces this button; in another chat it explains why it can't start.
+  voiceButton = V.icon "Record voice message" "🎤" VoiceStart
+  -- A voice chip whose transcription failed offers Retry next to ×; it is never sent as it is.
+  chip item = V.div "attachment-chip" $ [T.attachment item]
+    <> (case map _.transcription (X.voiceOf item) of
+          Just (X.TranscriptFailed _) -> [V.button "button voice-retry" "Retry" (VoiceRetry item.id)]
+          _ -> [])
+    <> [V.icon ("Remove " <> item.name) "×" $ RemoveAttachment $ item.id]
+  -- Recording or sending voice messages blocks only the chat it belongs to.
+  recordingHere = maybe false (\v -> v.owner == m.selected) m.voice
   placeholder = case m.clarification of
     Just work | work.owner == m.selected -> "Clarify " <> work.taskId <> " for Chief…"
     _ -> if N.limit m.env < 3 then "Message…" else "Message " <> a.name <> "…"
-  blocked = not (M.online m) || (M.busy m) || a.retired || a.archived || A.elem (m.snapshot.corpora.status) [X.Paused,X.Archived] || Set.member m.selected m.sending || m.uploading > 0
+  blocked = not (M.online m) || (M.busy m) || a.retired || a.archived || A.elem (m.snapshot.corpora.status) [X.Paused,X.Archived] || Set.member m.selected m.sending || m.uploading > 0 || recordingHere || O.member m.selected m.outboxes

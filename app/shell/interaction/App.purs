@@ -32,6 +32,7 @@ import Sapiens.Work as Work
 import Sapiens.Update as U
 import Sapiens.Workspace as Workspace
 import Web.Event.Event as Event
+import Sapiens.Voice as Voice
 
 component :: forall q. C.Runtime -> H.Component q Environment Void Aff
 component runtime = H.mkComponent
@@ -191,7 +192,8 @@ handle runtime input = session input
       when (Workspace.native m) $ dispatch $ Browser $ Browser.Open (Browser.WebAddress url) Nothing
     _ -> do
       handled <- Corpora.handle runtime dispatch action
-      unless handled $ Dialog.handle runtime dispatch action
+      voiced <- if handled then pure true else Voice.handle runtime dispatch action
+      unless voiced $ Dialog.handle runtime dispatch action
   browserReceived epoch owner op = E.runUpdate runtime dispatch <<< U.BrowserReceived epoch owner op <<< either (Left <<< message) Right
   focusComposer = liftEffect $ B.focus "#message-input"
   updateEnvironment = liftEffect Platform.environment >>= \env -> H.modify_ _ {env=env}

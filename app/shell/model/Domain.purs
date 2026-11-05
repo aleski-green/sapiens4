@@ -5,7 +5,8 @@ import Data.Argonaut.Encode (class EncodeJson)
 import Data.Argonaut.Core (Json, toObject, toArray, toString, toBoolean, toNumber)
 import Data.Array as A
 import Data.Either (Either(..))
-import Data.Maybe (Maybe(..), fromMaybe, isJust)
+import Data.Int as I
+import Data.Maybe (Maybe(..), fromMaybe, isJust, maybe)
 import Data.Traversable (traverse)
 import Foreign.Object as O
 import Sapiens.Data as D
@@ -47,16 +48,55 @@ callName = case _ of
 blocksChat :: Turn -> Boolean
 blocksChat request = A.elem request.status [Queued,Running,OutputPending]
 
+-- | Fields every attachment has. Voice-only data lives inside its kind ('VoiceAttachment').
 type Attachment =
   { id :: String, kind :: AttachmentKind, name :: String, value :: String }
 
 attachment :: Json -> Attachment
 attachment value =
   { id: D.s "id" value
-  , kind: attachmentKind $ D.s "kind" value
+  , kind: if D.s "kind" value == "voice" then VoiceAttachment (voiceNote value) else attachmentKind $ D.s "kind" value
   , name: D.s "name" value
   , value: D.s "value" value
   }
+
+-- | Where Whisper is with a voice message. The transcript exists only once it is done,
+-- | so "done without text" or "failed with text" cannot be represented.
+data Transcription = TranscriptPending | Transcribed String | TranscriptFailed String
+derive instance eqTranscription :: Eq Transcription
+
+-- | What only a voice message has: its length, its recording, and its transcription.
+type VoiceNote = { durationMs :: Number, recording :: String, transcription :: Transcription }
+
+voiceNote :: Json -> VoiceNote
+voiceNote value =
+  { durationMs: D.n "duration_ms" value
+  , recording: D.s "recording" value
+  , transcription: case D.s "transcript_status" value of
+      "done" -> Transcribed (D.s "transcript" value)
+      "failed" -> TranscriptFailed (D.s "transcript_error" value)
+      _ -> TranscriptPending
+  }
+
+voiceOf :: Attachment -> Maybe VoiceNote
+voiceOf item = case item.kind of
+  VoiceAttachment note -> Just note
+  _ -> Nothing
+
+isVoice :: Attachment -> Boolean
+isVoice = isJust <<< voiceOf
+
+-- | One streamed piece of a recording, decoded once where the recorder hands it over.
+-- | 'wire' is the validated JSON exactly as the host expects it (it carries the audio).
+type VoicePiece = { recording :: String, index :: Int, final :: Boolean, wire :: Json }
+
+voicePiece :: Json -> Either String VoicePiece
+voicePiece value = do
+  record [field "recording" stringValue, field "index" numberValue, field "final" booleanValue, field "data" stringValue] value
+  index <- maybe (Left "index: expected a whole number") Right $ I.fromNumber $ D.n "index" value
+  when (index < 0) $ Left "index: expected zero or more"
+  when (D.s "recording" value == "") $ Left "recording: expected an id"
+  pure { recording: D.s "recording" value, index, final: D.b "final" value, wire: value }
 
 type Origin =
   { agent :: String, call :: String, group :: String, caller :: String }
@@ -545,7 +585,7 @@ mapValues check value = case toObject value of
   Just values -> void $ traverse check values
 
 checkAttachment :: Check
-checkAttachment = record [optional "id" stringValue, optional "kind" stringValue, optional "name" stringValue, optional "value" stringValue]
+checkAttachment = record [optional "id" stringValue, optional "kind" stringValue, optional "name" stringValue, optional "value" stringValue, optional "duration_ms" numberValue, optional "transcript" stringValue, optional "transcript_status" stringValue, optional "transcript_error" stringValue, optional "recording" stringValue]
 
 checkOrigin :: Check
 checkOrigin = record [optional "agent" stringValue, optional "call" stringValue, optional "group" stringValue, optional "caller" stringValue]
@@ -618,7 +658,7 @@ metadataField key value = if O.member key (fromMaybe O.empty $ toObject value) t
 withMetadata :: Notes -> NoteMetadata -> Notes
 withMetadata original patch = { revision: fromMaybe original.revision patch.revision, path: fromMaybe original.path patch.path, workspace: fromMaybe original.workspace patch.workspace, modified_at: fromMaybe original.modified_at patch.modified_at, modified_by: fromMaybe original.modified_by patch.modified_by, created_at: fromMaybe original.created_at patch.created_at, created_by: fromMaybe original.created_by patch.created_by }
 
-data AttachmentKind = ImageAttachment | DocumentAttachment | LinkAttachment | FileAttachment | OtherAttachment String
+data AttachmentKind = ImageAttachment | DocumentAttachment | LinkAttachment | FileAttachment | VoiceAttachment VoiceNote | OtherAttachment String
 derive instance eqAttachmentKind :: Eq AttachmentKind
 
 attachmentKind :: String -> AttachmentKind
@@ -635,6 +675,7 @@ attachmentKindName = case _ of
   DocumentAttachment -> "document"
   LinkAttachment -> "link"
   FileAttachment -> "filepath"
+  VoiceAttachment _ -> "voice"
   OtherAttachment value -> value
 
 instance encodeAttachmentKind :: EncodeJson AttachmentKind where

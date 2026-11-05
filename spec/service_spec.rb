@@ -1,4 +1,10 @@
+require 'securerandom'
+require_relative 'support/voice'
+require_relative 'support/whisper'
+
 RSpec.describe 'Local service contracts' do
+  include VoiceAudio
+
   it 'persists identity, replies, drafts and execution mode without replaying completed work' do
     agent = host.agent
     original = host.state
@@ -294,6 +300,161 @@ RSpec.describe 'Local service contracts' do
   ].each do |attachment|
     it "rejects unsafe attachment #{attachment.inspect}" do
       expect(host.request('POST', "/api/agents/#{chief}/attachments", attachment).first).to eq(400)
+    end
+  end
+
+
+  it 'cuts streamed voice pieces into one-minute voice messages' do
+    recording = SecureRandom.uuid
+    path = "/api/agents/#{chief}/voice"
+    replies = (0..30).map { |i| host.api('POST', path, {recording: recording, index: i, final: i == 30, data: voice_piece(2)}, status: 200) }
+    messages = replies.flat_map { |reply| reply['messages'] }
+    expect(messages.map { |m| [m['kind'], m['part'], m['duration_ms']] }).to eq([['voice', 0, 60000], ['voice', 1, 2000]])
+    expect(replies[29]['messages'].size).to eq(1)
+    expect(messages.map { |m| m['transcript_status'] }).to all(eq('pending'))
+    audio = File.binread(messages.first['value'])
+    expect([audio.byteslice(0, 4), audio.bytesize]).to eq(['RIFF', 44 + 60 * 32000])
+  end
+
+  it 'gives the Sapi the spoken words of a voice message' do
+    whisper = WhisperStub.new(' Please compare the two offers. ')
+    @host.close
+    @host = Host.new(environment: {'SAPIENS_WHISPER_URL' => whisper.url})
+    voice = host.api('POST', "/api/agents/#{chief}/voice", {recording: SecureRandom.uuid, index: 0, final: true, data: voice_piece(2)})['messages'].first
+    host.api('PUT', '/api/preferences', attachment_drafts: {chief => [voice['id']]})
+    draft = Contract.wait(description: 'voice transcript') do
+      item = Array(host.state.dig('attachment_drafts', chief)).first
+      item if item && item['transcript_status'] == 'done'
+    end
+    expect(draft['transcript']).to eq('Please compare the two offers.')
+    expect(whisper.audio_received).to be(true)
+    host.turn(host.submit(chief, '', attachments: [voice['id']]))
+    expect(host.calls.map { |call| call['prompt'] }.join("\n")).to include('Please compare the two offers.')
+  ensure
+    whisper&.close
+  end
+
+  it 'never lets a sent voice message come back as a draft' do
+    whisper = WhisperStub.new(' Here is my voice note. ')
+    @host.close
+    @host = Host.new(environment: {'SAPIENS_WHISPER_URL' => whisper.url})
+    voice = host.api('POST', "/api/agents/#{chief}/voice", {recording: SecureRandom.uuid, index: 0, final: true, data: voice_piece(2)})['messages'].first
+    save_drafts = ->(ids) { host.api('PUT', '/api/preferences', attachment_drafts: {chief => ids}) }
+    drafts = -> { Array(host.state.dig('attachment_drafts', chief)).map { |item| item['id'] } }
+    save_drafts.([voice['id']])
+    expect(drafts.()).to eq([voice['id']])
+    Contract.wait(description: 'voice transcript') { Array(host.state.dig('attachment_drafts', chief)).first&.dig('transcript_status') == 'done' }
+    host.turn(host.submit(chief, 'Here is my voice note', attachments: [voice['id']]))
+    expect(drafts.()).to eq([])
+    # A second device that has not caught up yet saves its old drafts again.
+    save_drafts.([voice['id']])
+    expect(drafts.()).to eq([])
+  ensure
+    whisper&.close
+  end
+
+  it 'answers a resent voice piece with the voice message it already created' do
+    recording = SecureRandom.uuid
+    path = "/api/agents/#{chief}/voice"
+    piece = ->(index) { {recording: recording, index: index, final: false, data: voice_piece(2)} }
+    (0..28).each { |i| host.api('POST', path, piece.(i)) }
+    first = host.api('POST', path, piece.(29))['messages']
+    expect(first.size).to eq(1)
+    # The reply to piece 29 was lost on the way to the phone, so the phone sends it again.
+    again = host.api('POST', path, piece.(29))
+    expect(again['duplicate']).to be(true)
+    expect(again['messages'].map { |m| m['id'] }).to eq(first.map { |m| m['id'] })
+  end
+
+  it 'saves each voice message once when the host stops halfway through a piece' do
+    recording = SecureRandom.uuid
+    path = "/api/agents/#{chief}/voice"
+    dir = File.join(host.root, 'uploads', chief, 'voice', recording)
+    piece = ->(index) { {recording: recording, index: index, final: false, data: voice_piece(2)} }
+    (0..28).each { |i| host.api('POST', path, piece.(i)) }
+    before = Dir.children(dir).to_h { |name| [name, File.binread(File.join(dir, name))] }
+    first = host.api('POST', path, piece.(29))['messages']
+    # A crash after the voice message was saved but before progress was: the recording state is
+    # still the old one, so the phone's resend is applied again from the start.
+    Dir.children(dir).each { |name| File.delete(File.join(dir, name)) }
+    before.each { |name, bytes| File.binwrite(File.join(dir, name), bytes) }
+    again = host.api('POST', path, piece.(29))
+    expect(again['duplicate']).to be(false)
+    expect(again['messages'].map { |m| m['id'] }).to eq(first.map { |m| m['id'] })
+  end
+
+  it 'refuses to continue a recording whose saved progress is damaged' do
+    recording = SecureRandom.uuid
+    path = "/api/agents/#{chief}/voice"
+    host.api('POST', path, {recording: recording, index: 0, final: false, data: voice_piece(2)})
+    progress = File.join(host.root, 'uploads', chief, 'voice', recording, 'progress.json')
+    File.write(progress, JSON.generate(next_piece: 1.5, next_part: 0, buffered: 64000, finished: false))
+    expect(host.request('POST', path, {recording: recording, index: 1, final: false, data: voice_piece(2)}).first).to eq(500)
+  end
+
+  it 'removes a cancelled recording from the host and refuses its late pieces' do
+    recording = SecureRandom.uuid
+    path = "/api/agents/#{chief}/voice"
+    messages = (0..29).flat_map { |i| host.api('POST', path, {recording: recording, index: i, final: false, data: voice_piece(2)})['messages'] }
+    ids = messages.map { |m| m['id'] }
+    host.api('PUT', '/api/preferences', attachment_drafts: {chief => ids})
+    host.api('POST', "#{path}/#{recording}/cancel", {})
+    expect(Array(host.state.dig('attachment_drafts', chief))).to be_empty
+    expect(messages.map { |m| File.exist?(m['value']) }).to all(be(false))
+    expect(host.request('POST', path, {recording: recording, index: 30, final: true, data: voice_piece(2)}).first).to eq(409)
+    expect(host.request('POST', "/api/agents/#{chief}/messages", {text: '', attachments: ids}).first).to eq(409)
+    # A device that has not caught up yet cannot bring the cancelled voice message back.
+    host.api('PUT', '/api/preferences', attachment_drafts: {chief => ids})
+    expect(Array(host.state.dig('attachment_drafts', chief))).to be_empty
+  end
+
+  it 'sends a voice message only after it is transcribed' do
+    @host.close
+    @host = Host.new(environment: {'SAPIENS_WHISPER_URL' => 'http://127.0.0.1:9'})
+    voice = host.api('POST', "/api/agents/#{chief}/voice", {recording: SecureRandom.uuid, index: 0, final: true, data: voice_piece(2)})['messages'].first
+    # Whisper is unreachable, so the transcript stays pending and the Sapi must not get an empty message.
+    expect(host.request('POST', "/api/agents/#{chief}/messages", {text: '', attachments: [voice['id']]}).first).to eq(409)
+  end
+
+  it 'retries a failed transcription when asked' do
+    whisper = WhisperStub.new('', status: 500)
+    @host.close
+    @host = Host.new(environment: {'SAPIENS_WHISPER_URL' => whisper.url})
+    voice = host.api('POST', "/api/agents/#{chief}/voice", {recording: SecureRandom.uuid, index: 0, final: true, data: voice_piece(2)})['messages'].first
+    host.api('PUT', '/api/preferences', attachment_drafts: {chief => [voice['id']]})
+    status = -> { Array(host.state.dig('attachment_drafts', chief)).first&.dig('transcript_status') }
+    Contract.wait(description: 'failed transcript') { status.() == 'failed' }
+    expect(host.request('POST', "/api/agents/#{chief}/messages", {text: '', attachments: [voice['id']]}).first).to eq(409)
+    retried = host.api('POST', "/api/agents/#{chief}/attachments/#{voice['id']}/transcribe", {})
+    expect(retried['transcript_status']).to eq('pending')
+    Contract.wait(description: 'second attempt') { whisper.requests >= 2 && status.() == 'failed' }
+  ensure
+    whisper&.close
+  end
+
+  it 'ignores a resent voice piece and refuses a missing one' do
+    recording = SecureRandom.uuid
+    path = "/api/agents/#{chief}/voice"
+    piece = ->(index) { {recording: recording, index: index, final: false, data: voice_piece(2)} }
+    expect(host.api('POST', path, piece.(0), status: 200)['duplicate']).to be(false)
+    expect(host.api('POST', path, piece.(0), status: 200)['duplicate']).to be(true)
+    expect(host.request('POST', path, piece.(2)).first).to eq(409)
+    expect(host.api('POST', path, piece.(1), status: 200)['duplicate']).to be(false)
+  end
+
+  {
+    'a malformed recording id' => {recording: 'not-a-uuid'},
+    'a negative index' => {index: -1},
+    'a fractional index' => {index: 0.5},
+    'stereo audio' => {data: -> { voice_piece(2, channels: 2) }},
+    'the wrong sample rate' => {data: -> { voice_piece(2, rate: 8000) }},
+    'more than 5 seconds of audio' => {data: -> { voice_piece(6) }},
+    'data that is not base64' => {data: '***'}
+  }.each do |label, change|
+    it "rejects a voice piece with #{label}" do
+      body = {recording: SecureRandom.uuid, index: 0, final: false, data: voice_piece(2)}
+      change.each { |key, value| body[key] = value.respond_to?(:call) ? instance_exec(&value) : value }
+      expect(host.request('POST', "/api/agents/#{chief}/voice", body).first).to eq(400)
     end
   end
 

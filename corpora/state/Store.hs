@@ -120,6 +120,15 @@ attachmentTable :: Text -> Text
 attachmentTable a = if "group_" `T.isPrefixOf` a then "group_attachments" else "attachments"
 saveAttachment :: Service -> Value -> IO ()
 saveAttachment s v = executeSQL s ("INSERT INTO " <> attachmentTable (at v "agent") <> " VALUES (?,?,?)") [sql (get v "id"),sql (get v "agent"),SQLText (jsonText v)]
+
+-- | Voice messages still waiting for a transcript, across Sapis and groups. A cancelled
+-- recording's voice messages are skipped: their audio is gone and nobody will send them.
+pendingVoices :: Service -> IO [Value]
+pendingVoices s = filter waiting . map (parseJSONText . (`at` "value")) <$> queryRows s "SELECT value FROM attachments UNION ALL SELECT value FROM group_attachments" ["value"] []
+ where waiting v = at v "kind" == "voice" && at v "transcript_status" == "pending" && get v "cancelled" /= Bool True
+-- | Replace a saved attachment's JSON (used to store a voice transcript).
+updateAttachment :: Service -> Value -> IO ()
+updateAttachment s v = executeSQL s ("UPDATE " <> attachmentTable (at v "agent") <> " SET value=? WHERE id=?") [SQLText (jsonText v), sql (get v "id")]
 message :: Service -> Text -> Text -> [Value] -> IO ()
 message s i t as = executeSQL s "INSERT OR IGNORE INTO message_inputs VALUES (?,?,?)" [SQLText i,SQLText t,SQLText (jsonText (arr as))]
 record :: Service -> [Text] -> Text -> Text -> Value -> Text -> Maybe Text -> IO ()
@@ -189,3 +198,19 @@ pulseCall s tick a kind slot groups = do
  let v = merge (toJSON tick) (obj [("agent",str a),("agencyKind",str kind),("slot",num slot),("timestamp",str t)])
  executeSQL s "INSERT INTO pulse_calls(value) VALUES (?)" [SQLText (jsonText v)]
  record s (a:groups) a "pulse.dispatched" v "system" (Just kind)
+-- A sent attachment is marked "sent" and leaves the composer drafts on the host itself,
+-- so a device that is a few seconds behind can never put it back.
+forgetDrafts :: Service -> Text -> [Value] -> IO ()
+forgetDrafts _ _ [] = pure ()
+forgetDrafts s owner rows = do
+ forM_ rows $ \row -> updateAttachment s (put "sent" (Bool True) row)
+ dropDrafts s owner rows
+
+-- | Take these attachments out of the owner's composer drafts (sent or cancelled ones).
+dropDrafts :: Service -> Text -> [Value] -> IO ()
+dropDrafts _ _ [] = pure ()
+dropDrafts s owner rows = do
+ prefs <- singleton s Preferences
+ let drafts = get prefs "attachment_drafts"
+     ids = map (`get` "id") rows
+ when (has drafts owner) $ saveSingleton s Preferences (put "attachment_drafts" (put owner (arr (filter (`notElem` ids) (list (get drafts owner)))) drafts) prefs)

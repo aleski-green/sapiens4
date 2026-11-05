@@ -12,6 +12,8 @@ import Data.Set as Set
 import Data.String as S
 import Data.Tuple (Tuple(..))
 import Foreign.Object as O
+import Halogen (SubscriptionId)
+import Libs4.Browser (Voice)
 import Libs4.Browser as B
 import Sapiens.Data as D
 import Sapiens.Browser as Browser
@@ -82,6 +84,36 @@ connectionResult reachable = case _ of
   ChangingLifecycle _ -> ChangingLifecycle reachable
   _ -> if reachable then Online else Offline
 
+-- | Where a recording is in its life. The recorder exists only while recording, and how it
+-- | ends is decided once, when Stop or Send is pressed.
+data RecordingPhase = Starting | Recording Voice | Stopping StopAction
+
+-- | What happens when recording stops: keep the voice messages for review, or send them.
+data StopAction = Review | SendAfter
+derive instance eqStopAction :: Eq StopAction
+
+isStopping :: RecordingPhase -> Boolean
+isStopping = case _ of
+  Stopping _ -> true
+  _ -> false
+
+phaseRecorder :: RecordingPhase -> Maybe Voice
+phaseRecorder = case _ of
+  Recording recorder -> Just recorder
+  _ -> Nothing
+
+-- | One voice recording in progress. Pieces wait in 'queue' and are uploaded one at a time,
+-- | in order, to 'path' (captured when recording started, so switching chats cannot redirect them).
+-- | Uploading runs alongside recording, so its state stays separate from 'phase'.
+type VoiceSession =
+  { owner :: String, path :: String, epoch :: Int, phase :: RecordingPhase, subscription :: SubscriptionId
+  , queue :: Array X.VoicePiece, sending :: Boolean, attempts :: Int, pieces :: Int
+  , recording :: String, startedAt :: Number, elapsed :: Number }
+
+-- | One chat's voice messages being sent one by one, in order, each as soon as its own
+-- | transcript is ready. Kept per chat ('outboxes'), so one chat never blocks another.
+type Outbox = { path :: String, text :: String, others :: Array String, voices :: Array String, sending :: Boolean }
+
 type Model = Record (InterfaceState (ContentState SessionState))
 
 type InterfaceState r =
@@ -107,13 +139,13 @@ type SessionState =
   , epoch :: Int, sequence :: Int, now :: Number, env :: Environment
   , records :: Array X.Corpora, active :: String, connection :: ConnectionState
   , localAvailable :: Boolean, showArchived :: Boolean, installRequired :: Boolean
-  , preferencesSaved :: String
+  , preferencesSaved :: String, voice :: Maybe VoiceSession, outboxes :: O.Object Outbox
   )
 
 initial :: Environment -> Model
 initial env =
   { snapshot:X.emptySnapshot, agents:[], messages:O.empty, selected:"", activity:N.Chat N.Conversation, scope:N.All, groupView:Nothing
-  , mention:Nothing, drafts:O.empty, attachments:O.empty, sending:Set.empty, uploading:0, clarification:Nothing
+  , mention:Nothing, drafts:O.empty, attachments:O.empty, sending:Set.empty, uploading:0, clarification:Nothing, voice:Nothing, outboxes:O.empty
   , workspaces:O.empty, workspaceRevision:0.0, documents:O.empty, expanded:Set.empty
   , polling:false,pollGeneration:0,saving:false,lastPreview:0.0,nativeReporting:false,nativeReports:[]
   , epoch:0, sequence:0, now:0.0, env, panes:[N.ChatPane,N.Sidebar,N.Workspace], search:"", searchOpen:false, menu:Nothing, dialog:Nothing
@@ -182,8 +214,20 @@ project :: Json -> Model -> Model
 project raw m = projectSnapshot (X.snapshot raw) m
 
 projectSnapshot :: X.Snapshot -> Model -> Model
-projectSnapshot snapshot m = withWorkspaces snapshot.preferences m { snapshot=snapshot, agents=agents, messages=messages, selected=id, groupView=groupView, scope=scope }
+projectSnapshot snapshot m = withWorkspaces snapshot.preferences m { snapshot=snapshot, agents=agents, messages=messages, selected=id, groupView=groupView, scope=scope, attachments=refreshed }
   where
+  -- Voice chips waiting in the composer pick up their transcript as the host finishes it. A chip the
+  -- host had before but no longer has was sent or removed on another device and leaves; a chip the host
+  -- has not seen yet was just added here and stays; a new chip on the host was added elsewhere and appears.
+  refreshed = O.mapWithKey syncDrafts (O.union m.attachments (map (const []) snapshot.attachment_drafts))
+  syncDrafts owner items =
+    let latest = fromMaybe [] (O.lookup owner snapshot.attachment_drafts)
+        before = map _.id (fromMaybe [] (O.lookup owner m.snapshot.attachment_drafts))
+        kept = A.mapMaybe (\item -> case A.find (\row -> row.id == item.id) latest of
+          Just row -> Just row
+          Nothing -> if A.elem item.id before then Nothing else Just item) items
+        added = A.filter (\row -> not (A.any (\item -> item.id == row.id) items) && not (A.elem row.id before)) latest
+    in kept <> added
   personal = map (\a -> a {busy=A.any (\t -> t.agent == a.id && t.status == X.Running) turns
     , lastActivity=B.parseTime $ D.fallback a.created $ fromMaybe "" $ _.created <$> A.last (A.filter (\t -> t.agent == a.id) turns)
     , preview=D.cut 150 $ D.replace "\\s+" " " $ D.fallback "Ready for your message." $ fromMaybe "" $ _.text <$> (O.lookup a.id personalMessages >>= A.last)}) snapshot.agents
@@ -290,3 +334,9 @@ valueOf = case _ of
 
 decodeDocument :: Request -> Json -> Either String X.Document
 decodeDocument r = X.decodeDocument (S.take 5 r.key == "tasks")
+
+-- | Chips this device saved but the host refused (already sent from another device) leave the composer.
+dropRejected :: Json -> Json -> O.Object (Array X.Attachment) -> O.Object (Array X.Attachment)
+dropRejected sent kept = O.mapWithKey (\owner items -> A.filter (\item -> not (A.elem item.id (ids owner sent)) || A.elem item.id (ids owner kept)) items)
+  where
+  ids owner value = map D.str (D.arr (D.get owner value))

@@ -6,6 +6,7 @@ import Assets
 import HTTP
 import Bridge
 import Registry
+import Voice (transcribeLoop)
 import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Exception
@@ -49,6 +50,7 @@ startHost root requested managed = do
    worker <- async (runSettingsSocket settings socket (application service bridge registry port))
    void (race (wait worker) (takeMVar ready))
    Service.startService service
+   void (async (transcribeLoop service))
    stopped <- newMVar False
    let stop = modifyMVar_ stopped $ \done -> if done then pure True else do
         mapM_ closeRegistry registry
