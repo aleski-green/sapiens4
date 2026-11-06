@@ -5,7 +5,6 @@ import Control.Exception
 import Control.Concurrent.MVar
 import Control.Monad
 import Data.Aeson hiding (pairs)
-import Data.Int
 import Data.List (nub,find)
 import qualified Data.Map.Strict as M
 import Data.Maybe
@@ -16,7 +15,6 @@ import qualified Data.Text.Encoding
 import Database.SQLite.Simple hiding (withTransaction)
 import qualified Database.SQLite.Simple as SQLite
 import System.FilePath
-import Text.Read (readMaybe)
 import qualified Data.List.NonEmpty as NE
 import Types
 
@@ -81,25 +79,37 @@ initialize :: Service -> IO ()
 initialize s = connection s $ \db -> do
  execute_ db "PRAGMA journal_mode=WAL"
  [Only version] <- query_ db "PRAGMA user_version" :: IO [Only Int]
- require (version `elem` [0..8]) 500 ("Unsupported CORPORA schema: " <> T.pack (show version))
- mapM_ (execute_ db) [
-  "CREATE TABLE IF NOT EXISTS scheduled_routines (sequence INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS system_pulse (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS pulse_calls (sequence INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS turn_details (id TEXT PRIMARY KEY, value TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL, color TEXT NOT NULL, face TEXT NOT NULL, created TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS turns (id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(id), flow TEXT NOT NULL, input TEXT NOT NULL, status TEXT NOT NULL, output TEXT, error TEXT, tokens INTEGER NOT NULL, created TEXT NOT NULL)",
-  "CREATE INDEX IF NOT EXISTS turns_agent ON turns(agent,created)",
-  "CREATE TABLE IF NOT EXISTS preferences (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(id), value TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS message_inputs (job TEXT PRIMARY KEY, text TEXT NOT NULL, attachments TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS workloads (id TEXT PRIMARY KEY, value TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS groups (id TEXT PRIMARY KEY, value TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS group_attachments (id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES groups(id), value TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS activity_events (id INTEGER PRIMARY KEY, owner TEXT NOT NULL, timestamp TEXT NOT NULL, actor TEXT NOT NULL, entity TEXT NOT NULL, event TEXT NOT NULL, agency TEXT, details TEXT NOT NULL)",
-  "CREATE INDEX IF NOT EXISTS activity_events_owner ON activity_events(owner,id)"]
- when (version `elem` [1,2]) $ execute_ db "INSERT OR IGNORE INTO turns SELECT * FROM jobs WHERE flow IN ('chat','computer')"
- execute_ db "PRAGMA user_version=8"
+ require (version `elem` [0..9]) 500 ("Unsupported CORPORA schema: " <> T.pack (show version))
+ when (version == 9) $ do
+  columns <- query_ db "SELECT name FROM pragma_table_info('routine_occurrences') ORDER BY cid" :: IO [Only Text]
+  require (map fromOnly columns == ["id","value","status"]) 500 "Unsupported CORPORA schema 9 layout"
+ SQLite.withTransaction db $ do
+  mapM_ (execute_ db) [
+   "CREATE TABLE IF NOT EXISTS scheduled_routines (sequence INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL)",
+   "CREATE TABLE IF NOT EXISTS routine_occurrences (id TEXT PRIMARY KEY, value TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('deferred','admitted_pending','admitted_ready','closed')))",
+   "CREATE TABLE IF NOT EXISTS system_pulse (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)",
+   "CREATE TABLE IF NOT EXISTS pulse_calls (sequence INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL)",
+   "CREATE TABLE IF NOT EXISTS turn_details (id TEXT PRIMARY KEY, value TEXT NOT NULL)",
+   "CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL, color TEXT NOT NULL, face TEXT NOT NULL, created TEXT NOT NULL)",
+   "CREATE TABLE IF NOT EXISTS turns (id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(id), flow TEXT NOT NULL, input TEXT NOT NULL, status TEXT NOT NULL, output TEXT, error TEXT, tokens INTEGER NOT NULL, created TEXT NOT NULL)",
+   "CREATE INDEX IF NOT EXISTS turns_agent ON turns(agent,created)",
+   "CREATE TABLE IF NOT EXISTS preferences (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)",
+   "CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(id), value TEXT NOT NULL)",
+   "CREATE TABLE IF NOT EXISTS message_inputs (job TEXT PRIMARY KEY, text TEXT NOT NULL, attachments TEXT NOT NULL)",
+   "CREATE TABLE IF NOT EXISTS workloads (id TEXT PRIMARY KEY, value TEXT NOT NULL)",
+   "CREATE TABLE IF NOT EXISTS groups (id TEXT PRIMARY KEY, value TEXT NOT NULL)",
+   "CREATE TABLE IF NOT EXISTS group_attachments (id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES groups(id), value TEXT NOT NULL)",
+   "CREATE TABLE IF NOT EXISTS activity_events (id INTEGER PRIMARY KEY, owner TEXT NOT NULL, timestamp TEXT NOT NULL, actor TEXT NOT NULL, entity TEXT NOT NULL, event TEXT NOT NULL, agency TEXT, details TEXT NOT NULL)",
+   "CREATE INDEX IF NOT EXISTS activity_events_owner ON activity_events(owner,id)"]
+  when (version `elem` [1,2]) $ execute_ db "INSERT OR IGNORE INTO turns SELECT * FROM jobs WHERE flow IN ('chat','computer')"
+  when (version < 9) $ do
+   execute_ db "UPDATE scheduled_routines SET value=json_set(value,'$.policySelection',json('{\"kind\":\"awaiting_selection\"}')) WHERE CASE WHEN json_valid(value) THEN json_type(value)='object' AND json_type(value,'$.policySelection') IS NULL ELSE 0 END"
+   -- Schema 8 treated absent/null paused as False.
+   execute_ db "UPDATE scheduled_routines SET value=json_set(value,'$.paused',json('false')) WHERE CASE WHEN json_valid(value) THEN json_type(value)='object' AND (json_type(value,'$.paused') IS NULL OR json_type(value,'$.paused')='null') ELSE 0 END"
+   execute_ db "PRAGMA user_version=9"
+  execute_ db "CREATE INDEX IF NOT EXISTS routine_occurrences_open_routine ON routine_occurrences(CASE WHEN json_valid(value) THEN json_extract(value,'$.routine.id') ELSE NULL END) WHERE status<>'closed'"
+  execute_ db "CREATE INDEX IF NOT EXISTS routine_occurrences_status ON routine_occurrences(status)"
+
 agents :: Service -> IO [Value]
 agents s = map toJSON <$> agentProfiles s
 agentProfiles :: Service -> IO [AgentProfile]
@@ -146,8 +156,15 @@ projectTurn owner state turn = TurnProjection status origin owners actor output
  where
  status=if turnStatus turn==Done && turnField turn "warning"/=Null then Warning else turnStatus turn
  origin=turnField turn "origin" `fallback` empty
- owners=owner:[at origin "group" | has origin "group"]
- actor=if status==Queued then if has origin "routine" then "system" else text (get origin "author" `fallback` str "admin") else owner
+ owners=owner:case turnOrigin turn of
+  ValidOrigin parsed -> map groupIdText (maybeToList (originGroup parsed))
+  MissingOrigin -> []
+  InvalidOrigin _ _ -> []
+ actor=if status/=Queued then owner else case turnOrigin turn of
+  ValidOrigin parsed | originIsScheduled parsed -> "system"
+                     | otherwise -> text (get (Object (originMetadata parsed)) "author" `fallback` str "admin")
+  MissingOrigin -> "admin"
+  InvalidOrigin _ _ -> owner
  output=listToMaybe [get m "content" | m<-items (stateJSON state) "chat",get m "turn"==toJSON (turnId turn),at m "role"=="agent"]
 
 project :: Service -> Text -> IO ()
@@ -178,11 +195,24 @@ turns s = do
  pure [let msg=M.findWithDefault empty (at v "id") messagesById; d=M.findWithDefault empty (at v "id") detailsById in merge (merge v d) (obj [("attachments",get msg "attachments" `asJSON` arr []),("input",get msg "text" `fallback` get v "input")]) | v <- rows]
  where asJSON (String t) _ = parseJSONText t; asJSON _ def = def
 saveRoutine :: Service -> Value -> IO Value
-saveRoutine s v = connection s $ \db -> do
- sequenceId <- if has v "id" then maybe (failure 500 "Invalid scheduled routine ID") pure (T.stripPrefix "routine_sch_" (at v "id") >>= readMaybe . T.unpack :: Maybe Int64) else execute_ db "INSERT INTO scheduled_routines(value) VALUES ('{}')" >> lastInsertRowId db
- let i = "routine_sch_" <> T.justifyRight 5 '0' (T.pack (show sequenceId)); value = put "id" (str i) v
- execute db "UPDATE scheduled_routines SET value=? WHERE sequence=?" (jsonText value,sequenceId)
+saveRoutine s v = connection s $ \db -> saveRoutineOn db v
+saveRoutineOn :: Connection -> Value -> IO Value
+saveRoutineOn db v = if has v "id" then do
+ identity <- maybe (failure 500 "Invalid scheduled routine ID") pure (parseRoutineId (at v "id"))
+ let value=put "id" (toJSON identity) v
+ execute db "UPDATE scheduled_routines SET value=? WHERE sequence=? AND CASE WHEN json_valid(value) THEN json_extract(value,'$.id') END=?"
+  (jsonText value,routineIdSequence identity,routineIdText identity)
+ changed <- changes db
+ require (changed == 1) 409 "Scheduled routine identity changed before saving"
  pure value
+ else do
+  execute_ db "INSERT INTO scheduled_routines(value) VALUES ('{}')"
+  sequenceId <- lastInsertRowId db
+  let identity="routine_sch_" <> T.justifyRight 5 '0' (T.pack (show sequenceId))
+      value=put "id" (str identity) v
+  execute db "UPDATE scheduled_routines SET value=? WHERE sequence=?" (jsonText value,sequenceId)
+  pure value
+
 pulseCall :: Service -> Pulse -> Text -> Text -> Int -> [Text] -> IO ()
 pulseCall s tick a kind slot groups = do
  t <- now

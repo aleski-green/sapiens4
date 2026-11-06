@@ -6,7 +6,7 @@ module GroupWork where
 import Control.Monad
 import Data.Aeson hiding (pairs)
 import qualified Data.Aeson.KeyMap as KM
-import Data.Maybe (fromMaybe, isNothing, isJust)
+import Data.Maybe (fromMaybe, isNothing, isJust, maybeToList)
 import Data.Aeson.Types (parseEither, parseMaybe)
 import Data.Text (Text)
 import Data.Time (UTCTime, getCurrentTime)
@@ -62,6 +62,79 @@ prepareTask lead patch = case patch.title of
 newTask :: TaskId -> UTCTime -> Text -> CreateTask -> GroupTask
 newTask identity created actor draft = GroupTask identity draft.title draft.body draft.assignee Backlog False 1
  (KM.fromList [("created",str (timestamp created)),("author",str actor),("updated_by",str actor),("history",arr []),("results",arr [])])
+newScheduledTask :: TaskId -> UTCTime -> Text -> Text -> AgentId -> RoutineId -> GroupTask
+newScheduledTask identity created title body assignee routine = base
+ { state=InProgress, metadata=KM.fromList [("taskType",str "automated"),("routine",toJSON routine)] <> base.metadata }
+ where base=newTask identity created "admin" (CreateTask title body assignee)
+
+taskLink :: GroupTask -> TaskRevision
+taskLink task = TaskRevision task.identity task.revision
+
+taskRoutine :: GroupTask -> Either Text (Maybe RoutineId)
+taskRoutine task = case KM.lookup "routine" task.metadata of
+ Nothing -> Right Nothing
+ Just raw -> Just <$> either (Left . T.pack) Right (parseEither parseJSON raw)
+
+validateTaskOrigin :: GroupTask -> ExecutionOrigin -> Either Text ()
+validateTaskOrigin task origin = case originPurpose origin of
+ ScheduledExecution scheduled -> do
+  routine <- taskRoutine task
+  unless (routine == Just (scheduledRoutine scheduled)) (Left "Scheduled Group request belongs to another Routine task")
+ OrdinaryWork -> Right ()
+ RoutinePolicySetup _ -> Right ()
+
+restartTaskOrigin :: GroupTask -> [GroupRequest] -> Either Text StoredOrigin
+restartTaskOrigin task requests = do
+ routine <- taskRoutine task
+ case routine of
+  Nothing -> Right MissingOrigin
+  Just identity -> do
+   let related = [request | request <- requests, ValidLineage lineage <- [requestLineage request]
+                 , Just link <- [requestTask lineage], requestTaskId link == task.identity]
+   origins <- traverse (checkedOrigin . requestOrigin) related
+   forM_ origins $ \origin -> case originPurpose origin of
+    ScheduledExecution _ -> validateTaskOrigin task origin
+    OrdinaryWork -> Right ()
+    RoutinePolicySetup _ -> Left "Routine task has policy preparation provenance"
+   original <- case reverse [origin | origin <- origins, originRoutine origin == Just identity] of
+    origin:_ -> Right origin
+    [] -> Left "Routine task has no saved scheduled execution origin"
+   -- A Work revision uses its own instructions, while retaining the admission's identity and extensions.
+   pure (ValidOrigin (newOrigin (originPurpose original) (originGroup original)
+    (KM.insert "executionPrompt" (str task.body) (originMetadata original))))
+
+activeRoutineRequest :: Maybe TaskId -> Value -> RoutineId -> Either Text (Maybe RunId)
+activeRoutineRequest restartingTask group identity = do
+ requests <- either (Left . T.pack) Right (parseEither parseJSON (get group "requests"))
+ origins <- forM [request | request <- requests, not (requestSettled request)] $ \request -> do
+  origin <- checkedOrigin (requestOrigin request)
+  pure (request,origin)
+ let historical=[(request,origin) | request <- requests, requestSettled request, ValidOrigin origin <- [requestOrigin request]]
+ related <- filterM active [(request,origin) | (request,origin) <- origins ++ historical, originRoutine origin == Just identity]
+ pure (case related of (request,_):_ -> Just (requestId request); [] -> Nothing)
+ where
+ active (request,_)
+  | not (requestSettled request) = Right True
+  | otherwise = do
+     lineage <- checkedRequestLineage request
+     case requestTask lineage of
+      Nothing -> Right False
+      Just link
+       -- Editing a Task to InProgress does not start it; only an unsettled Request holds its own restart.
+       | Just (requestTaskId link) == restartingTask -> Right False
+       | otherwise -> case findId (taskIdText (requestTaskId link)) (items group "tasks") of
+          Nothing -> Right False
+          Just raw -> taskInProgress <$> either (Left . T.pack) Right (parseEither parseJSON raw)
+
+taskInProgress :: GroupTask -> Bool
+taskInProgress task = task.state == InProgress
+
+currentTaskRevision :: TaskRevision -> GroupTask -> Bool
+currentTaskRevision expected task = not task.deleted && taskLink task == expected
+
+forwardTask :: AgentId -> GroupTask -> GroupTask
+forwardTask assignee task = GroupTask task.identity task.title task.body assignee task.state task.deleted (task.revision+1) task.metadata
+
 reviseTask :: [AgentId] -> UTCTime -> Text -> TaskPatch -> GroupTask -> Either TaskError GroupTask
 reviseTask members updated actor patch task
  | patch.revision /= Just task.revision = Left TaskChanged
@@ -130,35 +203,60 @@ updateTask s gid tid input actor = do
  changed <- taskResult (reviseTask members updated actor patch task)
  void (saveGroup s (replace "tasks" (toJSON changed) group) actor (if changed.deleted then "task deleted" else "task updated") (str tid))
  pure (toJSON changed)
-startTask :: Service -> Text -> Text -> Value -> Text -> Text -> IO Value
+startTask :: Service -> Text -> Text -> Value -> Text -> Maybe MessageId -> IO Value
 startTask s gid tid revision actor root = do
  group <- getGroup s gid True; authorizeGroup s group actor Member
  task <- readTask group tid
  members <- field 500 group "members"
  requests <- readRequests group
- pending <- traverse (\request -> field 500 (Object (requestFields request)) "task") [request | request <- requests, requestStatus request `elem` [Queued,Running], KM.member "task" (requestFields request)]
+ lineages <- traverse requireRequestLineage [request | request <- requests, requestStatus request `elem` [Queued,Running]]
+ let pending=[requestTaskId link | lineage <- lineages, link <- maybeToList (requestTask lineage)]
  changed <- taskResult (beginTask members pending (parseMaybe parseJSON revision) actor task)
+ origin <- either (failure 500) pure (restartTaskOrigin task requests)
+ parsed <- requireExecutionOrigin origin
+ case originPurpose parsed of
+  ScheduledExecution scheduled -> do
+   groupId <- field 500 group "id"
+   require (scheduledOwner scheduled == GroupOwner groupId && originGroup parsed == Just groupId)
+    500 "Saved task execution origin belongs to another Group"
+  OrdinaryWork -> pure ()
+  RoutinePolicySetup _ -> pure ()
+ forM_ (originRoutine parsed) $ \identity -> do
+  active <- either (failure 500) pure (activeRoutineRequest (Just task.identity) group identity)
+  taskResult (if isNothing active then Right () else Left AlreadyPending)
  initial <- message actor (task.title <> "\n\n" <> task.body)
- let entry=mergeFields ([("task",str tid)] ++ [("memo_pending",Bool True) | actor == "admin"]) initial
- request <- newRequest entry (agentIdText task.assignee) root
- let call=mergeFields [("task",str tid),("task_revision",num changed.revision)] request
- void (saveGroup s (append "requests" call (append "messages" entry (replace "tasks" (toJSON changed) group))) actor "task started" (str tid))
+ let entry=mergeFields ([("task",str tid)] ++ [("memo_pending",Bool True) | actor == "admin" && not (originIsScheduled parsed)]) initial
+ request <- newRequest entry task.assignee root
+ lineage <- requireRequestLineage request
+ let call=request { requestOrigin=origin, requestLineage=ValidLineage lineage { requestTask=Just (taskLink changed) } }
+ void (saveGroup s (append "requests" (toJSON call) (append "messages" entry (replace "tasks" (toJSON changed) group))) actor "task started" (str tid))
  pure (toJSON changed)
 
-newRequest :: Value -> Text -> Text -> IO Value
+newRequest :: Value -> AgentId -> Maybe MessageId -> IO GroupRequest
 newRequest entry target root = do
- i <- newId; t <- now
- pure (toJSON (GroupRequest (RunId i) (AgentId target) Queued False (KM.fromList [("message",get entry "id"),("root",if T.null root then get entry "id" else str root),("created",str t)])))
-settleTask :: Value -> Value -> Value -> IO (Value, Settlement)
-settleTask group request turn = if not (has request "task") then pure (group,NoTask) else do
- task <- readTask group (at request "task"); time <- getCurrentTime
- completion <- TaskCompletion <$> field 500 request "id" <*> field 500 request "target" <*> field 500 request "task_revision"
-                              <*> field 500 turn "status" <*> field 500 turn "output" <*> field 500 turn "error"
- let (changed,settlement) = settleTaskResult time completion task
- pure (replace "tasks" (toJSON changed) group,settlement)
+ identity <- RunId <$> newId
+ time <- now
+ messageId <- field 500 entry "id"
+ pure (newGroupRequest identity target MissingOrigin (RequestLineage messageId (fromMaybe messageId root) Nothing) time)
+
+settleTask :: Value -> GroupRequest -> Value -> IO (Value, Settlement)
+settleTask group request turn = do
+ lineage <- requireRequestLineage request
+ case requestTask lineage of
+  Nothing -> pure (group,NoTask)
+  Just link -> do
+   task <- readTask group (taskIdText (requestTaskId link))
+   origin <- requireExecutionOrigin (requestOrigin request)
+   either (failure 500) pure (validateTaskOrigin task origin)
+   time <- getCurrentTime
+   completion <- TaskCompletion (requestId request) (requestTarget request) (requestTaskRevision link)
+    <$> field 500 turn "status" <*> field 500 turn "output" <*> field 500 turn "error"
+   let (changed,settlement) = settleTaskResult time completion task
+   pure (replace "tasks" (toJSON changed) group,settlement)
+
 assignedTasks :: Service -> Text -> IO [Value]
 assignedTasks s actor = do
  groups <- DB.values s DB.Groups
  pure [merge task (obj [("group",get g "id"),("group_name",get g "name"),("group_archived",get g "archived")]) | g <- groups,task <- items g "tasks",at task "assignee" == actor]
 runTask :: Service -> Text -> Text -> Value -> Text -> IO Value
-runTask s gid tid revision actor = startTask s gid tid revision actor ""
+runTask s gid tid revision actor = startTask s gid tid revision actor Nothing

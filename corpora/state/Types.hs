@@ -85,10 +85,12 @@ textField :: Value -> Text -> Int -> IO Text
 textField v k n = parseValue 400 (textFieldP k n) v
 now :: IO Text
 now = timestamp <$> getCurrentTime
-timestamp :: UTCTime -> Text
-timestamp = T.pack . formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%S%Q+00:00"
-parseTime :: Text -> Maybe UTCTime
-parseTime s = parseTimeM True defaultTimeLocale "%Y-%m-%dT%H:%M:%S%Q%Ez" (T.unpack s)
+requireExecutionOrigin :: StoredOrigin -> IO ExecutionOrigin
+requireExecutionOrigin = either (failure 500) pure . checkedOrigin
+
+decodeExecutionOrigin :: Value -> IO ExecutionOrigin
+decodeExecutionOrigin = requireExecutionOrigin . decodeStoredOrigin . Just
+
 newId :: IO Text
 newId = T.filter (/= '-') . UUID.toText <$> UUID.nextRandom
 fresh :: Text -> IO Text
@@ -138,6 +140,20 @@ modifyTurns :: Service -> Text -> (Turn -> Turn) -> IO ()
 modifyTurns s a f = agentState s a >>= saveState s a . mapTurns f
 archivePath :: Service -> Text -> Text -> FilePath
 archivePath s a k = serviceRoot s </> "agentpy/corpora/archive" </> T.unpack a </> T.unpack k <.> "json"
+retainedTurn :: Service -> Text -> RunId -> IO (Maybe Turn)
+retainedTurn s owner identity = do
+ let directory=takeDirectory (archivePath s owner "turns/retained")
+ exists <- doesDirectoryExist directory
+ if not exists then pure Nothing else do
+  files <- listDirectory directory
+  foldM (readLatest directory) Nothing [file | file<-files,takeExtension file==".json"]
+ where
+ -- Retried Turns can appear in multiple archives; keep the latest attempt.
+ readLatest directory current file = do
+  turns <- readJSON (directory </> file) []
+  pure $ foldl newer current (filter ((==identity) . turnId) turns)
+ newer Nothing turn = Just turn
+ newer (Just previous) turn = Just (if turnAttempt turn > turnAttempt previous then turn else previous)
 findId :: Text -> [Value] -> Maybe Value
 findId i = find ((== i) . (`at` "id"))
 readText :: FilePath -> IO Text

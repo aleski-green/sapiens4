@@ -50,7 +50,7 @@ prepare s a = do
  let context= obj [("currentSapi",str a),("chief",get facts "main_agent_id"),("groups",get facts "groups"),("team",get facts "team"),("workspace",obj [("path",str (T.pack (workspaceRoot s a)))])]
  writeText (agentRoot s a </> "manifests/corpora-state.md") (jsonText context)
 data WorkspaceOperation = OpenWorkspace | ZoomWorkspace | CloseWorkspace | FocusWorkspace | ReloadWorkspace | BackWorkspace | ForwardWorkspace | BookmarkWorkspace | UnbookmarkWorkspace deriving (Eq, Show)
-data Operation = ReadCorpora | UpdateCorpora | Batch | ReadStatus | Delegate | ReadRoutines | CreateRoutine | UpdateRoutine | PauseRoutine | ResumeRoutine | CreateAgent | RetireAgent | RehireAgent | AcquireComputer | ChangeManager | ReadWorkspace | GroupCommand G.GroupOperation | WorkspaceCommand WorkspaceOperation deriving (Eq, Show)
+data Operation = ReadCorpora | UpdateCorpora | Batch | ReadStatus | Delegate | ReadRoutines | CreateRoutine | UpdateRoutine | SelectRoutinePolicy | PauseRoutine | ResumeRoutine | CreateAgent | RetireAgent | RehireAgent | AcquireComputer | ChangeManager | ReadWorkspace | GroupCommand G.GroupOperation | WorkspaceCommand WorkspaceOperation deriving (Eq, Show)
 operationSchema :: [(Text,Operation,[Text])]
 operationSchema =
  [ ("corpora_get", ReadCorpora, [])
@@ -58,9 +58,10 @@ operationSchema =
  , ("batch", Batch, ["operations"])
  , ("status", ReadStatus, ["target"])
  , ("delegate", Delegate, ["decision"])
- , ("routines", ReadRoutines, [])
- , ("routine_create", CreateRoutine, ["minutes","prompt"])
- , ("routine_update", UpdateRoutine, ["id","minutes","prompt"])
+ , ("routines", ReadRoutines, ["group"])
+ , ("routine_create", CreateRoutine, ["minutes","prompt","missedPolicy"])
+ , ("routine_update", UpdateRoutine, ["id","minutes","prompt","missedPolicy"])
+ , ("routine_policy", SelectRoutinePolicy, ["id","expectedPrompt","expectedSelection","missedPolicy"])
  , ("routine_pause", PauseRoutine, ["id"])
  , ("routine_resume", ResumeRoutine, ["id"])
  , ("group_create", GroupCommand G.GroupCreate, ["name","description","lead","members"])
@@ -138,19 +139,13 @@ control s a payload = do
    name <- validName d
    role <- textField d "role" 60
    parent <- if get d "manager"==Null then pure a else resolve s (at d "manager") False
-   rows <- DB.agents s
-   let matches=filter ((==T.toCaseFold name) . T.toCaseFold . (`at` "name")) rows
-   (row,created) <- if null matches then (,True) <$> createAgent s (obj [("name",str name),("role",str role),("manager",str parent)]) else do
-    row <- case matches of
-     [candidate] | at candidate "role"==role && at candidate "id"/=a -> pure candidate
-     _ -> failure 409 "Name already exists with a different role; use status to inspect it"
-    let child=at row "id"
-    requireActive s child
-    dir <- directory s
-    require (at (get dir child) "parent"==parent) 409 "Name already exists with a different manager"
-    pure (row,False)
-   prepare s (at row "id")
-   pure (receipt (obj [("agent",row),("created",Bool created)]))
+   resolution <- ensureSpecialist s SpecialistRequest
+    { specialistName=name, specialistRole=role, specialistManager=AgentId parent }
+   let (profile,created) = case resolution of
+        ExistingSpecialist existing -> (existing,False)
+        CreatedSpecialist new -> (new,True)
+   prepare s (agentIdText (profileId profile))
+   pure (receipt (obj [("agent",toJSON profile),("created",Bool created)]))
   RetireAgent -> change chief receipt True
   RehireAgent -> change chief receipt False
   ChangeManager -> do
@@ -166,9 +161,22 @@ control s a payload = do
    require (maybe True ((==RunId identity) . snd) lease) 409 "Shared computer is busy with another AgencyRun"
    writeIORef (serviceLease s) (Just (AgentId a,RunId identity))
    pure (obj [("owner",str a)])
-  ReadRoutines -> obj . (:[]) . ("routines",) . arr . filter ((==a) . (`at` "owner")) <$> DB.values s DB.ScheduledRoutines
-  CreateRoutine -> receipt . obj . (:[]) . ("routine",) <$> R.save s a (get d "minutes") (get d "prompt") (R.AddRoutine current)
-  UpdateRoutine -> do i<-textField d "id" 80; receipt . obj . (:[]) . ("routine",) <$> R.save s a (get d "minutes") (get d "prompt") (R.EditRoutine i Nothing)
+  ReadRoutines -> do
+   owner <- workspaceOwner
+   obj . (:[]) . ("routines",) . arr . filter ((==owner) . (`at` "owner")) <$> R.routineSummaries s
+  CreateRoutine -> do
+   policy <- decodeValue 400 (get d "missedPolicy")
+   receipt . obj . (:[]) . ("routine",) <$> R.save s a (get d "minutes") (get d "prompt") (Just policy) (R.AddRoutine current)
+  UpdateRoutine -> do
+   i <- routineIdentity
+   policy <- if has d "missedPolicy" then Just <$> decodeValue 400 (get d "missedPolicy") else pure Nothing
+   receipt . obj . (:[]) . ("routine",) <$> R.save s a (get d "minutes") (get d "prompt") policy (R.EditRoutine i Nothing)
+  SelectRoutinePolicy -> do
+   i <- routineIdentity
+   expected <- textField d "expectedPrompt" 16000
+   selection <- decodeValue 400 (get d "expectedSelection")
+   policy <- decodeValue 400 (get d "missedPolicy")
+   receipt . obj . (:[]) . ("routine",) <$> R.setPolicy s a i expected selection policy
   PauseRoutine -> pause receipt True
   ResumeRoutine -> pause receipt False
   Delegate -> D.applyDecision s a current (at d "decision")
@@ -188,7 +196,10 @@ control s a payload = do
   require (a==chief) 403 "Only the main Sapi can retire or rehire Sapis through host-control"
   target <- resolve s (at d "target") True
   receipt <$> changeRetirement s target retire (at d "reason")
- pause receipt paused=do i<-textField d "id" 80; receipt . obj . (:[]) . ("routine",) <$> R.setPaused s a i paused
+ routineIdentity = do
+  void (textField d "id" 80)
+  decodeValue 400 (get d "id")
+ pause receipt paused=do i<-routineIdentity; receipt . obj . (:[]) . ("routine",) <$> R.setPaused s a i paused
 reviseCorpora :: Value -> CorporaConfig -> Validation CorporaConfig
 reviseCorpora d cfg = do
  check (get d "revision"==num (corporaRevision cfg)) 409 "Corpora changed. Read its settings again."
