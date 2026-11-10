@@ -5,6 +5,8 @@ module Population where
 import Control.Exception
 import Control.Monad
 import Data.Aeson hiding (pairs)
+import Data.Aeson.Types (Parser)
+import qualified Data.Map.Strict as Map
 import Data.Char
 import Data.IORef
 import System.Random (randomRIO)
@@ -265,3 +267,78 @@ corporaIdentity s = do
  row <- if T.null chief then pure empty else DB.agent s chief
  template <- prompt s "corpora-settings-request"
  pure $ merge (remove ["operations"] (toJSON cfg)) (obj [("id",get identity "corpora_id"),("name",toJSON (corporaName cfg) `fallback` str ("CORPORA · " <> at row "name")),("chief_id",str chief),("settings_template",str (T.strip template)),("stopping",Bool False)])
+
+-- Drafts remain inactive. Explicitly saved active settings use a separate file;
+-- reading settings never activates a draft or rewrites an existing installation.
+data ModelSelection = ModelSelection { selectionProvider :: ModelProvider, selectionModel :: Text, selectionEffort :: Text }
+ deriving (Eq, Show)
+instance FromJSON ModelSelection where
+ parseJSON value = do
+  onlyFields ["provider","model","effort"] value
+  withObject "Model selection" (\o -> do
+   provider <- o .: "provider" :: Parser Text
+   kind <- case provider of
+    "codex" -> pure CodexProvider
+    "claude" -> pure ClaudeProvider
+    _ -> fail "Unsupported model provider"
+   model <- o .: "model"
+   effort <- o .: "effort"
+   unless (not (T.null model) && T.length model <= 200 && (kind == ClaudeProvider || not (T.null effort)) && T.length effort <= 80) $ fail "Choose a model and effort"
+   pure (ModelSelection kind model effort)) value
+instance ToJSON ModelSelection where
+ toJSON choice = obj [("provider",str (providerName (selectionProvider choice))),("model",str (selectionModel choice)),("effort",str (selectionEffort choice))]
+
+data ModelSettingsDraft = ModelSettingsDraft
+ { modelSettingsRevision :: Int, modelSettingsDefault :: ModelSelection, modelSettingsOverrides :: Map.Map Text ModelSelection }
+ deriving (Eq, Show)
+instance FromJSON ModelSettingsDraft where
+ parseJSON value = do
+  onlyFields ["revision","defaults","overrides"] value
+  withObject "Model settings draft" (\o -> do
+   revision <- o .: "revision"
+   defaults <- o .: "defaults"
+   overrides <- o .: "overrides"
+   unless (revision >= 0 && revision <= 2147483647 && Map.size overrides <= 1000) $ fail "Invalid model settings revision or override count"
+   pure (ModelSettingsDraft revision defaults overrides)) value
+instance ToJSON ModelSettingsDraft where
+ toJSON draft = obj [("revision",num (modelSettingsRevision draft)),("defaults",toJSON (modelSettingsDefault draft)),("overrides",toJSON (modelSettingsOverrides draft))]
+
+readModelSettingsDraft :: Service -> IO ModelSettingsDraft
+readModelSettingsDraft s = readJSON (serviceRoot s </> "model-settings-draft.json")
+ (ModelSettingsDraft 0 (ModelSelection CodexProvider "gpt-6-astra" "medium") Map.empty)
+
+saveModelSettingsDraft :: Service -> ModelSettingsDraft -> IO ModelSettingsDraft
+saveModelSettingsDraft s requested = do
+ current <- readModelSettingsDraft s
+ saveModelSettingsFile s "model-settings-draft.json" current requested
+
+activeModelSettings :: Service -> IO (Maybe ModelSettingsDraft)
+activeModelSettings s = readJSON (serviceRoot s </> "model-settings.json") Nothing
+
+readModelSettings :: Service -> IO ModelSettingsDraft
+readModelSettings s = do
+ active <- activeModelSettings s
+ case active of
+  Just configured -> pure configured
+  -- Offer the previous draft for review, with an independent active revision.
+  Nothing -> (\draft -> draft {modelSettingsRevision=0}) <$> readModelSettingsDraft s
+
+saveModelSettings :: Service -> ModelSettingsDraft -> IO ModelSettingsDraft
+saveModelSettings s requested = do
+ current <- readModelSettings s
+ -- An inactive draft is not evidence that an override's Sapi is still active.
+ active <- activeModelSettings s
+ let previous = fromMaybe (current {modelSettingsOverrides=Map.empty}) active
+ saveModelSettingsFile s "model-settings.json" previous requested
+
+-- Caller holds the service lock after validating the provider catalog.
+saveModelSettingsFile :: Service -> FilePath -> ModelSettingsDraft -> ModelSettingsDraft -> IO ModelSettingsDraft
+saveModelSettingsFile s filename current requested = do
+ require (modelSettingsRevision requested == modelSettingsRevision current) 409 "Model settings changed elsewhere. Close and reopen Models before saving."
+ require (modelSettingsRevision current < 2147483647) 409 "Model settings revision limit reached."
+ forM_ (Map.keys (modelSettingsOverrides requested)) $ \owner -> do
+  -- Retiring a Sapi must not make its unchanged saved override block other edits.
+  unless (Map.lookup owner (modelSettingsOverrides requested) == Map.lookup owner (modelSettingsOverrides current)) $ requireActive s owner
+ let saved=requested {modelSettingsRevision=modelSettingsRevision current+1}
+ writeJSON (serviceRoot s </> filename) saved
+ pure saved

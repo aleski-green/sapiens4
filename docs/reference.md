@@ -103,3 +103,106 @@ a supplied Origin must match the loopback Host. Common entrypoints:
 Group notes, messages, attachments, tasks and calls use `/api/groups/<id>`.
 Updates require the relevant revision. [RSpec scenarios](../spec) exercise the
 public contracts; see [Testing](testing.md) to run them.
+
+### Model configuration drafts
+
+`GET /api/model-settings-draft` reads the corpora's saved configuration draft.
+Without a saved file it returns revision 0, Codex `gpt-6-astra` / `medium`, and no
+per-Sapi overrides. This is the Sapiens4 recommendation, not the CLI catalog's
+default. Reading does not create a file or change execution settings.
+
+`PUT /api/model-settings-draft` accepts the same object:
+
+```json
+{"revision":0,"defaults":{"provider":"codex","model":"gpt-6-astra","effort":"medium"},"overrides":{}}
+```
+
+Overrides are keyed by Sapi ID and contain complete provider/model/effort choices.
+Omitting an override restores inheritance. Saves validate the current Codex catalog
+outside the service state lock, then check the revision and Sapi identities under
+the lock and atomically replace `model-settings-draft.json`. The response contains
+the incremented revision. A stale revision returns 409 without overwriting the
+saved draft. Invalid models/efforts or unsupported providers return 400; discovery
+failures leave the previous draft intact. Both Codex and Claude selections are supported.
+
+The draft endpoint remains inactive and is not consumed by execution.
+
+### Applied model settings
+
+The Sapi customization page explicitly distinguishes inherited settings from a
+full per-Sapi override. It displays the global provider/model/effort summary and
+explains that removing inheritance creates settings for that Sapi only. Re-enabling
+inheritance removes the override on save. This presentation change does not enforce
+one provider per corpora or migrate existing mixed-provider configurations.
+Sapi, model and effort pickers share a themed, bounded list. Arrow keys, Home/End
+and initial-letter navigation move focus; Enter/Space selects, Escape cancels,
+and Tab leaves the picker. Clicking outside dismisses the list. Picker state is
+local to the dialog and never enters the saved settings payload.
+
+The Models dialog has Global settings and Sapi customization pages sharing one
+unsaved draft. Page navigation does not write settings. Save and apply saves both
+pages together; closing without saving discards pending edits. The selected page
+is presentation state and is not persisted in the settings payload.
+
+Feedback is derived from that draft: saving, invalid selections, unsaved changes,
+or saved settings. Invalid selections identify Global settings or
+the affected Sapi even when that selection is on the other page. Successful-save
+feedback does not depend on the application's transient toast timer when reopening
+saved settings. A successful Save and apply closes the native modal before showing
+the confirmation toast. It rises from the bottom center, outside the blurred
+backdrop, and respects reduced-motion settings. The footer
+contains only Save and apply; the top-right close control dismisses unsaved edits.
+Failed saves keep the dialog and pending edits open, with revision-conflict and
+provider errors visible in the dialog.
+
+The Models screen now uses `GET /api/model-settings` and `PUT /api/model-settings`
+with the same object shape and validation rules. **Save and apply** atomically
+writes `model-settings.json`, using an independent revision counter. Until this
+file exists, GET offers any previous draft for review at revision 0, and execution
+continues using the existing environment defaults and Normal/Deep mode. Opening
+the dialog never activates a draft.
+
+After applying, each new run uses its Sapi override, or the corpora default when
+no override exists. The selected effort is explicit and supersedes Normal/Deep;
+Deep does not silently change it to an unsupported effort. Configuration is
+resolved once under the service lock when a run starts. Every provider invocation
+and decision audit record in that run uses the captured model and effort, even
+if settings are saved between decision steps. Queued work, retries and delegated
+runs resolve the current settings when their new run starts. This does not pin a
+whole Routine or workload across multiple runs or restarts.
+
+Saving validates the catalog outside the service lock. Execution does not launch
+catalog discovery or silently fall back to a different model on provider failure.
+Existing Codex command permissions are unchanged. AgencyKind overrides remain subsequent work. Catalog entries advertise choices;
+they do not guarantee account authorization for an eventual model call.
+
+
+### Claude provider
+
+`GET /api/providers/claude/models` obtains the installed CLI catalog through its
+streaming control initialization, without submitting a user prompt. Discovery uses
+safe mode with tools and MCP integrations disabled, a 30-second deadline, bounded
+responses and process cleanup. Entries use `resolvedModel` where available;
+duplicate aliases are collapsed. Effort choices come from the advertised metadata.
+An empty effort string means the Claude provider default; the CLI receives no
+`--effort` flag. Models without effort metadata expose only this default.
+
+The product recommendation is `claude-opus-5-5` with `medium`, enabled only when
+that exact model and effort appear in the catalog. It is independent of the CLI's
+changing `default` or `opus` aliases. Mixed-provider defaults and per-Sapi overrides
+are supported, with each required provider validated once per save.
+
+Execution uses the existing Sapi workspace, prompt, run identity, process deadline
+and cancellation handling. Claude runs with `--print --output-format stream-json
+--verbose --no-session-persistence --dangerously-skip-permissions`, an explicit
+model, and an effort flag only when configured. Only a successful terminal result
+completes the decision; intermediate text and error results cannot count as
+success. Decision records include the provider as well as the model and effort.
+The existing noninteractive permission policy is retained; read-only remains
+outside this change.
+
+`SAPIENS_CLAUDE_BINARY` overrides executable discovery. Otherwise it searches PATH,
+the native user installation and, on Unix, NVM installations. Windows requires a
+native executable. This integration does not install Claude or change login state.
+Model discovery does not prove that a subscription can execute a model. Tests use
+isolated simulated providers; live account behavior requires a separate smoke test.

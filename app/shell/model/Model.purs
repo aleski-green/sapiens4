@@ -38,12 +38,15 @@ decodePreview memo value = case toString (D.get "content" value) of
 
 type Request = { epoch :: Int, sequence :: Int, key :: String, revision :: String, path :: String }
 
-data DialogKind = AppMenu | WorkspaceSettings | Computer | AgentSettings | GroupSettings | Attach | Reference X.AttachmentKind | DecisionPrompts | GroupTask | CreateCorpora | EditCorpora | ConnectRemote | HostPairing | RelayList | RelayAdd | RelaySwitch | RelayTerms | Installation | Notice
+data DialogKind = AppMenu | WorkspaceSettings | Models | AIProviders | Onboarding | Computer | AgentSettings | GroupSettings | Attach | Reference X.AttachmentKind | DecisionPrompts | GroupTask | CreateCorpora | EditCorpora | ConnectRemote | HostPairing | RelayList | RelayAdd | RelaySwitch | RelayTerms | Installation | Notice
 
 derive instance eqDialogKind :: Eq DialogKind
 
 corporaDialog :: DialogKind -> Boolean
 corporaDialog kind = A.elem kind [CreateCorpora,EditCorpora,ConnectRemote,HostPairing,RelayList,RelayAdd,RelaySwitch,RelayTerms,Notice]
+
+data ProviderPage = Providers | CodexDetails | CodexAuth | ConfirmChange | ConfirmDisconnect | ClaudeConfirmDisconnect
+derive instance eqProviderPage :: Eq ProviderPage
 
 data DialogStatus = Editing | Submitting String | Rejected String
 derive instance eqDialogStatus :: Eq DialogStatus
@@ -65,7 +68,7 @@ setDialogBusy running d = d {status=if running then Submitting (dialogError d) e
 setDialogError :: String -> Dialog -> Dialog
 setDialogError message d = d {status=if dialogBusy d then Submitting message else if message == "" then Editing else Rejected message}
 
-type Dialog = { kind :: DialogKind, title :: String, record :: F.Context, fields :: F.Fields, content :: F.Content, status :: DialogStatus, identity :: Int }
+type Dialog = { providerPage :: ProviderPage, kind :: DialogKind, title :: String, record :: F.Context, fields :: F.Fields, content :: F.Content, status :: DialogStatus, identity :: Int }
 
 data ConnectionState = Offline | Online | ChangingLifecycle Boolean
 derive instance eqConnectionState :: Eq ConnectionState
@@ -147,8 +150,9 @@ type SessionState =
   , nativeReporting :: Boolean, nativeReports :: Array Browser.NativeReport
   , epoch :: Int, sequence :: Int, now :: Number, env :: Environment
   , records :: Array X.Corpora, active :: String, connection :: ConnectionState
-  , localAvailable :: Boolean, showArchived :: Boolean, installRequired :: Boolean
-  , preferencesSaved :: String, voice :: Maybe VoiceSession, outboxes :: O.Object Outbox
+  , localAvailable :: Boolean, showArchived :: Boolean, installRequired :: Boolean, setupChecked :: Boolean
+  , account :: Json, accountCheckedAt :: Number, accountChecking :: Boolean, preferencesSaved :: String
+  , voice :: Maybe VoiceSession, outboxes :: O.Object Outbox
   )
 
 fastPoll :: Number
@@ -162,8 +166,8 @@ initial env =
   , snapshotContent:Nothing, polling:false,pollGeneration:0,fallbackDelay:fastPoll,saving:false,lastPreview:0.0,nativeReporting:false,nativeReports:[]
   , epoch:0, sequence:0, now:0.0, env, panes:[N.ChatPane,N.Sidebar,N.Workspace], search:"", searchOpen:false, menu:Nothing, dialog:Nothing
   , records:[], active:"", connection:Offline, localAvailable:false, showArchived:false
-  , toast:"", feedback:"", theme:if env.dark then "dark" else "light", installRequired:false
-  , dialogStack:[], preview:NotAsked, address:"", addressOpen:false, scrollPosition:Nothing, restoringScroll:false, preferencesSaved:""
+  , toast:"", feedback:"", theme:if env.dark then "dark" else "light", installRequired:false, setupChecked:false
+  , dialogStack:[], preview:NotAsked, address:"", addressOpen:false, scrollPosition:Nothing, restoringScroll:false, account:D.empty, accountCheckedAt:0.0, accountChecking:false, preferencesSaved:""
   }
 
 agent :: Model -> String -> X.Entity
@@ -354,6 +358,9 @@ valueOf = case _ of
   Loading _ value -> value
   Ready _ value -> Just value
   _ -> Nothing
+
+accountBlocked :: Model -> Boolean
+accountBlocked m = not (remote m) && (activeRecord m).location == X.Local && D.n "schema" m.account > 0.0 && (not (D.b "ready" m.account) || D.s "hold" m.account /= "")
 
 -- | Chips this device saved but the host refused (already sent from another device) leave the composer.
 dropRejected :: Json -> Json -> O.Object (Array X.Attachment) -> O.Object (Array X.Attachment)

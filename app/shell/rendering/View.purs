@@ -21,12 +21,17 @@ import Sapiens.Workspace as Workspace
 
 render :: M.Model -> V.Html
 render m = V.node "div" []
-  [V.div "app" [header m,emptyCorpora m,installGate m,V.textNode "p" [V.id "corpora-startup-feedback",V.attr "role" "status"] (m.feedback)
+  [V.div "app" [header m,accountBanner m,emptyCorpora m,installGate m,V.textNode "p" [V.id "corpora-startup-feedback",V.attr "role" "status"] (m.feedback)
     ,V.node "div" [V.cls "main-grid",V.hidden $ A.null m.agents || m.installRequired,V.attr "data-visible-panes" $ show $ A.length panes,V.style $ "grid-template-columns:" <> S.joinWith " " columns] [sidebar m,conversation m,Workspace.view m]]
-  ,Dialog.view m,V.textNode "div" [V.id "toast",V.cls $ "toast " <> if m.toast /= "" then "visible" else "",V.attr "role" "status",V.attr "aria-live" "polite"] (m.toast)]
+  ,Dialog.view m,toast m]
   where
   panes = M.visiblePanes m
   columns = [(if A.elem N.Sidebar panes then if A.length panes == 1 then "minmax(0,1fr)" else "clamp(205px,18vw,250px)" else "0px"),(if A.elem N.ChatPane panes then "minmax(300px,1fr)" else "0px"),(if A.elem N.Workspace panes then "minmax(350px,1.2fr)" else "0px")]
+
+toast :: M.Model -> V.Html
+toast m = V.textNode "div"
+  [V.id "toast",V.cls $ "toast " <> if m.toast /= "" then "visible" else ""
+  ,V.attr "role" "status",V.attr "aria-live" "polite",V.attr "aria-atomic" "true"] m.toast
 
 status :: M.Model -> String
 status m = if (M.busy m) then "Connecting…" else if m.active == "" then "Not connected" else if not (M.online m) then "Offline" else if (M.activeRecord m).stopping then "Pausing…" else stateName $ (M.activeRecord m).status
@@ -91,7 +96,7 @@ sidebar m = V.node "aside" [V.cls "sidebar",V.id "chat-list-panel",V.label "Chat
   ,V.node "div" [V.cls "scope-switch",V.label "Agent views"] $ map (\(Tuple scope label) -> V.control [V.cls $ if m.scope == scope then "active" <> if m.groupView /= Nothing then " group-open" else "" else "",V.attr "aria-pressed" $ show $ m.scope == scope,V.disabled $ scope == N.Groups && not (A.any (\a -> M.isGroup a && not (a.archived)) m.agents)] (label) (SetScope scope)) [Tuple N.All "All",Tuple N.Sapis "Sapis",Tuple N.Groups "Groups"]
   ,V.node "label" [V.id "corpora-search",V.cls $ "search-field " <> if m.searchOpen then "search-open" else ""] [V.span [V.attr "aria-hidden" "true"] "⌕",V.node "input" [V.id "agent-search",V.attr "type" "search",V.attr "placeholder" "Find a Sapi or Group…",V.label "Search agents",V.value m.search,V.input Search] [],V.textNode "kbd" [] "/"]
   ,V.node "div" [V.id "agent-list",V.cls "agent-list"] $ map row $ M.roster m
-  ,V.node "footer" [V.cls "sidebar-bottom"] [V.div "resource-card" [V.node "button" [V.id "resource-button",V.cls "resource-open",V.label "Open shared computer",V.click $ OpenDialog M.Computer F.NoRecord] [V.span [V.cls "computer-icon",V.attr "aria-hidden" "true"] "▣",V.textNode "strong" [] "SHARED COMPUTER",V.node "span" [V.id "resource-status",V.cls $ "status-dot " <> if owner == "" then "idle" else ""] []],V.textNode "small" [V.id "resource-owner"] (if owner /= "" then "In use · " <> (M.agent m owner).name else if m.snapshot.computer.built then "Blindly4 · Available" else "Blindly4 · Build required")]]]
+  ,V.node "footer" [V.cls "sidebar-bottom"] [V.div "resource-card" [V.node "button" [V.id "resource-button",V.cls "resource-open",V.label "Open shared computer",V.click $ OpenDialog M.Computer F.NoRecord] [V.span [V.cls "computer-icon",V.attr "aria-hidden" "true"] "▣",V.textNode "strong" [] "SHARED COMPUTER",V.node "span" [V.id "resource-status",V.cls $ "status-dot " <> if owner == "" then "idle" else ""] []],V.textNode "small" [V.id "resource-owner"] (if owner /= "" then "In use · " <> (M.agent m owner).name else if m.snapshot.computer.built then "Blindly4 · Available" else "Computer helper missing")]]]
   where
   panes = M.visiblePanes m
   owner = m.snapshot.computer.owner
@@ -142,3 +147,10 @@ viewbar m = V.node "div" [V.id "activity-viewbar",V.hidden hidden] $ [V.span [V.
     N.Chat view -> N.chatLabel view
     N.Work view _ -> N.workLabel view
     N.Updates -> "Events"
+
+
+accountBanner :: M.Model -> V.Html
+accountBanner m = V.when (M.accountBlocked m && D.b "completed" m.account) $
+  V.node "aside" [V.cls "account-banner",V.attr "role" "status"]
+    [V.text $ if D.b "ready" m.account then "Codex work is paused. Review pending tasks before resuming." else "Codex needs attention. Reconnect in AI Connections. Your chats and files are still available."
+    ,V.button "button" "AI Connections" $ OpenDialog M.AIProviders F.NoRecord]

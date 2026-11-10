@@ -120,7 +120,7 @@ runUpdate runtime dispatch action = do
       H.modify_ _ {restoringScroll=true,env=env}
       H.get >>= liftEffect <<< W.sync runtime.idleTabs
       dispatch StopScan
-    U.Resume -> dispatch Resize *> restoreScroll *> later 32.0 restoreScroll *> dispatch Poll
+    U.Resume -> dispatch CheckSetup *> dispatch Resize *> restoreScroll *> later 32.0 restoreScroll *> dispatch Poll
     U.SendNative report ->
       let path = "/api/" <> (if D.cut 6 report.owner == "group_" then "groups/" else "agents/") <> B.encodeURI report.owner
           body = if report.op == "" then report.body else D.put "op" (D.text $ "workspace_" <> report.op) report.body
