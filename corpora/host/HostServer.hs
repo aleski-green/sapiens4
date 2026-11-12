@@ -143,7 +143,6 @@ httpApplication service bridge registry onboarding port req respond = respond =<
    ("GET",["","api","host","computer"]) -> maybe (failure 404 "Local setup unavailable") (fmap (jsonResponse 200) . O.computerView) onboarding
    ("POST",["","api","host","computer"]) -> maybe (failure 404 "Local setup unavailable") (fmap (jsonResponse 200) . flip O.computerAction data_) onboarding
    ("GET",["","api","host","onboarding"]) -> maybe (failure 404 "Local setup unavailable") (fmap (jsonResponse 200) . O.onboardingView) onboarding
-   ("POST",["","api","host","onboarding"]) -> maybe (failure 404 "Local setup unavailable") (fmap (jsonResponse 200) . flip O.onboardingAction data_) onboarding
    ("GET",["","api","host"]) -> jsonResponse 200 <$> registryRecords r
    ("GET",["","api","host","relays"]) -> jsonResponse 200 <$> relayView r Nothing
    ("GET",["","api","host","relays",ident]) -> jsonResponse 200 <$> relayView r (Just ident)

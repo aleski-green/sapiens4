@@ -1,137 +1,125 @@
 require 'yaml'
 
-RSpec.describe 'Applied Codex model settings', :host do
-  def choice(model = 'gpt-6-astra', effort = 'medium')
+RSpec.describe 'Model settings and providers', :host do
+  def codex(model = 'gpt-6-astra', effort = 'medium')
     {provider: 'codex', model: model, effort: effort}
   end
 
-  def settings(revision: 0, defaults: choice, overrides: {})
-    {revision: revision, defaults: defaults, overrides: overrides}
+  def claude(model = 'claude-opus-5-5', effort = 'medium')
+    {provider: 'claude', model: model, effort: effort}
   end
 
-  def apply_settings(**fields)
-    host.api('PUT', '/api/model-settings', settings(**fields))
+  def save(revision, defaults, overrides = {})
+    host.api('PUT', '/api/model-settings', {revision: revision, defaults: defaults, overrides: overrides})
   end
 
-  def expect_calls(calls, model, effort)
+  def runs(calls, provider, model, effort)
     expect(calls).not_to be_empty
     calls.each do |call|
-      expect(call.fetch('args')).to include("model=\"#{model}\"", "model_reasoning_effort=\"#{effort}\"",
-        '--dangerously-bypass-approvals-and-sandbox')
+      args = call.fetch('args')
+      expect(call.fetch('provider')).to eq(provider)
+      if provider == 'codex'
+        expect(args).to include("model=\"#{model}\"", "model_reasoning_effort=\"#{effort}\"", '--dangerously-bypass-approvals-and-sandbox')
+      else
+        expect(args[args.index('--model') + 1]).to eq(model)
+        expect(args).to include('--dangerously-skip-permissions', '--no-session-persistence')
+        if effort.empty?
+          expect(args).not_to include('--effort')
+        else
+          expect(args[args.index('--effort') + 1]).to eq(effort)
+        end
+      end
     end
   end
 
-  before do
-    host.configure(catalog_pages: [{data: [
-      {model: 'gpt-6-astra', displayName: 'Astra', hidden: false, isDefault: false,
-       defaultReasoningEffort: 'low', supportedReasoningEfforts: [{reasoningEffort: 'low'}, {reasoningEffort: 'medium'}]},
-      {model: 'fixture-quick', displayName: 'Quick', hidden: false, isDefault: true,
-       defaultReasoningEffort: 'low', supportedReasoningEfforts: [{reasoningEffort: 'low'}]}
-    ]}])
-  end
-
-  it 'offers an old draft for review without activating it, then applies it explicitly' do
-    draft = host.api('PUT', '/api/model-settings-draft', settings(defaults: choice('fixture-quick', 'low')))
-    offered = host.api('GET', '/api/model-settings')
-    expect(offered).to eq(draft.merge('revision' => 0))
-    expect(File.exist?(File.join(host.root, 'model-settings.json'))).to eq(false)
-    host.turn(host.submit(chief, 'Before applying'))
-    expect_calls(host.calls, 'gpt-6-sol', 'high')
-    first_count = host.calls.size
-    host.api('PUT', '/api/model-settings', offered)
-    host.turn(host.submit(chief, 'After applying'))
-    expect_calls(host.calls.drop(first_count), 'fixture-quick', 'low')
-    expect(host.api('GET', '/api/model-settings-draft')).to eq(draft)
-  end
-
-  it 'persists defaults and Sapi overrides, respects explicit effort over Deep, and restores inheritance' do
+  it 'runs the default and each Sapi override with its own provider, keeps them across a restart and returns a Sapi to the default' do
     agent = host.agent
-    host.api('PUT', "/api/agents/#{agent}", name: 'Researcher', role: 'Research', execution: {mode: 'deep'})
-    saved = apply_settings(overrides: {agent => choice('fixture-quick', 'low')})
+    saved = save(0, claude, {agent => codex('gpt-6-luna', 'low')})
     host.restart
     expect(host.api('GET', '/api/model-settings')).to eq(saved)
     host.turn(host.submit(chief, 'Use the corpora default'))
     host.turn(host.submit(agent, 'Use my override'))
-    expect_calls(host.calls.select { |call| call['owner'] == chief }, 'gpt-6-astra', 'medium')
-    expect_calls(host.calls.select { |call| call['owner'] == agent }, 'fixture-quick', 'low')
+    runs(host.calls.select { |call| call['owner'] == chief }, 'claude', 'claude-opus-5-5', 'medium')
+    runs(host.calls.select { |call| call['owner'] == agent }, 'codex', 'gpt-6-luna', 'low')
     count = host.calls.size
-    apply_settings(revision: 1)
+    save(1, claude('claude-haiku-4-5-20251001', ''))
     host.turn(host.submit(agent, 'Inherit the corpora default'))
-    expect_calls(host.calls.drop(count), 'gpt-6-astra', 'medium')
+    runs(host.calls.drop(count), 'claude', 'claude-haiku-4-5-20251001', '')
   end
 
-  {'legacy settings' => false, 'previously applied settings' => true}.each do |label, already_applied|
-    it "keeps #{label} for every step and audit record of a running task while new runs use the update" do
-      apply_settings if already_applied
-      expected_model = already_applied ? 'gpt-6-astra' : 'gpt-6-sol'
-      expected_effort = already_applied ? 'medium' : 'high'
-      host.configure(mode: 'Exec', rules: {'Assessing' => {block: true}})
-      first = host.submit(chief, 'Keep this run consistent')
-      Contract.wait(description: 'first model invocation') { host.calls.any? }
-      run = host.calls.first.fetch('agency_run')
-      apply_settings(revision: already_applied ? 1 : 0, defaults: choice('fixture-quick', 'low'))
-      host.release
-      host.turn(first)
-      host.idle
-      calls = host.calls.select { |call| call['agency_run'] == run }
-      expect(calls.map { |call| call['node'] }).to include('Assessing', 'ReadyToWork', 'Execution')
-      expect_calls(calls, expected_model, expected_effort)
-      tasks = YAML.safe_load(host.api('GET', "/api/agents/#{chief}/tasks")).fetch('tasks')
-      records = tasks.flat_map { |task| task.fetch('decisions') }
-      expect(records).not_to be_empty
-      expect(records).to all(include('model' => expected_model, 'effort' => expected_effort))
-      count = host.calls.size
-      host.turn(host.submit(chief, 'Use the new settings'))
-      expect_calls(host.calls.drop(count), 'fixture-quick', 'low')
-    end
+  it 'keeps the settings a task started with for every step and audit record while new runs use the update' do
+    save(0, claude)
+    host.configure(mode: 'Exec', rules: {'Assessing' => {block: true}})
+    first = host.submit(chief, 'Keep this run consistent')
+    Contract.wait(description: 'first model invocation') { host.calls.any? }
+    run = host.calls.first.fetch('agency_run')
+    save(1, codex)
+    host.release
+    host.turn(first)
+    host.idle
+    calls = host.calls.select { |call| call['agency_run'] == run }
+    expect(calls.map { |call| call['node'] }).to include('Assessing', 'ReadyToWork', 'Execution')
+    runs(calls, 'claude', 'claude-opus-5-5', 'medium')
+    records = YAML.safe_load(host.api('GET', "/api/agents/#{chief}/tasks")).fetch('tasks').flat_map { |task| task.fetch('decisions') }
+    expect(records).not_to be_empty
+    expect(records).to all(include('provider' => 'claude', 'model' => 'claude-opus-5-5', 'effort' => 'medium'))
+    count = host.calls.size
+    host.turn(host.submit(chief, 'Use the new settings'))
+    runs(host.calls.drop(count), 'codex', 'gpt-6-astra', 'medium')
   end
 
-  {
-    'stale revision' => [{revision: 0}, 409],
-    'unsupported effort' => [{defaults: {provider: 'codex', model: 'fixture-quick', effort: 'medium'}}, 400],
-    'unknown provider' => [{defaults: {provider: 'unknown', model: 'unsupported', effort: 'medium'}}, 400],
-    'nonexistent Sapi' => [{overrides: {'missing-sapi' => {provider: 'codex', model: 'gpt-6-astra', effort: 'medium'}}}, 404]
-  }.each do |label, (changes, status)|
-    it "rejects #{label} without replacing active settings" do
-      saved = apply_settings
-      expect(host.request('PUT', '/api/model-settings', settings(revision: 1).merge(changes)).first).to eq(status)
+  it 'rejects bad saves and keeps the active settings' do
+    saved = save(0, codex)
+    [[{revision: 0}, 409],
+     [{defaults: codex('gpt-6-luna', 'ultra')}, 400],
+     [{defaults: {provider: 'unknown', model: 'unsupported', effort: 'medium'}}, 400],
+     [{defaults: claude('claude-haiku-4-5-20251001', 'medium')}, 400],
+     [{overrides: {'missing-sapi' => codex}}, 404]].each do |changes, status|
+      expect(host.request('PUT', '/api/model-settings', {revision: 1, defaults: codex, overrides: {}}.merge(changes)).first).to eq(status)
       expect(host.api('GET', '/api/model-settings')).to eq(saved)
     end
   end
 
-  it 'preserves active settings when catalog validation fails and executes without rediscovery' do
-    saved = apply_settings
-    host.configure(catalog_error: true)
-    expect(host.request('PUT', '/api/model-settings', settings(revision: 1)).first).to eq(502)
-    expect(host.api('GET', '/api/model-settings')).to eq(saved)
-    before = File.read(File.join(host.root, 'discovery.jsonl'))
-    host.turn(host.submit(chief))
-    expect_calls(host.calls, 'gpt-6-astra', 'medium')
-    expect(File.read(File.join(host.root, 'discovery.jsonl'))).to eq(before)
-  end
-
-  it 'does not hold the state lock while validating a save with the provider' do
-    host.configure(catalog_block: true)
-    saving = Thread.new { apply_settings }
-    begin
-      Contract.wait(description: 'catalog validation request') do
-        path = File.join(host.root, 'discovery.jsonl')
-        File.exist?(path) && File.read(path).include?('model/list')
-      end
-      expect(host.api('GET', '/api/model-settings').fetch('revision')).to eq(0)
-      expect(host.state.fetch('agents')).not_to be_empty
-      expect(saving.alive?).to eq(true)
-    ensure
-      host.release
-      saving.join
-    end
-    expect(saving.value.fetch('revision')).to eq(1)
-  end
-
-  it 'reports provider execution failure without silently falling back to another model' do
-    apply_settings(defaults: choice('fixture-quick', 'low'))
+  it 'fails the turn on a provider failure without falling back to another model' do
+    save(0, codex('gpt-6-luna', 'low'))
     host.configure(fail: true)
     host.turn(host.submit(chief), 'failed')
-    expect_calls(host.calls, 'fixture-quick', 'low')
+    runs(host.calls, 'codex', 'gpt-6-luna', 'low')
+    save(1, claude)
+    {'Analyst' => {fail: false, claude_result_error: true}, 'Writer' => {claude_result_error: false, claude_missing_result: true}}.each do |name, configuration|
+      count = host.calls.size
+      host.configure(**configuration)
+      host.turn(host.submit(host.agent(name)), 'failed')
+      runs(host.calls.drop(count), 'claude', 'claude-opus-5-5', 'medium')
+    end
+  end
+
+  it 'lets Claude write in the Sapi workspace and create a specialist through the decision flow' do
+    save(0, claude)
+    host.configure(mode: 'Exec', rules: {
+      "#{chief}:Assessing" => {response: decision('OutsideSpecialization'), actions: [{write: 'Notes.html', content: '<h1>Notes updated by the provider fixture</h1>'}]},
+      'ChiefTriage' => {response: decision('NewSpecialistNeeded')}})
+    host.submit(chief)
+    host.idle
+    expect(File.read(File.join(host.workspace(chief), 'Notes.html'))).to eq('<h1>Notes updated by the provider fixture</h1>')
+    expect(host.state.fetch('agents').map { |agent| agent['name'] }).to include('NewResearcher')
+    expect(host.calls.first.fetch('agency_run')).not_to be_empty
+    runs(host.calls, 'claude', 'claude-opus-5-5', 'medium')
+  end
+
+  it 'stops the running provider process when its turn is cancelled' do
+    save(0, claude)
+    host.configure(block: true)
+    id = host.submit(chief)
+    Contract.wait(description: 'blocked provider process') { host.calls.any? }
+    pid = host.calls.first.fetch('pid')
+    host.api('POST', "/api/agents/#{chief}/turns/#{id}/cancel", {})
+    host.turn(id, %w[interrupted cancelled])
+    Contract.wait(description: 'provider process exit') do
+      Process.kill(0, pid)
+      false
+    rescue Errno::ESRCH
+      true
+    end
   end
 end

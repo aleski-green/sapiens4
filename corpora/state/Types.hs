@@ -55,13 +55,9 @@ instance Exception APIError
 data RunFailure = RunFailure Text [Value] deriving (Show,Typeable)
 instance Exception RunFailure
 
-data ModelProvider = CodexProvider | ClaudeProvider deriving (Eq, Show)
+newtype ProviderId = ProviderId { providerName :: Text } deriving (Eq, Ord, Show)
 
-providerName :: ModelProvider -> Text
-providerName CodexProvider = "codex"
-providerName ClaudeProvider = "claude"
-
-data ModelConfig = ModelConfig { configuredProvider :: ModelProvider, configuredModel :: Text, configuredEffort :: Text }
+data ModelConfig = ModelConfig { configuredProvider :: ProviderId, configuredModel :: Text, configuredEffort :: Text }
  deriving (Eq, Show)
 
 data Run = Run { runOwner :: AgentId, runId :: RunId, runSlot :: Int, runCancel :: IORef Bool, runProcess :: MVar (Maybe ProcessHandle), runActivity :: IORef Value, runDeadline :: Word64, runModelConfig :: ModelConfig }

@@ -10,99 +10,12 @@ if ARGV.include?('--version')
   exit
 end
 
-# Claude account commands. Claude counts as signed in unless a spec turns on
-# `claude_accounts`; then the login is a marker file in CLAUDE_CONFIG_DIR, so a
-# spec can see which folder Sapiens signed in to.
 if ARGV.first == 'auth'
-  home = ENV['CLAUDE_CONFIG_DIR'].to_s
-  marker = File.join(home, '.fixture-login')
-  File.open(File.join(root, 'claude-auth.jsonl'), 'a') do |file|
-    file.puts JSON.generate(args: ARGV, home: home, pid: Process.pid,
-      inherited: ENV.keys.grep(/\A(ANTHROPIC_|CLAUDE_CODE_)/).sort)
-  end
-  exit 2 if home.empty?
-  case ARGV[1]
-  when 'status'
-    exit(!config['claude_accounts'] || File.exist?(marker) ? 0 : 1)
-  when 'logout'
-    File.delete(marker) if File.exist?(marker)
-    exit 0
-  when 'login'
-    STDOUT.sync = true
-    puts 'Opening browser to sign in…'
-    puts "If the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true&client_id=fixture&state=#{SecureRandom.hex(8)}"
-    sleep 0.02 until File.exist?(File.join(root, 'claude-login-approved')) || File.exist?(File.join(root, 'claude-login-fails'))
-    exit 1 if File.exist?(File.join(root, 'claude-login-fails'))
-    File.write(marker, 'signed in')
-    puts 'Login successful.'
-    exit 0
-  end
+  exit(config['claude_signed_out'] ? 1 : 0) if ARGV[1] == 'status'
   exit 2
 end
 
 exit 0 if ARGV.include?('login') && ARGV.include?('status')
-
-# Model discovery uses the real provider process boundary, without a model turn.
-if ARGV.include?('app-server')
-  STDOUT.sync = true
-  initialized = false
-  default_model = {'model' => 'fixture-general', 'displayName' => 'Fixture General',
-    'hidden' => false, 'isDefault' => true, 'defaultReasoningEffort' => 'high',
-    'supportedReasoningEfforts' => [{'reasoningEffort' => 'low'}, {'reasoningEffort' => 'high'}]}
-  pages = config.fetch('catalog_pages', [{'data' => [default_model], 'nextCursor' => nil}])
-  STDIN.each_line do |line|
-    message = JSON.parse(line)
-    File.open(File.join(root, 'discovery.jsonl'), 'a') do |file|
-      file.puts JSON.generate(message.merge('pid' => Process.pid))
-    end
-    case message.fetch('method')
-    when 'initialize'
-      puts JSON.generate(id: message.fetch('id'), result: {})
-    when 'initialized'
-      initialized = true
-    when 'model/list'
-      raise 'Missing initialized notification' unless initialized
-      if config['catalog_block']
-        sleep 0.02 until File.exist?(File.join(root, 'released'))
-      end
-      if config['catalog_error']
-        puts JSON.generate(id: message.fetch('id'), error: {code: -1, message: 'Fixture catalog failure'})
-      elsif config['catalog_malformed']
-        puts 'not-json'
-      else
-        cursor = message.fetch('params')['cursor']
-        page = pages.fetch(cursor ? Integer(cursor) : 0)
-        puts JSON.generate(method: 'fixture/notification', params: {})
-        puts JSON.generate(id: message.fetch('id'), result: page)
-      end
-    end
-  end
-  exit
-end
-
-# Claude discovery has its own control protocol and never submits a user prompt.
-if ARGV.include?('--input-format')
-  STDOUT.sync = true
-  STDIN.each_line do |line|
-    request = JSON.parse(line)
-    File.open(File.join(root, 'claude-discovery.jsonl'), 'a') { |file| file.puts(JSON.generate(request.merge('pid' => Process.pid))) }
-    raise 'Unexpected Claude discovery request' unless request.dig('request', 'subtype') == 'initialize'
-    sleep 0.02 until !config['claude_catalog_block'] || File.exist?(File.join(root, 'released'))
-    models = config.fetch('claude_models', [
-      {value: 'default', resolvedModel: 'claude-opus-5-5', displayName: 'Default (recommended)', supportsEffort: true, supportedEffortLevels: %w[low medium high xhigh max]},
-      {value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus 5.5', supportsEffort: true, supportedEffortLevels: %w[low medium high xhigh max]},
-      {value: 'legacy', resolvedModel: 'claude-fixture-no-effort', displayName: 'Fixture no effort'}
-    ])
-    if config['claude_catalog_malformed']
-      puts 'not-json'
-    else
-      puts JSON.generate(type: 'control_response', response: {
-        subtype: config['claude_catalog_error'] ? 'error' : 'success',
-        request_id: request.fetch('request_id'), response: {models: models}})
-    end
-  end
-  exit
-end
 
 claude = ARGV.include?('--print')
 text = STDIN.read

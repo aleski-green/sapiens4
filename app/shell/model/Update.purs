@@ -135,7 +135,7 @@ update action m = case action of
           localPair = not (M.remote m) && S.contains (S.Pattern "pairing=local") m.env.search
           local = A.find ((_ == X.Local) <<< _.location) registry.records
           connect = case selected of
-            Nothing -> [StopUpdates,Dispatch Shell.CheckSetup]
+            Nothing -> [StopUpdates]
             Just record -> [if record.key == m.active then ConnectRecord record else Dispatch $ Shell.EnterCorpora record.key]
           pairing = if localPair then [ReplaceHistory m.env.path] <> (case local of
             Nothing -> []
@@ -218,7 +218,7 @@ update action m = case action of
               commands = case change of
                 KeepSnapshot -> previews
                 ReplaceSnapshot _ -> [RestoreScroll,LoadDocument] <> previews <> [Sync]
-          in Changed updated ([AcknowledgeSnapshot source revision,Dispatch Shell.CheckSetup] <> commands <> schedulePoll updated)
+          in Changed updated ([AcknowledgeSnapshot source revision] <> commands <> schedulePoll updated)
   Persist ->
     let value = D.encode $ M.preferences m
     in if (M.online m) && not (M.busy m) && not m.saving && value /= m.preferencesSaved then

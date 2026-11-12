@@ -43,7 +43,7 @@ foreach ($folder in @('web','license')) {
     Copy-Item -LiteralPath (Join-Path $repo "submodules/libs4/$folder") -Destination $libsOutput -Recurse -Force
 }
 Copy-Item -LiteralPath (Join-Path $repo 'submodules/libs4/README.md') -Destination $libsOutput -Force
-foreach ($folder in @('corpora/prompts','app')) {
+foreach ($folder in @('corpora/prompts','corpora/providers.json','app')) {
     $target = Join-Path $payload $folder
     if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
     New-Item -ItemType Directory -Force -Path (Split-Path $target -Parent) | Out-Null
