@@ -8,6 +8,7 @@ import BuildUI
 import Computer
 import Server
 import Setup
+import Mcp
 import Control.Concurrent
 import Control.Exception
 import Control.Monad
@@ -51,6 +52,7 @@ run = do
   "control":_ -> jsonCommand (failure 400 "Usage: sapiens4 control CONFIG JSON")
   "computer":rest -> jsonCommand (computerMain root rest)
   "relay":rest -> relayMain root (normalized rest)
+  "mcp":rest -> mcpMain (option "--url" "http://127.0.0.1:4174" (normalized rest))
   _ -> hostMain root (normalized args)
 jsonCommand :: IO ExitCode -> IO ()
 jsonCommand action = do
