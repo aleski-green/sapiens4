@@ -25,10 +25,20 @@ RSpec.describe 'Domain validation through saved installation fixtures', :host do
     end
   end
 
-  it 'rejects a malformed saved turns collection' do
-    Contract.atomic_json(@file, @state.merge('turns' => 'invalid'))
-    expect(host.request('GET', '/api/state').first).to eq(500)
-    expect(host.calls).to be_empty
+  it 'rejects missing, null or malformed saved turns without rewriting history' do
+    [@state.merge('turns' => 'invalid'), @state.merge('turns' => nil), @state.reject { |key, _| key == 'turns' }].each do |state|
+      Contract.atomic_json(@file, state)
+      original = File.binread(@file)
+      expect(host.request('GET', '/api/state').first).to eq(500)
+      expect(File.binread(@file)).to eq(original)
+      expect(host.calls).to be_empty
+    end
+    host.stop
+    original = File.binread(@file)
+    _, error, code = Contract.capture(Contract::BINARY, '--port', '0', '--data-dir', host.root, env: host.environment)
+    expect(code).not_to eq(0)
+    expect(error).to include('agent state')
+    expect(File.binread(@file)).to eq(original)
   end
 
   it 'preserves unknown turn metadata when a lifecycle action saves the record' do
@@ -58,12 +68,6 @@ RSpec.describe 'Domain validation through saved installation fixtures', :host do
     expect(host.calls).to be_empty
     host.restart
     expect(JSON.parse(File.read(@file))['turns'].last['id']).to eq('fixture-call')
-  end
-
-  it 'reports an unknown saved execution mode instead of silently choosing normal mode' do
-    Contract.atomic_json(File.join(File.dirname(@file), 'run-settings.json'), {mode: 'deeep'})
-    expect(host.request('GET', '/api/state').first).to eq(500)
-    expect(host.calls).to be_empty
   end
 
   def saved_workload(**fields)
@@ -126,6 +130,33 @@ RSpec.describe 'Domain validation through saved installation fixtures', :host do
     expect(body['error']).not_to be_empty
     expect(host.request('GET', '/api/health').first).to eq(200)
   end
+  it 'rejects an incomplete v7 database without upgrading or recreating missing tables' do
+    host.stop
+    database = File.join(host.root, 'corpora.sqlite3')
+    SQLite3::Database.open(database) do |db|
+      db.execute('DROP TABLE scheduled_routines')
+      db.execute('PRAGMA user_version=7')
+    end
+    _, error, code = Contract.capture(Contract::BINARY, '--port', '0', '--data-dir', host.root, env: host.environment)
+    expect(code).not_to eq(0)
+    expect(error).to include('scheduled_routines')
+    SQLite3::Database.open(database, readonly: true) do |db|
+      expect(db.get_first_value('PRAGMA user_version')).to eq(7)
+      expect(db.get_first_value("SELECT name FROM sqlite_master WHERE name='scheduled_routines'")).to be_nil
+    end
+  end
+
+  it 'rejects an invalid legacy turn before creating the migration backup' do
+    host.stop
+    Contract.atomic_json(@file, @state.merge('schema_version' => 2, 'turns' => [@turn.merge(status: 'unknown')]))
+    original = File.binread(@file)
+    _, error, code = Contract.capture(Contract::BINARY, '--port', '0', '--data-dir', host.root, env: host.environment)
+    expect(code).not_to eq(0)
+    expect(error).to include('agent state')
+    expect(File.binread(@file)).to eq(original)
+    expect(File).not_to exist(File.join(File.dirname(@file), 'legacy-state-v2.json'))
+  end
+
   it 'migrates schema two before recovery and retains the original backup across restarts' do
     host.stop
     old = @state.merge('schema_version' => 2, 'turns' => [@turn.merge(status: 'budget_blocked')],

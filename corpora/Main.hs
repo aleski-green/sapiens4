@@ -2,6 +2,7 @@
 module Main where
 
 import Types
+import DataRoot
 import HostServer
 import Assets
 import BuildUI
@@ -28,10 +29,20 @@ import System.IO
 import System.Process
 #ifndef mingw32_HOST_OS
 import System.Posix.Signals
+#else
+import qualified GHC.ConsoleHandler as Console
 #endif
 
 main :: IO ()
-main = run `catches` [Handler (\(code::ExitCode) -> throwIO code), Handler (\(e::SomeException) -> hPutStrLn stderr (displayException e) >> exitFailure)]
+main = run `catches` [Handler (\(code::ExitCode) -> throwIO code), Handler report]
+ where
+ report (e::SomeException) = do
+  let detail = case fromException e of Just (APIError _ message) -> T.unpack message; Nothing -> storageMessage e
+  desktop <- elem "--desktop" <$> getArgs
+  mode <- lookupEnv "SAPIENS_STORAGE_MODE"
+  when (desktop && isJust mode) $ putStr startupErrorPrefix >> BL.putStrLn (encode detail)
+  hPutStrLn stderr detail
+  exitFailure
 run :: IO ()
 run = do
  setLocaleEncoding utf8
@@ -70,33 +81,34 @@ repository = do
    cwd <- getCurrentDirectory
    here <- doesDirectoryExist (cwd</>"app")
    executable <- getExecutablePath
-   canonicalizePath (if here then cwd else takeDirectory (takeDirectory (takeDirectory executable)))
+   let runtime=takeDirectory (takeDirectory (takeDirectory executable))
+   assets <- doesFileExist (runtime</>"app/shell/index.html")
+   canonicalizePath (if assets then runtime else if here then cwd else runtime)
 hostMain :: FilePath -> [String] -> IO ()
 hostMain root args = do
  when ("--help" `elem` args || "-h" `elem` args) $ putStrLn "Usage: sapiens4 [--port PORT] [--data-dir DIRECTORY] [--open]" >> exitSuccess
- settings <- validated (hostOptions root args)
- let directory = hostDirectory settings
+ validated (validateOptions ["--port","--data-dir"] ["--open","--desktop"] args)
+ port <- validated (parseIntegerOption "--port" "4174" args)
+ require (port>=0 && port<=65535) 400 "Port must be between 0 and 65535"
+ directory <- case optionValue "--data-dir" args of
+  Just "" -> failure 400 "Data directory must not be empty"
+  Just path -> makeAbsolute path
+  Nothing -> do
+   source <- doesFileExist (root</>"corpora/Main.hs")
+   if source then
+    lookupEnv "SAPIENS_DATA_DIR" >>= maybe (pure (root</>".sapiens4")) (\path -> if null path then fail "SAPIENS_DATA_DIR must not be empty" else makeAbsolute path)
+    else defaultDataDirectory
  void (asset root "/")
  void (asset root "/workspace/app.js")
- bracket (startHost directory (requestedPort settings) False) hostStop $ \host -> do
+ bracket (startHost directory port False) hostStop $ \host -> do
   let url="http://127.0.0.1:"<>show (hostPort host)<>"/workspace/"
   putStrLn ("Sapiens4: "<>url<>"\nUI database: "<>directory</>"corpora.sqlite3")
   finished <- newEmptyMVar
   let shutdown=void (tryPutMVar finished ())
   installShutdown shutdown
-  when (desktopMode settings) (void (forkIO ((void getLine `catch` \(_::IOException)->pure ()) >> shutdown)))
-  when (openWindow settings) (void (createProcess (proc (if os=="darwin" then "open" else if os=="mingw32" then "explorer" else "xdg-open") [url])))
+  when ("--desktop" `elem` args) (void (forkIO ((void getLine `catch` \(_::IOException)->pure ()) >> shutdown)))
+  when ("--open" `elem` args) (void (createProcess (proc (if os=="darwin" then "open" else if os=="mingw32" then "explorer" else "xdg-open") [url])))
   takeMVar finished
-
-data HostOptions = HostOptions
- { requestedPort :: Int, hostDirectory :: FilePath, desktopMode :: Bool, openWindow :: Bool }
-
-hostOptions :: FilePath -> [String] -> Validation HostOptions
-hostOptions root args = do
- validateOptions ["--port","--data-dir"] ["--open","--desktop"] args
- port <- parseIntegerOption "--port" "4174" args
- check (port>=0 && port<=65535) 400 "Port must be between 0 and 65535"
- pure (HostOptions port (option "--data-dir" (root</>".sapiens4") args) ("--desktop" `elem` args) ("--open" `elem` args))
 
 parseIntegerOption :: String -> String -> [String] -> Validation Int
 parseIntegerOption key def args = case reads (option key def args) of
@@ -110,11 +122,11 @@ relayMain root args = do
  bind <- option "--bind" <$> (fromMaybe "127.0.0.1" <$> lookupEnv "SAPIENS_RELAY_BIND") <*> pure args
  portDefault <- fromMaybe "4180" <$> lookupEnv "PORT"
  port <- validated (parseIntegerOption "--port" portDefault args)
- dbDefault <- fromMaybe ".sapiens4/relay.sqlite3" <$> lookupEnv "SAPIENS_RELAY_DB"
+ dbDefault <- fromMaybe ".sapiens4-relay/relay.sqlite3" <$> lookupEnv "SAPIENS_RELAY_DB"
  urlEnv <- lookupEnv "SAPIENS_RELAY_ORIGIN"
  railway <- lookupEnv "RAILWAY_PUBLIC_DOMAIN"
  let database=option "--db" dbDefault args
-     suppliedOrigin = listToMaybe [value | (key,value)<-zip args (drop 1 args),key=="--origin"]
+     suppliedOrigin = optionValue "--origin" args
      public = suppliedOrigin `mplus` urlEnv `mplus` (("https://"<>) <$> railway)
      connectionPath=option "--connection-file" (replaceExtension database "connection.json") args
  publicOrigin <- maybe (failure 400 "Relay --origin is required") pure (public >>= \value -> if null value then Nothing else Just value)
@@ -138,7 +150,7 @@ installShutdown action = do
  void (installHandler sigTERM (Catch action) Nothing)
  void (installHandler sigINT (Catch action) Nothing)
 #else
- pure ()
+ void (Console.installHandler (Console.Catch (const action)))
 #endif
 
 normalized :: [String] -> [String]

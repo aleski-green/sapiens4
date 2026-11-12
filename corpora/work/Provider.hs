@@ -13,8 +13,8 @@ import Text.Read (readMaybe)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
 import Data.IORef
-import Data.Char (toLower)
-import Data.List (nub,sortOn)
+import Data.Char (toUpper)
+import Data.List (find,isPrefixOf,isSuffixOf,nub,sortOn)
 import qualified Data.Map.Strict as M
 import Data.Maybe
 import Data.Text (Text)
@@ -35,7 +35,7 @@ import Text.Regex.TDFA ((=~))
 import System.Posix.Signals
 #endif
 import Types
-import Population (executionSettings)
+import Population (readModelSettings, readProviders, ModelSettingsDraft(..), Provider(..), ProviderModel(..), Providers(..), EventFormat(..))
 import qualified Computer as Computer
 
 data ProviderEvent
@@ -66,7 +66,7 @@ data ProviderState = ProviderState
 
 providerStep :: Double -> ProviderEvent -> ProviderState -> Value -> Validation (ProviderState,Value)
 providerStep time event state activity = case event of
- ProviderFailed details -> Left (APIError 500 ("Codex turn failed: " <> jsonText details))
+ ProviderFailed details -> Left (APIError 500 ("Provider turn failed: " <> jsonText details))
  _ -> Right (updated,mergeFields [("updated",toJSON time),("phase",str (if M.null tools then "Waiting for model" else "Running tool")),("tool",str (fromMaybe "" (listToMaybe (M.elems tools))))] reported)
  where
  updated=case event of
@@ -80,46 +80,54 @@ providerStep time event state activity = case event of
   ToolCompleted _ label -> put "last_action" (str label) activity
   _ -> activity
 
-data CodexConfig = CodexConfig
- { codexModel :: Text, codexEffort :: Text }
- deriving (Eq, Show)
+runModelSettings :: Service -> Text -> IO ModelSelection
+runModelSettings s owner = do
+ configured <- readModelSettings s
+ pure (M.findWithDefault (modelSettingsDefault configured) owner (modelSettingsOverrides configured))
 
-modelDefaults :: IO CodexConfig
-modelDefaults = CodexConfig <$> (maybe "gpt-6-sol" T.pack <$> lookupEnv "SAPIENS_CODEX_MODEL") <*> (maybe "high" T.pack <$> lookupEnv "SAPIENS_CODEX_REASONING_EFFORT")
+findProvider :: Providers -> ProviderId -> IO Provider
+findProvider configured key = maybe (failure 400 "Unsupported model provider") pure (find ((==key) . providerId) (providersList configured))
 
-resolveCodexConfig :: ExecutionSettings -> CodexConfig -> CodexConfig
-resolveCodexConfig settings defaults = case executionMode settings of
- Normal -> defaults
- Deep -> defaults { codexEffort = "xhigh" }
+providerFor :: Service -> ModelSelection -> IO (Provider,FilePath)
+providerFor s config = do
+ configured <- readProviders (repositoryRoot s)
+ provider <- findProvider configured (selectionProvider config)
+ binary <- providerBinary provider >>= maybe (failure 503 (providerLabel provider <> " CLI was not found on this host.")) pure
+ pure (provider,binary)
 
-codexArguments :: FilePath -> CodexConfig -> [String]
-codexArguments workdir config =
- ["exec","-c","model_reasoning_effort=" ++ T.unpack (jsonText (str (codexEffort config))),"-c","model=" ++ T.unpack (jsonText (str (codexModel config))),"--skip-git-repo-check","--json","--dangerously-bypass-approvals-and-sandbox","--cd",workdir,"--color","never","-"]
+providersView :: FilePath -> IO Value
+providersView root = do
+ configured <- providersList <$> readProviders root
+ pure (obj [("providers",arr [obj [("id",str (providerName (providerId provider))),("name",str (providerLabel provider)),("recommended",toJSON (providerRecommended provider)),("models",toJSON (providerModels provider))] | provider <- configured])])
 
-codexBinary :: IO (Maybe FilePath)
-codexBinary = do
- override <- lookupEnv "SAPIENS_CODEX_BINARY"
+providerArguments :: Provider -> FilePath -> ModelSelection -> [String]
+providerArguments provider workdir config = concatMap expand (providerRun provider)
+ where
+ effort = selectionEffort config
+ expand "{effort-args}" = if T.null effort then [] else map fill (providerEffort provider)
+ expand arg = [fill arg]
+ fill = T.unpack . T.replace "{workdir}" (T.pack workdir) . T.replace "{model}" (selectionModel config) . T.replace "{effort}" effort
+
+validateModelSettingsDraft :: Service -> ModelSettingsDraft -> IO ()
+validateModelSettingsDraft s draft = do
+ configured <- readProviders (repositoryRoot s)
+ forM_ (modelSettingsDefault draft : M.elems (modelSettingsOverrides draft)) $ \choice -> do
+  provider <- findProvider configured (selectionProvider choice)
+  model <- maybe (failure 400 "The selected model is not in the current provider catalog.") pure (find ((== selectionModel choice) . modelName) (providerModels provider))
+  require (T.null (selectionEffort choice) || selectionEffort choice `elem` modelEfforts model) 400 "The selected effort is not supported by this model."
+
+providerBinary :: Provider -> IO (Maybe FilePath)
+providerBinary provider = do
+ override <- lookupEnv ("SAPIENS_" ++ map toUpper (T.unpack (providerName (providerId provider))) ++ "_BINARY")
  case override of
   Just p | not (null p) -> findExecutable p
   _ -> do
-   path <- findExecutable "codex"
+   path <- findExecutable (providerCommand provider)
    home <- getHomeDirectory
    local <- fromMaybe (home </> "AppData/Local") <$> lookupEnv "LOCALAPPDATA"
    roaming <- fromMaybe (home </> "AppData/Roaming") <$> lookupEnv "APPDATA"
-   let children folder = do
-        present <- doesDirectoryExist folder
-        if present then map (folder </>) <$> listDirectory folder else pure []
-       vendors scope = do
-        packages <- filter (T.isPrefixOf "codex" . T.pack . takeFileName) <$> children scope
-        concat <$> forM packages (\package -> map (</> "codex/codex.exe") <$> children (package </> "vendor"))
-   installed <- if os /= "mingw32" then pure [] else do
-    app <- map (</> "codex.exe") <$> children (local </> "OpenAI/Codex/bin")
-    npm <- vendors (roaming </> "npm/node_modules/@openai")
-    bundled <- vendors (roaming </> "npm/node_modules/@openai/codex/node_modules/@openai")
-    pure (app ++ npm ++ bundled)
-   let candidates = maybeToList path ++ installed ++ ["/Applications/" ++ app ++ ".app/Contents/Resources/" ++ binary | os == "darwin", app <- ["Codex","ChatGPT"],binary <- ["codex","codex-cli/bin/codex"]]
-       native = filter (\p -> os /= "mingw32" || map toLower (takeExtension p) == ".exe") candidates
-   existing <- filterM doesFileExist (nub native)
+   listed <- concat <$> mapM (installed [("~",home),("%LOCALAPPDATA%",local),("%APPDATA%",roaming)]) (providerPaths provider)
+   existing <- filterM doesFileExist (nub (maybeToList path ++ listed))
    runnable <- filterM (fmap executable . getPermissions) existing
    versions <- forM runnable $ \p -> do
     result <- try (timeout 10000000 (readProcessWithExitCode p ["--version"] "")) :: IO (Either SomeException (Maybe (ExitCode,String,String)))
@@ -128,10 +136,39 @@ codexBinary = do
      Left errorValue | Just (_ :: AsyncCancelled) <- fromException errorValue -> throwIO errorValue
      _ -> pure ()
     let version = case result of
-         Right (Just (ExitSuccess,out,_)) -> let (_,_,_,numbers) = out =~ ("codex-cli[[:space:]]+([0-9]+)\\.([0-9]+)\\.([0-9]+)" :: String) :: (String,String,String,[String]) in mapMaybe readMaybe numbers
+         Right (Just (ExitSuccess,out,_)) -> let (_,_,_,numbers) = out =~ ("([0-9]+)\\.([0-9]+)\\.([0-9]+)" :: String) :: (String,String,String,[String]) in mapMaybe readMaybe numbers
          _ -> [] :: [Int]
     pure (version,p)
    pure (snd <$> listToMaybe (reverse (sortOn id (filter (not . null . fst) versions))))
+ where
+ installed roots entry = foldM expand [""] $ case splitDirectories entry of
+  first:rest -> fromMaybe first (lookup first roots) : rest
+  [] -> []
+ expand roots part
+  | '*' `elem` part = concat <$> forM roots (\root -> do
+     present <- doesDirectoryExist root
+     names <- if present then listDirectory root else pure []
+     pure [root </> name | name <- names, matches part name])
+  | otherwise = pure [root </> part | root <- roots]
+ matches part name = let (before,after) = break (=='*') part in length name >= length part - 1 && before `isPrefixOf` name && drop 1 after `isSuffixOf` name
+
+events :: EventFormat -> Value -> IO [ProviderEvent]
+events format = case format of
+ CodexJson -> fmap (:[]) . decodeValue 500
+ ClaudeStream -> claudeEvents
+
+claudeEvents :: Value -> IO [ProviderEvent]
+claudeEvents value = case at value "type" of
+ "system" | at value "subtype" == "init" -> (\session -> [SessionStarted session]) <$> field 502 value "session_id"
+ "result" -> do
+  isError <- field 502 value "is_error" :: IO Bool
+  if isError || at value "subtype" /= "success" then pure [ProviderFailed value]
+   else (\result -> [AgentMessage result]) <$> field 502 value "result"
+ "assistant" | has value "error" && get value "error" /= Null -> pure [ProviderFailed value]
+ "assistant" -> pure [ToolStarted (at tool "id") (at tool "name") | tool <- items (get value "message") "content",at tool "type" == "tool_use"]
+ "user" -> pure [ToolCompleted (at tool "tool_use_id") "Tool completed" | tool <- items (get value "message") "content",at tool "type" == "tool_result"]
+ _ -> pure []
+
 killTree :: ProcessHandle -> IO ()
 killTree ph = do
  result <- getProcessExitCode ph
@@ -171,12 +208,12 @@ invokeModel s run input = do
  require (not cancelled) 409 "Stopped by Admin"
  before <- getMonotonicTimeNSec
  require (before < runDeadline run) 504 "Call time limit exhausted between decision nodes"
- binary <- codexBinary >>= maybe (failure 503 "Codex CLI was not found. Install Codex and run codex login.") pure
- defaults <- modelDefaults
- settings <- executionSettings s (agentIdText (runOwner run))
- let config = resolveCodexConfig settings defaults
+ let config = runModelConfig run
      workdir = workspaceRoot s (agentIdText (runOwner run))
-     args = codexArguments workdir config
+ (provider,binary) <- providerFor s config
+ let args = providerArguments provider workdir config
+     name = providerLabel provider
+ let readEvents = events (providerEvents provider)
  environment <- getEnvironment
  started <- realToFrac . (*1000) <$> getPOSIXTime :: IO Double
  writeIORef (runActivity run) (obj [("started",toJSON started),("updated",toJSON started),("phase",str "Waiting for model"),("last_action",str "")])
@@ -197,14 +234,15 @@ invokeModel s run input = do
        case eitherDecodeStrict' (TE.encodeUtf8 line) of
         Left _ -> pure ()
         Right rawEvent -> do
-         event <- decodeValue 500 rawEvent
-         state <- readIORef stream
-         activity <- readIORef (runActivity run)
-         time <- realToFrac . (*1000) <$> getPOSIXTime :: IO Double
-         (updated,reported) <- validated (providerStep time event state activity)
-         writeIORef stream updated
-         writeIORef (runActivity run) reported
-         when (reported /= activity) (notifyChange s)
+         parsed <- readEvents rawEvent
+         forM_ parsed $ \event -> do
+          state <- readIORef stream
+          activity <- readIORef (runActivity run)
+          time <- realToFrac . (*1000) <$> getPOSIXTime :: IO Double
+          (updated,reported) <- validated (providerStep time event state activity)
+          writeIORef stream updated
+          writeIORef (runActivity run) reported
+          when (reported /= activity) (notifyChange s)
       drain h f = let loop = do eof <- hIsEOF h; unless eof (BC.hGetLine h >>= f . TE.decodeUtf8With (\_ _ -> Just '\xfffd') >> loop) in loop
   withAsync ((BS.hPut hin (TE.encodeUtf8 input) `catch` (\(_::IOException) -> pure ())) `finally` hClose hin) $ \writer ->
    withAsync (drain herr (append errors)) $ \stderrReader ->
@@ -223,11 +261,12 @@ invokeModel s run input = do
      stop <- readIORef (runCancel run)
      expired <- readIORef timedOut
      require (not stop) 409 "Stopped by Admin; review external effects before retrying"
-     require (not expired) 504 "Codex exceeded 1800s; its process tree was stopped."
+     require (not expired) 504 (name <> " exceeded 1800s; its process tree was stopped.")
      err <- T.unlines . reverse <$> readIORef errors
      out <- T.unlines . reverse <$> readIORef recent
-     require (exit == ExitSuccess) 500 ("codex exec failed: " <> err <> out)
-     (providerMessage <$> readIORef stream) >>= maybe (failure 500 "Codex completed without an agent message.") pure
+     message <- providerMessage <$> readIORef stream
+     require (exit == ExitSuccess) 500 (name <> " execution failed: " <> err <> out)
+     maybe (failure 500 (name <> " completed without a successful result.")) pure message
  where cleanup (hin,hout,herr,ph) = do
         killTree ph
         void (waitForProcess ph)

@@ -1,26 +1,29 @@
 require_relative 'process'
 
 class Host
-  attr_reader :root, :url, :environment, :provider, :process
+  attr_reader :fixture_dir, :root, :url, :environment, :provider, :process
 
   def initialize(start: true, environment: {}, repo: Contract::ROOT, command: nil)
     @directory = File.realpath(Dir.mktmpdir('sapiens-contract-'))
     @root, @repo = File.join(@directory, "workspace's é"), repo
     @command = command
-    FileUtils.mkdir_p(File.join(root, 'calls'))
+    @fixture_dir = File.join(@directory, 'fixture')
+    FileUtils.mkdir_p([root, File.join(fixture_dir, 'calls')])
     @provider = {}
     configure
     if Gem.win_platform?
       binary = ENV.fetch('SAPIENS_TEST_CODEX')
     else
-      binary = File.join(root, 'codex')
+      binary = File.join(fixture_dir, 'codex')
       File.write(binary, "#!#{RbConfig.ruby}\nload #{File.join(__dir__, 'provider.rb').inspect}\n")
       File.chmod(0755, binary)
     end
-    @environment = {'SAPIENS_CODEX_BINARY' => binary, 'SAPIENS_CONTRACT_ENV' => root,
+    config = File.join(fixture_dir, 'config')
+    FileUtils.mkdir_p(config)
+    Contract.atomic_json(File.join(config, 'storage.json'), version: 1, directory: root)
+    @environment = {'SAPIENS_CONFIG_DIR' => config, 'SAPIENS_CODEX_BINARY' => binary, 'SAPIENS_CLAUDE_BINARY' => binary, 'SAPIENS_CONTRACT_ENV' => fixture_dir,
       'SAPIENS_CONTRACT_RUBY' => RbConfig.ruby, 'SAPIENS_CONTRACT_PROVIDER' => File.join(__dir__, 'provider.rb'),
-      'NO_COLOR' => '1', 'SAPIENS_WHISPER_URL' => 'http://127.0.0.1:9', 'SAPIENS_CODEX_MODEL' => 'gpt-6-sol',
-      'SAPIENS_CODEX_REASONING_EFFORT' => 'high'}.merge(environment)
+      'NO_COLOR' => '1', 'SAPIENS_WHISPER_URL' => 'http://127.0.0.1:9'}.merge(environment)
     self.start if start
   rescue Exception
     close
@@ -29,7 +32,7 @@ class Host
 
   def configure(**options)
     @provider.merge!(options.transform_keys(&:to_s))
-    Contract.atomic_json(File.join(root, 'provider.json'), @provider)
+    Contract.atomic_json(File.join(fixture_dir, 'provider.json'), @provider)
   end
 
   def start
@@ -118,8 +121,8 @@ class Host
     end
   end
   def calls
-    Dir[File.join(root, 'calls', '*.json')].map { |file| JSON.parse(File.read(file)) }.sort_by { |c| c['started'] }
+    Dir[File.join(fixture_dir, 'calls', '*.json')].map { |file| JSON.parse(File.read(file)) }.sort_by { |c| c['started'] }
   end
-  def release(gate = 'released'); File.write(File.join(root, gate), '') if root && File.directory?(root); end
+  def release(gate = 'released'); File.write(File.join(fixture_dir, gate), '') if fixture_dir && File.directory?(fixture_dir); end
   def workspace(owner); control(owner, 'status').fetch('notes').fetch('workspace'); end
 end

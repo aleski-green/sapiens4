@@ -40,7 +40,7 @@ data Browser = Browser { shell :: IORef Obj, delegate :: IORef Obj, tabs :: IORe
 
 newBrowser address guestScript = do
     sh <- newIORef nullPtr; de <- newIORef nullPtr; ts <- newIORef Map.empty
-    ac <- newIORef ""; da <- newIORef False; base <- url address
+    ac <- newIORef ""; da <- newIORef False; base <- url address >>= (`obj0` "retain")
     pure (Browser sh de ts ac da base guestScript)
 
 key tab = tabOwner tab <> ":" <> tabID tab
@@ -210,7 +210,7 @@ history browser tab predicate action = do
         let done = pending { tabAwaiting = False }
         save browser done; report browser done
 
-receive browser message = do
+receive browser message onPreferences onReady = do
     sh <- readIORef (shell browser)
     sourceView <- obj0 message "webView"
     frame <- obj0 message "frameInfo"
@@ -223,7 +223,10 @@ receive browser message = do
         dictionary <- cls "NSDictionary"
         valid <- booleanArgument raw "isKindOfClass:" dictionary
         body <- if valid then jsonObject raw else pure Nothing
-        forM_ body $ \input -> if bool (field "pickFile" input) then do
+        forM_ body $ \input -> do
+          when (bool (field "workspaceReady" input)) onReady
+          if field "clientPreferences" input /= Null then onPreferences (field "clientPreferences" input)
+          else if bool (field "pickFile" input) then do
             panel <- new "NSOpenPanel"
             void (obj1 panel "setCanChooseDirectories:" (int 0)); void (obj1 panel "setAllowsMultipleSelection:" (int 1)); void (obj1 panel "setShowsHiddenFiles:" (int 1))
             let directory = text (field "directory" input)

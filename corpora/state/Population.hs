@@ -5,6 +5,7 @@ module Population where
 import Control.Exception
 import Control.Monad
 import Data.Aeson hiding (pairs)
+import qualified Data.Map.Strict as Map
 import Data.Char
 import Data.IORef
 import System.Random (randomRIO)
@@ -69,39 +70,26 @@ assignManager s a parent = do
  let entry = get d a; old = get entry "parent"
  saveDirectory s (put a (put "parent" parent entry) d)
  when (old /= parent) $ DB.record s [a] a "sapi.manager.changed" (obj [("previous",old),("manager",parent)]) "admin" Nothing
-executionSettings :: Service -> Text -> IO ExecutionSettings
-executionSettings s a = do
- let p = agentRoot s a </> "run-settings.json"
- exists <- doesFileExist p
- readJSON (if exists then p else agentRoot s a </> "execution.json") (ExecutionSettings Normal)
 ensureAgent :: Service -> Value -> IO ()
 ensureAgent s row = do
  let a = at row "id"; root = agentRoot s a; work = workspaceRoot s a; p = root </> "state.json"
- createDirectoryIfMissing True root
  createDirectoryIfMissing True work
  ensureMemo work (at row "name") (at row "role") `catch` (\(_::APIError) -> pure ())
  seedMemoBookmark s a
- exists <- doesFileExist p
- unless exists $ writeJSON p (obj [("schema_version",num 3),("agid",str a),("revision",num 1),("turns",arr []),("chat",arr []),("events",arr []),("event_sequence",num 0),("last_output",Null)])
- v <- readJSON p empty
+ v <- readJSON p Null
  require (get v "schema_version" `elem` map num [1,2,3]) 500 "Unsupported agent state schema"
  require (at v "agid" == a) 500 "Agent ID does not match saved state"
  when (int (get v "schema_version") < 3) $ do
   let version = int (get v "schema_version"); backup = root </> ("legacy-state-v" ++ show version ++ ".json")
+  migrated <- validated (migrateAgentState version v)
   backed <- doesFileExist backup
   unless backed $ copyFile p backup
-  validated (migrateAgentState version v) >>= saveState s a
+  saveState s a migrated
  d <- directory s
- unless (has d a) $ saveDirectory s (put a (obj [("parent",Null),("scope",str "")]) d)
+ unless (has d a) $ saveDirectory s (put a (obj [("parent",get v "initial_manager"),("scope",str "")]) d)
+ when (get v "schema_version"==num 3 && has v "initial_manager") $
+  writeJSON p (remove ["initial_manager"] v)
  setManifests s row
-migrateAgentState :: Int -> Value -> Validation AgentState
-migrateAgentState version v =
- let old = items v (if version == 1 then "jobs" else "turns")
-     migrate t = let base = selectPresent ["id","flow","status","created","error","warning"] t; input = get t (if version==1 then "task" else "input") in merge (put "input" input base) (if at t "status" == "budget_blocked" then obj [("status",str "interrupted"),("error",str "Former budget block removed; retry to continue")] else empty)
-     state = select ["agid","revision","chat","events","event_sequence","last_output"] v
-     migrateMessage m = if has m "job" then put "turn" (get m "job") (remove ["job"] m) else m
- in validateValue 500 parseJSON (merge state (obj [("schema_version",num 3),("turns",arr [migrate t | t <- old,at t "flow" `elem` ["chat","computer"]]),("chat",arr (map migrateMessage (items v "chat"))),("events",arr (map migrateMessage (items v "events")))]))
-
 setManifests :: Service -> Value -> IO ()
 setManifests s row = do
  let a = at row "id"; root = agentRoot s a </> "manifests"
@@ -167,16 +155,17 @@ createAgent s d = do
      selectedColor = fromMaybe randomColor color
  time <- now
  let row = toJSON (AgentProfile (AgentId a) name role selectedColor selected time)
+ -- Reserve the fresh ID and persist its history before publishing it to readers.
+ createDirectoryIfMissing True (serviceRoot s </> "agentpy/agents")
+ createDirectory (agentRoot s a)
+ writeJSON (agentRoot s a </> "state.json") (obj [("schema_version",num 3),("agid",str a),("revision",num 1),("turns",arr []),("chat",arr []),("events",arr []),("event_sequence",num 0),("last_output",Null),("initial_manager",parent)])
  DB.addAgent s row
- dir <- directory s
- saveDirectory s (put a (obj [("parent",parent),("scope",str "")]) dir)
  ensureAgent s row
  DB.record s [a] a "sapi.created" (put "manager" parent row) "admin" Nothing
  pure row
 identityEdit :: Value -> Validation (Text,Text)
 identityEdit d = do
- check (all (`elem` ["name","role","manager","execution"]) (keys d)) 400 "Unknown or inactive setting"
- when (has d "execution") $ check (keys (get d "execution") == ["mode"] && at (get d "execution") "mode" `elem` ["normal","deep"]) 400 "Choose Normal or Deep work; call timeouts are managed globally"
+ check (all (`elem` ["name","role","manager"]) (keys d)) 400 "Unknown or inactive setting"
  name <- validateValue 400 nameP d
  role <- validateValue 400 (textFieldP "role" 60) d
  pure (name,role)
@@ -188,7 +177,6 @@ updateAgent s a d = do
  state <- agentState s a
  require (not (any ((`elem` [Queued,Running]) . turnStatus) (agentTurns state))) 409 "Wait for this Sapi's current turn before changing its identity"
  when (has d "manager") $ validateManager s a (get d "manager") >>= assignManager s a
- when (has d "execution") $ writeJSON (agentRoot s a </> "run-settings.json") (get d "execution")
  DB.executeSQL s "UPDATE agents SET name=?,role=? WHERE id=?" [SQLText name,SQLText role,SQLText a]
  DB.record s [a] a "sapi.updated" d "admin" Nothing
  DB.agent s a >>= setManifests s
@@ -265,3 +253,63 @@ corporaIdentity s = do
  row <- if T.null chief then pure empty else DB.agent s chief
  template <- prompt s "corpora-settings-request"
  pure $ merge (remove ["operations"] (toJSON cfg)) (obj [("id",get identity "corpora_id"),("name",toJSON (corporaName cfg) `fallback` str ("CORPORA · " <> at row "name")),("chief_id",str chief),("settings_template",str (T.strip template)),("stopping",Bool False)])
+
+data ModelSettingsDraft = ModelSettingsDraft
+ { modelSettingsRevision :: Int, modelSettingsDefault :: ModelSelection, modelSettingsOverrides :: Map.Map Text ModelSelection }
+ deriving (Eq, Show)
+instance FromJSON ModelSettingsDraft where
+ parseJSON value = do
+  onlyFields ["revision","defaults","overrides"] value
+  withObject "Model settings draft" (\o -> do
+   revision <- o .: "revision"
+   defaults <- o .: "defaults"
+   overrides <- o .: "overrides"
+   unless (revision >= 0 && Map.size overrides <= 1000) $ fail "Invalid model settings revision or override count"
+   pure (ModelSettingsDraft revision defaults overrides)) value
+instance ToJSON ModelSettingsDraft where
+ toJSON draft = obj [("revision",num (modelSettingsRevision draft)),("defaults",toJSON (modelSettingsDefault draft)),("overrides",toJSON (modelSettingsOverrides draft))]
+
+activeModelSettings :: Service -> IO (Maybe ModelSettingsDraft)
+activeModelSettings s = readJSON (serviceRoot s </> "model-settings.json") Nothing
+
+readModelSettings :: Service -> IO ModelSettingsDraft
+readModelSettings s = activeModelSettings s >>= maybe ((\configured -> ModelSettingsDraft 0 (providersDefault configured) Map.empty) <$> readProviders (repositoryRoot s)) pure
+
+data ProviderModel = ProviderModel { modelName :: Text, modelLabel :: Text, modelEfforts :: [Text], modelDefaultEffort :: Text, modelIsDefault :: Bool }
+instance FromJSON ProviderModel where
+ parseJSON = withObject "Provider model" $ \o -> ProviderModel <$> o .: "model" <*> o .: "displayName" <*> o .: "efforts" <*> o .: "defaultReasoningEffort" <*> o .: "isDefault"
+instance ToJSON ProviderModel where
+ toJSON m = obj [("model",str (modelName m)),("displayName",str (modelLabel m)),("efforts",toJSON (modelEfforts m)),("defaultReasoningEffort",str (modelDefaultEffort m)),("isDefault",Bool (modelIsDefault m))]
+
+data EventFormat = CodexJson | ClaudeStream
+instance FromJSON EventFormat where
+ parseJSON = withText "Provider event format" $ \format -> case format of
+  "codex-json" -> pure CodexJson
+  "claude-stream" -> pure ClaudeStream
+  _ -> fail "Unknown provider event format"
+
+data Provider = Provider
+ { providerId :: ProviderId, providerLabel :: Text, providerCommand :: FilePath, providerPaths :: [FilePath], providerLogin :: Text
+ , providerStatus :: [String], providerRun :: [Text], providerEffort :: [Text], providerEvents :: EventFormat, providerRecommended :: ModelSelection, providerModels :: [ProviderModel] }
+instance FromJSON Provider where
+ parseJSON = withObject "Provider" $ \o -> Provider <$> (ProviderId <$> o .: "id") <*> o .: "name" <*> o .: "binary" <*> o .: "paths" <*> o .: "login"
+  <*> o .: "status" <*> o .: "run" <*> o .: "effort" <*> o .: "events" <*> o .: "recommended" <*> o .: "models"
+
+data Providers = Providers { providersDefault :: ModelSelection, providersList :: [Provider], providersUpcoming :: Map.Map Text Text }
+instance FromJSON Providers where
+ parseJSON = withObject "Providers" $ \o -> Providers <$> o .: "default" <*> o .: "providers" <*> o .: "upcoming"
+
+readProviders :: FilePath -> IO Providers
+readProviders root = either (failure 500 . T.pack) pure =<< eitherDecodeFileStrict' (root </> "corpora/providers.json")
+
+saveModelSettings :: Service -> ModelSettingsDraft -> IO ModelSettingsDraft
+saveModelSettings s requested = do
+ current <- activeModelSettings s
+ let revision = maybe 0 modelSettingsRevision current
+     overrides = maybe Map.empty modelSettingsOverrides current
+ require (modelSettingsRevision requested == revision) 409 "Model settings changed elsewhere. Close and reopen Models before saving."
+ forM_ (Map.keys (modelSettingsOverrides requested)) $ \owner -> do
+  unless (Map.lookup owner (modelSettingsOverrides requested) == Map.lookup owner overrides) $ requireActive s owner
+ let saved=requested {modelSettingsRevision=revision+1}
+ writeJSON (serviceRoot s </> "model-settings.json") saved
+ pure saved

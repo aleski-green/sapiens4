@@ -23,10 +23,8 @@ import System.Environment
 import System.FileLock
 import System.FilePath
 import System.Info
-#ifndef mingw32_HOST_OS
-import System.Posix.Files (setFileMode)
-#endif
 import Types
+import DataRoot
 import qualified Computer
 import qualified Store as DB
 import Population
@@ -34,6 +32,7 @@ import Workspace
 import Voice (receivePiece, cancelRecording, retryTranscription, draftable)
 import Memo
 import qualified Management as Mgt
+import qualified Provider as Provider
 import qualified Execution as E
 import qualified Delegation as D
 import qualified Routines as R
@@ -41,16 +40,18 @@ import qualified Groups as G
 import qualified GroupChat as GC
 import qualified GroupWork as GW
 
-openService :: FilePath -> IO Service
-openService path = do
- existed <- doesDirectoryExist path
- createDirectoryIfMissing True path
-#ifndef mingw32_HOST_OS
- unless existed (setFileMode path 0o700)
-#endif
- root <- canonicalizePath path
+openService :: StorageChoice -> FilePath -> IO Service
+openService choice path = do
+ root <- selectedPath choice path
  repo <- lookupEnv "SAPIENS_REPOSITORY" >>= maybe getCurrentDirectory pure >>= canonicalizePath
- lock <- tryLockFile (root </> "host.lock") Exclusive >>= maybe (failure 409 "Another Sapiens4 server is using this data directory") pure
+ lock <- acquireStorage choice root
+ let prepareIdentity = do
+      let identityPath=root </> "corpora-identity.json"
+      exists <- doesFileExist identityPath
+      unless exists $ do i<-UUID.toText <$> UUID.nextRandom; writeJSON identityPath (obj [("version",num 1),("corpora_id",str i)])
+      identity <- readJSON identityPath empty
+      require (get identity "version"==num 1 && maybe False ((==at identity "corpora_id") . UUID.toText) (UUID.fromText (at identity "corpora_id"))) 409 "Invalid CORPORA identity. Restore corpora-identity.json from backup."
+ prepareIdentity `onException` unlockFile lock
  database <- (DB.openDatabase root >>= newMVar . Just) `onException` unlockFile lock
  let initialize = do
       guard <- newMVar ()
@@ -68,13 +69,11 @@ openService path = do
       let s=Service root repo guard lock stopping worker runs lease endpoint pulse actors database states revision subscribers files
       DB.initialize s
       migrateWorkspaces s
-      let identityPath=root </> "corpora-identity.json"
-      exists <- doesFileExist identityPath
-      unless exists $ do i<-UUID.toText <$> UUID.nextRandom; writeJSON identityPath (obj [("version",num 1),("corpora_id",str i)])
-      identity <- readJSON identityPath empty
-      require (get identity "version"==num 1 && maybe False ((==at identity "corpora_id") . UUID.toText) (UUID.fromText (at identity "corpora_id"))) 409 "Invalid CORPORA identity. Restore corpora-identity.json from backup."
       rows <- DB.agents s
       when (null rows) $ void (createAgent s (obj [("name",str "ChiefSapi"),("role",str "Head of Corpora")]))
+      let marker = initializingDirectory root
+      pending <- doesDirectoryExist marker
+      when (choice `elem` [StartNew,AttachExisting] && pending) $ removeDirectory marker
       repairAvatars s
       agents <- DB.agents s
       mapM_ (ensureAgent s) agents
@@ -110,6 +109,7 @@ closeService s = do
   E.stopRuns s
   worker <- swapMVar (serviceWorker s) Nothing
   mapM_ (void . waitCatch) worker
+  E.stopRuns s
   let awaitRuns = do runs<-readMVar (serviceRuns s); unless (M.null runs) (threadDelay 50000 >> awaitRuns)
   awaitRuns
   (do chief <- DB.mainAgent s
@@ -146,9 +146,8 @@ snapshotUnlocked s = do
  dir <- directory s
  orchestration <- forM rows $ \row -> do
   let a=at row "id"
-  policy <- executionSettings s a
   notes <- memoMetadata (workspaceRoot s a)
-  pure (a,obj [("manager",get (get dir a) "parent"),("execution",toJSON policy),("notes",notes)])
+  pure (a,obj [("manager",get (get dir a) "parent"),("notes",notes)])
  runs <- M.elems <$> readMVar (serviceRuns s)
  activity <- forM runs $ \run -> do
   value <- readIORef (runActivity run)
@@ -190,6 +189,11 @@ savePreferences s d = do
  DB.saveSingleton s DB.Preferences current
  pure (obj [("saved",Bool True),("preferences",current)])
 dispatch :: Service -> Text -> Text -> Maybe Value -> IO (Int,BL.ByteString,Text)
+dispatch s "PUT" "/api/model-settings" body = do
+ requested <- decodeValue 400 (fromMaybe Null body)
+ Provider.validateModelSettingsDraft s requested
+ saved <- locked s (saveModelSettings s requested)
+ pure (200,encode saved,"application/json; charset=utf-8")
 dispatch s method target body = locked s $ do
  let (path,query)=T.breakOn "?" target; parts=filter (not . T.null) (T.splitOn "/" path); write=method `elem` ["POST","PUT"]; d=fromMaybe Null body
  when write $ require (case d of Object _->True; _->False) 400 "Expected a JSON object"
@@ -198,6 +202,8 @@ dispatch s method target body = locked s $ do
  let json code action = do value<-action; when write (notifyChange s); pure (code,encode value,"application/json; charset=utf-8")
      owner kind a=if kind=="groups" then void (G.getGroup s a False) else void (DB.agent s a)
  case (method,parts) of
+  ("GET",["api","model-settings"]) -> json 200 (toJSON <$> readModelSettings s)
+  ("GET",["api","providers"]) -> json 200 (Provider.providersView (repositoryRoot s))
   ("GET",["api","health"]) -> json 200 (pure (obj [("status",str "ok"),("provider",str "codex")]))
   ("GET",["api","state"]) -> json 200 (snapshotUnlocked s)
   ("GET",["api","computer"]) -> json 200 (Computer.computerStatus (repositoryRoot s))

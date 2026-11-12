@@ -55,7 +55,23 @@ instance Exception APIError
 data RunFailure = RunFailure Text [Value] deriving (Show,Typeable)
 instance Exception RunFailure
 
-data Run = Run { runOwner :: AgentId, runId :: RunId, runSlot :: Int, runCancel :: IORef Bool, runProcess :: MVar (Maybe ProcessHandle), runActivity :: IORef Value, runDeadline :: Word64 }
+newtype ProviderId = ProviderId { providerName :: Text } deriving (Eq, Ord, Show)
+
+data ModelSelection = ModelSelection { selectionProvider :: ProviderId, selectionModel :: Text, selectionEffort :: Text }
+ deriving (Eq, Show)
+instance FromJSON ModelSelection where
+ parseJSON value = do
+  onlyFields ["provider","model","effort"] value
+  withObject "Model selection" (\o -> do
+   provider <- o .: "provider"
+   model <- o .: "model"
+   effort <- o .: "effort"
+   unless (not (T.null provider) && T.length provider <= 80 && not (T.null model) && T.length model <= 200 && T.length effort <= 80) $ fail "Choose a model and effort"
+   pure (ModelSelection (ProviderId provider) model effort)) value
+instance ToJSON ModelSelection where
+ toJSON choice = obj [("provider",str (providerName (selectionProvider choice))),("model",str (selectionModel choice)),("effort",str (selectionEffort choice))]
+
+data Run = Run { runOwner :: AgentId, runId :: RunId, runSlot :: Int, runCancel :: IORef Bool, runProcess :: MVar (Maybe ProcessHandle), runActivity :: IORef Value, runDeadline :: Word64, runModelConfig :: ModelSelection }
 data Service = Service { serviceRoot :: FilePath, repositoryRoot :: FilePath, serviceGuard :: MVar (), serviceFileLock :: FileLock, serviceStopping :: IORef Bool, serviceWorker :: MVar (Maybe (Async ())), serviceRuns :: MVar (Map RunId Run), serviceLease :: IORef (Maybe (AgentId, RunId)), serviceEndpoint :: IORef Text, servicePulse :: IORef Value, serviceActors :: MVar (Map ThreadId (Text,Maybe Text)), serviceDatabase :: MVar (Maybe Connection), serviceStates :: MVar (Map Text CachedAgentState)
  , serviceRevision :: TVar Integer, updateSubscribers :: TVar Int, snapshotFiles :: IORef (Set FilePath) }
 
@@ -66,6 +82,47 @@ notifyChange s = atomically $ modifyTVar' (serviceRevision s) (+1)
 data ProjectionStatus = ProjectionPending | ProjectionCommitted [Turn]
 data CachedAgentState = CachedAgentState
  { cachedBytes :: BS.ByteString, cachedState :: AgentState, cachedProjection :: ProjectionStatus }
+
+migrateAgentState :: Int -> Value -> Validation AgentState
+migrateAgentState version = validateValue 500 $ withObject "legacy agent state" $ \o -> do
+ unless (version `elem` [1,2]) $ fail "Unsupported legacy state version"
+ savedVersion <- o .: "schema_version"
+ unless (savedVersion == version) $ fail "Mismatched legacy state version"
+ agent <- o .: "agid" :: Parser Text
+ revision <- o .: "revision" :: Parser Int
+ sequenceNumber <- o .: "event_sequence" :: Parser Int
+ lastOutput <- o .: "last_output" :: Parser (Maybe Text)
+ history <- o .: (if version == 1 then "jobs" else "turns") >>= mapM migrateTurn
+ chat <- o .: "chat" >>= mapM (message $ \row -> do
+  void (row .: "role" :: Parser Text)
+  void (row .: "content" :: Parser Text))
+ events <- o .: "events" >>= mapM (message $ \row -> do
+  void (row .: "sequence" :: Parser Int)
+  void (row .: "kind" :: Parser Text))
+ pure $ AgentState (catMaybes history) (KM.fromList
+  [("schema_version",num 3),("agid",str agent),("revision",num revision),("event_sequence",num sequenceNumber)
+  ,("last_output",toJSON lastOutput),("chat",arr chat),("events",arr events)])
+ where
+ message validate = withObject "legacy message" $ \row -> do
+  validate row
+  void (row .:? "time" :: Parser (Maybe Text))
+  void (row .:? "turn" :: Parser (Maybe Text))
+  job <- traverse parseJSON (KM.lookup "job" row) :: Parser (Maybe Text)
+  pure $ maybe (Object row) (\ident -> Object $ KM.insert "turn" (str ident) $ KM.delete "job" row) job
+ migrateTurn = withObject "legacy turn" $ \row -> do
+  ident <- row .: "id" :: Parser RunId
+  input <- row .: (if version==1 then "task" else "input") :: Parser Text
+  flow <- row .: "flow"
+  status <- row .: "status" :: Parser Text
+  let extra = selectPresent ["created","error","warning"] (Object row)
+      details = if status=="budget_blocked" then put "error" (str "Former budget block removed; retry to continue") extra else extra
+  if version==1 && not (T.null flow) && flow `notElem` ["chat","computer"]
+   then do -- v1 also stored jobs from configurable, retired flows.
+    unless (status `elem` ["budget_blocked","conflict"]) $ void (parseJSON (str status) :: Parser TurnStatus)
+    pure Nothing
+   else do
+    newStatus <- if status=="budget_blocked" then pure Interrupted else parseJSON (str status)
+    Just <$> parseJSON (merge details (obj [("id",toJSON ident),("input",str input),("flow",str flow),("status",toJSON newStatus)]))
 
 -- Pure validation retains the HTTP error contract; adapters choose when to throw.
 type Validation a = Either APIError a
@@ -146,8 +203,7 @@ agentState s a = cachedState <$> agentStateInput s a
 agentStateInput :: Service -> Text -> IO CachedAgentState
 agentStateInput s a = do
  let path = agentRoot s a </> "state.json"
- exists <- doesFileExist path
- bytes <- if exists then BS.readFile path else pure (BL.toStrict (encode (AgentState [] KM.empty)))
+ bytes <- BS.readFile path
  modifyMVar (serviceStates s) $ \cache -> case M.lookup a cache of
   Just entry | cachedBytes entry == bytes -> pure (cache,entry)
   _ -> do
