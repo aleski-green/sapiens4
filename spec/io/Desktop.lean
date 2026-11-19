@@ -40,10 +40,10 @@ def Desktop.invoke (desktop : Desktop) (command : String) (args : Array String :
       child.kill
       discard <| IO.ofExcept (← IO.wait exited)
 
-def Desktop.findRole (desktop : Desktop) (role : String) : IO (Array Json) := do
+def Desktop.find (desktop : Desktop) (args : Array String) : IO (Array Json) := do
   let found ← untilSome "a stable accessibility snapshot" do
     try
-      return some (← desktop.invoke "find" #["--role", role, "--depth", "50", "--limit", "1000"])
+      return some (← desktop.invoke "find" (args ++ #["--depth", "50", "--limit", "1000"]))
     catch error =>
       let message := error.toString
       if Platform.isWindows && message.contains "0x80040201" then return none
@@ -55,6 +55,9 @@ def Desktop.findRole (desktop : Desktop) (role : String) : IO (Array Json) := do
     fieldsMatch found (json% {truncated: false})
     found.getObjValAs? (Array Json) "matches"
 
+def Desktop.findRole (desktop : Desktop) (role : String) : IO (Array Json) :=
+  desktop.find #["--role", role]
+
 def Desktop.button (desktop : Desktop) (label : String) : IO Json :=
   untilSome label do
     IO.ofExcept <| enabledControl ((← desktop.findRole "AXButton") ++ (← desktop.findRole "AXCheckBox")) label
@@ -64,7 +67,9 @@ def Desktop.pressControl (desktop : Desktop) (control : Json) (label : String) :
   let description := (stringField control "description").toOption.getD ""
   let guard := if description.isEmpty then #["--require-value-path", path, "--require-value", label]
     else #["--expect-description", description]
-  discard <| desktop.invoke "press" (#["--path", path] ++ guard)
+  try
+    discard <| desktop.invoke "press" (#["--path", path] ++ guard)
+  catch error => throw <| IO.userError s!"Press {label}: {error}"
 
 def Desktop.clickButton (desktop : Desktop) (label : String) : IO Unit := do
   desktop.pressControl (← desktop.button label) label
@@ -78,7 +83,8 @@ def withDesktopConfig (use : FilePath → IO α) : IO α := do
         if ← config.pathExists then IO.FS.removeDirAll config
         return some ()
       catch error =>
-        if error.toString.contains "resource busy" || error.toString.contains "no such file or directory" then return none
+        if error.toString.contains "resource busy" || error.toString.contains "no such file or directory" ||
+            error.toString.contains "directory not empty" then return none
         throw error) 20000 100
 
 def withWindow (executable : FilePath) (arguments : Array String)

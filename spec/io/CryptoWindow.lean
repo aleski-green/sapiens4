@@ -5,9 +5,33 @@ namespace Spec
 
 abbrev CryptoWindow := Json → IO Json
 
+-- Preserve Unicode while using the Linux driver's guarded ASCII keyboard path.
+def fixtureRequest (value : Json) : String :=
+  let escape := fun (n : Nat) =>
+    let digits := Nat.toDigits 16 n
+    "\\u" ++ String.ofList (List.replicate (4 - digits.length) '0' ++ digits)
+  value.compress.foldl (fun result c => result ++
+    if c.toNat < 127 then String.singleton c
+    else if c.toNat < 65536 then escape c.toNat
+    else escape (55296 + (c.toNat - 65536) / 1024) ++
+      escape (56320 + (c.toNat - 65536) % 1024)) ""
+
+example : (Json.parse (fixtureRequest (toJson "café 🧬"))).toOption == some (toJson "café 🧬") := by native_decide
+example : (fixtureRequest (toJson (String.singleton (Char.ofNat 127)))).toList.all
+    (fun c => c.toNat ≥ 32 && c.toNat < 127) := by native_decide
+
 def Desktop.fixtureField (desktop : Desktop) (label : String) : IO Json :=
   untilSome label do
-    IO.ofExcept <| enabledControl (← desktop.findRole (if Platform.isWindows then "AXTextField" else "AXTextArea")) label
+    -- Readonly fields need not be enabled or exposed with an editable-text role.
+    let fields ← if Platform.isWindows || Platform.isOSX then
+      desktop.findRole (if Platform.isWindows then "AXTextField" else "AXTextArea")
+      else desktop.find #["--description", label]
+    let candidates := fields.filter fun node =>
+      ["title", "description"].any (fun key => (stringField node key).toOption == some label)
+    match candidates.toList with
+    | [] => return none
+    | [field] => return some field
+    | _ => throw <| IO.userError s!"Ambiguous fixture field: {label}"
 
 def withBrowserFixture (host : Host) (use : Desktop → CryptoWindow → IO α) : IO α :=
   withDesktopConfig fun profile => do
@@ -32,7 +56,7 @@ def withBrowserFixture (host : Host) (use : Desktop → CryptoWindow → IO α) 
       let call := fun (input : Json) => do
         serial.modify (· + 1)
         let id ← serial.get
-        let request := (json% {id: $(id), input: $(input)}).compress
+        let request := fixtureRequest (json% {id: $(id), input: $(input)})
         let field ← desktop.fixtureField "Fixture request"
         discard <| desktop.invoke "paste" #["--target-path", ← IO.ofExcept <| stringField field "path", "--text", request]
         untilSome "fixture result" do
