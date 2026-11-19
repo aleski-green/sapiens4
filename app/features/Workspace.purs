@@ -24,6 +24,11 @@ import Sapiens.Text as T
 native :: M.Model -> Boolean
 native = M.nativeWorkspace
 
+data FileView = Page | Plain
+
+fileView :: String -> FileView
+fileView path = if D.matches "\\.html?$" (S.toLower path) then Page else Plain
+
 bookmarks :: M.Model -> Array X.Bookmark
 bookmarks m = (M.workspace m).bookmarks
 
@@ -82,17 +87,21 @@ view m = V.node "main" [V.cls "workspace",V.id "workspace-panel",V.label "Agent 
         _ -> [V.text "Loading…"]
       else if native m then [V.text $ if tab.id /= "" then "" else "Open a URL or file to get started."]
       else if tab.path == "" then [V.text $ if tab.id /= "" && tab.url /= "about:blank" then "Open Sapiens4 desktop to browse this web page." else "Open a URL or file to get started."]
-      else [V.textNode "pre" [V.cls "workspace-text",V.label $ tab.title,V.style $ "font-size:" <> show ((if N.limit m.env < 3 then 12.6 else 13.0) * zoom) <> "px"] (case m.preview of
-        M.Ready _ (M.TextPreview value) -> value
-        M.Loading _ (Just (M.TextPreview value)) -> value
-        M.Failed _ error -> M.previewError error
-        _ -> "Loading…")]
+      else case fileView tab.path, content of
+        Page, Just value -> [V.node "iframe" [V.attr "sandbox" "",V.attr "srcdoc" value,V.label tab.title,V.style "flex:1;width:100%;border:0;background:#fff"] []]
+        _, _ -> [V.textNode "pre" [V.cls "workspace-text",V.label $ tab.title,V.style $ "font-size:" <> show ((if N.limit m.env < 3 then 12.6 else 13.0) * zoom) <> "px"] (maybe (case m.preview of
+          M.Failed _ error -> M.previewError error
+          _ -> "Loading…") identity content)]
   ,V.node "footer" [V.cls "workspace-footer"] [V.link "https://sapiens4.ai" "sapiens4.ai ↗"]]
   where
   tabs = M.tabs m
   tab = M.activeTab m
   memo = M.isMemoTab (M.notes m m.selected) tab
   zoom = if tab.zoom > 0.0 then tab.zoom else 1.0
+  content = case m.preview of
+    M.Ready _ (M.TextPreview value) -> Just value
+    M.Loading _ (Just (M.TextPreview value)) -> Just value
+    _ -> Nothing
   newTab = Browser $ Browser.Open (Browser.WebAddress "about:blank") Nothing
   zoomButton caption glyph factor = V.control [V.label caption] (glyph) (Browser $ Browser.Zoom factor)
   tabView all t =
