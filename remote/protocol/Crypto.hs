@@ -12,7 +12,10 @@ import qualified Data.Text.Encoding as TE
 import Data.Text (Text)
 import Data.Time.Clock.POSIX
 import qualified Data.UUID as UUID
-import BrowserCrypto
+import qualified Crypto.Cipher.XSalsa as XSalsa
+import qualified Crypto.MAC.Poly1305 as Poly1305
+import qualified Crypto.PubKey.Curve25519 as X25519
+import Crypto.Error (CryptoFailable(..))
 import System.Entropy (getEntropy)
 import qualified Data.ByteArray as BA
 import Network.URI
@@ -40,23 +43,32 @@ unb64 value = validated . decodeBase64 value
 decodeBase64 :: Value -> Maybe Int -> Validation B.ByteString
 decodeBase64 value size = case value of
  String s | T.length s <= maxFrame -> case Base64.decode (TE.encodeUtf8 s) of
-  Right b | maybe True (== B.length b) size -> pure b
+  Right b | maybe True (== B.length b) size && b64 b == s -> pure b
   _ -> Left . APIError 400 $ "Invalid key, nonce or encoded value"
  _ -> Left . APIError 400 $ "Invalid encoded value"
 randomData :: Int -> IO B.ByteString
 randomData = getEntropy
 token :: IO Text
 token = TE.decodeUtf8 . Base64URL.encodeUnpadded <$> randomData 32
-browserToken :: BrowserCrypto -> IO Text
-browserToken browser = do
- value <- browserCall browser "random" (obj [("size",num 32)])
- TE.decodeUtf8 . Base64URL.encodeUnpadded <$> unb64 value (Just 32)
-keypair :: BrowserCrypto -> IO (Text,Text)
-keypair browser = do
- value <- browserCall browser "keypair" empty
- mapM_ (\key -> voidBytes (get value key)) ["secretKey","publicKey"]
- pure (at value "secretKey",at value "publicKey")
- where voidBytes value = unb64 value (Just 32) >> pure ()
+cryptoResult :: CryptoFailable a -> IO a
+cryptoResult (CryptoPassed value) = pure value
+cryptoResult (CryptoFailed _) = failure 400 "Invalid remote key"
+keypair :: IO (Text,Text)
+keypair = do
+ secret <- X25519.generateSecretKey
+ pure (b64 (BA.convert secret), b64 (BA.convert (X25519.toPublic secret)))
+boxKeys :: Value -> Value -> IO (X25519.SecretKey,X25519.DhSecret)
+boxKeys secret peer = do
+ sk <- cryptoResult . X25519.secretKey =<< unb64 secret (Just 32)
+ pk <- cryptoResult . X25519.publicKey =<< unb64 peer (Just 32)
+ let shared = X25519.dh pk sk
+ require (not (BA.constEq shared (B.replicate 32 0))) 400 "Invalid peer key"
+ pure (sk,shared)
+boxStream :: X25519.DhSecret -> B.ByteString -> (BA.ScrubbedBytes,XSalsa.State)
+boxStream shared nonce = XSalsa.generate state 32
+ where
+ (prefix,suffix) = B.splitAt 8 nonce
+ state = XSalsa.derive (XSalsa.initialize 20 shared (B.replicate 16 0 <> prefix)) suffix
 hex :: B.ByteString -> Text
 hex = T.pack . concatMap (\w -> let s = showHex w "" in if length s == 1 then '0':s else s) . B.unpack
 hash :: B.ByteString -> Text
@@ -106,30 +118,29 @@ decodeRelayOrigin (String value) = case parseURI (T.unpack value) of
 decodeRelayOrigin _ = Left . APIError 400 $ "Relay must be an HTTPS origin"
 constantEqual :: Text -> Text -> IO Bool
 constantEqual a b = pure (BA.constEq (TE.encodeUtf8 a) (TE.encodeUtf8 b))
-pack :: BrowserCrypto -> Value -> Value -> Text -> Direction -> Value -> IO Value
-pack browser secret peer room direction payload = do
- _ <- unb64 secret (Just 32)
- _ <- unb64 peer (Just 32)
+pack :: Value -> Value -> Text -> Direction -> Value -> IO Value
+pack secret peer room direction payload = do
+ (sk,shared) <- boxKeys secret peer
  let raw = BL.toStrict (encode (merge (obj [("v",str protocol),("room",str room),("direction",toJSON direction)]) payload))
  require (B.length raw <= maxPlaintext) 400 "Remote response is too large"
- frame <- browserCall browser "seal" (obj [("secret",secret),("peer",peer),("plaintext",str (b64 raw))])
- _ <- unb64 (get frame "sender") (Just 32)
- _ <- unb64 (get frame "nonce") (Just 24)
- cipher <- unb64 (get frame "ciphertext") Nothing
- require (B.length cipher == B.length raw+16) 400 "Invalid encrypted response"
- pure frame
-unpack :: BrowserCrypto -> Value -> Value -> Text -> Direction -> Value -> IO Value
-unpack browser secret peer room direction frame = fst <$> unpackWithPlaintext browser secret peer room direction frame
-unpackWithPlaintext :: BrowserCrypto -> Value -> Value -> Text -> Direction -> Value -> IO (Value,B.ByteString)
-unpackWithPlaintext browser secret peer room direction frame = do
+ nonce <- randomData 24
+ let (authKey,stream) = boxStream shared nonce
+     (ciphertext,_) = XSalsa.combine stream raw
+     cipher = BA.convert (Poly1305.auth authKey ciphertext) <> ciphertext
+ pure (obj [("sender",str (b64 (BA.convert (X25519.toPublic sk)))),("nonce",str (b64 nonce)),("ciphertext",str (b64 cipher))])
+unpack :: Value -> Value -> Text -> Direction -> Value -> IO Value
+unpack secret peer room direction frame = fst <$> unpackWithPlaintext secret peer room direction frame
+unpackWithPlaintext :: Value -> Value -> Text -> Direction -> Value -> IO (Value,B.ByteString)
+unpackWithPlaintext secret peer room direction frame = do
  require (get frame "sender" == peer) 400 "Unexpected sender"
- _ <- unb64 secret (Just 32)
- _ <- unb64 peer (Just 32)
- _ <- unb64 (get frame "nonce") (Just 24)
+ (_,shared) <- boxKeys secret peer
+ nonce <- unb64 (get frame "nonce") (Just 24)
  cipher <- unb64 (get frame "ciphertext") Nothing
  require (B.length cipher >= 16 && B.length cipher <= maxPlaintext+16) 400 "Remote request is too large"
- plaintext <- browserCall browser "open" (obj [("secret",secret),("peer",peer),("frame",frame)])
- raw <- unb64 plaintext (Just (B.length cipher-16))
+ let (tag,ciphertext) = B.splitAt 16 cipher
+     (authKey,stream) = boxStream shared nonce
+ require (BA.constEq tag (Poly1305.auth authKey ciphertext)) 400 "Invalid encrypted message"
+ let (raw,_) = XSalsa.combine stream ciphertext
  body <- either (const (failure 400 "Invalid JSON")) pure (eitherDecodeStrict raw)
  time <- seconds
  validated (validateEnvelope time room direction body)
