@@ -9,8 +9,6 @@ import Control.Concurrent.Async
 import Control.Exception
 import Control.Monad
 import Data.Aeson hiding (pairs)
-import qualified Data.Aeson.Key as K
-import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
 import Data.IORef
 import Data.List (find,nub)
@@ -63,8 +61,8 @@ trimConversation s a = do
  let Retention final archives = retainConversation state
  forM_ archives $ \(ConversationArchive field rows) -> newId >>= \i -> writeJSON (archivePath s a (field<>"/"<>i)) (arr rows)
  when (final/=state) (decodeValue 500 final >>= saveState s a)
-submitTurn :: Telemetry.RequestTransport -> Service -> Text -> Value -> IO Value
-submitTurn transport s a d = do
+submitTurn :: Telemetry.RequestTransport -> Maybe Telemetry.ClientContext -> Service -> Text -> Value -> IO Value
+submitTurn transport context s a d = do
  input <- either (failure 400) pure (messageText (get d "text"))
  let flowValue=get d "flow" `fallback` str "chat"
  attachments <- resolveAttachments s a (get d "attachments" `fallback` arr []) True
@@ -92,9 +90,14 @@ submitTurn transport s a d = do
      agentState s a >>= saveState s a . enqueueTurn (RunId i) flow message time
      pure i
    DB.message s i input attachments
-   let counts = [(K.fromText (kind<>"_attachment_count"),toJSON (length (filter ((==kind) . (`at` "kind")) attachments))) | kind <- ["voice","image","document","link","filepath"]]
-       fields = KM.fromList ([("agent_id",toJSON (AgentId a)),("flow",toJSON flow),("is_clarification",Bool (isJust workload)),("selected_provider",toJSON (providerName (selectionProvider selected))),("selected_model",toJSON (selectionModel selected)),("selected_effort",toJSON (selectionEffort selected))] ++ counts)
-   emitTelemetry s Telemetry.RequestAccepted (KM.union (Telemetry.requestMetadata transport (Telemetry.parseClientContext (get d "client_context"))) fields)
+   let count kind = length (filter ((==kind) . (`at` "kind")) attachments)
+       counts = Telemetry.AttachmentCounts (count "voice") (count "image") (count "document") (count "link") (count "filepath")
+       details = Telemetry.RequestDetails
+        { Telemetry.requestAgent=AgentId a,Telemetry.requestFlow=flow,Telemetry.requestClarification=isJust workload
+        , Telemetry.requestProvider=providerName (selectionProvider selected),Telemetry.requestModel=selectionModel selected
+        , Telemetry.requestEffort=selectionEffort selected,Telemetry.requestAttachments=counts
+        , Telemetry.requestTransport=transport,Telemetry.requestClient=context }
+   emitTelemetry s (\identity -> Telemetry.RequestAccepted identity details)
    DB.forgetDrafts s a attachments
    DB.project s a
    trimConversation s a
