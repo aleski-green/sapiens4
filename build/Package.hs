@@ -226,7 +226,7 @@ stage root destination = do
   prompts <- files (root</>"corpora/prompts")
   let suffix=if os=="mingw32" then ".exe" else ""
       blindly=if os=="mingw32" then "windows/blindly4.exe" else "release/blindly4"
-      payload=nub (map assetFile allAssets++["app/shell/AI-LOGOS-LICENSE.txt","corpora/providers.json","app/shell/bootstrap.html",".build/web/setup.js",".build/web/preferences.js",".build/bin/sapiens4"++suffix,".build/bin/sapiens-migrate"++suffix,"VERSION","migrations/README.md","submodules/blindly4/.build/"++blindly]++map (makeRelative root) (notices++prompts))
+      payload=nub (map assetFile allAssets++["app/shell/AI-LOGOS-LICENSE.txt","corpora/providers.json","app/shell/bootstrap.html",".build/web/setup.js",".build/web/preferences.js",".build/bin/sapiens4"++suffix,".build/bin/sapiens-migrate"++suffix,"VERSION","migrations/README.md","corpora/state/kv/vendor/LICENSE","submodules/blindly4/.build/"++blindly]++map (makeRelative root) (notices++prompts))
   forM_ payload $ \path -> copy (root</>path) (destination</>path)
   when (os=="mingw32") $ forM_ ["AppIcon.ico","AppIconDark.ico"] $ \icon -> copy (root</>"environments/windows"</>icon) (destination</>"environments/windows"</>icon)
   writeFile (destination</>"package-manifest.json") "{\"channel\":\"stable\",\"appId\":\"com.sapiens4.desktop\"}\n"
