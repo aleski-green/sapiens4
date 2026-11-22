@@ -35,14 +35,7 @@ ensureMemo root name purpose = do
  link <- pathIsSymbolicLink p `catch` (\(_ :: IOException) -> pure False)
  unless (exists || link) $ do
   createDirectoryIfMissing True root
-  sources <- filterM doesPathExist [root </> "Notes.yaml",root </> "Notes.md"]
-  content <- case listToMaybe sources of
-   Nothing -> pure "notes: []"
-   Just source -> do
-    validate root source
-    old <- readText source
-    pure (if takeExtension source == ".md" then "notes: " <> jsonText (str old) else old)
-  writeText p (migratedMemo name purpose content)
+  writeText p (migratedMemo name purpose "notes: []")
 
 migratedMemo :: Text -> Text -> Text -> Text
 migratedMemo name purpose content =

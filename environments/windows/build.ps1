@@ -1,6 +1,6 @@
 param(
     [string]$OutputDirectory,
-    [string]$Version = '0.1.0',
+    [string]$Version,
     [ValidateSet('win-x64','win-arm64')][string]$Runtime,
     [ValidateSet('msvc','gnullvm')][string]$BlindlyToolchain = 'msvc',
     [switch]$PublicRelease,
@@ -9,6 +9,10 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+$buildVersion = (Get-Content -LiteralPath (Join-Path $repo 'VERSION') -Raw).Trim().TrimStart('v')
+if (-not $Version) { $Version = $buildVersion }
+$Version = $Version.TrimStart('v')
+if ($Version -ne $buildVersion) { throw 'Package version must match VERSION' }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Version must be MAJOR.MINOR.PATCH' }
 if ($PublicRelease -and ($CertificateThumbprint -notmatch '^[a-fA-F0-9]{40}$' -or $TimestampUrl -notmatch '^https?://[A-Za-z0-9./:_-]+$')) { throw 'Public releases require a valid signing certificate thumbprint and timestamp URL' }
 $target = & ghc --print-target-platform

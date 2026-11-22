@@ -179,11 +179,12 @@ registryCreate registry input = do
  makePrivateDirectory folder
  writeJSON (folder </> "corpora-identity.json") $ obj [("version",num 1),("corpora_id",str identity)]
  mainIdentity <- Service.corporaIdentity (registryService registry)
- writeJSON (folder </> "corpora-settings.json") $ obj [("name",str $ T.strip name),("scope",str $ T.strip $ text scope),("device",get mainIdentity "device"),("status",str "paused"),("revision",num 1),("operations",empty)]
+ let initialSettings = obj [("name",str $ T.strip name),("scope",str $ T.strip $ text scope),("device",get mainIdentity "device"),("status",str "paused"),("revision",num 1),("operations",empty)]
  bracketOnError (registryOpenChild registry CreateCorpora folder) stopLocal $ \child -> do
   let selected = localRegistry child
       service = registryService selected
       bridge = registryBridge selected
+  locked service (writeDomain service "corpora-settings/1" initialSettings)
   metadata <- Service.corporaIdentity service
   registryLock registry $ mask_ $ do
    ownRelay <- savedRelay bridge

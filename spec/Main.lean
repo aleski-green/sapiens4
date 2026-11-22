@@ -17,6 +17,7 @@ open Lean Spec
 abbrev Job := String × IO Unit
 
 def headlessJobs : List Job := [
+  ("Atomic Pulse storage and retained history", SystemJobs.preserveAtomicStorage),
   ("Persist valid model settings", User.retainModelSettingsAcrossRestart),
   ("MCP work, pause and resume", User.completeWorkThroughMcp),
   ("Restore private notes and bookmarks", User.retainPrivateNotesAndBookmarks),

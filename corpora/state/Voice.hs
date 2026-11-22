@@ -10,7 +10,7 @@ module Voice
  ) where
 
 import Admission (admissionOpen, withAdmission)
-import Control.Concurrent (threadDelay, MVar, newMVar, modifyMVar_, withMVar, swapMVar)
+import Control.Concurrent (threadDelay, MVar, newMVar, modifyMVar_, withMVar, swapMVar, newEmptyMVar, takeMVar, tryPutMVar)
 import Control.Concurrent.Async (asyncWithUnmask, cancel, AsyncCancelled(..))
 import Control.Exception (IOException, SomeException, SomeAsyncException, fromException, try, tryJust, throwIO, finally, mask_)
 import Control.Monad
@@ -37,6 +37,7 @@ import System.FilePath
 import System.IO (hPutStrLn, stderr)
 import Types
 import qualified Store as DB
+import qualified PulseClock
 
 sampleRate, bytesPerSecond, pieceLimit, messageLimit, minimumTail, maxParts :: Int
 sampleRate = 16000
@@ -279,8 +280,11 @@ startTranscriber s = mask_ $ do
   , H.managerIdleConnectionCount = 0
   , H.managerRawConnection = H.rawConnectionModifySocket register
   }
- worker <- asyncWithUnmask (\unmask -> unmask (transcribeLoop s gate manager))
+ beat <- newEmptyMVar
+ unsubscribe <- PulseClock.register (void (tryPutMVar beat ()))
+ worker <- asyncWithUnmask (\unmask -> unmask (transcribeLoop s beat gate manager))
  pure $ mask_ $ do
+  unsubscribe
   sockets <- swapMVar gate Nothing
   forM_ sockets $ mapM_ $ \socket -> do
    void (try (Socket.shutdown socket Socket.ShutdownBoth) :: IO (Either IOException ()))
@@ -292,21 +296,23 @@ tryTranscription = tryJust $ \problem -> case fromException problem :: Maybe Som
  Just _ -> Nothing
  Nothing -> Just problem
 
-transcribeLoop :: Service -> MVar (Maybe [Socket.Socket]) -> H.Manager -> IO ()
-transcribeLoop s gate manager = do
+transcribeLoop :: Service -> MVar () -> MVar (Maybe [Socket.Socket]) -> H.Manager -> IO ()
+transcribeLoop s beat gate manager = do
  base <- maybe "http://127.0.0.1:8178" id <$> lookupEnv "SAPIENS_WHISPER_URL"
  hPutStrLn stderr ("Voice transcription: using " <> base)
- let go = do
+ let go due = do
+      takeMVar beat
+      now <- getMonotonicTimeNSec
       stopping <- readIORef (serviceStopping s)
-      unless stopping $ do
+      if stopping || now < due then go due else do
        outcome <- tryTranscription (admissionOpen (serviceAdmission s) >>= \open -> if open then transcribeNext s gate manager base else pure False)
         `finally` modifyMVar_ gate (pure . fmap (const []))
-       case outcome of
-        -- Never fail silently: report the problem in the host log, then retry calmly.
-        Left problem -> hPutStrLn stderr ("Voice transcription failed: " <> take 500 (show problem)) >> threadDelay 10000000
-        Right worked -> threadDelay (if worked then 100000 else 2000000)
-       go
- go
+       delay <- case outcome of
+        Left problem -> hPutStrLn stderr ("Voice transcription failed: " <> take 500 (show problem)) >> pure 10000000000
+        Right worked -> pure (if worked then 0 else 2000000000)
+       next <- (+delay) <$> getMonotonicTimeNSec
+       go next
+ go 0
 
 -- | Transcribe the next pending voice message. True when one was handled.
 transcribeNext :: Service -> MVar (Maybe [Socket.Socket]) -> H.Manager -> String -> IO Bool

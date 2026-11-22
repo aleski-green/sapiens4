@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/../.."
-version=${1:-0.1.0}
+version=${1:-$(cat VERSION)}
+version=${version#v}
 output=${2:-.build/macos}
 export MACOSX_DEPLOYMENT_TARGET=13.0
 if [ "${3:-}" = --release ]; then

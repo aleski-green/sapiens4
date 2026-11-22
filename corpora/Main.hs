@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 module Main where
 
+import BuildVersion
 import Types
 #if defined(mingw32_HOST_OS) || defined(darwin_HOST_OS)
 import Installation (checkCandidateData, withConfigAccess, withInstalledVersion)
@@ -69,6 +70,7 @@ run args = do
  root <- repository
  setEnv "SAPIENS_REPOSITORY" root
  case args of
+  ["--version"] -> putStrLn currentBuild
   ["build-ui"] -> buildUI root
   ["control",config,payload] -> jsonCommand $ do
    value <- either (failure 400 . T.pack) pure (eitherDecode (BL.fromStrict (TE.encodeUtf8 (T.pack payload))))
@@ -129,7 +131,7 @@ hostMain root args = do
 #endif
  ownConfig $ bracket (startHost consent directory port preparing) hostStop $ \host -> do
   let url="http://127.0.0.1:"<>show (hostPort host)<>"/workspace/"
-  putStrLn ("Sapiens4: "<>url<>"\nUI database: "<>directory</>"corpora.sqlite3")
+  putStrLn ("Sapiens4: "<>url<>"\nState store: "<>directory</>"state.lmdb")
   finished <- newEmptyMVar
   let shutdown=void (tryPutMVar finished ())
   installShutdown shutdown
@@ -142,7 +144,7 @@ hostMain root args = do
              Just _ -> Nothing
              Nothing -> Just problem
             reportIdle action = do
-             result <- tryJust synchronous (timeout 5000000 action)
+             result <- tryJust synchronous (timeout 60000000 action)
              reply $ case result of
               Right (Just True) -> Update.Quiet
               Right (Just False) -> Update.Busy

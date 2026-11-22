@@ -123,7 +123,7 @@ voiceBusy m = O.member m.selected m.outboxes || case m.voice of
   Just v -> v.owner == m.selected
   Nothing -> false
 
-data AppUpdate = UpdateHidden | UpdateAvailable | UpdateDownloading | UpdatePreparing | UpdateBusy | UpdateFailed
+data AppUpdate = UpdateHidden | UpdateAvailable | UpdateDownloaded | UpdateDownloading | UpdatePreparing | UpdateBusy | UpdateFailed
 
 updateInProgress :: AppUpdate -> Boolean
 updateInProgress = case _ of

@@ -226,7 +226,7 @@ stage root destination = do
   prompts <- files (root</>"corpora/prompts")
   let suffix=if os=="mingw32" then ".exe" else ""
       blindly=if os=="mingw32" then "windows/blindly4.exe" else "release/blindly4"
-      payload=nub (map assetFile allAssets++["app/shell/AI-LOGOS-LICENSE.txt","corpora/providers.json","app/shell/bootstrap.html",".build/web/setup.js",".build/web/preferences.js",".build/bin/sapiens4"++suffix,"submodules/blindly4/.build/"++blindly]++map (makeRelative root) (notices++prompts))
+      payload=nub (map assetFile allAssets++["app/shell/AI-LOGOS-LICENSE.txt","corpora/providers.json","app/shell/bootstrap.html",".build/web/setup.js",".build/web/preferences.js",".build/bin/sapiens4"++suffix,".build/bin/sapiens-migrate"++suffix,"VERSION","migrations/README.md","submodules/blindly4/.build/"++blindly]++map (makeRelative root) (notices++prompts))
   forM_ payload $ \path -> copy (root</>path) (destination</>path)
   when (os=="mingw32") $ forM_ ["AppIcon.ico","AppIconDark.ico"] $ \icon -> copy (root</>"environments/windows"</>icon) (destination</>"environments/windows"</>icon)
   writeFile (destination</>"package-manifest.json") "{\"channel\":\"stable\",\"appId\":\"com.sapiens4.desktop\"}\n"
@@ -234,6 +234,8 @@ stage root destination = do
 packageMac :: FilePath -> String -> FilePath -> Bool -> IO ()
 #ifdef darwin_HOST_OS
 packageMac root version outputInput public = do
+ currentBuild <- filter (`notElem` "\r\n") <$> readFile (root</>"VERSION")
+ unless ("v"++version==currentBuild) (fail "Package version must match VERSION and BuildVersion")
  unless (os=="darwin" && arch=="aarch64") $ fail "macOS ARM64 build host required"
  unless (length (splitVersion version)==3 && all (\v -> not (null v) && all isDigit v) (splitVersion version)) $ fail "Version must be MAJOR.MINOR.PATCH"
  identity <- if public then mfilter (not . null) <$> lookupEnv "SAPIENS_MAC_SIGN_IDENTITY" else pure Nothing

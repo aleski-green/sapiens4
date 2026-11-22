@@ -67,9 +67,10 @@ appUpdateButton state = V.div "app-update"
   label = case state of
     M.UpdateDownloading -> "Downloading"
     M.UpdatePreparing -> "Updating"
-    _ -> "Update"
+    M.UpdateDownloaded -> "Update and restart"
+    _ -> "Download update"
   notice = case state of
-    M.UpdateBusy -> "Finish current work, then try again."
+    M.UpdateBusy -> "Could not stop the app safely. Try again."
     M.UpdateFailed -> "Couldn’t update. Check your connection and try again."
     _ -> ""
 

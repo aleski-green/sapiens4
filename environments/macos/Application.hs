@@ -76,6 +76,7 @@ startServer :: Application -> StorageChoice -> FilePath -> FilePath -> IO (Serve
 startServer application choice runtime destination = do
     telemetryArguments <- startupTelemetryArguments
     configRoot <- configDirectory
+    Update.migrateCandidate runtime destination configRoot
     let binary = runtime </> ".build/bin/sapiens4"
     present <- doesFileExist binary
     unless present $ ioError (userError "The application is incomplete. Extract the complete Sapiens4 package.")
@@ -745,6 +746,9 @@ handleUpdate application command = unless (fixture application) $ case command o
     "check" -> void $ async $ do
         offer <- Update.updateOffer
         post application $ reportUpdate application offer
+    "download" -> void $ async $ do
+        result <- Update.tryUpdate Update.downloadUpdate
+        post application $ reportUpdate application (either (const Update.UpdateFailed) (const Update.DownloadReady) result)
     "start" -> beginUpdate application
     _ -> pure ()
 

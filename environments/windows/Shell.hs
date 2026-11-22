@@ -438,6 +438,9 @@ desktopSession memory probe args host configRoot = do
                           String "check" -> void $ async $ do
                             offer <- Update.updateOffer
                             post $ reportUpdate offer
+                          String "download" -> void $ async $ do
+                            result <- Update.tryUpdate Update.downloadUpdate
+                            post $ reportUpdate (either (const Update.UpdateFailed) (const Update.DownloadReady) result)
                           String "start" -> beginUpdate hwnd
                           _ -> pure ()
                         applyWindowTheme hwnd light dark lastTheme message

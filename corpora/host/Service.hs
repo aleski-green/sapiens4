@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE CPP #-}
-module Service (Service, APIError(..), openService, busyService, prepareService, prepareUpdatedService, startService, closeService, serviceRoot, attachEndpoint, dispatch, corporaIdentity) where
+module Service (Service, APIError(..), openService, busyService, prepareService, prepareUpdatedService, startService, closeService, quiesceService, resumeService, serviceRoot, attachEndpoint, dispatch, corporaIdentity) where
 
 import Control.Concurrent
 import Admission
@@ -24,6 +24,8 @@ import System.Environment
 import System.FileLock
 import System.FilePath
 import System.Info
+import qualified KV
+import BuildVersion
 import Types
 import qualified Telemetry
 import DataRoot
@@ -57,9 +59,7 @@ openService gate telemetry choice path = do
  corporaId <- prepareIdentity `onException` unlockFile lock
  database <- (DB.openDatabase root >>= newMVar . Just) `onException` unlockFile lock
  let initialize = do
-      guard <- newMVar ()
       stopping <- newIORef False
-      worker <- newMVar Nothing
       runs <- newMVar M.empty
       lease <- newIORef Nothing
       endpoint <- newIORef ""
@@ -68,34 +68,28 @@ openService gate telemetry choice path = do
       states <- newMVar M.empty
       revision <- newTVarIO 0
       subscribers <- newTVarIO 0
-      files <- newIORef Set.empty
       voicePieces <- newIORef M.empty
-      let s=Service gate root repo guard lock stopping worker runs lease endpoint pulse actors database states revision subscribers files voicePieces telemetry corporaId
+      let s=Service gate root repo lock stopping runs lease endpoint pulse actors database states revision subscribers voicePieces telemetry corporaId
       DB.initialize s
-      migrateWorkspaces s
       rows <- DB.agents s
       when (null rows) $ void (createAgent s (obj [("name",str "ChiefSapi"),("role",str "Head of Corpora")]))
       let marker = initializingDirectory root
       pending <- doesDirectoryExist marker
-      when (choice `elem` [StartNew,AttachExisting] && pending) $ removeDirectory marker
-      repairAvatars s
       agents <- DB.agents s
       mapM_ (ensureAgent s) agents
       chief <- DB.mainAgent s
-      d <- directory s
-      saveDirectory s $ foldl (\dir row -> let a=at row "id"; entry=get dir a in put a (put "parent" (if a==chief then Null else get entry "parent" `fallback` str chief) entry) dir) d agents
       mapM_ (E.recover s . (`at` "id")) agents
-      prefs <- DB.singleton s DB.Preferences
-      let panel=at prefs "panel"; updated=if panel=="mindmap" then put "panel" (str "notes") prefs else if panel `elem` ["cron","log"] then put "panel" (str "chat") prefs else prefs
-      DB.saveSingleton s DB.Preferences (remove ["work_views"] updated)
-      savedPulse <- DB.singleton s DB.SystemPulse
-      identityPulse <- if has savedPulse "pulse" then pure (at savedPulse "pulse") else ("pulse_" <>) <$> newId
-      cfg <- corporaSettings s
-      writeIORef pulse (obj [("id",str identityPulse),("running",Bool (corporaStatus cfg==Active)),("numbers",merge (obj [(k,num 0) | k<-["bpm120","bpm60","bph60"]]) (get savedPulse "numbers"))])
-      R.initializeRoutines s
+      writeIORef pulse (obj [("id",str corporaId),("running",Bool False),("bpm",num 120),("num",num 0)])
       D.reconcileWorks s
       GC.reconcileGroups s
       DB.record s [chief] "corpora" "system.started" empty "system" Nothing
+      db <- Types.database s
+      intents <- KV.records db "intents/"
+      forM_ intents $ \(key,intent) -> when (at intent "status"=="pending") $
+       KV.putRecord db key (merge intent (obj [("status",str "interrupted"),("error",str "App stopped before confirming the external effect; inspect before retrying")] ))
+      KV.pulse db (pure ())
+      writeJSON (root </> dataBuildFile) currentBuild
+      when pending $ removeDirectory marker
       pure s
  initialize `onException` (withMVar database (mapM_ DB.closeConnection) `finally` unlockFile lock)
 attachEndpoint :: Service -> Text -> IO ()
@@ -112,6 +106,8 @@ prepareUpdatedService s = locked s $ do
  DB.values s DB.Groups >>= mapM_ (G.folder s . (`at` "id"))
  prepareQueues s
  void (snapshotUnlocked s >>= evaluate . BL.length . encode)
+ db <- database s
+ KV.pulse db (pure ())
 
 prepareQueues :: Service -> IO ()
 prepareQueues s = D.pendingWorks s >> GC.projectQueuedGroups s
@@ -128,28 +124,34 @@ busyService s = locked s $ do
  groups <- GC.hasQueuedGroups s
  pure (voices || groups || not (M.null runs) || any (\t -> at t "status" `elem` ["queued","running","output_pending"]) turns
        || any (any ((`elem` [D.CallQueued,D.CallRunning]) . D.callState) . D.workCalls) works)
+quiesceService :: Service -> IO ()
+quiesceService s = do
+ writeIORef (serviceStopping s) True
+ E.stopRuns s
+ let await = do
+      runs <- readMVar (serviceRuns s)
+      unless (M.null runs) (threadDelay 50000 >> await)
+ await
+ database s >>= KV.stop
+resumeService :: Service -> IO ()
+resumeService s = writeIORef (serviceStopping s) False >> E.startExecution s
+
 closeService :: Service -> IO ()
 closeService s = do
- already <- atomicModifyIORef' (serviceStopping s) (\old -> (True,old))
+ already <- isNothing <$> readMVar (serviceDatabase s)
+ writeIORef (serviceStopping s) True
  unless already $ do
-  E.stopRuns s
-  worker <- swapMVar (serviceWorker s) Nothing
-  mapM_ (void . waitCatch) worker
   E.stopRuns s
   let awaitRuns = do runs<-readMVar (serviceRuns s); unless (M.null runs) (threadDelay 50000 >> awaitRuns)
   awaitRuns
-  (do chief <- DB.mainAgent s
-      DB.record s [chief] "corpora" "system.stopped" empty "system" Nothing)
+  (locked s $ do
+    chief <- DB.mainAgent s
+    DB.record s [chief] "corpora" "system.stopped" empty "system" Nothing)
    `finally` (DB.closeDatabase s `finally` unlockFile (serviceFileLock s))
 snapshotUnlocked :: Service -> IO Value
 snapshotUnlocked s = do
  revision <- readTVarIO (serviceRevision s)
  rows <- DB.agents s
- archives <- fmap concat $ forM rows $ \row -> do
-  let owner = at row "id"
-  turns <- DB.projectArchives s owner
-  pure [archivePath s owner ("runs/" <> runIdText (turnId t)) | t <- turns]
- GC.reconcileGroups s
  turns <- DB.turns s
  prefs <- DB.singleton s DB.Preferences
  corpora <- corporaIdentity s
@@ -179,13 +181,6 @@ snapshotUnlocked s = do
   pure (run,merge value (obj [("turn",str (runIdText (runId run))),("stopping",Bool stopping),("agencyKind",str "chatInput"),("slot",num (runSlot run))]))
  let groupTurns=M.fromList [(at request "id",at g "id") | g<-groups,request<-items g "requests"]
      projected=[maybe t (\gid->put "group" (str gid) t) (M.lookup (at t "id") groupTurns) | t<-turns]
- -- Watch metadata for inputs that may be edited without going through the API.
- binary <- blindly s
- let owners = map (`at` "id") rows
-     stateFiles = [agentRoot s a </> f | a <- owners, f <- ["state.json","host.json","run-settings.json","execution.json"]]
-     notes = [workspaceRoot s (at row "id") </> f | row <- rows ++ groups, f <- ["Notes.html","Notes.history.json"]]
-     documents = [T.unpack (at t "path") | (_,w) <- pairs (get prefs "workspaces"), t <- items w "tabs", has t "path"]
- writeIORef (snapshotFiles s) $! Set.fromList $ [binary,repositoryRoot s </> "corpora/prompts/creation-request.md",serviceRoot s </> "corpora-settings.json",serviceRoot s </> "agentpy/corpora/directory.json"] ++ stateFiles ++ notes ++ archives ++ documents
  pure $ obj [("updates_revision",toJSON revision),("agents",arr agentRows),("turns",arr projected),("preferences",prefs),("corpora",corpora),("groups",arr groups),("routines",arr routines),("creation_template",str (T.strip creation)),("computer",obj [("owner",owner),("built",Bool built),("backend",str "native"),("platform",str (if os=="mingw32" then "win32" else T.pack os))]),("pulses",arr pulses),("events",events),("pulse",pulse),("provider",str "codex"),("activity",obj [(agentIdText (runOwner r),v) | (r,v)<-activity]),("run_activity",obj [(runIdText (runId r),v) | (r,v)<-activity]),("main_agent_id",str chief),("workloads",arr (D.workSummaries works)),("attachment_drafts",obj drafts),("orchestration",obj orchestration)]
 validatePreferenceShape :: Value -> Validation ()
 validatePreferenceShape d = do
@@ -218,7 +213,7 @@ dispatch _ s "PUT" "/api/model-settings" body = do
  Provider.validateModelSettingsDraft s requested
  saved <- locked s (saveModelSettings s requested)
  pure (200,encode saved,"application/json; charset=utf-8")
-dispatch transport s method target body = locked s $ do
+dispatch transport s method target body = (if method=="GET" then readLocked s else locked s) $ do
  let (path,query)=T.breakOn "?" target; parts=filter (not . T.null) (T.splitOn "/" path); write=method `elem` ["POST","PUT"]; d=fromMaybe Null body
  when write $ require (case d of Object _->True; _->False) 400 "Expected a JSON object"
  cfg <- corporaSettings s
@@ -235,7 +230,7 @@ dispatch transport s method target body = locked s $ do
    pure (obj [("accepted",Bool True)])
   ("GET",["api","model-settings"]) -> json 200 (toJSON <$> readModelSettings s)
   ("GET",["api","providers"]) -> json 200 (Provider.providersView (repositoryRoot s))
-  ("GET",["api","health"]) -> json 200 (pure (obj [("status",str "ok"),("provider",str "codex")]))
+  ("GET",["api","health"]) -> json 200 (pure (obj [("status",str "ok"),("provider",str "codex"),("version",str (T.pack currentBuild))]))
   ("GET",["api","state"]) -> json 200 (snapshotUnlocked s)
   ("GET",["api","computer"]) -> json 200 (Computer.computerStatus (repositoryRoot s))
   ("GET",["api","corpora"]) -> json 200 (corporaIdentity s)
@@ -264,6 +259,11 @@ dispatch transport s method target body = locked s $ do
   ("PUT",["api","agents",a]) -> json 200 (updateAgent s a d)
   ("POST",["api","agents",a,"messages"]) -> json 202 (E.submitTurn transport s a d)
   ("POST",["api","agents",a,"control"]) -> json 200 (withActor s a Nothing (Mgt.control s a d))
+  ("GET",["api","agents",a,"turns",tid,"audit"]) -> json 200 $ do
+   void (DB.agent s a)
+   audit <- readDomain s ("archives/"<>a<>"/runs/"<>tid) Null
+   require (audit/=Null) 404 "No saved audit for this turn"
+   pure audit
   ("POST",["api","agents",a,"turns",tid,action]) -> json 200 (E.turnAction s a tid action)
   ("PUT",["api","preferences"]) -> json 200 (savePreferences s d)
   ("POST",["api",kind,a,"attachments"]) | kind `elem` ["agents","groups"] -> owner kind a >> json 201 (createAttachment s a d)

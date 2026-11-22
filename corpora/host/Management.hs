@@ -210,7 +210,7 @@ updateCorpora s d = do
  cfg <- corporaSettings s
  updated <- validated (reviseCorpora d cfg)
  when (boolean (get d "archived")) $ readMVar (serviceRuns s) >>= mapM_ (\r->writeIORef (runCancel r) True) . M.elems
- writeJSON (serviceRoot s </> "corpora-settings.json") updated
+ writeDomain s "corpora-settings/1" updated
  modifyIORef' (servicePulse s) (put "running" (Bool (corporaStatus updated==Active)))
  DB.agents s >>= mapM_ (setManifests s)
  corporaIdentity s
@@ -247,7 +247,7 @@ lifecycle s d = do
  case change of
   LifecycleReplay -> pure ()
   LifecycleApplied updated -> do
-   writeJSON (serviceRoot s </> "corpora-settings.json") updated
+   writeDomain s "corpora-settings/1" updated
    modifyIORef' (servicePulse s) (put "running" (Bool (corporaStatus updated==Active)))
    when (corporaStatus updated==Paused) $ forM_ (M.elems runs) $ \r -> writeIORef (runCancel r) True
  corporaIdentity s

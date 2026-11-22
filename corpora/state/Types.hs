@@ -31,7 +31,7 @@ import qualified Data.Text.Encoding as TE
 import Data.Time
 import Data.Typeable
 import Data.Word (Word64)
-import Database.SQLite.Simple (Connection)
+import qualified KV
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 import System.Directory
@@ -74,8 +74,8 @@ instance ToJSON ModelSelection where
  toJSON choice = obj [("provider",str (providerName (selectionProvider choice))),("model",str (selectionModel choice)),("effort",str (selectionEffort choice))]
 
 data Run = Run { runOwner :: AgentId, runId :: RunId, runSlot :: Int, runCancel :: IORef Bool, runProcess :: MVar (Maybe ProcessHandle), runActivity :: IORef Value, runDeadline :: Word64, runModelConfig :: ModelSelection }
-data Service = Service { serviceAdmission :: Admission, serviceRoot :: FilePath, repositoryRoot :: FilePath, serviceGuard :: MVar (), serviceFileLock :: FileLock, serviceStopping :: IORef Bool, serviceWorker :: MVar (Maybe (Async ())), serviceRuns :: MVar (Map RunId Run), serviceLease :: IORef (Maybe (AgentId, RunId)), serviceEndpoint :: IORef Text, servicePulse :: IORef Value, serviceActors :: MVar (Map ThreadId (Text,Maybe Text)), serviceDatabase :: MVar (Maybe Connection), serviceStates :: MVar (Map Text CachedAgentState)
- , serviceRevision :: TVar Integer, updateSubscribers :: TVar Int, snapshotFiles :: IORef (Set FilePath)
+data Service = Service { serviceAdmission :: Admission, serviceRoot :: FilePath, repositoryRoot :: FilePath, serviceFileLock :: FileLock, serviceStopping :: IORef Bool, serviceRuns :: MVar (Map RunId Run), serviceLease :: IORef (Maybe (AgentId, RunId)), serviceEndpoint :: IORef Text, servicePulse :: IORef Value, serviceActors :: MVar (Map ThreadId (Text,Maybe Text)), serviceDatabase :: MVar (Maybe KV.Database), serviceStates :: MVar (Map Text CachedAgentState)
+ , serviceRevision :: TVar Integer, updateSubscribers :: TVar Int
  , serviceVoicePieces :: IORef (Map (Text,Text) Word64)
  , serviceTelemetry :: IORef (Maybe Telemetry.Telemetry), serviceCorporaId :: Text }
 
@@ -85,57 +85,12 @@ emitTelemetry s event fields = do
  forM_ telemetry $ \reporter -> Telemetry.emit reporter event (Just (serviceCorporaId s)) fields
 
 notifyChange :: Service -> IO ()
-notifyChange s = atomically $ modifyTVar' (serviceRevision s) (+1)
+notifyChange s = pure () -- Published once, after the enclosing Pulse commits.
 
 -- Committed projections retain only turns that still depend on archive output.
 data ProjectionStatus = ProjectionPending | ProjectionCommitted [Turn]
 data CachedAgentState = CachedAgentState
  { cachedBytes :: BS.ByteString, cachedState :: AgentState, cachedProjection :: ProjectionStatus }
-
-migrateAgentState :: Int -> Value -> Validation AgentState
-migrateAgentState version = validateValue 500 $ withObject "legacy agent state" $ \o -> do
- unless (version `elem` [1,2]) $ fail "Unsupported legacy state version"
- savedVersion <- o .: "schema_version"
- unless (savedVersion == version) $ fail "Mismatched legacy state version"
- agent <- o .: "agid" :: Parser Text
- revision <- o .: "revision" :: Parser Int
- sequenceNumber <- o .: "event_sequence" :: Parser Int
- lastOutput <- o .: "last_output" :: Parser (Maybe Text)
- history <- o .: (if version == 1 then "jobs" else "turns") >>= mapM migrateTurn
- chat <- o .: "chat" >>= mapM (message $ \row -> do
-  void (row .: "role" :: Parser Text)
-  void (row .: "content" :: Parser Text))
- events <- o .: "events" >>= mapM (message $ \row -> do
-  void (row .: "sequence" :: Parser Int)
-  void (row .: "kind" :: Parser Text))
- let buffered = if version == 2
-       then KM.filterWithKey (\key _ -> key `elem` ["output_buffer","output_sequence"]) o
-       else KM.empty
- pure $ AgentState (catMaybes history) (KM.fromList
-  [("schema_version",num 3),("agid",str agent),("revision",num revision),("event_sequence",num sequenceNumber)
-  ,("last_output",toJSON lastOutput),("chat",arr chat),("events",arr events)] <> buffered)
- where
- message validate = withObject "legacy message" $ \row -> do
-  validate row
-  void (row .:? "time" :: Parser (Maybe Text))
-  void (row .:? "turn" :: Parser (Maybe Text))
-  job <- traverse parseJSON (KM.lookup "job" row) :: Parser (Maybe Text)
-  pure $ maybe (Object row) (\ident -> Object $ KM.insert "turn" (str ident) $ KM.delete "job" row) job
- migrateTurn = withObject "legacy turn" $ \row -> do
-  ident <- row .: "id" :: Parser RunId
-  input <- row .: (if version==1 then "task" else "input") :: Parser Text
-  flow <- row .: "flow"
-  status <- row .: "status" :: Parser Text
-  let outputFields = ["origin","batch_id","batch_members","agency_kind","slot","pulseId","output_at","output_order"]
-      extra = selectPresent (["created","error","warning"] ++ [key | version == 2, key <- outputFields]) (Object row)
-      details = if status=="budget_blocked" then put "error" (str "Former budget block removed; retry to continue") extra else extra
-  if version==1 && not (T.null flow) && flow `notElem` ["chat","computer"]
-   then do -- v1 also stored jobs from configurable, retired flows.
-    unless (status `elem` ["budget_blocked","conflict"]) $ void (parseJSON (str status) :: Parser TurnStatus)
-    pure Nothing
-   else do
-    newStatus <- if status=="budget_blocked" then pure Interrupted else parseJSON (str status)
-    Just <$> parseJSON (merge details (obj [("id",toJSON ident),("input",str input),("flow",str flow),("status",toJSON newStatus)]))
 
 -- Pure validation retains the HTTP error contract; adapters choose when to throw.
 type Validation a = Either APIError a
@@ -205,7 +160,37 @@ atomicBytes p bytes = do
 writeJSON :: ToJSON a => FilePath -> a -> IO ()
 writeJSON p = atomicBytes p . encode
 locked :: Service -> IO a -> IO a
-locked s = withMVar (serviceGuard s) . const
+locked s action = do
+ db <- database s
+ (actor,agency) <- currentActor s
+ KV.runCommand db $ withActor s actor agency $ KV.withActorContext db actor $ do
+  previousRuns <- readMVar (serviceRuns s)
+  previousLease <- readIORef (serviceLease s)
+  previousPulse <- readIORef (servicePulse s)
+  KV.onRollback db $ do
+   modifyMVar_ (serviceStates s) (const (pure M.empty))
+   modifyMVar_ (serviceRuns s) (const (pure previousRuns))
+   writeIORef (serviceLease s) previousLease
+   writeIORef (servicePulse s) previousPulse
+  action `onException` modifyMVar_ (serviceStates s) (const (pure M.empty))
+
+readLocked :: Service -> IO a -> IO a
+readLocked s action = database s >>= \db -> KV.readSnapshot db action
+
+database :: Service -> IO KV.Database
+database s = readMVar (serviceDatabase s) >>= maybe (failure 503 "Store is closed") pure
+readDomain :: FromJSON a => Service -> Text -> a -> IO a
+readDomain s key def = do
+ db <- database s
+ value <- KV.getRecord db key
+ maybe (pure def) (decodeValue 500) value
+writeDomain :: ToJSON a => Service -> Text -> a -> IO ()
+writeDomain s key value = database s >>= \db -> KV.putRecord db key (toJSON value)
+readArchive :: Service -> Text -> Text -> IO Value
+readArchive s a key = readDomain s ("archives/"<>a<>"/"<>key) empty
+writeArchive :: Service -> Text -> Text -> Value -> IO ()
+writeArchive s a key = writeDomain s ("archives/"<>a<>"/"<>key)
+
 agentRoot :: Service -> Text -> FilePath
 agentRoot s a = serviceRoot s </> "agentpy/agents" </> T.unpack a
 workspaceRoot :: Service -> Text -> FilePath
@@ -215,8 +200,8 @@ agentState s a = cachedState <$> agentStateInput s a
 
 agentStateInput :: Service -> Text -> IO CachedAgentState
 agentStateInput s a = do
- let path = agentRoot s a </> "state.json"
- bytes <- BS.readFile path
+ value <- readDomain s ("states/"<>a) Null
+ let bytes = BL.toStrict (encode value)
  modifyMVar (serviceStates s) $ \cache -> case M.lookup a cache of
   Just entry | cachedBytes entry == bytes -> pure (cache,entry)
   _ -> do
@@ -230,13 +215,11 @@ agentStateInput s a = do
        updated = if BS.length bytes > 4*1024*1024 then remaining else M.insert a entry (bounded remaining)
    pure (updated,entry)
 saveState :: Service -> Text -> AgentState -> IO ()
-saveState s a v = writeJSON (agentRoot s a </> "state.json") (put "revision" (num (int (get (stateJSON v) "revision") + 1)) (stateJSON v))
+saveState s a v = writeDomain s ("states/"<>a) (put "revision" (num (int (get (stateJSON v) "revision") + 1)) (stateJSON v))
 modifyState :: Service -> Text -> (Value -> Value) -> IO ()
 modifyState s a f = agentState s a >>= decodeValue 500 . f . stateJSON >>= saveState s a
 modifyTurns :: Service -> Text -> (Turn -> Turn) -> IO ()
 modifyTurns s a f = agentState s a >>= saveState s a . mapTurns f
-archivePath :: Service -> Text -> Text -> FilePath
-archivePath s a k = serviceRoot s </> "agentpy/corpora/archive" </> T.unpack a </> T.unpack k <.> "json"
 findId :: Text -> [Value] -> Maybe Value
 findId i = find ((== i) . (`at` "id"))
 readText :: FilePath -> IO Text

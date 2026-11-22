@@ -91,6 +91,7 @@ startHost choice host = do
   unless available $ ioError $ userError $ "Haskell runtime is missing. Extract the complete Sapiens4 package: " ++ binary
   environment <- getEnvironment
   configRoot <- configDirectory
+  Update.migrateCandidate (runtimeDirectory host) (dataDirectory host) configRoot
   createDirectoryIfMissing True configRoot
   pid <- processId
   let overrides = [("SAPIENS_STORAGE_MODE",storageMode choice),("SAPIENS_DESKTOP_PID", show pid),("SAPIENS_REPOSITORY",runtimeDirectory host),("SAPIENS_CONFIG_DIR",configRoot),("SAPIENS_DATA_DIR",dataDirectory host)]

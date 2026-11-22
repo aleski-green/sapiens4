@@ -8,7 +8,6 @@ import BrowserCrypto
 import Receipt (legacyJSON)
 import Setup
 import Transport
-import Mailboxes (withDB)
 import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Exception
@@ -21,8 +20,8 @@ import Data.IORef
 import Data.List (sortOn)
 import qualified Data.Set as S
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import Data.Text (Text)
-import Database.SQLite.Simple
 import System.Directory
 import System.FilePath
 
@@ -213,30 +212,24 @@ processFrame b config frame = admitted (bridgeService b) True $ do
    reply <- if at message "op"=="resume" then replyFrame b current (at message "id") (obj [("paired",Bool True),("corpora",identity)])
     else if at message "op"=="api" && at message "method"=="GET" then executeReply b current message
     else do
-     let path = serviceRoot (bridgeService b) </> "remote-receipts.sqlite3"
+     let service=bridgeService b
          currentDigest = hash (BL.toStrict (encode (obj (sortOn fst (pairs message)))))
-         -- New receipts and matching pre-v2 canonical receipts never need legacyJSON.
-         -- Limit the slow Python-era fallback to 4 KiB during the one-day migration
-         -- window. Oversized mismatches are rejected without parsing or re-execution.
          stored = "v2:" <> currentDigest
          legacyDigest = either (const currentDigest) hash (legacyJSON plaintext)
          matches saved = if "v2:" `T.isPrefixOf` saved then saved == stored
           else saved == currentDigest || (BS.length plaintext <= 4096 && saved == legacyDigest)
-         room = at current "room"; ident = at message "id"
-     receipt <- withDB path $ \db -> withTransaction db $ do
-      execute_ db "CREATE TABLE IF NOT EXISTS receipts (room TEXT,id TEXT,hash TEXT,reply TEXT,created REAL,PRIMARY KEY(room,id))"
-      execute db "DELETE FROM receipts WHERE created < ?" (Only (time-86400))
-      rows <- query db "SELECT hash,reply FROM receipts WHERE room=? AND id=?" (room,ident) :: IO [(Text,Maybe Text)]
-      when (null rows) (execute db "INSERT INTO receipts VALUES (?,?,?,NULL,?)" (room,ident,stored,time))
-      pure rows
-     case receipt of
-      (saved,raw):_ -> do
-       require (matches saved) 400 "Request ID was reused"
-       maybe (replyFrame b current ident (obj [("error",str "Outcome uncertain after interruption. Check desktop history before sending again.")])) (pure . parseJSONText) raw
-      [] -> do
-       result <- executeReply b current message
-       withDB path (\db -> execute db "UPDATE receipts SET reply=? WHERE room=? AND id=?" (jsonText result,room,ident))
-       pure result
+         room=at current "room"; ident=at message "id"
+         receiptKey="remote-receipts/"<>hash (TE.encodeUtf8 (room<>"/"<>ident))
+     result <- locked service $ do
+      saved <- readDomain service receiptKey Null
+      if saved/=Null then do
+       require (matches (at saved "hash")) 400 "Request ID was reused"
+       pure (get saved "body" `fallback` obj [("error",str "Outcome uncertain after interruption. Check desktop history before sending again.")])
+      else do
+       body <- executeRemote b message
+       writeDomain service receiptKey (obj [("hash",str stored),("body",body),("room",str room),("id",str ident),("created",toJSON time)])
+       pure body
+     replyFrame b current ident result
    pure (current,Just reply)
 runBridge :: Bridge -> IO ()
 runBridge b = loop 1

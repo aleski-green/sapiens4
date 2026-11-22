@@ -9,6 +9,11 @@ flag linux-desktop
   manual: True
 
 common runtime
+  hs-source-dirs: corpora/state/kv
+  other-modules: KV, LMDB, PulseClock, BuildVersion
+  c-sources: corpora/state/kv/lmdb_bridge.c, corpora/state/kv/vendor/mdb.c, corpora/state/kv/vendor/midl.c
+  include-dirs: corpora/state/kv/vendor
+  cc-options: -Wno-unused-parameter
   hsc2hs-options: --cross-compile --via-asm
   default-language: Haskell2010
   default-extensions: OverloadedStrings, ScopedTypeVariables, TupleSections
@@ -195,3 +200,14 @@ executable sapiens-starter
     ghc-options: -optl-mwindows
   else
     buildable: False
+
+executable sapiens-migrate
+  import: runtime
+  hs-source-dirs: migrations, corpora/state, corpora/telemetry, environments/update
+  main-is: Main.hs
+  other-modules: Memo, UpdateState, V00_02_00, LegacyState, Types, Domain, Admission, Telemetry, TelemetryDevice, TelemetryWire, RuntimePaths, Paths_sapiens_domain
+
+executable sapiens-storage-check
+  import: runtime
+  hs-source-dirs: spec/storage
+  main-is: Main.hs

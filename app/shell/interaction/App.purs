@@ -50,6 +50,7 @@ decodeUpdateNotice :: Json -> Maybe AppUpdateNotice
 decodeUpdateNotice value = case toString value of
   Just "available" -> Just OfferAvailable
   Just "none" -> Just OfferHidden
+  Just "downloaded" -> Just DownloadReady
   Just "updating" -> Just Preparing
   Just "busy" -> Just Blocked
   Just "error" -> Just Failed
@@ -227,6 +228,7 @@ handle runtime input = session input
     AppUpdateStatus notice -> H.modify_ \m -> case notice of
       OfferAvailable | not (M.updateInProgress m.appUpdate) -> m {appUpdate=M.UpdateAvailable}
       OfferHidden | not (M.updateInProgress m.appUpdate) -> m {appUpdate=M.UpdateHidden}
+      DownloadReady -> m {appUpdate=M.UpdateDownloaded}
       Preparing -> m {appUpdate=M.UpdatePreparing}
       Blocked -> m {appUpdate=M.UpdateBusy}
       Failed -> m {appUpdate=M.UpdateFailed}
@@ -234,8 +236,13 @@ handle runtime input = session input
     StartAppUpdate -> do
       m <- H.get
       unless (M.updateInProgress m.appUpdate) do
-        H.modify_ _ {appUpdate=M.UpdateDownloading}
-        liftEffect $ B.nativeMessage $ D.json {appUpdate:"start"}
+        case m.appUpdate of
+          M.UpdateDownloaded -> do
+            H.modify_ _ {appUpdate=M.UpdatePreparing}
+            liftEffect $ B.nativeMessage $ D.json {appUpdate:"start"}
+          _ -> do
+            H.modify_ _ {appUpdate=M.UpdateDownloading}
+            liftEffect $ B.nativeMessage $ D.json {appUpdate:"download"}
     NativeReport report -> E.runUpdate runtime dispatch $ U.QueueNative report
     DrainNative -> E.runUpdate runtime dispatch U.DrainNative
     Browser command -> do

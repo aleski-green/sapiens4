@@ -3,65 +3,71 @@ import io.Host
 open Lean
 namespace Spec.SystemJobs
 
+def runStorageTool (name : String) (args : Array String) : IO IO.Process.Output := do
+  let root ← repoRoot
+  IO.Process.output {cmd := (binary root name).toString, args, cwd := root}
+
+def preserveAtomicStorage : IO Unit := do
+  let result ← runStorageTool "sapiens-storage-check" #[]
+  IO.ofExcept <| requireThat result.stderr (result.exitCode == 0)
+
 def preserveInterruptedWorkDuringUpgrade : IO Unit := IO.FS.withTempDir fun directory => do
-  let owner ← withHost directory fun host => do
-    let metadata ← host.api "GET" "/api/corpora"
-    let revision ← IO.ofExcept <| metadata.getObjVal? "revision"
-    discard <| host.api "PUT" "/api/corpora/lifecycle"
-      (json% {action: "pause", operation: "pause-before-upgrade", revision: $(revision)})
-    host.chief
-  let agentDir := directory / "agentpy" / "agents" / owner
-  let file := agentDir / "state.json"
-  let installed ← IO.ofExcept <| Json.parse (← IO.FS.readFile file)
-  let turn := json% {id: "saved-review", flow: "chat", input: "Review the proposal",
-    status: "budget_blocked", attempt: 3, created: "2026-10-27T12:00:00+00:00"}
-  let previous := ((installed.setObjVal! "schema_version" 2).setObjVal! "turns" (json% [$(turn)])).compress
-  IO.FS.writeFile file previous
+  let fixture ← runStorageTool "sapiens-storage-check" #["--legacy-fixture", directory.toString]
+  IO.ofExcept <| requireThat fixture.stderr (fixture.exitCode == 0)
+  let file := directory / "agentpy/agents/sapi_saved/state.json"
+  let original ← IO.FS.readFile file
+  let database ← IO.FS.readBinFile (directory / "corpora.sqlite3")
+  let root ← repoRoot
+  let refused ← IO.Process.output {
+    cmd := (binary root "sapiens4").toString
+    args := #["--desktop", "--port", "0", "--data-dir", directory.toString]
+    cwd := root, env := ← fixtureEnvironment directory} (some "")
+  IO.ofExcept <| requireThat "startup silently migrated legacy data" (refused.exitCode != 0 && !(← (directory / "state.lmdb").pathExists))
+  IO.FS.writeFile file "corrupt legacy state"
+  let failed ← runStorageTool "sapiens-migrate" #["--data-root", directory.toString, "--config-root", directory.toString]
+  IO.ofExcept <| requireThat "failed migration published data or a build marker"
+    (failed.exitCode != 0 && !(← (directory / "state.lmdb").pathExists) && !(← (directory / "data-build.json").pathExists))
+  IO.FS.writeFile file original
   for _ in [0:2] do
+    let migrated ← runStorageTool "sapiens-migrate" #["--data-root", directory.toString, "--config-root", directory.toString]
+    IO.ofExcept <| requireThat migrated.stderr (migrated.exitCode == 0)
     withHost directory fun host => do
       let recovered ← host.awaitTurn "saved-review" "interrupted"
-      IO.ofExcept <| fieldsMatch recovered (json% {input: "Review the proposal", status: "interrupted"})
-      let upgraded ← IO.ofExcept <| Json.parse (← IO.FS.readFile file)
       IO.ofExcept do
-        fieldsMatch upgraded (json% {schema_version: 3})
-        let saved ← uniqueRecord (← upgraded.getObjVal? "turns") "id" "saved-review"
-        fieldsMatch saved (json% {status: "interrupted", input: "Review the proposal"})
-        requireThat "missing recovery explanation" ((← stringField saved "error").contains "retry")
-      let backup ← IO.FS.readFile (agentDir / "legacy-state-v2.json")
-      IO.ofExcept <| requireThat "original installation backup changed" (backup == previous)
+        fieldsMatch recovered (json% {input: "Review the proposal", status: "interrupted"})
+        requireThat "missing recovery explanation" ((← stringField recovered "error").contains "retry")
+      let marker ← IO.ofExcept <| Json.parse (← IO.FS.readFile (directory / "data-build.json"))
+      IO.ofExcept <| requireThat "wrong data build" (marker == json% "v00.02.00")
+      let pulse ← IO.ofExcept <| (← host.state).getObjVal? "pulse"
+      IO.ofExcept <| fieldsMatch pulse (json% {bpm: 120})
       IO.ofExcept <| requireThat "upgrade ran a provider call" (!(← (directory / "fixture-prompts").pathExists))
+    IO.ofExcept <| requireThat "migration changed legacy state" ((← IO.FS.readFile file) == original)
+    IO.ofExcept <| requireThat "migration changed legacy SQLite" ((← IO.FS.readBinFile (directory / "corpora.sqlite3")) == database)
+  IO.ofExcept <| requireThat "workspace note was not migrated" ((← IO.FS.readFile (directory / "workspaces/sapi_saved/Notes.html")).contains "Preserve this private note")
 
-def recoverSavedWorkAfterStorageRepair : IO Unit :=
-  IO.FS.withTempDir fun directory => withHost directory fun host => do
+def recoverSavedWorkAfterStorageRepair : IO Unit := IO.FS.withTempDir fun directory => do
+  let owner ← withHost directory fun host => do
     let owner ← host.chief
-    let metadata ← host.api "GET" "/api/corpora"
-    discard <| host.api "PUT" "/api/corpora/lifecycle"
-      (json% {action: "pause", operation: "pause-before-repair", revision: $(metadata.getObjValD "revision")})
     let root ← repoRoot
     let contender ← IO.Process.output {
       cmd := (binary root "sapiens4").toString
-      args := #["--desktop", "--port", "0", "--data-dir", directory.toString],
+      args := #["--desktop", "--port", "0", "--data-dir", directory.toString]
       cwd := root, env := ← fixtureEnvironment directory} (some "")
     IO.ofExcept <| requireThat "a second host failed to respect the data-directory lock"
       (contender.exitCode != 0 && contender.stderr.contains "Another Sapiens4 server")
-    let file := directory / "agentpy" / "agents" / owner / "state.json"
-    let saved ← IO.ofExcept <| Json.parse (← IO.FS.readFile file)
-    let turn := json% {id: "saved-review", flow: "chat", input: "Original request", status: "failed",
-      error: "Original error", created: "2026-10-27T12:00:00+00:00"}
-    let install := fun (record : Json) => do
-      let staging := file.addExtension "tmp"
-      IO.FS.writeFile staging (saved.setObjVal! "turns" (json% [$(record)])).compress
-      IO.FS.rename staging file
-    install turn
-    let initial ← host.awaitTurn "saved-review" "failed"
-    install (turn.setObjVal! "status" "invalid")
-    let failed ← request host.url "GET" "/api/state"
-    let health ← request host.url "GET" "/api/health"
-    IO.ofExcept <| requireThat "malformed saved work must fail the snapshot while the host remains available"
-      (failed.status == 500 && health.status == 200)
-    install turn
-    let restored ← host.awaitTurn "saved-review" "failed"
-    IO.ofExcept <| requireThat "repair changed the saved review" (restored == initial)
+    return owner
+  let marker := directory / "data-build.json"
+  let saved ← IO.FS.readFile marker
+  IO.FS.writeFile marker "\"v99.00.00\""
+  let root ← repoRoot
+  let incompatible ← IO.Process.output {
+    cmd := (binary root "sapiens4").toString
+    args := #["--desktop", "--port", "0", "--data-dir", directory.toString]
+    cwd := root, env := ← fixtureEnvironment directory} (some "")
+  IO.ofExcept <| requireThat "incompatible build data were silently opened" (incompatible.exitCode != 0)
+  IO.FS.writeFile marker saved
+  withHost directory fun host => do
+    IO.ofExcept <| requireThat "repair changed the saved owner" ((← host.chief) == owner)
     IO.ofExcept <| requireThat "repair ran a provider call" (!(← (directory / "fixture-prompts").pathExists))
 
 def releaseExclusiveComputerAccessOnCancellation : IO Unit :=

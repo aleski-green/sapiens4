@@ -4,7 +4,7 @@
 -- Pure domain data and codecs shared by the host and native shells.
 module Domain
  ( Wire(..), AgentId(..), TaskId(..), RunId(..), parseWire, TurnStatus(..), Flow(..)
- , CorporaStatus(..), CorporaConfig(..), Frequency(..)
+ , CorporaStatus(..), CorporaConfig(..)
  , periodMillis, Pulse(..), pulseIdentity, TaskState(..), GroupAccess(..), BrowserAction(..)
  , BrowserCommand(..), BrowserTransition(..), browserTransition, TurnAction(..), Turn(..)
  , turnField, withTurnFields, batchLeader, retryTurn, TurnControlError(..), validateTurnAction
@@ -75,17 +75,13 @@ instance FromJSON CorporaConfig where
  parseJSON = withObject "Corpora settings" $ \o -> CorporaConfig <$> o .:? "name" <*> o .: "device" <*> o .: "scope" <*> o .: "status" <*> o .: "revision" <*> o .:? "operations" .!= M.empty
 instance ToJSON CorporaConfig where
  toJSON config = object ["name" .= corporaName config, "device" .= corporaDevice config, "scope" .= corporaScope config, "status" .= corporaStatus config, "revision" .= corporaRevision config, "operations" .= corporaOperations config]
-data Frequency = Bpm120 | Bpm60 | Bph60 deriving (Eq, Ord, Show, Enum, Bounded)
-instance Wire Frequency where wireName frequency = case frequency of Bpm120 -> "bpm120"; Bpm60 -> "bpm60"; Bph60 -> "bph60"
-instance FromJSON Frequency where parseJSON = parseWire
-instance ToJSON Frequency where toJSON = String . wireName
-periodMillis :: Frequency -> Int
-periodMillis frequency = case frequency of Bpm120 -> 500; Bpm60 -> 1000; Bph60 -> 60000
-data Pulse = Pulse { pulseName :: Text, pulseFrequency :: Frequency, pulseNumber :: Int } deriving (Eq, Show)
+periodMillis :: Int
+periodMillis = 500
+data Pulse = Pulse { pulseName :: Text, pulseNumber :: Int } deriving (Eq, Show)
 pulseIdentity :: Pulse -> Text
-pulseIdentity pulse = pulseName pulse <> ":" <> wireName (pulseFrequency pulse) <> ":" <> T.pack (show (pulseNumber pulse))
+pulseIdentity pulse = pulseName pulse <> ":" <> T.pack (show (pulseNumber pulse))
 instance ToJSON Pulse where
- toJSON pulse = obj [("pulse",str (pulseName pulse)),("frequency",toJSON (pulseFrequency pulse)),("num",num (pulseNumber pulse)),("pulseId",str (pulseIdentity pulse))]
+ toJSON pulse = obj [("pulse",str (pulseName pulse)),("bpm",num 120),("num",num (pulseNumber pulse)),("pulseId",str (pulseIdentity pulse))]
 data TaskState = Backlog | InProgress | TaskDone deriving (Eq, Ord, Show, Enum, Bounded)
 instance Wire TaskState where wireName state = case state of Backlog -> "backlog"; InProgress -> "in_progress"; TaskDone -> "done"
 instance FromJSON TaskState where parseJSON = parseWire

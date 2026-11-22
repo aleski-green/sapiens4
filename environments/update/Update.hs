@@ -1,5 +1,5 @@
 module Update
- ( UpdateBusy(..), UpdateHandoff(..), updateAndRestart, updateMode
+ ( UpdateBusy(..), UpdateHandoff(..), updateAndRestart, downloadUpdate, migrateCandidate, updateMode
  , candidateReady, reportCandidateFailure, preparingUpdate, tryUpdate, sendUpdateCommand
  , UpdateNotice(..), updateOffer, renderUpdateNotice
  ) where
@@ -27,6 +27,9 @@ import System.Exit (exitFailure)
 import System.FilePath
 import System.IO
 import System.Timeout (timeout)
+import System.Process (callProcess)
+import System.Info (os)
+import Types (readJSON, writeJSON)
 import UpdateState
 import UpdatePlatform
 import UpdateBackup
@@ -110,7 +113,7 @@ sendUpdateCommand commandLock input replies reader command = withMVar commandLoc
      response = race (waitCatch reader) awaitReply
  outcome <- case command of
   PrepareReady -> Just <$> response
-  _ -> timeout 15000000 response
+  _ -> timeout 65000000 response
  case outcome of
   Just (Right reply) -> pure (parseHostReply reply)
   Just (Left _) -> fail "Application server exited during update coordination"
@@ -127,12 +130,12 @@ updateAndRestart :: UpdateHandoff -> UpdateRoots -> IO ()
 updateAndRestart handoff directories = do
  (root,owner) <- installed
  validateRoots root directories
- requireIdle CheckBusy "Sapiens could not check for unfinished work. Update cancelled."
  mask $ \unmask -> do
-  next <- freshVersion
+  staged <- readJSON (root </> "downloaded-update.json") Nothing
+  (downloadOwner,next) <- maybe (fail "Download the update before installing it") pure staged
+  unless (downloadOwner==owner && next/=owner) (fail "Downloaded update belongs to a different installed build")
   handoffStarted <- newIORef False
   result <- try $ do
-   unmask (requestUpdate root owner next)
    withCandidate (versionExecutable root owner) ["--update-coordinate",versionName next,dataRoot directories,configRoot directories] [] $ \coordinator -> do
     let quiet = requireIdle Quiesce "Sapiens could not pause safely. Update cancelled."
     (do
@@ -187,23 +190,50 @@ verifyPayloadDigest expected path = withBinaryFile path ReadMode $ \file -> do
  digest <- sha256 <$> BL.hGetContents file
  unless (digest == expected) (fail "Update payload SHA-256 differs from the release")
 
-data UpdateNotice = OfferAvailable | OfferHidden | UpdatePreparing | UpdateBlocked | UpdateFailed
+data UpdateNotice = OfferAvailable | OfferHidden | DownloadReady | UpdatePreparing | UpdateBlocked | UpdateFailed
 
 renderUpdateNotice :: UpdateNotice -> T.Text
 renderUpdateNotice notice = case notice of
  OfferAvailable -> "available"
  OfferHidden -> "none"
+ DownloadReady -> "downloaded"
  UpdatePreparing -> "updating"
  UpdateBlocked -> "busy"
  UpdateFailed -> "error"
+
+-- Download and install have separate explicit user actions.
+downloadUpdate :: IO ()
+downloadUpdate = do
+ (root,owner) <- installed
+ next <- freshVersion
+ requestUpdate root owner next
+ writeJSON (root </> "downloaded-update.json") (owner,next)
 
 updateOffer :: IO UpdateNotice
 updateOffer = do
  result <- tryUpdate $ do
   (root,owner) <- installed
-  manager <- newManager tlsManagerSettings
-  discoverRelease manager root owner
- pure (if isRight result then OfferAvailable else OfferHidden)
+  staged <- readJSON (root </> "downloaded-update.json") Nothing
+  valid <- case staged of
+   Just (saved,next) | saved==owner && next/=owner -> doesFileExist (versionExecutable root next)
+   _ -> pure False
+  if valid then pure DownloadReady else do
+   manager <- newManager tlsManagerSettings
+   void (discoverRelease manager root owner)
+   pure OfferAvailable
+ pure (either (const OfferHidden) id result)
+
+-- Compatibility bridge for the v00.01.00 coordinator: it already owns a verified
+-- backup and Pending decision. Run the new build's explicit migration executable
+-- before starting its host. Normal launches never invoke migration scripts.
+migrateCandidate :: FilePath -> FilePath -> FilePath -> IO ()
+migrateCandidate runtime dataDirectory configDirectory = do
+ preparing <- preparingUpdate
+ when preparing $ do
+  authorized <- checkCandidateData dataDirectory
+  unless authorized (fail "Migration requires a reserved update data root")
+  let runner=runtime </> ".build/bin" </> ("sapiens-migrate"++if os=="mingw32" then ".exe" else "")
+  callProcess runner ["--data-root",dataDirectory,"--config-root",configDirectory]
 
 installedVersion :: FilePath -> Version -> IO ReleaseVersion
 installedVersion root version =

@@ -6,6 +6,8 @@ import qualified Telemetry
 import System.Environment (getArgs)
 import qualified Data.Aeson.KeyMap as KM
 import Data.Time (nominalDiffTimeToSeconds)
+import GHC.Clock (getMonotonicTimeNSec)
+import qualified PulseClock
 import DataRoot
 import UpdateState (assertDataAvailable)
 import System.Environment (lookupEnv)
@@ -84,12 +86,12 @@ startHost consent root port preparing = mask $ \restore -> do
       pairClients <- readIORef (registryPairClients r)
       pure (work || not (M.null pairClients))
      busyHosts = openedHosts host >>= fmap or . mapM busy
+     resume = openedHosts host >>= mapM_ (Service.resumeService . registryService . localRegistry) >> openAdmission gate
      quiesce = do
       closeAdmission gate
-      occupied <- busyHosts
-      when occupied (openAdmission gate)
-      pure (not occupied)
- pure (Host assigned service (stopLocal host `finally` closeReporter) activate busyHosts (quiesce `onException` openAdmission gate) (openAdmission gate) prepare)
+      openedHosts host >>= mapM_ (Service.quiesceService . registryService . localRegistry)
+      pure True
+ pure (Host assigned service (stopLocal host `finally` closeReporter) activate busyHosts (quiesce `onException` resume) resume prepare)
 
 openLocal :: Admission -> IORef (Maybe Telemetry.Telemetry) -> BrowserCrypto -> Bool -> StorageChoice -> FilePath -> Int -> Bool -> IO (Int,LocalHost)
 openLocal gate reporterRef browser startWorkers choice root requested managed = do
@@ -116,7 +118,7 @@ openLocal gate reporterRef browser startWorkers choice root requested managed = 
    shutdown <- newEmptyMVar
    ready <- newEmptyMVar
    let settings = setServerName "Sapiens4" $ setPort port $ setHost "127.0.0.1" $ setGracefulCloseTimeout1 1000 $ setGracefulShutdownTimeout (Just 5) $ setInstallShutdownHandler (putMVar shutdown) $ setBeforeMainLoop (putMVar ready ()) defaultSettings
-   worker <- async $ withAsync (watchSnapshotFiles service) $ \watcher -> link watcher >> runSettingsSocket settings socket (application service bridge (if managed then Nothing else Just registry) onboarding port)
+   worker <- async $ runSettingsSocket settings socket (application service bridge (if managed then Nothing else Just registry) onboarding port)
    void (race (wait worker) (takeMVar ready))
    heartbeat <- newMVar Nothing
    transcriber <- newMVar (pure ())
@@ -127,9 +129,13 @@ openLocal gate reporterRef browser startWorkers choice root requested managed = 
          reporter <- readIORef (serviceTelemetry service)
          forM_ reporter $ \telemetry -> Telemetry.emit telemetry Telemetry.AppStarted Nothing KM.empty
          when (choice==StartNew) (emitTelemetry service Telemetry.CorporaCreated KM.empty)
-         task <- async (forever $ do
-          threadDelay (floor (nominalDiffTimeToSeconds Telemetry.heartbeatInterval * 1000000))
-          forM_ reporter $ \telemetry -> Telemetry.emit telemetry Telemetry.PulseId Nothing KM.empty)
+         lastHeartbeat <- getMonotonicTimeNSec >>= newIORef
+         task <- PulseClock.register $ do
+          now <- getMonotonicTimeNSec
+          previous <- readIORef lastHeartbeat
+          when (now-previous >= floor (nominalDiffTimeToSeconds Telemetry.heartbeatInterval * 1000000000)) $ do
+           writeIORef lastHeartbeat now
+           forM_ reporter $ \telemetry -> Telemetry.emit telemetry Telemetry.PulseId Nothing KM.empty
          modifyMVar_ heartbeat (const (pure (Just task)))
         startBridge bridge
         startTranscriber service >>= \stopVoice -> modifyMVar_ transcriber (const (pure stopVoice))
@@ -139,7 +145,7 @@ openLocal gate reporterRef browser startWorkers choice root requested managed = 
         mapM_ O.closeOnboarding onboarding
         closeRegistry registry
         closeBridge bridge
-        readMVar heartbeat >>= mapM_ cancel
+        readMVar heartbeat >>= sequence_
         readMVar shutdown >>= id
         readMVar transcriber >>= id
         -- Children can retain Windows socket handles until their work is stopped.
@@ -188,17 +194,6 @@ application service bridge registry onboarding port req respond
  | otherwise = httpApplication service bridge registry onboarding port req respond
 
 -- One metadata sampler per service, asleep when no window is subscribed.
-watchSnapshotFiles :: Service -> IO ()
-watchSnapshotFiles s = loop M.empty
- where
- loop previous = do
-  atomically $ readTVar (updateSubscribers s) >>= STM.check . (>0)
-  files <- readIORef (snapshotFiles s)
-  current <- M.traverseWithKey (\path _ -> (Just <$> getModificationTime path) `catch` (\(_::IOException) -> pure Nothing)) (M.fromSet (const ()) files)
-  when (previous /= current) (notifyChange s)
-  threadDelay 1000000
-  loop current
-
 updatesSocket :: Service -> WS.ServerApp
 updatesSocket s pending = do
  conn <- WS.acceptRequest pending

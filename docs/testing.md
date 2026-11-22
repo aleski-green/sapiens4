@@ -27,3 +27,10 @@ Windows: build the host and driver using their platform guides.
 Coverage excludes installer lifecycle, native guest isolation, remote-client
 UI, altered/expired encrypted delivery, load, native onboarding, provider
 discovery, model-settings UI, full provider combinations, and Group scenarios.
+
+Storage qualification is included in the headless suite. The native fixture
+`spec/storage/Main.hs` exercises real LMDB transactions (netting, rollback,
+post-commit effects, historical membership/search, failed commits, killed-writer recovery, shutdown and
+shared-clock behavior). The Lean recovery jobs create a real legacy SQLite/JSON
+root, reject implicit migration, run the explicit build migration twice, and verify
+saved work and untouched source data through the running host API.
