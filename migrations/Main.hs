@@ -16,7 +16,7 @@ import qualified V00_02_00
 -- Ordered BUILD transitions. A script can transform any part of Data or Config;
 -- the runner knows nothing about SQLite, JSON, LMDB or their schema versions.
 transitions :: [(String,String,FilePath -> FilePath -> IO ())]
-transitions = [(legacyBuild,currentBuild,V00_02_00.migrate)]
+transitions = [("v00.01.00","v00.02.00",V00_02_00.migrate)]
 
 main :: IO ()
 main = do
