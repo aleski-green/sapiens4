@@ -35,6 +35,8 @@ Vienna → invoke → Dubai sequence executes the captured Vienna input and leav
 Dubai as current state. Restart marks unfinished provider intents and running work
 as interrupted; it does not replay potentially completed external effects. Remote
 request results and domain changes share a commit, making redelivery idempotent.
+Encryption then runs outside the Pulse; its envelope is committed before delivery,
+so retries return identical encrypted bytes.
 Legacy receipts without a recoverable plaintext response prevent re-execution and
 report an uncertain outcome.
 

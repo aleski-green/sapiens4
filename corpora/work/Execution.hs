@@ -228,14 +228,18 @@ launch s a batch tick slot batching = do
  db <- database s
  KV.afterCommit db ("run-"<>runIdText i) (obj [("owner",str a),("turn",toJSON execution),("state",stateJSON snapshot)]) $ void $ forkIO $ do
   result <- try (withActor s a (Just "chatInput") (if has (turnField execution "origin") "group" then G.runGroup s run execution else D.runDecision s run execution snapshot))
-  locked s $ finish s run execution result `finally` do
-   lease <- readIORef (serviceLease s)
-   when (lease==Just (AgentId a,i)) $ writeIORef (serviceLease s) Nothing
-   modifyMVar_ (serviceRuns s) (pure . M.delete i)
+  -- The worker is finished even if storing its result fails. Release transient
+  -- handles outside the transaction so rollback cannot resurrect a dead worker
+  -- and make shutdown wait forever. Its durable pending intent remains auditable.
+  (locked s $ do
+   finish s run execution result
    D.pendingWorks s
    G.reconcileGroups s
    G.projectQueuedGroups s
-   notifyChange s
+   notifyChange s) `finally` KV.readSnapshot db (do
+    lease <- readIORef (serviceLease s)
+    when (lease==Just (AgentId a,i)) $ writeIORef (serviceLease s) Nothing
+    modifyMVar_ (serviceRuns s) (pure . M.delete i))
 publish :: Service -> Text -> Pulse -> IO ()
 publish s a tick = forM_ [1,2] $ \slot -> do
  state <- agentState s a

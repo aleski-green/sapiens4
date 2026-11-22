@@ -220,16 +220,29 @@ processFrame b config frame = admitted (bridgeService b) True $ do
           else saved == currentDigest || (BS.length plaintext <= 4096 && saved == legacyDigest)
          room=at current "room"; ident=at message "id"
          receiptKey="remote-receipts/"<>hash (TE.encodeUtf8 (room<>"/"<>ident))
-     result <- locked service $ do
+     receipt <- locked service $ do
       saved <- readDomain service receiptKey Null
       if saved/=Null then do
        require (matches (at saved "hash")) 400 "Request ID was reused"
-       pure (get saved "body" `fallback` obj [("error",str "Outcome uncertain after interruption. Check desktop history before sending again.")])
+       pure saved
       else do
        body <- executeRemote b message
-       writeDomain service receiptKey (obj [("hash",str stored),("body",body),("room",str room),("id",str ident),("created",toJSON time)])
-       pure body
-     replyFrame b current ident result
+       let saved=obj [("hash",str stored),("body",body),("room",str room),("id",str ident),("created",toJSON time)]
+       writeDomain service receiptKey saved
+       pure saved
+     -- Encrypt only after the domain/result commit. Persist the envelope in a
+     -- second Pulse before delivery, so retries return identical bytes. A crash
+     -- between commits reuses the saved result and never executes the command.
+     let savedFrame saved = get saved "reply" `fallback` parseJSONText (at saved "legacy_reply")
+     if savedFrame receipt/=Null then pure (savedFrame receipt) else do
+      let body=get receipt "body" `fallback` obj [("error",str "Outcome uncertain after interruption. Check desktop history before sending again.")]
+      frame <- replyFrame b current ident body `catch` \(_::APIError) ->
+       replyFrame b current ident (obj [("error",str "Response too large; inspect on desktop")])
+      locked service $ do
+       latest <- readDomain service receiptKey receipt
+       if savedFrame latest/=Null then pure (savedFrame latest) else do
+        writeDomain service receiptKey (put "reply" frame latest)
+        pure frame
    pure (current,Just reply)
 runBridge :: Bridge -> IO ()
 runBridge b = loop 1
