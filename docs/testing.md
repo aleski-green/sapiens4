@@ -17,12 +17,18 @@ lake -d spec test
 ```
 
 `lake -d spec test -- headless`: service/relay jobs.
+`lake -d spec test -- browser`: browser bindings, crypto and remote-device jobs; requires a visible browser and the accessibility driver.
 `lake -d spec test -- desktop`: native UI jobs; requires an unlocked desktop and
 Accessibility permission. Run desktop tests serially.
 `SAPIENS_TEST_BLINDLY4` selects the driver; `SAPIENS_TEST_MACOS_APP` selects a signed app bundle.
 
 Linux: build with `--desktop`, then `sh environments/linux/qualify.sh NEW_REPORT_DIRECTORY`.
 Windows: build the host and driver using their platform guides.
+Linux browser fixtures use guarded ASCII keyboard input with JSON Unicode escapes;
+the browser receives the original Unicode payload. Readonly results are read by
+accessible name because AT-SPI can expose them without an editable-text role.
+Onboarding controls use keyboard activation on Linux after verifying the focused
+control's PID, role and accessible name; consent and submission assertions remain unchanged.
 
 Coverage excludes installer lifecycle, native guest isolation, remote-client
 UI, altered/expired encrypted delivery, load, native onboarding, provider
