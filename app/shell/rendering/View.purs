@@ -16,6 +16,7 @@ import Sapiens.Html as V
 import Sapiens.Model as M
 import Sapiens.Navigation as N
 import Sapiens.Text as T
+import Sapiens.Art as Art
 import Sapiens.Work as Work
 import Sapiens.Workspace as Workspace
 
@@ -26,7 +27,7 @@ render m = V.node "div" []
   ,Dialog.view m,V.textNode "div" [V.id "toast",V.cls $ "toast " <> if m.toast /= "" then "visible" else "",V.attr "role" "status",V.attr "aria-live" "polite"] (m.toast)]
   where
   panes = M.visiblePanes m
-  columns = [(if A.elem N.Sidebar panes then if A.length panes == 1 then "minmax(0,1fr)" else "clamp(205px,18vw,250px)" else "0px"),(if A.elem N.ChatPane panes then "minmax(300px,1fr)" else "0px"),(if A.elem N.Workspace panes then "minmax(350px,1.2fr)" else "0px")]
+  columns = A.filter (_ /= "") [(if A.elem N.Sidebar panes then if A.length panes == 1 then "minmax(0,1fr)" else "clamp(260px,20vw,300px)" else ""),(if A.elem N.ChatPane panes then "minmax(340px,1fr)" else ""),(if A.elem N.Workspace panes then "minmax(350px,1.618fr)" else "")]
 
 status :: M.Model -> String
 status m = if (M.busy m) then "Connecting…" else if m.active == "" then "Not connected" else if not (M.online m) then "Offline" else if (M.activeRecord m).stopping then "Pausing…" else stateName $ (M.activeRecord m).status
@@ -39,7 +40,7 @@ stateName = case _ of
 
 header :: M.Model -> V.Html
 header m = V.node "header" [V.cls "app-header"] $
-  [V.node "a" [V.cls "wordmark",V.attr "href" "#",V.label "Sapiens4 home",V.on "click" \e -> Link e Home] [V.span [V.cls "brand-name"] "Sapiens4"]
+  [V.node "a" [V.cls "wordmark",V.attr "href" "#",V.label "Sapiens4 home",V.on "click" \e -> Link e Home] [Art.chiefy "brand-mark",V.span [V.cls "brand-name"] "Sapiens4"]
   ,V.control [V.id "app-menu",V.cls "icon-button menu-button",V.label "Menu",V.attr "title" "Menu"] "☰" (OpenDialog M.AppMenu F.NoRecord)
   ,V.node "nav" [V.cls "pane-controls",V.label "Panel visibility"] $ map paneButton [Tuple N.Sidebar "chat list",Tuple N.ChatPane "chat",Tuple N.Workspace "workspace"]
   ,V.control [V.cls "theme-toggle",V.label $ "Switch to " <> (if m.theme == "dark" then "light" else "dark") <> " theme"] (if m.theme == "dark" then "☀" else "☾") (Theme)
@@ -52,10 +53,15 @@ header m = V.node "header" [V.cls "app-header"] $
   paneButton (Tuple pane caption) =
     let visible = A.elem pane panes
         label = (if N.limit m.env == 1 || not visible then "Show " else "Hide ") <> caption
-    in V.control [V.cls "pane-toggle",V.label label,V.attr "title" label,V.attr "aria-pressed" $ show visible,V.attr "aria-expanded" $ show visible] (case pane of
-      N.Sidebar -> "☷"
-      N.ChatPane -> "▤"
-      N.Workspace -> "▣") (TogglePane pane)
+    in V.controlWith [V.cls "pane-toggle",V.label label,V.attr "title" label,V.attr "aria-pressed" $ show visible,V.attr "aria-expanded" $ show visible] [V.svg "svg" [V.attr "viewBox" "0 0 24 24",V.attr "fill" "none",V.attr "stroke" "currentColor",V.attr "stroke-width" "1.5",V.attr "stroke-linecap" "round",V.attr "stroke-linejoin" "round",V.attr "aria-hidden" "true",V.attr "focusable" "false"]
+      [V.svg "path" [V.attr "d" $ case pane of
+        N.Sidebar -> "M4 5h16v14H4z M9 5v14 M12 9h5 M12 13h5"
+        N.ChatPane -> "M5 4h14v12H9l-4 4z M8 8h8 M8 12h5"
+        N.Workspace -> "M3 5h18v14H3z M3 9h18 M6 7h.01 M9 7h.01"] []]
+      ,V.span [V.cls "pane-caption",V.attr "aria-hidden" "true"] $ case pane of
+        N.Sidebar -> "List"
+        N.ChatPane -> "Chat"
+        N.Workspace -> "Workspace"] (TogglePane pane)
 
 appUpdateButton :: M.AppUpdate -> V.Html
 appUpdateButton M.UpdateHidden = V.empty
@@ -96,7 +102,10 @@ statusMenu m = V.node "div" [V.id "corpora-status-menu",V.cls "corpora-popover s
 
 emptyCorpora :: M.Model -> V.Html
 emptyCorpora m = V.node "section" [V.id "corpora-empty",V.cls "corpora-empty",V.hidden $ m.active /= "" || m.installRequired]
-  [V.textNode "h1" [] "Your corpora",V.p "" "Connect to your Sapis on another computer.",V.button "" "Connect remote corpora" $ OpenDialog M.ConnectRemote F.NoRecord,V.when m.localAvailable $ V.button "" "Create local corpora" $ OpenDialog M.CreateCorpora F.NoRecord]
+  [V.div "empty-art" [Art.chiefy "welcome-chiefy"],V.textNode "h1" [] "Many minds.\nOne place."
+  ,V.p "" $ if m.localAvailable then "Your own team of AI coworkers. Start here or connect to your Sapis on another computer." else "Your own team of AI coworkers. Connect to your Sapis on another computer."
+  ,V.when m.localAvailable $ V.button "primary" "Create local corpora" $ OpenDialog M.CreateCorpora F.NoRecord
+  ,V.button (if m.localAvailable then "" else "primary") "Connect remote corpora" $ OpenDialog M.ConnectRemote F.NoRecord]
 
 installGate :: M.Model -> V.Html
 installGate m = V.node "section" [V.id "mobile-install-gate",V.label "Install Sapiens4",V.hidden $ not m.installRequired]
@@ -108,7 +117,7 @@ sidebar m = V.node "aside" [V.cls "sidebar",V.id "chat-list-panel",V.label "Chat
   ,V.node "div" [V.cls "scope-switch",V.label "Agent views"] $ map (\(Tuple scope label) -> V.control [V.cls $ if m.scope == scope then "active" <> if m.groupView /= Nothing then " group-open" else "" else "",V.attr "aria-pressed" $ show $ m.scope == scope,V.disabled $ scope == N.Groups && not (A.any (\a -> M.isGroup a && not (a.archived)) m.agents)] (label) (SetScope scope)) [Tuple N.All "All",Tuple N.Sapis "Sapis",Tuple N.Groups "Groups"]
   ,V.node "label" [V.id "corpora-search",V.cls $ "search-field " <> if m.searchOpen then "search-open" else ""] [V.span [V.attr "aria-hidden" "true"] "⌕",V.node "input" [V.id "agent-search",V.attr "type" "search",V.attr "placeholder" "Find a Sapi or Group…",V.label "Search agents",V.value m.search,V.input Search] [],V.textNode "kbd" [] "/"]
   ,V.node "div" [V.id "agent-list",V.cls "agent-list"] $ map row $ M.roster m
-  ,V.node "footer" [V.cls "sidebar-bottom"] [V.div "resource-card" [V.node "button" [V.id "resource-button",V.cls "resource-open",V.label "Open shared computer",V.click $ OpenDialog M.Computer F.NoRecord] [V.span [V.cls "computer-icon",V.attr "aria-hidden" "true"] "▣",V.textNode "strong" [] "SHARED COMPUTER",V.node "span" [V.id "resource-status",V.cls $ "status-dot " <> if owner == "" then "idle" else ""] []],V.textNode "small" [V.id "resource-owner"] (if owner /= "" then "In use · " <> (M.agent m owner).name else if m.snapshot.computer.built then "Blindly4 · Available" else "Blindly4 · Build required")]]]
+  ,V.node "footer" [V.cls "sidebar-bottom"] [V.div "resource-card" [V.node "button" [V.id "resource-button",V.cls "resource-open",V.label "Open shared computer",V.click $ OpenDialog M.Computer F.NoRecord] [V.span [V.cls "computer-icon",V.attr "aria-hidden" "true"] "▣",V.textNode "strong" [] "Shared computer",V.node "span" [V.id "resource-status",V.cls $ "status-dot " <> if owner == "" then "idle" else ""] []],V.textNode "small" [V.id "resource-owner"] (if owner /= "" then "In use · " <> (M.agent m owner).name else if m.snapshot.computer.built then "Available" else "Setup required")]]]
   where
   panes = M.visiblePanes m
   owner = m.snapshot.computer.owner
@@ -122,7 +131,7 @@ conversation :: M.Model -> V.Html
 conversation m = V.node "section" [V.cls "conversation",V.id "chat-panel",V.label "Agent conversation",V.hidden $ not $ A.elem N.ChatPane panes]
   [V.node "div" [V.cls "agent-heading",V.id "agent-heading"] [T.avatar a (if m.selected == m.snapshot.main_agent_id then "large main-sapi-avatar" else "large") true,V.div "" [V.div "agent-title" [V.textNode "h2" [] (a.name),V.when (not $ M.isGroup a) $ T.groupLabels m a false],V.p "agent-role" $ (if M.isGroup a then a.description else a.role)],V.icon "Sapi settings" "···" $ OpenDialog (if M.isGroup a then M.GroupSettings else M.AgentSettings) (F.EntityRecord a)]
   ,activityNav m,viewbar m
-  ,V.keyed "div" [V.cls "conversation-body",V.id "conversation-body",V.on "scroll" $ const Scroll,V.on "pointerdown" $ const UserScroll,V.on "touchstart" $ const UserScroll,V.on "wheel" $ const UserScroll,V.on "keydown" $ const UserScroll] $ case m.activity of
+  ,V.keyed "div" [V.cls "conversation-body",V.id "conversation-body",V.attr "tabindex" "0",V.on "scroll" $ const Scroll,V.on "pointerdown" $ const UserScroll,V.on "touchstart" $ const UserScroll,V.on "wheel" $ const UserScroll,V.on "keydown" $ const UserScroll] $ case m.activity of
     N.Chat N.Conversation -> Chat.rows m
     N.Chat view -> [Tuple "unavailable" $ V.p "empty" $ N.chatLabel view <> " are not available yet."]
     N.Work N.Scheduled period -> [Tuple "routines" $ Work.routines m period]
@@ -143,7 +152,7 @@ activityNav m = V.node "nav" [V.cls "conversation-tabs",V.label "Agent activity"
     N.Branch id label view children -> V.div "activity-submenu-row" [item (N.Work view N.Planned) label,V.controlWith [V.attr "data-activity-menu" $ "activity-" <> id,V.label $ label <> " menu",V.attr "aria-expanded" $ show $ m.menu == Just ("activity-" <> id)] [V.chevron true] (Menu $ "activity-" <> id),V.node "div" [V.cls "activity-menu activity-submenu",V.hidden $ m.menu /= Just ("activity-" <> id)] $ map tree children]
   tab (Tuple id label) = V.div ("activity-tab " <> if N.panel m.activity == id then "active" else "")
     [V.control [V.attr "data-panel" id,V.attr "aria-pressed" $ show $ N.panel m.activity == id] (label) (if id == "work" then DefaultWork else Navigate $ if id == "chat" then N.Chat N.Conversation else N.Updates)
-    ,V.node "button" [V.cls "activity-toggle",V.label $ label <> " menu",V.attr "aria-expanded" $ show $ m.menu == Just ("activity-" <> id),V.click $ Menu $ "activity-" <> id] [V.chevron false]
+    ,V.when (id /= "updates") $ V.node "button" [V.cls "activity-toggle",V.label $ label <> " menu",V.attr "aria-expanded" $ show $ m.menu == Just ("activity-" <> id),V.click $ Menu $ "activity-" <> id] [V.chevron false]
     ,V.node "div" [V.cls "activity-menu",V.hidden $ if id == "work" then not (A.elem m.menu $ map (Just <<< ("activity-" <> _)) ["work","tasks","automation","routine","workflows","composer"]) else m.menu /= Just ("activity-" <> id)] $ case id of
       "chat" -> map (\view -> item (N.Chat view) $ N.chatLabel view) [N.Pins,N.Threads,N.Comments] <> [V.node "hr" [] [],V.button "" "＋ Add feedback" Feedback]
       "work" -> map tree N.workTree

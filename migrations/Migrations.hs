@@ -14,6 +14,7 @@ import MigrationVersion
 import MigrationPlan
 import qualified V00_01_99 as Old
 import qualified V00_02_00 as Upgrade
+import qualified V00_02_01 as Lifecycle
 #ifndef mingw32_HOST_OS
 import qualified System.Posix.IO as Posix
 import qualified System.Posix.Unistd as Posix
@@ -22,7 +23,7 @@ import qualified System.Posix.Unistd as Posix
 -- The caller holds host.lock, including for managed children. No workers have
 -- started yet. Registered migrations are compiled into every shipped binary.
 openCorpora :: FilePath -> IO A.Store
-openCorpora root = openVersioned A.defaultOptions (root </> "corpora.lmdb") (root </> "corpora.sqlite3") (Upgrade.corpora root) (Upgrade.corporaFingerprint root)
+openCorpora root = openVersioned A.defaultOptions (root </> "corpora.lmdb") (root </> "corpora.sqlite3") (Upgrade.corpora root) (Upgrade.corporaFingerprint root) Lifecycle.corpora
 
 -- Keep accepting explicit old --db paths. The source always remains untouched.
 openRelay :: FilePath -> IO A.Store
@@ -33,15 +34,16 @@ openRelay requested = do
      legacyPath = sqlite || not exists && legacyName
      target = if legacyPath then (if legacyName then replaceExtension requested "lmdb" else requested<.>"lmdb") else requested
      source = if legacyPath then requested else replaceExtension requested "sqlite3"
- openVersioned A.defaultOptions {A.historyPolicy=A.CurrentOnly} target source (Upgrade.relay source) (Upgrade.relayFingerprint source)
+ openVersioned A.defaultOptions {A.historyPolicy=A.CurrentOnly} target source (Upgrade.relay source) (Upgrade.relayFingerprint source) Lifecycle.relay
 
-openVersioned :: A.Options -> FilePath -> FilePath -> (A.Store -> IO ()) -> IO Value -> IO A.Store
-openVersioned options target source convert sourceFingerprint = do
+openVersioned :: A.Options -> FilePath -> FilePath -> (A.Store -> IO ()) -> IO Value -> (A.Store -> IO ()) -> IO A.Store
+openVersioned options target source convert sourceFingerprint cleanup = do
  createDirectoryIfMissing True (takeDirectory target)
  forM_ [target,source,target++".migration.lock",target++".migrating"] $ \path ->
   void (Old.safePath (takeDirectory target) (takeFileName path))
  bracket (tryLockFile (target++".migration.lock") Exclusive >>= maybe (fail "Another app migration is running") pure) unlockFile $ \_ -> do
-  let steps = [Migration Upgrade.sourceVersion Upgrade.targetVersion convert]
+  let steps = [Migration Upgrade.sourceVersion Upgrade.targetVersion convert
+              ,Migration Lifecycle.sourceVersion Lifecycle.targetVersion cleanup]
   published <- doesFileExist target
   legacy <- doesFileExist source
   unless published $ when legacy $ do

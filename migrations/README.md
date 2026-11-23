@@ -3,7 +3,7 @@
 `v00.01.99` names the previous `dev` application (commit `7ae4825`):
 Corpora SQLite schema 8, agent JSON schema 3, JSON configuration and archives,
 SQLite remote receipts and relay mailboxes. `v00.02.00` is the LMDB release.
-`VERSION` carries the public version; Cabal represents it numerically as `0.2.0`.
+`VERSION` carries the public version; Cabal represents it numerically (currently `0.2.1`).
 Installer UUIDs and per-document schema versions are different identifiers.
 
 ## Permanent rules
@@ -90,3 +90,13 @@ have priority. Missing or invalid old workspaces fail visibly instead of startin
 fresh. Discovery retains the old config; the normal workspace-ready publication
 writes `config/storage.json` only after successful opening. Desktop setup selects
 detected content even when current terms still require acceptance.
+
+## v00.02.00 -> v00.02.01
+
+`V00_02_01.hs` removes `system.started` and `system.stopped` entries whose actor is
+`system` and entity is `corpora` from every stored `events/` list. Other activity,
+unknown fields, row IDs and order are retained. Startup and shutdown no longer
+create these entries. Relay data is unchanged and explicitly advances its marker.
+Malformed event lists abort the entire step; retry starts from the previous
+committed version. The storage engine's historical transaction journal and retained
+legacy source files are unchanged.

@@ -1,88 +1,473 @@
+/* Sapiens4 — floating cards, keyboard faces, one pink action.
+   This is the final visual layer; layout/behavior live in styles.css and live.css. */
+@font-face{font-family:"DM Sans";src:url("fonts/dm-sans.woff2") format("woff2");font-weight:100 1000;font-display:swap}
+@font-face{font-family:"Zen Maru Gothic";src:url("fonts/zen-maru-light.woff2") format("woff2");font-weight:300;font-display:swap}
+@font-face{font-family:"Zen Maru Gothic";src:url("fonts/zen-maru-medium.woff2") format("woff2");font-weight:500;font-display:swap}
+@font-face{font-family:"IBM Plex Mono";src:url("fonts/ibm-plex-mono.woff2") format("woff2");font-weight:400;font-display:swap}
 
+:root body.sapi-workspace {
+  --sapi-bg:#f2f2f2; --sapi-surface:#fff; --sapi-white:#fff; --sapi-soft:#f2f2f2;
+  --sapi-ink:#111; --sapi-muted:#6b6b6b; --sapi-line:#e6e6e6;
+  --sapi-action:#f9bdd0; --sapi-on-action:#111; --sapi-blush:#f08fb0;
+  --sapi-chiefy:#f9bdd0; --sapi-curio:#cfc4f2; --sapi-buildly:#fbe58a; --sapi-nerd:#bfe3fa;
+  /* Fibonacci intervals approximate phi; half-steps keep text sizes practical. */
+  --sapi-space-sm:8px; --sapi-space-md:13px; --sapi-space-lg:21px; --sapi-space-xl:34px;
+  --sapi-text-small:13px; --sapi-text-body:16px; --sapi-text-title:21px; --sapi-text-display:34px;
+  --sapi-radius-card:21px; --sapi-radius-inner:13px; --sapi-gap:13px;
+  --sapi-font:"DM Sans",system-ui,sans-serif;
+  --sapi-face:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Yu Gothic UI",sans-serif;
+  --sapi-mono:"IBM Plex Mono",ui-monospace,monospace; --sapi-display:var(--sapi-font);
+  /* Compatibility tokens keep every older feature on the same palette. */
+  --sapi-pink:var(--sapi-action); --sapi-violet:var(--sapi-ink); --sapi-accent:var(--sapi-ink);
+  --sapi-hover:var(--sapi-soft); --sapi-cyan:var(--sapi-ink);
+  --sapi-pink-tint:var(--sapi-soft); --sapi-purple-tint:var(--sapi-soft); --sapi-cyan-tint:var(--sapi-soft);
+  --setup-accent:var(--sapi-ink); --ink:var(--sapi-ink); --paper:var(--sapi-bg); --panel:var(--sapi-surface);
+  --muted:var(--sapi-muted); --line:var(--sapi-line); --acid:var(--sapi-action); --purple:var(--sapi-ink);
+  --shadow:none; color:var(--ink);background:var(--sapi-bg);font:400 15px/1.5 var(--sapi-font);color-scheme:light;
+}
+:root[data-theme=dark] body.sapi-workspace {
+  --sapi-bg:#111; --sapi-surface:#1c1c1c; --sapi-white:#1c1c1c; --sapi-soft:#2a2a2a;
+  --sapi-ink:#f5f5f5; --sapi-muted:#a3a3a3; --sapi-line:#333; color-scheme:dark;
+}
 
-body { color: var(--sapi-ink); background: var(--sapi-bg); font-family: var(--sapi-font); }
-button,input,textarea,select { font-family: inherit; }
-button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible { outline: 2px solid var(--sapi-violet); outline-offset: 3px; }
+/* Shell. Keep the native workspace rectangle and scrolling behavior intact. */
+:root[data-theme] body.sapi-workspace .app{padding:var(--sapi-space-md);gap:var(--sapi-space-md);min-height:0}
+:root[data-theme] body.sapi-workspace .app-header{height:auto;min-height:44px;padding:0 8px;gap:12px;border:0;background:transparent;flex-shrink:0}
+:root[data-theme] body.sapi-workspace .wordmark{display:inline-flex;align-items:center;gap:10px;width:auto;margin:0;padding:0;color:var(--ink);text-shadow:none;letter-spacing:0}
+:root[data-theme] body.sapi-workspace .wordmark .brand-name{font:600 19px/1 var(--sapi-font);letter-spacing:-.04em}
+:root[data-theme] body.sapi-workspace .brand-mark{width:34px;height:24px}
+:root[data-theme] body.sapi-workspace .main-grid{gap:var(--sapi-gap);overflow:hidden}
+:root[data-theme] body.sapi-workspace .main-grid>:is(.sidebar,.conversation,.workspace){border:0;border-radius:var(--sapi-radius-card);background:var(--sapi-surface);min-width:0;min-height:0}
+:root[data-theme] body.sapi-workspace .main-grid>:not([hidden])~:not([hidden]){border-left:0}
+:root[data-theme] body.sapi-workspace .sidebar{padding:12px 10px 0}
+:root[data-theme] body.sapi-workspace .sidebar-heading{margin:0 6px 10px;gap:6px}
+:root[data-theme] body.sapi-workspace .sidebar-heading h1{font:600 17px/1.3 var(--sapi-font);letter-spacing:-.04em}
+:root[data-theme] body.sapi-workspace .sidebar-heading #agent-count{font-size:13px}
+:root[data-theme] body.sapi-workspace :is(.icon-button,.menu-button,.pane-toggle,.theme-toggle,.add-tab,.tab-close,.tab-star){width:36px;height:36px;min-width:36px;border:0;border-radius:50%;color:var(--ink);background:transparent;letter-spacing:0;flex-shrink:0}
+:root[data-theme] body.sapi-workspace .icon-button{font:22px/1 system-ui,sans-serif;display:inline-grid;place-items:center}
+:root[data-theme] body.sapi-workspace .pane-controls{display:flex;gap:2px;padding:3px;margin-left:16px;margin-right:auto;border:0;border-radius:999px;background:var(--sapi-soft)}
+:root[data-theme] body.sapi-workspace .pane-toggle[aria-pressed=true]{background:var(--sapi-surface);color:var(--ink);opacity:1}
+:root[data-theme] body.sapi-workspace .pane-toggle[aria-pressed=false]{color:var(--muted);opacity:1}
+:root[data-theme] body.sapi-workspace .theme-toggle{display:grid;place-items:center;font-size:22px}
+:root[data-theme] body.sapi-workspace .app-header .connection-button{font:400 13px/1.5 var(--sapi-font);padding:0 10px;border-radius:999px;color:var(--muted)}
+:root[data-theme] body.sapi-workspace #corpora-picker{margin-left:0}
+:root[data-theme] body.sapi-workspace #app-update{background:var(--sapi-soft);color:var(--ink);border:0;border-radius:999px;min-height:44px;font-size:13px}
 
+/* Segments, fields, and the roster. */
+:root[data-theme] body.sapi-workspace :is(.scope-switch,.settings-tabs){background:var(--sapi-soft);border:0;border-radius:999px;padding:3px;gap:3px}
+:root[data-theme] body.sapi-workspace :is(.scope-switch,.settings-tabs) button{min-height:32px;padding:6px 12px;font:600 13px/1.3 var(--sapi-font);border:0;border-radius:999px;color:var(--muted);box-shadow:none}
+:root[data-theme] body.sapi-workspace :is(.scope-switch button.active,.settings-tabs [aria-selected=true]){background:var(--sapi-surface);color:var(--ink);border:0;box-shadow:none}
+:root[data-theme] body.sapi-workspace .search-field{min-height:36px;border:0;border-radius:var(--sapi-radius-inner);background:var(--sapi-soft);padding:6px 12px}
+:root[data-theme] body.sapi-workspace .search-field input{font-size:13px}
+:root[data-theme] body.sapi-workspace .search-field kbd{font:12px var(--sapi-mono);color:var(--muted);border:0}
+:root[data-theme] body.sapi-workspace .agent-list{gap:4px;padding:0 0 12px;min-height:0}
+:root[data-theme] body.sapi-workspace .agent-row{padding:8px;gap:10px;min-height:64px;border:0;border-radius:var(--sapi-radius-inner);box-shadow:none}
+:root[data-theme] body.sapi-workspace .agent-row.active{background:var(--sapi-soft);border:0;box-shadow:none}
+:root[data-theme] body.sapi-workspace .agent-row:hover:not(.active){background:var(--sapi-soft)}
+:root[data-theme] body.sapi-workspace .agent-row-name{font-size:14px;font-weight:600;letter-spacing:0}
+:root[data-theme] body.sapi-workspace .agent-row-copy p{font-size:12px;letter-spacing:0;color:var(--muted)}
+:root[data-theme] body.sapi-workspace .agent-name{min-height:28px;margin:0;line-height:1.3}
+:root[data-theme] body.sapi-workspace .main-sapi-row{margin-bottom:4px}
+:root[data-theme] body.sapi-workspace .main-sapi-row::after{display:none}
+:root[data-theme] body.sapi-workspace .sidebar-bottom{border:0;padding:8px 0}
+:root[data-theme] body.sapi-workspace .resource-card{display:block;background:var(--sapi-soft);border:0;border-radius:var(--sapi-radius-inner);padding:6px 12px 10px}
+:root[data-theme] body.sapi-workspace .resource-open{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;text-align:left}
+:root[data-theme] body.sapi-workspace .resource-open strong{font:600 12px var(--sapi-font);letter-spacing:0}
+:root[data-theme] body.sapi-workspace .resource-open .status-dot{margin-left:auto}
+:root[data-theme] body.sapi-workspace #resource-owner{display:block;font:12px/1.5 var(--sapi-font);color:var(--muted);margin:0}
 
-.sapi-workspace :is(h1,h2,h3) { font-family:var(--sapi-font); }
-.sapi-workspace .sidebar-heading h1,.sapi-workspace .tiny-label { font-family:var(--sapi-font); }
-.sapi-workspace :is(.sidebar,.conversation,.workspace,.conversation-tabs,.workspace-footer,.sidebar-bottom) { border-color:var(--sapi-line); }
-.sapi-workspace :is(.pane-controls,.pane-toggle,.pill,.scope-switch,.search-field,.agent-row,.button,.tag,.composer,.message-bubble,.workspace-tab),.sapi-workspace .scope-switch button { border-radius:0;box-shadow:none; }
-.sapi-workspace .pane-toggle:hover { background:var(--sapi-bg);color:var(--sapi-ink); }
-.sapi-workspace .user-avatar { border-color:#cf9dba;background:var(--sapi-pink-tint);color:var(--sapi-pink); }
-.sapi-workspace .scope-switch button { color:var(--sapi-muted); }
-.sapi-workspace .search-field kbd { color:var(--sapi-muted);border-color:var(--sapi-line); }
-.sapi-workspace :is(.agent-row-copy p,.agent-row-name small),.sapi-workspace :is(.muted,.count,.day-divider,.composer-hint,.resource-help,.workspace-footer) { color:var(--sapi-muted); }
-.sapi-workspace .agent-row-name { font-size:13px;letter-spacing:-.35px; }.sapi-workspace .agent-row-copy p{font-size:13px;letter-spacing:-.5px;}.sapi-workspace .agent-row-name small{font-size:10px;letter-spacing:-.6px;}
-.sapi-workspace .avatar { border-color:#7f748d; }.sapi-workspace .avatar .presence{border-color:var(--sapi-bg);background:#bade54}.sapi-workspace .avatar .presence.busy{background:#c48fda}.sapi-workspace .avatar .presence.idle{background:#b8b2c0}
-.sapi-workspace :is(.status-dot,.unread-dot) { background:#a5be29; }
-.sapi-workspace .status-dot.paused { background:#c88b35; }.sapi-workspace .status-dot.idle{background:#aaa3b1}
-.sapi-workspace .resource-card strong { font-family:var(--sapi-font);letter-spacing:0; }.sapi-workspace :is(.resource-card small,.agent-heading p),.sapi-workspace .composer-hint span:first-child { color:#6d4b81; }
-.sapi-workspace .resource-card:hover { background:var(--sapi-purple-tint); }
-.sapi-workspace .conversation-tabs button { color:var(--sapi-muted); }.sapi-workspace .conversation-tabs button.active{color:var(--sapi-pink);border-color:var(--sapi-pink)}
-.sapi-workspace .message-bubble { background:#f0edef;border-color:#ded5e0;color:var(--sapi-ink);font-size:15px;letter-spacing:-.45px; }.sapi-workspace .user .message-bubble{background:var(--sapi-purple-tint);border-color:#d8c7e8}
-.sapi-workspace .message-meta time,.sapi-workspace .message-foot { color:var(--sapi-muted); }
-.sapi-workspace .suggestions button { background:var(--sapi-surface);border-color:#d6cadf;color:#77518a;border-radius:0;font-size:11px; }.sapi-workspace .composer{background:var(--sapi-white);border-color:#b9adc4}.sapi-workspace .composer:focus-within{outline-color:#ac80cc}.sapi-workspace .browser-tabs-wrap{border-color:#bba8c8}.sapi-workspace .workspace-tab{background:#e4dee6}.sapi-workspace .workspace-tab.active{background:var(--sapi-surface);border-color:#b99bc9;box-shadow:inset 0 2px 0 var(--sapi-pink)}
-.sapi-workspace .workspace-tab .tab-select{font-size:11px}.sapi-workspace .tab-close{color:#82738d}.sapi-workspace .eyebrow{font-family:var(--sapi-font);color:#786b82}
-.sapi-workspace .button { border-color:#bfb1c8;background:var(--sapi-surface);font-family:var(--sapi-font);font-size:11px; }.sapi-workspace .button.primary{background:var(--sapi-pink);border-color:var(--sapi-pink);color:white;box-shadow:none}.sapi-workspace .button.primary:hover{transform:none;background:#bc005a;box-shadow:none}
-.sapi-workspace .tag { color:#655273;background:var(--sapi-purple-tint);border-color:#ccb9db;font-size:10px; }
-.sapi-workspace dialog{background:var(--sapi-surface);border:1px solid #bca5ce;border-radius:0;box-shadow:0 12px 45px #28133425}.sapi-workspace #modal-content h2{font:600 18px/1.5 var(--sapi-display)}.sapi-workspace #modal-content>p,.sapi-workspace .form-hint{color:var(--sapi-muted)}.sapi-workspace :is(.form-stack input,.form-stack textarea,.form-stack select,.settings-row select) {background:var(--sapi-white);border-color:#cabbD4;border-radius:0}
-.sapi-workspace .settings-row p{color:var(--sapi-muted)}.sapi-workspace .toast{background:var(--sapi-ink);color:var(--sapi-white);border-color:var(--sapi-violet);border-radius:0;box-shadow:none}.sapi-workspace .icon-button:hover{background:var(--sapi-purple-tint)}
+/* Pastel chips are artwork, with literal dark marks in either theme.
+   Stored faces and colors remain intact; rendered colors follow the reference palette. */
+:root[data-theme] body.sapi-workspace .avatar{display:inline-flex;width:auto;min-width:64px;max-width:110px;height:40px;padding:0 10px;flex-shrink:0;border:0;border-radius:999px;box-shadow:none;background:var(--avatar-color,var(--sapi-chiefy));color:#111;font:500 14px/1 var(--sapi-face);letter-spacing:0;white-space:nowrap}
+:root[data-theme] body.sapi-workspace .avatar>span{overflow:hidden;text-overflow:ellipsis;max-width:100%;padding:0;background:transparent}
+:root[data-theme] body.sapi-workspace .avatar::before,:root[data-theme] body.sapi-workspace .avatar.main-sapi-avatar::after{display:none}
+:root[data-theme] body.sapi-workspace .avatar.mini{min-width:48px;height:28px;padding:0 7px;font-size:11px}
+:root[data-theme] body.sapi-workspace .avatar .presence{height:10px;width:10px;right:1px;bottom:-1px;border:2px solid var(--sapi-surface);background:var(--ink)}
+:root[data-theme] body.sapi-workspace .avatar .presence.busy{background:var(--sapi-blush);border-radius:3px}
+:root[data-theme] body.sapi-workspace .avatar .presence.idle{background:var(--muted)}
+:root[data-theme] body.sapi-workspace .group-avatar>span{background:#fff;border-radius:999px;padding:3px 5px}
+:root[data-theme] body.sapi-workspace .group-chip{background:var(--group-color,var(--sapi-curio));color:#111;border-radius:999px}
+:root[data-theme] body.sapi-workspace .group-labels:not(.compact) .group-chip{min-height:44px;padding:8px 12px;font-size:13px}
+:root[data-theme] body.sapi-workspace .group-labels.compact{height:28px}
+:root[data-theme] body.sapi-workspace .group-labels.compact .group-chip{height:28px;border-radius:999px;box-shadow:none}
+:root[data-theme] body.sapi-workspace :is(.status-dot,.unread-dot,.corpora-dot,.connection-dot){background:var(--muted)}
+:root[data-theme] body.sapi-workspace :is(.corpora-dot[data-active=true],.connection-status[data-online=true] .connection-dot){background:var(--sapi-blush);box-shadow:0 0 0 2px var(--sapi-soft)}
 
-@media(max-width:600px){.sapi-workspace .wordmark .brand-name{font-size:16px}.sapi-workspace .wordmark{gap:4px}.sapi-workspace .app-header{gap:5px}.sapi-workspace .pane-toggle{width:23px}.sapi-workspace .pill{font-size:10px;padding:4px}.sapi-workspace .user-avatar{width:23px;height:23px}.sapi-workspace .agent-row-name{font-size:13px}.sapi-workspace .message-bubble{font-size:15px}.sapi-workspace .resource-card strong{font-size:9px}.sapi-workspace .resource-card small{font-size:11px}}
-@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-@media(max-width:450px){.sapi-workspace .app-header{display:grid;grid-template-columns:1fr auto auto;grid-template-rows:28px 28px;height:72px;min-height:72px;gap:4px 7px;padding:6px 9px}.sapi-workspace .wordmark{grid-column:1;grid-row:1}.sapi-workspace .user-avatar{grid-column:3;grid-row:1}.sapi-workspace .pane-controls{grid-column:1;grid-row:2;margin:0;justify-self:start}.sapi-workspace .pill{grid-column:2 / 4;grid-row:2;justify-self:end;min-height:26px}}
-.sapi-workspace .icon-button{font-family:system-ui,sans-serif;font-size:20px;letter-spacing:-1px;line-height:1}
+/* Conversation: open assistant text, soft user bubbles, pill composer. */
+:root[data-theme] body.sapi-workspace .agent-heading{height:auto;min-height:76px;padding:var(--sapi-space-md) var(--sapi-space-lg);gap:var(--sapi-space-md)}
+:root[data-theme] body.sapi-workspace .agent-heading h2{font:600 var(--sapi-text-title)/1.2 var(--sapi-font);letter-spacing:-.04em}
+:root[data-theme] body.sapi-workspace .agent-heading p{font-size:12px;line-height:1.4;color:var(--muted);margin-top:4px}
+:root[data-theme] body.sapi-workspace .conversation-tabs{margin:0 var(--sapi-space-lg);padding:0;gap:var(--sapi-space-lg);min-height:40px;background:transparent;border:0;border-bottom:1px solid var(--sapi-line);border-radius:0;align-items:center;justify-content:flex-start}
+:root[data-theme] body.sapi-workspace .activity-tab{border:0;border-bottom:2px solid transparent;border-radius:0;gap:0;margin:0 0 -1px;align-items:center;flex:0 0 auto;justify-content:flex-start}
+:root[data-theme] body.sapi-workspace .activity-tab.active{background:transparent;border-bottom-color:var(--ink)}
+:root[data-theme] body.sapi-workspace .activity-tab>button{min-height:36px;padding:8px 4px;font:500 13px/1.3 var(--sapi-font);border:0;border-radius:6px}
+:root[data-theme] body.sapi-workspace .activity-tab>.activity-toggle{width:28px;height:32px;min-width:28px;padding:0}
+:root[data-theme] body.sapi-workspace .activity-menu{padding:6px;background:var(--sapi-surface);border:1px solid var(--sapi-line);border-radius:var(--sapi-radius-card);box-shadow:0 12px 36px #0002}
+:root[data-theme] body.sapi-workspace .activity-menu button{min-height:36px;font-size:13px;border-radius:var(--sapi-radius-inner)}
+:root[data-theme] body.sapi-workspace #activity-viewbar{padding:8px 20px 0;min-height:44px}
+:root[data-theme] body.sapi-workspace :is(.activity-view-title,.activity-view-menu>button){font-size:13px}
+:root[data-theme] body.sapi-workspace .work-nav-tools button{min-height:44px}
+:root[data-theme] body.sapi-workspace .conversation-body{padding:var(--sapi-space-lg) max(var(--sapi-space-lg),calc((100% - 76ch)/2)) var(--sapi-space-md)}
+:root[data-theme] body.sapi-workspace .day-divider{font:400 12px/1.5 var(--sapi-font);letter-spacing:.06em;color:var(--muted);margin-bottom:24px}
+:root[data-theme] body.sapi-workspace .message-meta{font-size:13px;gap:8px}
+:root[data-theme] body.sapi-workspace .message-meta time{font-size:12px;color:var(--muted)}
+:root[data-theme] body.sapi-workspace .message-bubble{font:400 var(--sapi-text-body)/1.618 var(--sapi-font);letter-spacing:0;background:transparent;border:0;padding:0;color:var(--ink)}
+:root[data-theme] body.sapi-workspace .user .message-bubble{background:var(--sapi-soft);padding:12px 18px;border-radius:var(--sapi-radius-card) 20px 6px 20px}
+:root[data-theme] body.sapi-workspace .entity-mention{display:inline;padding:0;border:0;border-radius:0;background:none;color:var(--ink);font:inherit;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--muted);cursor:pointer;overflow-wrap:anywhere}
+:root[data-theme] body.sapi-workspace .composer-area{padding:12px 16px 16px;background:transparent}
+:root[data-theme] body.sapi-workspace .composer{border:0;border-radius:28px;background:var(--sapi-soft);box-shadow:none;padding:4px}
+:root[data-theme] body.sapi-workspace .composer textarea{font:400 15px/1.5 var(--sapi-font);min-height:48px;padding:12px 16px 4px;color:var(--ink)}
+:root[data-theme] body.sapi-workspace .composer-bottom{padding:0 4px 4px;gap:4px}
+:root[data-theme] body.sapi-workspace .send-button{width:44px;height:44px;min-width:44px;border:0;border-radius:50%;font-size:24px;background:var(--sapi-action);color:var(--sapi-on-action)}
+:root[data-theme] body.sapi-workspace :is(.composer textarea,.browser-address-bar input)::placeholder{color:var(--muted);opacity:1}
+:root[data-theme] body.sapi-workspace :is(.composer,.search-field):focus-within{outline:2px solid var(--ink);outline-offset:2px;box-shadow:none}
 
-.sapi-workspace .entity-mention{display:inline;padding:0;border:0;background:none;color:var(--sapi-violet);font:inherit;line-height:inherit;letter-spacing:inherit;text-align:left;text-decoration:underline;text-decoration-color:#b59bce;text-underline-offset:3px;text-decoration-thickness:1px;cursor:pointer;white-space:normal;overflow-wrap:anywhere;border-radius:0;box-shadow:none;text-transform:none}
-.sapi-workspace .entity-mention:hover{background:var(--sapi-purple-tint);color:var(--sapi-pink);filter:none;text-decoration-color:currentColor}
-.sapi-workspace .resource-card{display:block;padding:3px 2px;text-align:left;background:none}
-.sapi-workspace .resource-card:hover{background:none}
-.sapi-workspace .resource-open{display:flex;align-items:center;gap:7px;width:100%;padding:0;border:0;background:none;text-align:left}
-.sapi-workspace .resource-open:hover{color:var(--sapi-pink)}
-.sapi-workspace .resource-open .status-dot{margin-left:auto}
-.sapi-workspace .resource-card #resource-owner{display:block;margin:0 0 0 29px;font:400 12px/1.5 var(--sapi-font);color:var(--sapi-muted)}
-.sapi-workspace .resource-card #resource-owner .entity-mention{font-size:inherit}
-@media(max-width:600px){.sapi-workspace .resource-card{display:flex;align-items:center;gap:8px}.sapi-workspace .resource-open{width:auto;gap:6px;flex:0 0 auto}.sapi-workspace .resource-open .status-dot{display:none}.sapi-workspace .resource-card #resource-owner{font-size:11px;flex:1;margin:0}.sapi-workspace .resource-open strong{font-size:9px}}
+/* Workspace chrome and user documents. */
+:root[data-theme] body.sapi-workspace .workspace{position:relative;overflow:hidden}
+:root[data-theme] body.sapi-workspace .browser-tabs-wrap{min-height:52px;padding:8px 12px;gap:4px;background:transparent;border:0}
+:root[data-theme] body.sapi-workspace .workspace-tab{border:0;border-radius:999px;background:transparent;min-width:120px;padding:0 4px 0 12px;box-shadow:none;gap:0}
+:root[data-theme] body.sapi-workspace .workspace-tab.active{background:var(--sapi-soft);border:0;box-shadow:none}
+:root[data-theme] body.sapi-workspace .workspace-tab .tab-select{font-size:13px;min-height:36px;padding:8px 0}
+:root[data-theme] body.sapi-workspace .browser-address-bar{display:flex;align-items:center;gap:8px;margin:0 12px 12px;padding:2px 8px 2px 16px;background:var(--sapi-soft);border:0;border-radius:999px;flex-shrink:0}
+:root[data-theme] body.sapi-workspace .browser-address-bar input{flex:1;min-width:0;border:0;background:transparent;font:13px var(--sapi-font);min-height:44px;color:var(--ink)}
+:root[data-theme] body.sapi-workspace .browser-address-bar button{width:44px;height:44px;flex-shrink:0;border-radius:50%}
+:root[data-theme] body.sapi-workspace .workspace-content{position:relative;display:flex;flex:1;min-height:0;padding:0;overflow:hidden;background:var(--sapi-surface);color:var(--ink)}
+:root[data-theme] body.sapi-workspace .workspace-text{margin:0;padding:24px;overflow:auto;font-family:var(--sapi-mono)}
+:root[data-theme] body.sapi-workspace .workspace-document{padding:24px;line-height:1.7}
+:root[data-theme] body.sapi-workspace .workspace-document :is(h1,h2,h3){font-weight:600;letter-spacing:-.04em;line-height:1.2;margin:1em 0 .5em}
+:root[data-theme] body.sapi-workspace .workspace-document p{margin-block:12px}
+:root[data-theme] body.sapi-workspace .workspace-document pre{padding:18px;background:var(--sapi-soft);border-radius:var(--sapi-radius-inner);overflow:auto}
+:root[data-theme] body.sapi-workspace .workspace-footer{justify-content:flex-end;border:0;padding:10px 16px;background:transparent;color:var(--muted);font-size:13px}
+:root[data-theme] body.sapi-workspace .workspace-footer a{color:inherit;text-decoration:none;min-height:44px;display:inline-flex;align-items:center}
+:root[data-theme] body.sapi-workspace .workspace-owner{display:flex;gap:5px;align-items:baseline;font-size:13px;overflow-wrap:anywhere}
 
+/* All secondary controls are neutral. Dialogs take over the primary action. */
+:root[data-theme] body.sapi-workspace :is(.button,.suggestions button,.pill,#corpora-dialog button,#corpora-notice button,.corpora-empty button,#mobile-install-gate button){min-height:44px;padding:10px 18px;border:0;border-radius:999px;background:var(--sapi-soft);color:var(--ink);font:600 14px/1.4 var(--sapi-font);box-shadow:none}
+:root[data-theme] body.sapi-workspace :is(.button.primary,.corpora-empty .primary,#mobile-install-action,#install-app,#corpora-dialog .primary,#paste-invitation>button[type=submit]){background:var(--sapi-action);color:var(--sapi-on-action);border:0;box-shadow:none}
+:root[data-theme] body.sapi-workspace:has(dialog[open]) .app .send-button{background:var(--sapi-soft);color:var(--muted)}
+:root[data-theme] body.sapi-workspace :is(.tag,.tag.gray,.tag.lilac,.attachment-chip,.group-banner,.warning-badge,.voice-status){background:var(--sapi-soft);color:var(--ink);border:0;border-radius:var(--sapi-radius-inner);font-size:13px}
+:root[data-theme] body.sapi-workspace .warning-badge{min-height:44px;padding:6px 12px;border-radius:999px}
+:root[data-theme] body.sapi-workspace :is(dialog,#corpora-dialog,#corpora-notice){border:0;border-radius:var(--sapi-radius-card);padding:24px;background:var(--sapi-surface);color:var(--ink);box-shadow:0 20px 80px #0003;max-height:calc(100dvh - 24px);overflow:auto}
+:root[data-theme] body.sapi-workspace #modal-content h2,:root[data-theme] body.sapi-workspace #corpora-dialog h2{font:600 var(--sapi-text-display)/1.1 var(--sapi-font);letter-spacing:-.04em;margin-bottom:16px}
+:root[data-theme] body.sapi-workspace :is(#modal-content>p,.form-hint,.settings-row p,.ai-provider-status,.model-intro,.model-hint,.voice-transcript,.voice-hint,.relay-private,.relay-warning){color:var(--muted);font-size:13px;line-height:1.6}
+:root[data-theme] body.sapi-workspace :is(.form-stack label,.settings-row,.pairing-details){font-size:14px}
+:root[data-theme] body.sapi-workspace :is(.form-stack input,.form-stack textarea,.form-stack select,.settings-row select,#corpora-dialog input:not([type=file]),#corpora-dialog textarea,.model-row select){background-color:var(--sapi-soft);color:var(--ink);border:0;border-radius:var(--sapi-radius-inner);min-height:44px;padding:12px;font-size:15px}
+:root[data-theme] body.sapi-workspace :is(input[type=checkbox],input[type=radio]){accent-color:var(--ink)}
+:root[data-theme] body.sapi-workspace :is(.form-stack,#corpora-dialog) :is(input[type=checkbox],input[type=radio]){min-height:0;width:18px;height:18px;padding:0;flex:none}
+:root[data-theme] body.sapi-workspace :is(.browser-menu,.corpora-popover,.mention-suggestions,.app-update-notice){background:var(--sapi-surface);color:var(--ink);border:0;border-radius:var(--sapi-radius-card);box-shadow:0 12px 36px #0002;padding:12px}
+:root[data-theme] body.sapi-workspace :is(.browser-menu,.corpora-popover,.mention-suggestions) button{min-height:44px;border-radius:var(--sapi-radius-inner);font-size:13px}
+:root[data-theme] body.sapi-workspace .browser-menu{top:52px}
+:root[data-theme] body.sapi-workspace :is(.corpora-record,.relay-list,.relay-warning,.group-members,.ai-provider-list,.model-rows){border:0;border-radius:var(--sapi-radius-inner);background:var(--sapi-soft)}
+:root[data-theme] body.sapi-workspace :is(.ai-provider-row,.model-row,.relay-row+.relay-row){border-color:var(--sapi-line)}
+:root[data-theme] body.sapi-workspace .ai-provider-row .button{min-height:44px;border-radius:999px}
+:root[data-theme] body.sapi-workspace .model-row select{padding-right:28px;background-color:var(--sapi-surface)}
+:root[data-theme] body.sapi-workspace .model-save-row .button{min-height:44px}
+:root[data-theme] body.sapi-workspace .workspace-settings-link{border:0;border-radius:var(--sapi-radius-inner);padding:16px;background:var(--sapi-soft);margin-top:12px}
+:root[data-theme] body.sapi-workspace :is(.toast,#remote-feedback){border:0;border-radius:var(--sapi-radius-inner);background:var(--ink);color:var(--sapi-surface);font:13px/1.5 var(--sapi-font);box-shadow:0 8px 28px #0002}
 
-.sapi-workspace .workspace{background:var(--sapi-bg)}
-.sapi-workspace .workspace-content{position:relative;display:flex;flex:1;min-height:0;padding:0;overflow:hidden;background:var(--sapi-white)}
-.sapi-workspace .workspace-owner{display:flex;align-items:baseline;gap:5px;font-size:12px;min-width:0;overflow-wrap:anywhere}
-.sapi-workspace .workspace-footer{justify-content:flex-end;background:var(--sapi-bg)}
-.sapi-workspace .workspace-footer a{color:var(--sapi-muted);text-decoration:none}
-.sapi-workspace .workspace-footer a:hover{color:var(--sapi-pink)}
-.sapi-workspace .browser-address-bar{display:flex;gap:7px;align-items:center;padding:4px 9px;border-bottom:1px solid var(--sapi-line);background:var(--sapi-surface);flex-shrink:0}
-.sapi-workspace .browser-address-bar[hidden]{display:none}
-.sapi-workspace .browser-address-bar input{flex:1;min-width:0;border:0;background:transparent;color:var(--sapi-ink);font-size:12px;padding:4px 2px;outline-offset:0}
-.sapi-workspace .browser-address-bar a{font-size:18px;text-decoration:none;padding:2px 5px}
-.sapi-workspace .browser-address-bar .icon-button{width:26px;height:26px}
-.theme-toggle{display:grid;place-items:center;flex-shrink:0;width:30px;height:30px;padding:0;background:var(--sapi-surface);color:var(--sapi-violet);border:1px solid var(--sapi-line);font:20px/1 system-ui;cursor:pointer}
-.theme-toggle:hover{background:var(--sapi-purple-tint)}
-.sapi-workspace .menu-button{width:28px;height:29px;border:0;flex-shrink:0}
-.sapi-workspace .menu-button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.5}
-:root[data-theme=dark]{--sapi-bg:#15131c;--sapi-surface:#1c1925;--sapi-white:#211d2b;--sapi-ink:#eee9f5;--sapi-muted:#aaa0b8;--sapi-line:#3b3349;--sapi-pink:#ff5aa5;--sapi-violet:#bb91ff;--sapi-cyan:#66d6df;--sapi-pink-tint:#3b2034;--sapi-purple-tint:#2e2340;--sapi-cyan-tint:#193438;color-scheme:dark}
-[data-theme=dark] .sapi-workspace .scope-switch,[data-theme=dark] .sapi-workspace .workspace-tab{background:#272230}
-[data-theme=dark] .sapi-workspace .workspace-tab.active{background:var(--sapi-surface);border-color:var(--sapi-line)}
-[data-theme=dark] .sapi-workspace .message-bubble{background:#262130;border-color:var(--sapi-line)}
-[data-theme=dark] .sapi-workspace .user .message-bubble{background:var(--sapi-purple-tint)}
-[data-theme=dark] .sapi-workspace :is(.agent-heading p,.composer-hint span:first-child,.pill,.suggestions button){color:var(--sapi-muted)}
-[data-theme=dark] .sapi-workspace :is(.composer,.suggestions button,.pill,.user-avatar,.browser-tabs-wrap,.form-stack input,.form-stack textarea,.form-stack select,.settings-row select,dialog,.button,.tag,.settings-row,.day-divider::before,.day-divider::after){border-color:var(--sapi-line)}
-[data-theme=dark] .sapi-workspace .agent-row.active{border-color:#74304f}
-[data-theme=dark] .sapi-workspace .avatar{color:#21192c}
-[data-theme=dark] .sapi-workspace .tag{color:var(--sapi-violet)}
-[data-theme=dark] .sapi-workspace :is(.button.primary,.send-button){background:#bc005a;color:#fff;border-color:#de1878}
-[data-theme=dark] .sapi-workspace :is(.form-stack label,.settings-row label,dialog){color:var(--sapi-ink)}
-[data-theme=dark] .sapi-workspace .attachment-chip{background:var(--sapi-purple-tint);color:var(--sapi-ink)}
-@media(max-width:450px){.sapi-workspace .app-header{grid-template-columns:1fr auto auto auto}.sapi-workspace .menu-button{grid-column:2;grid-row:1}.sapi-workspace .theme-toggle{grid-column:3;grid-row:1;width:25px;height:25px}.sapi-workspace .user-avatar{grid-column:4;grid-row:1}.sapi-workspace .pill{grid-column:2 / 5}.sapi-workspace .workspace-owner{font-size:11px}}
+/* Work, progress, attachments, warnings, and empty states. */
+:root[data-theme] body.sapi-workspace :is(.live-status,.warning-details){padding:16px;border:0;border-radius:var(--sapi-radius-inner);background:var(--sapi-soft);color:var(--ink)}
+:root[data-theme] body.sapi-workspace .live-status p{font-size:13px}
+:root[data-theme] body.sapi-workspace .task-row{border:0;border-radius:var(--sapi-radius-inner);margin-bottom:8px;background:var(--sapi-soft);padding:0 14px}
+:root[data-theme] body.sapi-workspace .task-summary{border-radius:var(--sapi-radius-inner);padding:12px 0;gap:10px}
+:root[data-theme] body.sapi-workspace .task-title{font-size:14px;font-weight:600}
+:root[data-theme] body.sapi-workspace :is(.task-meta,.task-result-heading,.task-copy,.task-reference){font-size:13px}
+:root[data-theme] body.sapi-workspace .task-copy{min-height:44px;padding:8px}
+:root[data-theme] body.sapi-workspace .task-mark{border:0;background:transparent;font:500 18px/1 var(--sapi-face);color:var(--muted);width:20px;height:24px}
+:root[data-theme] body.sapi-workspace :is(.task-mark.complete,.task-mark.active){color:var(--sapi-blush);background:transparent}
+:root[data-theme] body.sapi-workspace :is(.task-state,.task-state.complete,.task-state.attention,.task-error){color:var(--ink)}
+:root[data-theme] body.sapi-workspace .task-body-heading{border:0;border-radius:var(--sapi-radius-inner) 14px 0 0;background:var(--sapi-surface);font-size:13px}
+:root[data-theme] body.sapi-workspace .task-body-yaml{border:0;border-radius:0 0 14px 14px;background:var(--sapi-surface);font:400 14px/1.6 var(--sapi-mono)}
+:root[data-theme] body.sapi-workspace .task-result{font-size:15px}
+:root[data-theme] body.sapi-workspace :is(code,pre,.task-format,.event-row time){font-family:var(--sapi-mono)}
+:root[data-theme] body.sapi-workspace /* Updates use one aligned list, with disclosure only for meaningful details. */
+.event-log{overflow:visible;container-type:inline-size}
+:root[data-theme] body.sapi-workspace .event-columns{display:grid;grid-template-columns:128px minmax(140px,1.6fr) minmax(80px,1fr) minmax(90px,1fr) 16px;gap:12px;align-items:center;min-width:0;padding:12px;font-size:13px;line-height:1.5}
+:root[data-theme] body.sapi-workspace .event-head{font-size:12px;font-weight:500;color:var(--muted);border-bottom:1px solid var(--sapi-line)}
+:root[data-theme] body.sapi-workspace .event-row{min-width:0;margin:0;padding:0;border:0;border-bottom:1px solid var(--sapi-line);border-radius:0;background:transparent}
+:root[data-theme] body.sapi-workspace .event-row summary{border-radius:8px;cursor:pointer;list-style:none}
+:root[data-theme] body.sapi-workspace .event-row[open]{background:var(--sapi-soft);border-radius:12px;margin-block:4px;border-bottom-color:transparent}
+:root[data-theme] body.sapi-workspace .event-columns>:is(span,time){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:root[data-theme] body.sapi-workspace .event-row .event-time{font:400 12px/1.5 var(--sapi-font);font-variant-numeric:tabular-nums;color:var(--muted)}
+:root[data-theme] body.sapi-workspace .event-title{font-weight:500}
+:root[data-theme] body.sapi-workspace .event-cell-label{display:none}
+:root[data-theme] body.sapi-workspace .event-row .event-chevron{display:flex;justify-content:center;color:var(--muted)}
+:root[data-theme] body.sapi-workspace .event-row[open] .event-chevron{transform:rotate(90deg)}
+:root[data-theme] body.sapi-workspace .event-detail{padding:0 12px 12px}
+:root[data-theme] body.sapi-workspace .event-detail p{font-size:12px;color:var(--muted);margin:4px 0 8px}
+:root[data-theme] body.sapi-workspace .event-row pre{font:400 12px/1.6 var(--sapi-mono);border-radius:8px;background:var(--sapi-surface);margin:0;padding:12px}
+:root[data-theme] body.sapi-workspace .conversation-body:has(:is(.event-log,.task-browser)){padding-inline:var(--sapi-space-lg)}
+@container(max-width:620px){
+ :root[data-theme] body.sapi-workspace .event-head{display:none}
+ :root[data-theme] body.sapi-workspace .event-row .event-columns{grid-template-columns:minmax(0,1fr) auto 16px;gap:4px 8px}
+ :root[data-theme] body.sapi-workspace .event-title{grid-column:1;grid-row:1;white-space:normal;overflow-wrap:anywhere}
+ :root[data-theme] body.sapi-workspace .event-time{grid-column:2;grid-row:1}
+ :root[data-theme] body.sapi-workspace .event-actor{grid-column:1 / 3;grid-row:2;font-size:12px;color:var(--muted)}
+ :root[data-theme] body.sapi-workspace .event-entity{grid-column:1 / 3;grid-row:3;font-size:12px;color:var(--muted)}
+ :root[data-theme] body.sapi-workspace .event-cell-label{display:inline;font-weight:400}
+ :root[data-theme] body.sapi-workspace .event-chevron{grid-column:3;grid-row:1}
+}
+:root[data-theme] body.sapi-workspace .voice-bar{flex-wrap:wrap;gap:8px}
+:root[data-theme] body.sapi-workspace .voice-dot{background:var(--sapi-blush)}
+:root[data-theme] body.sapi-workspace .voice-icon{background:var(--sapi-soft)}
+:root[data-theme] body.sapi-workspace .voice-transcript{border-color:var(--line)}
+:root[data-theme] body.sapi-workspace .button.voice-stop{background:var(--sapi-soft);color:var(--ink)}
+:root[data-theme] body.sapi-workspace .voice-status.pending::before{background:var(--sapi-blush)}
+:root[data-theme] body.sapi-workspace :is(.empty,.task-empty){font-size:15px;color:var(--muted);padding:32px 16px;line-height:1.6}
+:root[data-theme] body.sapi-workspace .task-empty small{font-size:13px}
+:root[data-theme] body.sapi-workspace .empty-art{display:flex;justify-content:center;margin:0 auto 20px;color:#111;font:300 36px/1.3 var(--sapi-face)}
+:root[data-theme] body.sapi-workspace .sapi-face{position:relative;display:inline-block;border-radius:.7em;background:#fff;color:#111;padding:.16em .22em;white-space:nowrap}
+:root[data-theme] body.sapi-workspace .sapi-face::before,:root[data-theme] body.sapi-workspace .sapi-face::after{content:"";position:absolute;width:.5em;height:.5em;border-radius:50%;background:var(--sapi-action);top:.65em}
+:root[data-theme] body.sapi-workspace .sapi-face::before{left:22%}
+:root[data-theme] body.sapi-workspace .sapi-face::after{right:22%}
+:root[data-theme] body.sapi-workspace .sapi-face>span{position:relative;z-index:1}
+:root[data-theme] body.sapi-workspace .typed-progress{display:flex;align-items:center;gap:8px;overflow:hidden;white-space:nowrap;margin-bottom:12px;font:300 20px/1.5 var(--sapi-face);color:var(--muted)}
+:root[data-theme] body.sapi-workspace .typed-progress .progress-line{color:var(--sapi-blush)}
+:root[data-theme] body.sapi-workspace .workspace-empty{margin:auto;padding:var(--sapi-space-xl);text-align:center;max-width:480px;color:var(--muted)}
+:root[data-theme] body.sapi-workspace .workspace-empty h2{font:600 var(--sapi-text-display)/1.1 var(--sapi-font);letter-spacing:-.04em;color:var(--ink);margin-bottom:12px}
 
-[data-theme=dark] .sapi-workspace .day-divider::before,[data-theme=dark] .sapi-workspace .day-divider::after{background:var(--sapi-line)}
-.sapi-workspace .browser-address-bar input::placeholder,.sapi-workspace .composer textarea::placeholder{color:var(--sapi-muted);opacity:1}
+/* First run and installation use the same floating surface. */
+:root[data-theme] body.sapi-workspace .corpora-empty{margin:auto;width:min(100%,620px);padding:40px 24px;background:var(--sapi-surface);border-radius:var(--sapi-radius-card)}
+:root[data-theme] body.sapi-workspace .corpora-empty h1{font:600 clamp(40px,7vw,64px)/.98 var(--sapi-font);letter-spacing:-.06em;margin-bottom:20px}
+:root[data-theme] body.sapi-workspace .corpora-empty p{color:var(--muted);margin-bottom:24px}
+:root[data-theme] body.sapi-workspace .corpora-empty button{margin:6px}
+:root[data-theme] body.sapi-workspace.setup-bootstrap main{margin:12px;width:min(calc(100% - 24px),620px);height:calc(100dvh - 24px);background:var(--sapi-surface);border-radius:var(--sapi-radius-card);padding:28px}
+:root[data-theme] body.sapi-workspace.setup-bootstrap h1{font:600 clamp(40px,7vw,64px)/.98 var(--sapi-font);letter-spacing:-.06em}
+:root[data-theme] body.sapi-workspace.setup-bootstrap p{font-size:15px}
+:root[data-theme] body.sapi-workspace .setup-choice{border:0;border-radius:var(--sapi-radius-inner);background:var(--sapi-soft);padding:16px}
+:root[data-theme] body.sapi-workspace .setup-choice[aria-pressed=true]{box-shadow:inset 0 0 0 2px var(--ink)}
+:root[data-theme] body.sapi-workspace .setup-choice strong{font-size:15px}
+:root[data-theme] body.sapi-workspace .setup-choice-copy small{font-size:13px;white-space:normal}
+:root[data-theme] body.sapi-workspace .setup-footer{border:0}
+:root[data-theme] body.sapi-workspace .setup-footer .button{min-height:46px;font-size:15px}
+:root[data-theme] body.sapi-workspace .setup-mark{width:44px;height:32px}
+:root[data-theme] body.sapi-workspace .install-card{max-width:440px;padding:28px;border-radius:var(--sapi-radius-card);background:var(--sapi-surface)}
+:root[data-theme] body.sapi-workspace .install-brand{color:var(--ink)}
+:root[data-theme] body.sapi-workspace .install-card h1{font:600 40px/1.05 var(--sapi-font);letter-spacing:-.04em}
 
-.sapi-workspace .agent-list{padding-top:5px}
-.sapi-workspace .avatar.main-sapi-avatar{box-shadow:0 0 0 2px var(--sapi-bg),0 0 0 4px var(--sapi-pink)}
-.sapi-workspace .main-sapi-row{margin-bottom:10px}
-.sapi-workspace .main-sapi-row::after{content:'';position:absolute;left:0;right:0;bottom:-6px;height:1px;background:var(--sapi-line);pointer-events:none}
+/* Clear focus, stable hover, and no color-only affordances. */
+:root[data-theme] body.sapi-workspace :is(button:not(:disabled),a,summary,[role=button]):hover{color:var(--ink);background-color:var(--sapi-soft);filter:none;text-shadow:none;transform:none}
+:root[data-theme] body.sapi-workspace :is(.send-button,.button.primary,#mobile-install-action,#install-app,#corpora-dialog .primary,#paste-invitation>button[type=submit]):not(:disabled):hover{background:var(--sapi-action);color:#111;box-shadow:none;transform:none}
+:root[data-theme] body.sapi-workspace :is(button,a,summary,input,textarea,select):focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+:root[data-theme] body.sapi-workspace .wordmark:hover{background:transparent}
+:root[data-theme] body.sapi-workspace :is(.composer textarea,.search-field input):is(:hover,:focus,:focus-visible){outline:0;box-shadow:none}
 
-.sapi-workspace .agent-row-name small{white-space:nowrap;flex-shrink:0}
+/* The render function only allocates tracks for visible panes. */
+:root[data-theme] body.sapi-workspace .main-grid>:is(.sidebar,.conversation,.workspace){grid-column:auto;grid-row:1}
+:root[data-theme] body.sapi-workspace .welcome-chiefy{width:min(100%,240px);height:auto}
+:root[data-theme] body.sapi-workspace .corpora-empty h1{white-space:pre-line}
+@media(max-width:1100px){
+ :root[data-theme] body.sapi-workspace .app-header{gap:6px}
+ :root[data-theme] body.sapi-workspace .brand-mark{display:none}
+}
+@media(max-width:600px){
+ :root[data-theme] body.sapi-workspace[data-mobile-ui] .app{padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));gap:12px}
+ :root[data-theme] body.sapi-workspace[data-mobile-ui] .app-header{gap:4px;padding:0;border:0;min-height:0}
+ :root[data-theme] body.sapi-workspace .app-header .wordmark .brand-name{font-size:19px}
+ :root[data-theme] body.sapi-workspace[data-mobile-ui] .app-header .pane-controls{flex-basis:auto;justify-content:flex-start;width:auto;background:var(--sapi-soft);padding:3px}
+ :root[data-theme] body.sapi-workspace .app-header .connection-button{padding:0 4px;font-size:12px}
+ :root[data-theme] body.sapi-workspace[data-mobile-ui] .theme-toggle{margin-left:auto}
+ :root[data-theme] body.sapi-workspace .sidebar{padding:12px 8px 0}
+ :root[data-theme] body.sapi-workspace .scope-switch{background:var(--sapi-soft);padding:3px;gap:3px}
+ :root[data-theme] body.sapi-workspace .scope-switch button{flex:1}
+ :root[data-theme] body.sapi-workspace .agent-heading{padding:12px 16px;min-height:72px}
+ :root[data-theme] body.sapi-workspace .agent-heading h2{font-size:var(--sapi-text-title)}
+ :root[data-theme] body.sapi-workspace .conversation-tabs{margin:0 16px;padding:0;gap:16px}
+ :root[data-theme] body.sapi-workspace .activity-tab>button{padding:8px 4px;font-size:13px}
+ :root[data-theme] body.sapi-workspace .activity-tab>.activity-toggle{width:36px;min-width:36px}
+ :root[data-theme] body.sapi-workspace .conversation-body{padding:20px 16px 8px}
+ :root[data-theme] body.sapi-workspace .composer-area{padding:12px}
+ :root[data-theme] body.sapi-workspace .composer{border-radius:28px;background:var(--sapi-soft)}
+ :root[data-theme] body.sapi-workspace :is(.composer textarea,.search-field input,.form-stack input,.form-stack select,.form-stack textarea,.browser-address-bar input,.model-row select){font-size:16px}
+ :root[data-theme] body.sapi-workspace :is(.message-bubble,.user .message-bubble){font-size:var(--sapi-text-body)}
+ :root[data-theme] body.sapi-workspace .user .message-bubble{border-radius:var(--sapi-radius-card) 20px 6px 20px}
+ :root[data-theme] body.sapi-workspace .browser-tabs-wrap{min-height:68px;padding:12px}
+ :root[data-theme] body.sapi-workspace .workspace-tab{min-height:44px;min-width:0;border-radius:999px}
+ :root[data-theme] body.sapi-workspace .corpora-popover{border-radius:var(--sapi-radius-card) 20px 0 0}
+ :root[data-theme] body.sapi-workspace dialog{padding:24px;max-height:calc(var(--mobile-viewport-height,100dvh) - 24px)}
+ :root[data-theme] body.sapi-workspace .activity-submenu{left:0;top:100%;min-width:100%}
+ :root[data-theme] body.sapi-workspace .activity-tab:last-child .activity-menu{left:auto;right:0}
+ :root[data-theme] body.sapi-workspace .voice-bar .button{min-height:44px}
+ :root[data-theme] body.sapi-workspace.setup-bootstrap main{padding:24px}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* Mouse-driven narrow windows keep the roster beside two stacked work panes. */
+@media(min-width:601px) and (max-width:1050px){
+ :root[data-theme] body.sapi-workspace:not([data-mobile-ui]) .main-grid{grid-template-columns:minmax(220px,1fr) minmax(0,1.618fr)!important;grid-template-rows:minmax(0,1fr) minmax(0,1fr)}
+ :root[data-theme] body.sapi-workspace:not([data-mobile-ui]) .main-grid>.sidebar{grid-column:1;grid-row:1 / 3}
+ :root[data-theme] body.sapi-workspace:not([data-mobile-ui]) .main-grid>.conversation{grid-column:2;grid-row:1}
+ :root[data-theme] body.sapi-workspace:not([data-mobile-ui]) .main-grid>.workspace{grid-column:2;grid-row:2}
+ :root[data-theme] body.sapi-workspace:not([data-mobile-ui]) .main-grid:has(.sidebar[hidden]){grid-template-columns:minmax(0,1fr)!important}
+ :root[data-theme] body.sapi-workspace:not([data-mobile-ui]) .main-grid:has(.sidebar[hidden])>:is(.conversation,.workspace){grid-column:1}
+ :root[data-theme] body.sapi-workspace:not([data-mobile-ui]) .main-grid:has(.workspace[hidden])>.conversation,
+ :root[data-theme] body.sapi-workspace:not([data-mobile-ui]) .main-grid:has(.conversation[hidden])>.workspace{grid-row:1 / 3}
+ :root[data-theme] body.sapi-workspace:not([data-mobile-ui]) .main-grid[data-visible-panes="1"]{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr)}
+ :root[data-theme] body.sapi-workspace:not([data-mobile-ui]) .main-grid[data-visible-panes="1"]>:not([hidden]){grid-column:1;grid-row:1}
+}
+/* Keep the character chips and recording controls legible on touch layouts. */
+:root[data-theme] body.sapi-workspace[data-mobile-ui] :is(.agent-row,.agent-heading) .avatar{width:auto;min-width:64px;height:40px;font:500 14px/1 var(--sapi-face);letter-spacing:0}
+:root[data-theme] body.sapi-workspace[data-mobile-ui] .composer{grid-template-columns:44px 44px minmax(0,1fr) 44px}
+:root[data-theme] body.sapi-workspace[data-mobile-ui] .composer textarea{grid-column:3;grid-row:1;padding:10px 4px;min-height:44px}
+:root[data-theme] body.sapi-workspace[data-mobile-ui] .composer-bottom>.icon-button:first-child{grid-column:1;grid-row:1}
+:root[data-theme] body.sapi-workspace[data-mobile-ui] .composer-bottom>.icon-button:nth-child(2){grid-column:2;grid-row:1}
+:root[data-theme] body.sapi-workspace[data-mobile-ui] .send-button{grid-column:4;grid-row:1}
+:root[data-theme] body.sapi-workspace #workspace-content{background:var(--sapi-surface);color:var(--ink)}
+:root[data-theme] body.sapi-workspace .workspace-empty{display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;margin:0 12px 12px;max-width:none;border-radius:var(--sapi-radius-inner);background:var(--sapi-soft)}
+/* A single control row leaves room for conversation, including stacked layouts. */
+:root[data-theme] body.sapi-workspace .composer{display:grid;grid-template-columns:44px 44px minmax(0,1fr) 44px;align-items:end;gap:2px;padding:4px}
+:root[data-theme] body.sapi-workspace .composer textarea{grid-column:3;grid-row:1;min-width:0;height:44px;min-height:44px;max-height:140px;padding:10px 4px;line-height:24px;overflow-y:auto}
+:root[data-theme] body.sapi-workspace .composer-bottom{display:contents}
+:root[data-theme] body.sapi-workspace .composer-bottom>.icon-button:first-child{grid-column:1;grid-row:1}
+:root[data-theme] body.sapi-workspace .composer-bottom>.icon-button:nth-child(2){grid-column:2;grid-row:1}
+:root[data-theme] body.sapi-workspace .send-button{grid-column:4;grid-row:1;margin:0}
+:root[data-theme] body.sapi-workspace .composer .voice-bar{grid-column:1 / -1;grid-row:2;padding:4px 8px}
+:root[data-theme] body.sapi-workspace .composer:has(.voice-bar) textarea{grid-column:1 / -1;padding-inline:16px}
+/* Hidden state must beat responsive layout rules, including display:flex!important. */
+:root[data-theme] body.sapi-workspace [hidden],
+:root[data-theme] body.sapi-workspace .main-grid[hidden]{display:none!important}
+:root[data-theme] body.sapi-workspace .group-labels.compact{flex:0 1 auto;max-width:44%;min-width:0;gap:4px;overflow-x:auto}
+:root[data-theme] body.sapi-workspace .group-labels.compact .group-chip{width:28px;min-width:28px}
+:root[data-theme] body.sapi-workspace .group-labels.compact .group-chip+.group-chip{margin-left:0}
+@media(max-width:600px){
+ :root[data-theme] body.sapi-workspace .activity-tab{min-width:0}
+ :root[data-theme] body.sapi-workspace .activity-tab>button[data-panel]{flex:1;min-width:0;padding:8px 0;font-size:12px}
+ :root[data-theme] body.sapi-workspace .activity-tab>.activity-toggle{width:44px;min-width:44px}
+}
+:root[data-theme] body.sapi-workspace .activity-tab>button[data-panel]{justify-content:center}
+@media(max-width:600px){
+ :root[data-theme] body.sapi-workspace .model-row select:nth-of-type(2),
+ :root[data-theme] body.sapi-workspace .model-row select:nth-of-type(3){grid-column:1 / -1;width:100%}
+}
+
+/* Visible labels disambiguate the three pane controls on roomy desktops. */
+:root[data-theme] body.sapi-workspace .pane-toggle{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:auto;padding:0 10px;border-radius:999px}
+:root[data-theme] body.sapi-workspace .pane-toggle svg{width:18px;height:18px;flex:none}
+:root[data-theme] body.sapi-workspace .pane-caption{font:500 var(--sapi-text-small)/1 var(--sapi-font)}
+@media(max-width:1150px){
+ :root[data-theme] body.sapi-workspace .pane-caption{display:none}
+ :root[data-theme] body.sapi-workspace .pane-toggle{width:36px;padding:0}
+}
+:root[data-theme] body.sapi-workspace[data-mobile-ui] :is(.icon-button,.menu-button,.pane-toggle,.theme-toggle,.add-tab,.tab-close,.tab-star,.resource-open){min-width:44px;min-height:44px}
+:root[data-theme] body.sapi-workspace[data-mobile-ui] :is(.scope-switch,.settings-tabs) button,
+:root[data-theme] body.sapi-workspace[data-mobile-ui] :is(.activity-tab>button,.activity-menu button,.workspace-tab .tab-select){min-height:44px}
+:root[data-theme] body.sapi-workspace[data-mobile-ui] .agent-name{min-height:44px}
+:root[data-theme] body.sapi-workspace[data-mobile-ui] .group-labels.compact{height:44px}
+:root[data-theme] body.sapi-workspace[data-mobile-ui] .group-labels.compact .group-chip{width:44px;min-width:44px;height:44px}
+:root[data-theme] body.sapi-workspace[data-mobile-ui] .pane-controls{margin:0}
+:root[data-theme] body.sapi-workspace[data-mobile-ui] .activity-tab>button[data-panel]{font-size:13px}
+
+/* Compact chrome: hierarchy comes from space, type, and one selected surface.
+   Keyboard focus remains explicit; selection never imitates a focus ring. */
+:root[data-theme] body.sapi-workspace{--sapi-text-body:15px;--sapi-text-title:19px;--sapi-radius-card:13px;--sapi-radius-inner:8px;--sapi-gap:8px}
+:root[data-theme] body.sapi-workspace .app{padding:8px;gap:8px}
+:root[data-theme] body.sapi-workspace .app-header{min-height:36px;padding:0 8px;gap:8px}
+:root[data-theme] body.sapi-workspace :is(.pane-controls,.scope-switch,.settings-tabs){background:transparent;border-radius:0;padding:0;gap:4px}
+:root[data-theme] body.sapi-workspace :is(.pane-toggle,.theme-toggle,.icon-button,.menu-button,.add-tab,.tab-close,.tab-star){min-width:28px;min-height:28px;height:28px;border-radius:6px;background:transparent;box-shadow:none}
+:root[data-theme] body.sapi-workspace .pane-toggle{padding:0 8px;gap:5px}
+:root[data-theme] body.sapi-workspace .pane-toggle[aria-pressed=true]{background:var(--sapi-soft);color:var(--ink)}
+:root[data-theme] body.sapi-workspace .scope-switch button{min-height:30px;padding:4px 10px;border-radius:6px;font-weight:500}
+:root[data-theme] body.sapi-workspace .scope-switch button.active{background:var(--sapi-soft);font-weight:600}
+:root[data-theme] body.sapi-workspace .settings-tabs button{min-height:32px;border-radius:0;padding:6px 10px;background:transparent;border-bottom:2px solid transparent}
+:root[data-theme] body.sapi-workspace .settings-tabs button[aria-selected=true]{background:transparent;border-bottom:2px solid var(--ink)}
+:root[data-theme] body.sapi-workspace .main-grid>.sidebar{background:transparent}
+:root[data-theme] body.sapi-workspace .sidebar{padding:8px 4px 0}
+:root[data-theme] body.sapi-workspace .sidebar-heading{margin:0 8px 8px}
+:root[data-theme] body.sapi-workspace .sidebar-heading h1{font-size:15px}
+:root[data-theme] body.sapi-workspace .search-field{min-height:32px;padding:4px 8px;background:transparent;margin-bottom:8px;border-radius:6px}
+:root[data-theme] body.sapi-workspace .agent-list{gap:2px}
+:root[data-theme] body.sapi-workspace .agent-row{min-height:56px;padding:6px 8px;gap:8px;border-radius:8px}
+:root[data-theme] body.sapi-workspace .agent-row.active{background:var(--sapi-surface);box-shadow:none}
+:root[data-theme] body.sapi-workspace .agent-row-name{font-size:13px}
+:root[data-theme] body.sapi-workspace .agent-name{min-height:24px;padding:0;font-weight:500}
+:root[data-theme] body.sapi-workspace .agent-row.active .agent-name{font-weight:650}
+:root[data-theme] body.sapi-workspace .agent-row-copy p{font-size:12px;line-height:18px;margin-top:0}
+:root[data-theme] body.sapi-workspace :is(.avatar,.avatar.large){min-width:48px;max-width:80px;width:auto;height:32px;padding:0 6px;font-size:11px;letter-spacing:-.5px;border-radius:12px}
+:root[data-theme] body.sapi-workspace .avatar.mini{min-width:30px;max-width:56px;height:20px;padding:0 4px;font-size:8px;border-radius:8px}
+:root[data-theme] body.sapi-workspace .avatar .presence{width:7px;height:7px;border-width:1px}
+:root[data-theme] body.sapi-workspace .group-labels:not(.compact) .group-chip{min-height:24px;padding:3px 8px;font-size:11px}
+:root[data-theme] body.sapi-workspace .group-labels.compact{height:24px;gap:4px}
+:root[data-theme] body.sapi-workspace .group-labels.compact .group-chip{width:28px;min-width:28px;height:24px;padding:0 3px;font-size:10px}
+:root[data-theme] body.sapi-workspace .resource-card{padding:6px 8px;background:transparent;border-radius:0;border-top:1px solid var(--line)}
+:root[data-theme] body.sapi-workspace .resource-open{min-height:28px}
+:root[data-theme] body.sapi-workspace #resource-owner{font-size:11px}
+:root[data-theme] body.sapi-workspace .agent-heading{min-height:60px;padding:12px 16px;gap:10px}
+:root[data-theme] body.sapi-workspace .agent-heading h2{font-size:18px;letter-spacing:-.02em}
+:root[data-theme] body.sapi-workspace .agent-heading p{font-size:12px;margin-top:2px}
+:root[data-theme] body.sapi-workspace .conversation-tabs{margin:0 16px;gap:16px;min-height:34px}
+:root[data-theme] body.sapi-workspace .activity-tab>button{min-height:32px;background:transparent;padding:6px 4px}
+:root[data-theme] body.sapi-workspace .activity-tab>.activity-toggle{width:24px;min-width:24px;height:28px}
+:root[data-theme] body.sapi-workspace .activity-tab.active{border-bottom-width:1px}
+:root[data-theme] body.sapi-workspace .conversation-body{padding:16px max(16px,calc((100% - 76ch)/2)) 8px}
+:root[data-theme] body.sapi-workspace .day-divider{font-size:11px;margin-bottom:16px}
+:root[data-theme] body.sapi-workspace .message-bubble{font-size:15px;line-height:1.6}
+:root[data-theme] body.sapi-workspace .user .message-bubble{padding:8px 12px;border-radius:12px;background:var(--sapi-soft)}
+:root[data-theme] body.sapi-workspace .message-meta{font-size:12px;gap:6px}
+:root[data-theme] body.sapi-workspace .composer-area{padding:8px 12px 12px}
+:root[data-theme] body.sapi-workspace .composer{grid-template-columns:32px 32px minmax(0,1fr) 32px;border-radius:12px;padding:4px;gap:2px;align-items:end}
+:root[data-theme] body.sapi-workspace .composer textarea{height:34px;min-height:34px;padding:6px 4px;font-size:14px;line-height:22px;background:transparent}
+:root[data-theme] body.sapi-workspace .composer .icon-button{width:32px;height:34px;min-height:34px}
+:root[data-theme] body.sapi-workspace .send-button{width:32px;min-width:32px;height:32px;border-radius:8px;font-size:21px}
+:root[data-theme] body.sapi-workspace .browser-tabs-wrap{min-height:40px;padding:4px 8px;gap:4px}
+:root[data-theme] body.sapi-workspace .workspace-tab{border-radius:6px;padding:0 4px 0 8px;min-height:30px}
+:root[data-theme] body.sapi-workspace .workspace-tab .tab-select{min-height:28px;padding:4px 0;font-size:12px}
+:root[data-theme] body.sapi-workspace .browser-address-bar{margin:0 8px 8px;padding:0 4px 0 10px;border-radius:6px}
+:root[data-theme] body.sapi-workspace .browser-address-bar input{min-height:30px;font-size:12px}
+:root[data-theme] body.sapi-workspace .browser-address-bar button{width:28px;height:28px;border-radius:6px}
+:root[data-theme] body.sapi-workspace .workspace-empty{background:transparent;margin:0;padding:24px}
+:root[data-theme] body.sapi-workspace .workspace-empty h2{font-size:24px;letter-spacing:-.03em}
+:root[data-theme] body.sapi-workspace .workspace-footer{padding:4px 12px;font-size:11px}
+:root[data-theme] body.sapi-workspace .workspace-footer a{min-height:24px}
+:root[data-theme] body.sapi-workspace :is(.button,.suggestions button,#corpora-dialog button,#corpora-notice button,.corpora-empty button,#mobile-install-gate button){min-height:32px;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:500}
+:root[data-theme] body.sapi-workspace :is(.activity-menu,.browser-menu,.corpora-popover,.mention-suggestions){border-radius:8px;padding:5px}
+:root[data-theme] body.sapi-workspace :is(.activity-menu,.browser-menu,.corpora-popover,.mention-suggestions) button{min-height:30px;border-radius:5px;font-size:13px}
+:root[data-theme] body.sapi-workspace :is(.activity-menu,.browser-menu,.corpora-popover,.mention-suggestions) button:not(:hover):not(.selected){background:transparent}
+:root[data-theme] body.sapi-workspace :is(.form-stack input,.form-stack textarea,.form-stack select,.settings-row select,#corpora-dialog input:not([type=file]),#corpora-dialog textarea,.model-row select){min-height:34px;padding:8px 10px;font-size:13px;border-radius:6px}
+:root[data-theme] body.sapi-workspace :is(.form-stack,#corpora-dialog) :is(input[type=checkbox],input[type=radio]){min-height:0;padding:0;width:16px;height:16px}
+:root[data-theme] body.sapi-workspace .form-stack{gap:13px}
+:root[data-theme] body.sapi-workspace :is(.form-stack label,.settings-row,.pairing-details){font-size:13px}
+:root[data-theme] body.sapi-workspace :is(#modal-content,#corpora-dialog) h2{font-size:21px;line-height:1.3;letter-spacing:-.025em}
+:root[data-theme] body.sapi-workspace .workspace-settings-link{background:transparent;margin-top:0;padding:12px 0;border-radius:0;border-bottom:1px solid var(--line)}
+:root[data-theme] body.sapi-workspace :is(.model-rows,.ai-provider-list,.relay-list,.group-members,.relay-warning,.corpora-record){background:transparent;border-radius:0}
+:root[data-theme] body.sapi-workspace .model-row select{background:var(--sapi-soft)}
+:root[data-theme] body.sapi-workspace :is(.ai-provider-row .button,.model-save-row .button,.task-copy,.warning-badge,.work-nav-tools button,#app-update){min-height:30px;padding:5px 8px;border-radius:6px}
+:root[data-theme] body.sapi-workspace :is(.task-row,.event-row){background:transparent;border-radius:0;border-bottom:1px solid var(--line);margin-bottom:0}
+:root[data-theme] body.sapi-workspace .task-row{padding:0}
+:root[data-theme] body.sapi-workspace .task-summary{padding:10px 0;border-radius:0}
+:root[data-theme] body.sapi-workspace .task-title{font-weight:500;font-size:13px}
+:root[data-theme] body.sapi-workspace :is(.task-state,.voice-status,.tag,.group-banner){background:transparent;font-size:12px;padding:0;border:0}
+:root[data-theme] body.sapi-workspace :is(.task-mark.complete,.task-mark.active){color:var(--ink)}
+:root[data-theme] body.sapi-workspace :is(.task-body-heading,.task-body-yaml){background:var(--sapi-soft);border-radius:6px}
+:root[data-theme] body.sapi-workspace .event-columns{padding:10px 4px}
+:root[data-theme] body.sapi-workspace .event-detail{padding:0 4px 12px}
+:root[data-theme] body.sapi-workspace .event-row pre{background:var(--sapi-soft)}
+:root[data-theme] body.sapi-workspace :is(.live-status,.warning-details){background:transparent;padding:12px 0;border-radius:0}
+:root[data-theme] body.sapi-workspace .setup-choice{background:transparent;padding:12px;border-radius:8px}
+:root[data-theme] body.sapi-workspace .setup-choice[aria-pressed=true]{background:var(--sapi-soft);box-shadow:none}
+:root[data-theme] body.sapi-workspace :is(button,summary):active:not(:disabled){background-color:var(--sapi-line);transform:none;box-shadow:none}
+:root[data-theme] body.sapi-workspace :is(.send-button,.button.primary):active:not(:disabled){background:var(--sapi-blush);color:#111}
+:root[data-theme] body.sapi-workspace :is(.composer,.search-field):focus-within{outline:none;box-shadow:none}
+:root[data-theme] body.sapi-workspace :is(.composer,.search-field):has(:focus-visible){outline:2px solid var(--ink);outline-offset:2px}
+:root[data-theme] body.sapi-workspace :is(button,a,summary,input,textarea,select):focus:not(:focus-visible){outline:none}
+@media(pointer:coarse){
+ :root[data-theme] body.sapi-workspace :is(.icon-button,.pane-toggle,.theme-toggle,.add-tab,.tab-close,.tab-star,.activity-tab>button,.scope-switch button,.button){min-width:44px;min-height:44px}
+ :root[data-theme] body.sapi-workspace .composer{grid-template-columns:44px 44px minmax(0,1fr) 44px}
+ :root[data-theme] body.sapi-workspace .composer :is(.icon-button,.send-button){width:44px;height:44px}
+ :root[data-theme] body.sapi-workspace .composer textarea{min-height:44px;height:44px;padding:10px 4px;font-size:16px}
+ :root[data-theme] body.sapi-workspace :is(.form-stack input,.form-stack textarea,.form-stack select,.model-row select,.search-field input){font-size:16px}
+}
+@media(max-width:600px){
+ :root[data-theme] body.sapi-workspace[data-mobile-ui] :is(.agent-row,.agent-heading) .avatar{min-width:48px;height:32px;font-size:11px}
+ :root[data-theme] body.sapi-workspace[data-mobile-ui] .app-header .pane-controls{background:transparent;padding:0}
+ :root[data-theme] body.sapi-workspace .agent-heading{padding:10px 12px;min-height:56px}
+ :root[data-theme] body.sapi-workspace .conversation-tabs{margin:0 12px;gap:12px}
+ :root[data-theme] body.sapi-workspace .conversation-body{padding:16px 12px 8px}
+ :root[data-theme] body.sapi-workspace .browser-tabs-wrap{min-height:48px;padding:4px 8px}
+ :root[data-theme] body.sapi-workspace .composer-area{padding:8px}
+}
+/* Keep inherited feature tokens on the original neutral palette. */
+:root[data-theme] body.sapi-workspace{--sapi-hover:var(--sapi-soft);--sapi-accent:var(--ink);--sapi-purple-tint:var(--sapi-soft);--sapi-pink-tint:var(--sapi-soft);--sapi-cyan-tint:var(--sapi-soft)}
+:root[data-theme] body.sapi-workspace .modal-top .tiny-label{color:var(--muted)}
+:root[data-theme] body.sapi-workspace .form-stack>button{width:auto;justify-self:start}
+:root[data-theme] body.sapi-workspace .form-stack>button[type=submit]{justify-self:end;min-width:72px}
+:root[data-theme] body.sapi-workspace .task-format{color:var(--muted);opacity:1}

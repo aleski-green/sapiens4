@@ -24,6 +24,7 @@ publicAssets =
   ("/live.css","text/css","app/theme/live.css"),
   ("/workspace/styles.css","text/css","app/theme/styles.css"),
   ("/assets/sapi-theme.css","text/css","app/theme/sapi-theme.css")]
+ ++ [(prefix<>n<>".woff2","font/woff2","app/theme/fonts/"++T.unpack n++".woff2") | prefix <- ["/assets/fonts/","/theme/fonts/"], n <- ["dm-sans","zen-maru-light","zen-maru-medium","ibm-plex-mono"]]
  ++ [("/app-icon-"<>T.pack (show n)<>".png","image/png","app/shell/app-icon-"++show n++".png") | n <- [180,192,512::Int]]
  ++ [("/"<>n<>".svg","image/svg+xml","app/shell/"++T.unpack n++".svg") | n <- ["favicon","favicon-dark","ai-codex","ai-claude","ai-gemini","ai-kimi"]]
 asset :: FilePath -> Text -> IO (Maybe (Text,BL.ByteString))

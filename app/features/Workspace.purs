@@ -20,6 +20,7 @@ import Sapiens.Html as V
 import Sapiens.Model as M
 import Sapiens.Navigation as N
 import Sapiens.Text as T
+import Sapiens.Art as Art
 
 native :: M.Model -> Boolean
 native = M.nativeWorkspace
@@ -80,8 +81,8 @@ view m = V.node "main" [V.cls "workspace",V.id "workspace-panel",V.label "Agent 
         M.Ready request (M.MemoPreview nodes) | request.key == tab.id -> [V.node "article" [V.cls "workspace-document",V.label tab.title,V.style $ "font-size:" <> show (16.0 * zoom) <> "px"] $ map (memoNode tab.url) nodes]
         M.Failed _ error -> [V.text $ M.previewError error]
         _ -> [V.text "Loading…"]
-      else if native m then [V.text $ if tab.id /= "" then "" else "Open a URL or file to get started."]
-      else if tab.path == "" then [V.text $ if tab.id /= "" && tab.url /= "about:blank" then "Open Sapiens4 desktop to browse this web page." else "Open a URL or file to get started."]
+      else if native m then if tab.id /= "" then [] else [emptyWorkspace]
+      else if tab.path == "" then if tab.id /= "" && tab.url /= "about:blank" then [V.p "workspace-empty" "Open Sapiens4 desktop to browse this web page."] else [emptyWorkspace]
       else [V.textNode "pre" [V.cls "workspace-text",V.label $ tab.title,V.style $ "font-size:" <> show ((if N.limit m.env < 3 then 12.6 else 13.0) * zoom) <> "px"] (case m.preview of
         M.Ready _ (M.TextPreview value) -> value
         M.Loading _ (Just (M.TextPreview value)) -> value
@@ -89,6 +90,7 @@ view m = V.node "main" [V.cls "workspace",V.id "workspace-panel",V.label "Agent 
         _ -> "Loading…")]
   ,V.node "footer" [V.cls "workspace-footer"] [V.link "https://sapiens4.ai" "sapiens4.ai ↗"]]
   where
+  emptyWorkspace = V.div "workspace-empty" [Art.empty Art.Watching,V.textNode "h2" [] "Room for your ideas",V.p "" "Open a URL or file to get started."]
   tabs = M.tabs m
   tab = M.activeTab m
   memo = M.isMemoTab (M.notes m m.selected) tab

@@ -4,7 +4,7 @@ import Data.Text (Text)
 newtype AppVersion = AppVersion Text deriving (Eq, Ord, Show)
 baselineVersion, currentVersion :: AppVersion
 baselineVersion = AppVersion "v00.01.99"
-currentVersion = AppVersion "v00.02.00"
+currentVersion = AppVersion "v00.02.01"
 versionText :: AppVersion -> Text
 versionText (AppVersion value) = value
 versionKey :: Text

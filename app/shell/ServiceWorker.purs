@@ -11,10 +11,10 @@ import Sapiens.BrowserFFI as B
 import Sapiens.Browser as Browser
 
 cache :: String
-cache = "sapiens-shell-v3"
+cache = "sapiens-shell-v4"
 
 assets :: Array String
-assets = ["/", "/theme.js", "/favicon.svg", "/favicon-dark.svg", "/workspace/app.js", "/workspace/styles.css", "/live.css", "/corpora.css", "/assets/sapi-theme.css", "/remote-install.css", "/remote-vendor.js", "/remote-crypto.js", "/voice-worklet.js", "/manifest.webmanifest", "/app-icon-180.png", "/app-icon-192.png", "/app-icon-512.png"]
+assets = ["/", "/theme.js", "/favicon.svg", "/favicon-dark.svg", "/workspace/app.js", "/workspace/styles.css", "/live.css", "/corpora.css", "/assets/sapi-theme.css", "/remote-install.css", "/remote-vendor.js", "/remote-crypto.js", "/voice-worklet.js", "/manifest.webmanifest", "/app-icon-180.png", "/app-icon-192.png", "/app-icon-512.png", "/assets/fonts/dm-sans.woff2", "/assets/fonts/zen-maru-light.woff2", "/assets/fonts/zen-maru-medium.woff2", "/assets/fonts/ibm-plex-mono.woff2"]
 
 main :: Effect Unit
 main = do

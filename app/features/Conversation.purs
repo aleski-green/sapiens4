@@ -17,6 +17,7 @@ import Sapiens.Html as V
 import Sapiens.Model as M
 import Sapiens.Navigation as N
 import Sapiens.Text as T
+import Sapiens.Art as Art
 
 statusName :: X.CallState -> String
 statusName = X.callName
@@ -41,7 +42,7 @@ activity m turn =
   in if a.turn == turn.id then a else X.activity D.empty
 
 progress :: M.Model -> X.Turn -> V.Html
-progress m turn = V.div "" [V.textNode "strong" [] (phase <> " · " <> show elapsed <> "s"),V.p "" detail,V.when (quiet >= 60) $ V.textNode "small" [] ("No recent update · " <> show quiet <> "s since last activity")]
+progress m turn = V.div "" [Art.progress (if attention turn then Art.Error else if turn.status == X.Queued then Art.Thinking else Art.Working),V.textNode "strong" [] (phase <> " · " <> show elapsed <> "s"),V.p "" detail,V.when (quiet >= 60) $ V.textNode "small" [] ("No recent update · " <> show quiet <> "s since last activity")]
   where
   a = activity m turn
   started = if a.started == 0.0 then B.parseTime $ turn.created else a.started
@@ -81,7 +82,7 @@ rows m =
   [Tuple "banner" $ V.when (M.isGroup a && a.archived) $ V.p "group-banner" "Archived · history is preserved. Restore this Group from settings to continue."
   ,Tuple "divider" $ V.div "day-divider" [V.text $ (if M.isGroup a then "GROUP " else "") <> "CONVERSATION"]]
   <> map (\msg -> Tuple (msg.chatKey) $ message m msg) messages
-  <> [Tuple "empty" $ V.when (A.null messages) $ V.div "empty" [V.text $ if M.isGroup a then "Message the Group to reach " <> (M.agent m a.lead).name <> ", or @mention a member." else "Start a conversation."]]
+  <> [Tuple "empty" $ V.when (A.null messages) $ V.div "empty" [Art.empty Art.Idle,V.text $ if M.isGroup a then "Message the Group to reach " <> (M.agent m a.lead).name <> ", or @mention a member." else "Start a conversation."]]
   <> (if M.isGroup a then map groupProgress (A.filter (\r -> A.elem (r.status) [X.Queued,X.Running,X.Failed,X.Interrupted]) $ a.requests) else map personalProgress (A.filter (\t -> t.agent == m.selected && M.blocksChat t && (t.batch_id == "" || t.batch_id == t.id)) $ m.snapshot.turns))
   where
   a = M.selected m
@@ -97,7 +98,9 @@ composer m = V.node "div" [V.cls "composer-area",V.id "composer-area",V.hidden $
       Nothing -> V.empty
   , V.node "div" [V.id "attachment-chip"] $ map chip $ M.attachments m
   , V.node "form" [V.cls "composer",V.id "chat-form",V.submit Send]
-      [V.node "textarea" [V.attr "rows" "2",V.id "message-input",V.attr "maxlength" "16000",V.attr "placeholder" placeholder,V.label $ "Message " <> a.name,V.value $ M.draft m,V.input Draft,V.on "keydown" MessageKey,V.click MentionCursor,V.attr "aria-expanded" $ show $ m.mention /= Nothing] []
+      [V.node "textarea" ([V.attr "rows" "2",V.id "message-input",V.attr "maxlength" "16000",V.attr "placeholder" placeholder,V.label $ "Message " <> a.name,V.value $ M.draft m,V.input Draft,V.on "keydown" MessageKey,V.click MentionCursor,V.attr "aria-autocomplete" "list"] <> case m.mention of
+          Nothing -> []
+          Just menu -> [V.attr "aria-controls" "mention-suggestions"] <> if A.null menu.choices then [] else [V.attr "aria-activedescendant" $ "mention-option-" <> show menu.index]) []
       ,case m.voice of
         -- While recording here: red dot, live timer, Cancel (discard), Stop (finish and review) and Send (finish and send).
         Just v | v.owner == m.selected -> V.node "div" [V.cls "voice-bar",V.attr "role" "status",V.attr "aria-live" "polite"]
@@ -119,7 +122,10 @@ composer m = V.node "div" [V.cls "composer-area",V.id "composer-area",V.hidden $
   where
   a = M.selected m
   -- While recording here the voice bar replaces this button; in another chat it explains why it can't start.
-  voiceButton = V.icon "Record voice message" "🎤" VoiceStart
+  voiceButton = V.controlWith [V.cls "icon-button",V.label "Record voice message",V.attr "title" "Record voice message"]
+    [V.svg "svg" [V.attr "viewBox" "0 0 24 24",V.attr "width" "20",V.attr "height" "20",V.attr "fill" "none",V.attr "stroke" "currentColor",V.attr "stroke-width" "1.7",V.attr "stroke-linecap" "round",V.attr "aria-hidden" "true",V.attr "focusable" "false"]
+      [V.svg "rect" [V.attr "x" "9",V.attr "y" "3",V.attr "width" "6",V.attr "height" "12",V.attr "rx" "3"] []
+      ,V.svg "path" [V.attr "d" "M6 11v1a6 6 0 0 0 12 0v-1M12 18v3M9 21h6"] []]] VoiceStart
   -- A voice chip whose transcription failed offers Retry next to ×; it is never sent as it is.
   chip item = V.div "attachment-chip" $ [T.attachment item]
     <> (case map _.transcription (X.voiceOf item) of

@@ -78,7 +78,7 @@ relayApplication relay req respond = do
        require ("Bearer " `T.isPrefixOf` auth && not (T.null bearer) && T.length bearer <= 256 && T.all (\c -> ord c >=33 && ord c<=126) bearer) 401 "Bearer token required"
        relayResponse relay 200 <$> transact (relayDB relay) method (filter (/="") (T.splitOn "/" target)) bearer body (relayAdmin relay) False)
 relayHeaders :: Relay -> Text -> ResponseHeaders
-relayHeaders relay mime = headers mime ++ [("Content-Security-Policy",TE.encodeUtf8 ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' " <> wsOrigin <> "; img-src 'self' blob: data:; media-src 'self' blob:; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"))]
+relayHeaders relay mime = headers mime ++ [("Content-Security-Policy",TE.encodeUtf8 ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' " <> wsOrigin <> "; img-src 'self' blob: data:; media-src 'self' blob:; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"))]
  where wsOrigin = (if "https:" `T.isPrefixOf` relayOrigin relay then "wss" else "ws") <> T.dropWhile (/=':') (relayOrigin relay)
 relayResponse :: Relay -> Int -> Value -> Response
 relayResponse relay code value = responseLBS (mkStatus code "") (relayHeaders relay "application/json") (encode value)
@@ -98,7 +98,7 @@ relayAsset relay req = do
     else if path == "/sw.js" then do
      assets <- mapM (asset (relayRepo relay)) (["/","/workspace/app.js"] ++ [p | (p,_,_) <- sortOn (\(p,_,_)->p) publicAssets])
      let version = T.take 16 (hash (BL.toStrict (BL.concat [raw | Just (_,raw) <- assets])))
-     pure (BL.fromStrict (TE.encodeUtf8 (T.replace "sapiens-shell-v1" ("sapiens-shell-"<>version) (TE.decodeUtf8 (BL.toStrict content)))))
+     pure (BL.fromStrict (TE.encodeUtf8 (T.replace "sapiens-shell-v4" ("sapiens-shell-"<>version) (TE.decodeUtf8 (BL.toStrict content)))))
     else if path == "/manifest.webmanifest" then do
      let selected = lookup "platform" (queryString req) >>= id
      pure (case fmap TE.decodeUtf8 selected of Just p | p `elem` platforms -> encode (put "start_url" (str ("/"<>p)) (maybe Null id (decode content))); _ -> content)

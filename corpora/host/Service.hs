@@ -93,7 +93,6 @@ openService clock gate telemetry choice path = do
        recoverVoice s
        D.reconcileWorks s
        GC.reconcileGroups s
-       DB.record s [chief] "corpora" "system.started" empty "system" Nothing
        pure s
  initialize `onException` cleanup
 attachEndpoint :: Service -> Text -> IO ()
@@ -136,9 +135,7 @@ closeService s = do
   E.stopRuns s
   let awaitRuns = do runs<-readMVar (serviceRuns s); unless (M.null runs) (threadDelay 50000 >> awaitRuns)
   awaitRuns
-  (do chief <- DB.mainAgent s
-      DB.record s [chief] "corpora" "system.stopped" empty "system" Nothing)
-   `finally` (A.closeStore (serviceStore s) `finally` unlockFile (serviceFileLock s))
+  A.closeStore (serviceStore s) `finally` unlockFile (serviceFileLock s)
 snapshotUnlocked :: Service -> IO Value
 snapshotUnlocked s = do
  revision <- readTVarIO (serviceRevision s)
