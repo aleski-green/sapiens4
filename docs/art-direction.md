@@ -20,32 +20,34 @@ Action/Chiefy `#F9BDD0`, blush `#F08FB0`, Curio `#CFC4F2`, Buildly `#FBE58A`
 and Nerd `#BFE3FA` stay identical in both themes. Text on pastel surfaces is
 always `#111111`. Blush is decorative progress color, never body text.
 
-Cards and dialogs use 21px radii; fields, rows and inset surfaces use 13px;
-buttons use 13px rounded corners, badges use 8px, and composers use 21px. Activity navigation uses
-underlined tabs to distinguish navigation from selection controls. Panes are separated by 13px
-of ground, with no dividing borders. Visible panes alone receive grid tracks.
+Main panes and dialogs use 13px corners. Desktop controls are 28–34px high
+with 6px corners; touch controls retain 44px hit areas. Navigation is plain text
+and icons with a subtle selected surface or a single underline. Keyboard focus
+alone receives a contrasting outline. The sidebar sits on the ground color;
+conversation and workspace use the card surface. Assistant text is unboxed and
+user messages use a neutral soft surface.
 
 DM Sans is the interface font, Zen Maru Gothic is the face font (300 for artwork,
 500 for chips), and IBM Plex Mono is the code font. All four WOFF2 files are
 bundled with their full glyph sets. Font licenses ship in `license/fonts/`.
 
-## Optimized component system
+## Compact interface
 
-The reviewed `ui-extract.html` component sheet supplies the geometry and palette
-for the live controls. Shared rules cover buttons, fields, menus, tabs, avatars,
-attachments, voice controls, tooltips, badges, and disclosures across features.
+The component sheet informs shared typography, color, spacing, and behavior;
+controls are sized for their context in the complete screen.
 
-- Spacing follows 5/8/13/21/34/55/89px intervals. Actionable controls are at least
-  44px high; inline mentions retain a 24px text target to preserve paragraph flow.
-- Avatars use 34/55/89px sizes, with the large header avatar reduced to 55px on
-  narrow screens. Fields and buttons share a 13px radius and 13px/21px text.
-- Hover, press, selection, keyboard focus, disabled and invalid states use the
-  reference colors. Selection has an ink mark; focus has a 2px ink outline.
-  Status labels and symbols distinguish outcomes without requiring color.
-- Live controls use native hover/focus/active selectors; the sheet's inert/static
-  preview attributes and gallery wrappers are not included in the application.
-- Native checkbox/radio behavior, hidden states, scroll containers and responsive
-  layout are preserved. Reduced-motion settings suppress control transitions.
+- Desktop toolbar buttons are 28px; form actions are 32px and fields 34px.
+  Pointer-coarse layouts keep 44px actions and 16px editable text.
+- Roster rows use 56px minimum height and small pastel face chips. Headers use
+  the same compact avatar instead of a large profile tile.
+- Navigation and selection never imitate keyboard focus. There are no selected
+  button outlines or nested segment containers. Focus-visible remains explicit.
+- Settings, tasks, relay entries, and Updates use open rows and subtle separators.
+  Floating menus and dialogs retain a surface for separation from their backdrop.
+- Pink is reserved for primary actions. Status text and marks remain readable
+  without relying on color. Every theme token uses the original reference palette.
+- Conversation text, native controls, scrolling, hidden panes, and reduced-motion
+  preferences retain their functional behavior.
 
 ## Components
 
