@@ -15,6 +15,7 @@ import Effect.Exception (error)
 import Effect.Ref as Ref
 import Data.Either (Either(..))
 import Sapiens.BrowserNative as N
+import Sapiens.Config as Config
 import Sapiens.Data as D
 
 foreign import data Samples :: Type
@@ -75,8 +76,8 @@ average input start end = if end <= start then sampleAt input start else go star
   go index total | index >= end = total
                  | otherwise = go (index + 1) (total + sampleAt input index)
 
-voiceStart :: String -> Int -> (Json -> Effect Unit) -> Effect (Promise Voice)
-voiceStart workletUrl segmentSeconds onSegment = fromAff do
+voiceStart :: String -> Int -> (Json -> Effect Unit) -> (Number -> Effect Unit) -> Effect (Promise Voice)
+voiceStart workletUrl segmentSeconds onSegment onSecond = fromAff do
   available <- liftEffect microphoneAvailable
   unless available $ throwError $ error "Microphone is not available here."
   when (segmentSeconds <= 0) $ throwError $ error "Segment length must be positive."
@@ -91,8 +92,8 @@ voiceStart workletUrl segmentSeconds onSegment = fromAff do
     toAffE $ loadWorklet context workletUrl
     liftEffect do
       recording <- N.uuid
-      let size = segmentSeconds * 16000
-          ratio = sampleRate context / 16000.0
+      let size = segmentSeconds * Config.voiceSampleRate
+          ratio = sampleRate context / I.toNumber Config.voiceSampleRate
       buffer <- allocate size
       carry <- allocate 0
       state <- Ref.new {buffer, filled: 0, index: 0, carry, position: 0.0}
@@ -101,8 +102,8 @@ voiceStart workletUrl segmentSeconds onSegment = fromAff do
         emit final current = do
           data_ <- wav $ sliceSamples 0 current.filled current.buffer
           onSegment $ D.json {recording, index: current.index, final
-            , startMs: Number.round $ I.toNumber (current.index * size) / 16.0
-            , durationMs: Number.round $ I.toNumber current.filled / 16.0
+            , startMs: Number.round $ I.toNumber (current.index * size) / Config.voiceSamplesPerMillisecond
+            , durationMs: Number.round $ I.toNumber current.filled / Config.voiceSamplesPerMillisecond
             , mime: "audio/wav", data: data_}
           pure $ current {index = current.index + 1, filled = 0}
         receive samples = do
@@ -111,6 +112,8 @@ voiceStart workletUrl segmentSeconds onSegment = fromAff do
           next <- tailRecM (\s -> if s.position + ratio > I.toNumber (sampleCount input) then pure $ Done s else do
             writeSample s.buffer s.filled $ average input (I.floor s.position) (I.floor $ s.position + ratio)
             let updated = s {filled = s.filled + 1, position = s.position + ratio}
+            when (mod updated.filled Config.voiceSampleRate == 0) $
+              onSecond $ I.toNumber (updated.index * size + updated.filled) / Config.voiceSamplesPerMillisecond
             advanced <- if updated.filled == size then emit false updated else pure updated
             pure $ Loop advanced) current
           let keep = I.floor next.position
@@ -127,7 +130,7 @@ voiceStart workletUrl segmentSeconds onSegment = fromAff do
               toAffE $ closeContext context
               liftEffect do
                 current <- Ref.read state
-                let durationMs = Number.round $ I.toNumber (current.index * size + current.filled) / 16.0
+                let durationMs = Number.round $ I.toNumber (current.index * size + current.filled) / Config.voiceSamplesPerMillisecond
                 when (current.filled == 0) $ writeSample current.buffer 0 0.0
                 next <- emit true $ current {filled = max 1 current.filled}
                 Ref.write next state

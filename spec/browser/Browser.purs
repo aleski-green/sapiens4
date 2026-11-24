@@ -150,7 +150,8 @@ sound = do
   mock media "getUserMedia" microphone $ mock w "AudioContext" (mkEffectFn1 \(_ :: Json) -> pure context) $
     mock w "AudioWorkletNode" (mkEffectFn2 \(_ :: Json) (_ :: String) -> pure node) do
       pieces <- liftEffect $ Ref.new []
-      voice <- toAffE $ Audio.voiceStart "/voice-worklet.js" 1 (\piece -> Ref.modify_ (_ <> [piece]) pieces)
+      progress <- liftEffect $ Ref.new []
+      voice <- toAffE $ Audio.voiceStart "/voice-worklet.js" 1 (\piece -> Ref.modify_ (_ <> [piece]) pieces) (\ms -> Ref.modify_ (_ <> [ms]) progress)
       liftEffect do
         input <- Audio.allocate 48000
         forE 0 48000 $ \i -> Audio.writeSample input i 0.5
@@ -187,6 +188,8 @@ sound = do
         check "Recording shutdown" (unsafeRefEq first second && s == 1 && c == 1) true
         fields "Recording duration" result $ D.json {durationMs:1000,segments:2}
         check "Segment count" (A.length chunks) 2
+        seconds <- Ref.read progress
+        check "Recording progress" seconds [1000.0]
         fields "First segment" (piece 0) $ D.json {final:false,index:0,startMs:0}
         fields "Final segment" (piece 1) $ D.json {final:true,index:1,startMs:1000}
         check "Resampled WAV" header [16000,32000,32767,16383]

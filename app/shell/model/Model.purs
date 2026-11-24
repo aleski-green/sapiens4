@@ -15,6 +15,7 @@ import Foreign.Object as O
 import Halogen (SubscriptionId)
 import Sapiens.BrowserFFI (Voice)
 import Sapiens.BrowserFFI as B
+import Sapiens.Config as Config
 import Sapiens.Data as D
 import Sapiens.Browser as Browser
 import Sapiens.Domain as X
@@ -110,7 +111,7 @@ phaseRecorder = case _ of
 type VoiceSession =
   { owner :: String, path :: String, epoch :: Int, phase :: RecordingPhase, subscription :: SubscriptionId
   , queue :: Array X.VoicePiece, sending :: Boolean, attempts :: Int, pieces :: Int
-  , recording :: String, startedAt :: Number, elapsed :: Number }
+  , recording :: Maybe String, elapsed :: Number }
 
 -- | One chat's voice messages being sent one by one, in order, each as soon as its own
 -- | transcript is ready. Kept per chat ('outboxes'), so one chat never blocks another.
@@ -121,6 +122,11 @@ type Outbox = { epoch :: Int, path :: String, text :: String, others :: Array St
 voiceBusy :: Model -> Boolean
 voiceBusy m = O.member m.selected m.outboxes || case m.voice of
   Just v -> v.owner == m.selected
+  Nothing -> false
+
+voicePending :: Model -> Boolean
+voicePending m = not (O.isEmpty m.outboxes) || case m.voice of
+  Just _ -> true
   Nothing -> false
 
 data AppUpdate = UpdateHidden | UpdateAvailable | UpdateDownloading | UpdatePreparing | UpdateBusy | UpdateFailed
@@ -184,6 +190,9 @@ agent model id = fromMaybe (fromMaybe X.emptyEntity $ A.head model.agents) $ X.f
 selected :: Model -> X.Entity
 selected model = agent model model.selected
 
+selectedChat :: Model -> Maybe String
+selectedChat m = if S.null m.selected then Nothing else Just m.selected
+
 isGroup :: X.Entity -> Boolean
 isGroup a = a.kind == X.Group
 
@@ -207,7 +216,7 @@ ordinaryAttachmentCount :: Model -> Int
 ordinaryAttachmentCount = A.length <<< A.filter (not <<< X.isVoice) <<< attachments
 
 firstMessageFull :: Model -> Boolean
-firstMessageFull m = ordinaryAttachmentCount m + (if A.any X.isVoice (attachments m) then 1 else 0) >= 8
+firstMessageFull m = ordinaryAttachmentCount m + (if A.any X.isVoice (attachments m) then 1 else 0) >= Config.maxAttachments
 
 workspace :: Model -> X.Workspace
 workspace m = fromMaybe (X.workspace D.empty) $ O.lookup m.selected m.workspaces

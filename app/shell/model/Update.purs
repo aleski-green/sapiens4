@@ -218,7 +218,7 @@ update action m = case action of
               commands = case change of
                 KeepSnapshot -> previews
                 ReplaceSnapshot _ -> [RestoreScroll,LoadDocument] <> previews <> [Sync]
-          in Changed updated ([AcknowledgeSnapshot source revision] <> commands <> schedulePoll updated)
+          in Changed updated ([AcknowledgeSnapshot source revision] <> commands <> resumeVoiceWork updated <> schedulePoll updated)
   Persist ->
     let value = D.encode $ M.preferences m
     in if (M.online m) && not (M.busy m) && not m.saving && value /= m.preferencesSaved then
@@ -369,6 +369,9 @@ schedulePoll m = if m.env.hidden then [] else [SchedulePoll m.epoch m.active m.p
   interval | not (M.remote m) && (M.activeRecord m).location == X.Local = m.fallbackDelay
            | M.remote m || not (M.online m) = 2000.0
            | otherwise = M.fastPoll
+
+resumeVoiceWork :: M.Model -> Array Command
+resumeVoiceWork m = if M.voicePending m then [Dispatch Shell.VoiceResume] else []
 
 finishNative :: M.Model -> Transition -> Transition
 finishNative base = case _ of

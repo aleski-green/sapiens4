@@ -5,7 +5,6 @@ import Prelude (class Eq)
 import Sapiens.Form as F
 import Sapiens.Browser as Browser
 import Data.Argonaut.Core (Json)
-import Halogen (SubscriptionId)
 import Sapiens.Domain as X
 import Sapiens.Model (DialogKind)
 import Sapiens.Navigation (Activity, Scope, Pane, Period)
@@ -71,9 +70,9 @@ data Action
   | VoicePiece X.VoicePiece
   | VoicePieceRejected String
   | VoiceCancel
-  | VoiceTick SubscriptionId
+  | VoiceProgress Number
   | VoiceSend
-  | VoiceFlush String
+  | VoiceResume
   | VoiceRetry String
   | Address String
   | OpenAddress
