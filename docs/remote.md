@@ -12,7 +12,7 @@ from the browser menu and open it from the Home Screen before pairing.
 4. Compare the eight-letter code on both screens. Select **Approve device** on
    the host. Pairing is the remote sign-in; it grants corpora admin access.
 
-Keep a host app window open for remote control. Each corpora supports one approved remote device.
+Remote Control works without an open host window. Each corpora supports one approved remote device.
 Invitations expire after three days. Keep invitations private. Use **Revoke access**
 to disconnect a device. Clearing browser storage requires pairing again.
 **Switch & revoke all** disconnects paired devices when changing relays.

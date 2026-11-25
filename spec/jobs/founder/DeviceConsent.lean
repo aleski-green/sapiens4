@@ -29,9 +29,9 @@ private def approvePairing (authority device : Host) (pairing peer : Json) : IO 
 
 def approveOneDeviceThenRevokeItsMailbox : IO Unit := withRelay fun relay admin =>
   IO.FS.withTempDir fun authorityDir => IO.FS.withTempDir fun deviceDir => do
-    withCryptoHost authorityDir fun authority => do
+    withHost authorityDir fun authority => do
       let marker := "UnlistedReviewer"
-      discard <| authority.agent marker
+      let owner ← authority.agent marker
       let identity ← IO.ofExcept <| stringField (← authority.api "GET" "/api/corpora") "id"
       let qr ← invitationFor authority relay admin
       let mailbox ← IO.ofExcept <| stringField qr "room"
@@ -49,7 +49,7 @@ def approveOneDeviceThenRevokeItsMailbox : IO Unit := withRelay fun relay admin 
         requireThat "discovery leaked private data" ([marker, admin, token, secret].all (!discover.body.contains ·))
         requireThat "invitation exposed relay administration" (!qr.compress.contains admin)
       let route := "/api/host/corpora/" ++ identity
-      withCryptoHost deviceDir fun device => do
+      withHost deviceDir fun device => do
         let (pairing, pending) ← requestPairing authority device qr
         let registry := do IO.ofExcept <| (← device.api "GET" "/api/host").getObjVal? "corpora"
         let before ← registry
@@ -76,15 +76,34 @@ def approveOneDeviceThenRevokeItsMailbox : IO Unit := withRelay fun relay admin 
             (← after.getObjVal? "fingerprint") [marker, admin, token, secret]
         let hidden ← request relay "GET" discoveryPath
         IO.ofExcept <| requireThat "paired device remained discoverable" (hidden.status == 404)
-      withCryptoHost deviceDir fun device => do
+      withHost deviceDir fun device => do
         let saved ← device.api "GET" (route ++ "/api/corpora")
         IO.ofExcept <| fieldsMatch saved (json% {id: $(identity)})
+        let message := "Review release readiness through the remote host"
+        let replies ← mcpSession device.url #[
+          tool 1 "send" (json% {corpora: $(identity), sapi: $(owner), text: $(message)}),
+          tool 2 "chat" (json% {corpora: $(identity), sapi: $(owner), limit: 1, wait: 30})]
+        let turnId ← IO.ofExcept do
+          let submitted ← toolBody replies[0]!
+          let turnId ← submitted.getObjVal? "id"
+          let turn ← uniqueRecord (← toolBody replies[1]!) "id" turnId
+          fieldsMatch turn (json% {input: $(message), output: "The review is ready.", status: "done"})
+          return turnId
+        IO.ofExcept <| fieldsMatch (← authority.awaitTurn turnId "done")
+          (json% {agent: $(owner), input: $(message), output: "The review is ready."})
         let revoked ← authority.api "POST" "/api/remote/revoke" (json% {})
         IO.ofExcept <| fieldsMatch revoked (json% {revoked: true, relay_deleted: true})
+        let beforeTurns ← IO.ofExcept <| (← authority.state).getObjVal? "turns"
+        let refused ← mcpSession device.url #[
+          tool 1 "send" (json% {corpora: $(identity), sapi: $(owner), text: "Do not execute after revocation"})]
+        let afterTurns ← IO.ofExcept <| (← authority.state).getObjVal? "turns"
+        IO.ofExcept do
+          fieldsMatch (refused[0]!.getObjValD "result") (json% {isError: true})
+          requireThat "revoked MCP command created work" (afterTurns == beforeTurns)
         let before ← authority.api "GET" "/api/corpora"
         let denied ← request relay "GET" ("/api/rooms/" ++ mailbox ++ "/messages") none #[s!"Authorization: Bearer {token}"]
         IO.ofExcept <| verifyDenial "revoked mailbox" 401 denied before (← authority.api "GET" "/api/corpora") [marker, admin, token, secret]
-    withCryptoHost authorityDir fun authority => do
+    withHost authorityDir fun authority => do
       IO.ofExcept <| fieldsMatch (← authority.api "GET" "/api/remote") (json% {paired: false, enabled: false, invitation: null})
 
 def withdrawConsentBeforeTheOtherDeviceApproves : IO Unit := withRelay fun relay admin =>
@@ -129,8 +148,6 @@ private def Mailbox.awaitEnvelope (box : Mailbox) (token : String) (privateText 
       requireThat "private content visible to relay" (privateText.all (!message.compress.contains ·))
       return some frame
 
--- The fixture owns its phone keys. Tests never read the application's saved
--- credentials or depend on their storage representation.
 private def Mailbox.acknowledge (box : Mailbox) : IO Unit := do
   for entry in ← box.entries box.deviceToken do
     let id ← IO.ofExcept <| entry.getObjVal? "id"
@@ -158,38 +175,11 @@ private def fixturePhone (authority : Host) (browser : CryptoWindow) (qr : Json)
   let identity ← IO.ofExcept <| stringField (← authority.api "GET" "/api/corpora") "id"
   return (box,config,identity)
 
-def resumeRemoteWorkWhenBrowserReopens : IO Unit := withRelay fun relay admin =>
-  IO.FS.withTempDir fun hostDir => IO.FS.withTempDir fun deviceDir =>
-    withHost hostDir fun authority => withHost deviceDir fun device => withCryptoSession device fun browser => do
-      let (box, config, identity) ← withCryptoWindow authority do
-        fixturePhone authority browser (← invitationFor authority relay admin)
-      discard <| untilSome "host browser disconnected" do
-        return if (← authority.api "GET" "/api/host/crypto").getObjValD "connected" == toJson false then some () else none
-      let route := "/api/agents/" ++ (← authority.chief) ++ "/messages"
-      let message := "Wait for the host browser"
-      let frame ← browser (json% {operation: "request", config: $(config), body: {
-        kind: "request", op: "api", method: "POST", path: $(route), corpora_id: $(identity), data: {text: $(message)}}})
-      let queued ← request relay "POST" box.path frame
-        #["Content-Type: application/json", s!"Authorization: Bearer {box.deviceToken}"]
-      IO.ofExcept <| requireThat "relay refused queued work" (queued.status == 200)
-      IO.sleep 600
-      let state ← authority.state
-      IO.ofExcept <| requireThat "closed browser executed remote work" ((← IO.ofExcept <| state.getObjValAs? (Array Json) "turns").isEmpty)
-      IO.ofExcept <| requireThat "closed browser replied to encrypted work" (← box.entries box.deviceToken).isEmpty
-      withCryptoWindow authority do
-        let response ← box.awaitEnvelope box.deviceToken [message, admin]
-        let plain ← browser (json% {operation: "response", config: $(config), frame: $(response)})
-        let receipt ← IO.ofExcept <| plain.getObjVal? "result"
-        IO.ofExcept <| fieldsMatch receipt (json% {status: 202})
-        let turnId ← IO.ofExcept <| (receipt.getObjValD "body").getObjVal? "id"
-        let turn ← authority.awaitTurn turnId "done"
-        IO.ofExcept <| fieldsMatch turn (json% {input: $(message), output: "The review is ready."})
-
 def processRedeliveredRemoteWorkOnce : IO Unit := withRelay fun relay admin =>
   IO.FS.withTempDir fun hostDir => IO.FS.withTempDir fun deviceDir =>
     withHost deviceDir fun device => withCryptoSession device fun browser => do
       let message := "Private review 9831"
-      let (box, config, identity, path) ← withCryptoHost hostDir fun authority => do
+      let (box, config, identity, path) ← withHost hostDir fun authority => do
         let (box, config, identity) ← fixturePhone authority browser (← invitationFor authority relay admin)
         return (box, config, identity, "/api/agents/" ++ (← authority.chief) ++ "/messages")
       -- A browser request with a five-minute validity window survives fixture restarts.
@@ -200,7 +190,7 @@ def processRedeliveredRemoteWorkOnce : IO Unit := withRelay fun relay admin =>
           #["Content-Type: application/json", s!"Authorization: Bearer {box.deviceToken}"]
         IO.ofExcept <| requireThat "relay refused encrypted delivery" (queued.status == 200)
       enqueue
-      let (turnId, original) ← withCryptoHost hostDir fun authority => do
+      let (turnId, original) ← withHost hostDir fun authority => do
         let response ← box.awaitEnvelope box.deviceToken [message, admin]
         let plain ← browser (json% {operation: "response", config: $(config), frame: $(response)})
         let result ← IO.ofExcept <| plain.getObjVal? "result"
@@ -212,7 +202,7 @@ def processRedeliveredRemoteWorkOnce : IO Unit := withRelay fun relay admin =>
       box.acknowledge
       IO.ofExcept <| requireThat "original receipt was not acknowledged" (← box.entries box.deviceToken).isEmpty
       enqueue
-      withCryptoHost hostDir fun authority => do
+      withHost hostDir fun authority => do
         let replayed ← box.awaitEnvelope box.deviceToken [message, "The review is ready.", admin]
         IO.ofExcept <| requireThat "redelivery did not return the stored encrypted receipt" (replayed == original)
         let turns ← IO.ofExcept <| (← authority.state).getObjValAs? (Array Json) "turns"

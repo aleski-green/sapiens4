@@ -4,7 +4,6 @@ import Types
 import qualified Telemetry
 import qualified Service as Service
 import Crypto
-import BrowserCrypto
 import LegacyReceipt (matchesLegacyReceipt)
 import Setup
 import Transport
@@ -22,16 +21,16 @@ import qualified Data.Text as T
 import Data.Text (Text)
 
 
-data Bridge = Bridge { bridgeCrypto :: BrowserCrypto, bridgeService :: Service, bridgeConfig :: MVar Value, bridgeError :: IORef Text, bridgeContact :: IORef Value, bridgeConnections :: IORef (S.Set Text), bridgeThread :: MVar (Maybe (Async ())) }
+data Bridge = Bridge { bridgeService :: Service, bridgeConfig :: MVar Value, bridgeError :: IORef Text, bridgeContact :: IORef Value, bridgeConnections :: IORef (S.Set Text), bridgeThread :: MVar (Maybe (Async ())) }
 saveRelay :: Bridge -> Value -> IO ()
 saveRelay b = saveValue (bridgeService b) "local/relay"
 expiry :: Value -> Double
 expiry (Number n) = realToFrac n
 expiry _ = 0
-newBridge :: BrowserCrypto -> Service -> IO Bridge
-newBridge browser service = do
+newBridge :: Service -> IO Bridge
+newBridge service = do
  config <- newMVar Null
- b <- Bridge browser service config <$> newIORef "" <*> newIORef Null <*> newIORef S.empty <*> newMVar Nothing
+ b <- Bridge service config <$> newIORef "" <*> newIORef Null <*> newIORef S.empty <*> newMVar Nothing
  loaded <- try $ do
   saved <- loadValue service "local/device" Null
   if saved==Null then pure Null else do
@@ -84,7 +83,7 @@ createPairing b input = modifyMVar (bridgeConfig b) $ \current -> do
  require (current==Null) 409 "Revoke the existing pairing before creating another"
  selected <- if boolean (get input "local") then localConnection (repositoryRoot (bridgeService b)) else if boolean (get input "saved") then savedRelay b else pure input
  connection <- validateConnection (put "format" (str connectionFormat) selected)
- (private,public) <- keypair (bridgeCrypto b)
+ (private,public) <- keypair
  identity <- Service.corporaIdentity (bridgeService b)
  address <- publicId (at identity "id")
  let relay = at connection "relay"
@@ -92,7 +91,7 @@ createPairing b input = modifyMVar (bridgeConfig b) $ \current -> do
  forM_ ["room","desktop","phone"] $ \k -> do
   let value = at room k
   require (T.length value>=32 && T.length value<=64 && T.all (\c -> isAscii c && (isAlphaNum c || c `elem` ("_-"::String))) value) 400 "Invalid relay mailbox"
- secret <- browserToken (bridgeCrypto b)
+ secret <- token
  expires <- (+fromIntegral pairingTTL) <$> seconds
  let invitation = obj [("v",str protocol),("relay",str relay),("room",get room "room"),("token",get room "phone"),("desktop",str public),("secret",str secret),("expires",toJSON expires),("public_id",str address)]
      config = obj [("relay",str relay),("room",get room "room"),("token",get room "desktop"),("corpora_id",get identity "id"),("private",str private),("public",str public),("secret",str secret),("expires",toJSON expires),("peer",Null),("pending",Null),("invitation",invitation)]
@@ -100,10 +99,10 @@ createPairing b input = modifyMVar (bridgeConfig b) $ \current -> do
  saveRelay b connection
  writeIORef (bridgeError b) ""
  pure (config,obj [("qr",invitation)])
-replyFrame :: Bridge -> Value -> Text -> Value -> IO Value
-replyFrame b config ident value = do
+replyFrame :: Value -> Text -> Value -> IO Value
+replyFrame config ident value = do
  expires <- (+86390) <$> seconds
- pack (bridgeCrypto b) (get config "private") (get config "peer") (at config "room") DesktopToPhone (obj [("id",str ident),("expires",toJSON expires),("kind",str "response"),("result",value)])
+ pack (get config "private") (get config "peer") (at config "room") DesktopToPhone (obj [("id",str ident),("expires",toJSON expires),("kind",str "response"),("result",value)])
 data PairingApproval = PairingApproval { approvedConfig :: Value, approvalRequest :: Text }
 planApproval :: Double -> Value -> Value -> Validation PairingApproval
 planApproval time input config = do
@@ -126,7 +125,7 @@ approvePairing b input = modifyMVar (bridgeConfig b) $ \config -> do
  void (request (at config "relay") ("/api/rooms/"<>at config "room"<>"/trust") (at config "token") "POST" (Just empty))
  identity <- Service.corporaIdentity (bridgeService b)
  let paired = approvedConfig approval
- accept <- replyFrame b paired (approvalRequest approval) (obj [("paired",Bool True),("corpora",identity)])
+ accept <- replyFrame paired (approvalRequest approval) (obj [("paired",Bool True),("corpora",identity)])
  let updated = put "accept" accept paired
  saveConfig b updated
  emitTelemetry (bridgeService b) Telemetry.RemotePaired (Telemetry.clientContextFields (Telemetry.parseClientContext (get (get config "pending") "telemetry_context")))
@@ -142,7 +141,7 @@ revokeBridge b notify = do
  deleted <- if previous==Null then pure (Bool True) else if notify then Bool <$> deleteRoom previous else pure Null
  pure (obj [("revoked",Bool True),("relay_deleted",deleted)])
 closeBridge :: Bridge -> IO ()
-closeBridge b = readMVar (bridgeThread b) >>= mapM_ cancel
+closeBridge b = modifyMVar_ (bridgeThread b) $ \task -> mapM_ cancel task >> pure Nothing
 cleanDeviceInfo :: Value -> Value
 cleanDeviceInfo value = obj [(k,str (T.take 200 (T.strip (T.filter isPrint s)))) | k <- ["name","platform","client"], String s <- [get value k]]
 connectionUpdate :: Double -> S.Set Text -> Value -> Value -> (Bool,Text,Value)
@@ -183,11 +182,11 @@ executeRemote b message = do
 executeReply :: Bridge -> Value -> Value -> IO Value
 executeReply b config message = do
  value <- executeRemote b message `catches` [Handler (\(APIError _ err) -> pure (obj [("error",str err)])), Handler (\(errorValue::SomeException) -> rethrowAsync errorValue >> pure (obj [("error",str "Local operation failed; check desktop before sending again")]))]
- replyFrame b config (at message "id") value `catch` \(_::APIError) -> replyFrame b config (at message "id") (obj [("error",str "Response too large; inspect on desktop")])
+ replyFrame config (at message "id") value `catch` \(_::APIError) -> replyFrame config (at message "id") (obj [("error",str "Response too large; inspect on desktop")])
 processFrame :: Bridge -> Value -> Value -> IO (Value,Maybe Value)
 processFrame b config frame = admitted (bridgeService b) True $ do
  let peer = fallback (get config "peer") (get frame "sender")
- (message,plaintext) <- unpackWithPlaintext (bridgeCrypto b) (get config "private") peer (at config "room") PhoneToDesktop frame
+ (message,plaintext) <- unpackWithPlaintext (get config "private") peer (at config "room") PhoneToDesktop frame
  time <- seconds
  if get config "peer"==Null then do
   proof <- constantEqual (at message "secret") (at config "secret")
@@ -197,9 +196,9 @@ processFrame b config frame = admitted (bridgeService b) True $ do
  else do
   require (at message "kind"=="request" && expiry (get message "expires")<=time+310) 400 "Invalid request"
   identity <- Service.corporaIdentity (bridgeService b)
-  if fallback (get message "corpora_id") (get identity "id") /= get identity "id" then (config,) . Just <$> replyFrame b config (at message "id") (obj [("error",str "This device is connected to a different CORPORA. Pair again.")]) else do
+  if fallback (get message "corpora_id") (get identity "id") /= get identity "id" then (config,) . Just <$> replyFrame config (at message "id") (obj [("error",str "This device is connected to a different CORPORA. Pair again.")]) else do
    current <- recordConnection b config message
-   reply <- if at message "op"=="resume" then replyFrame b current (at message "id") (obj [("paired",Bool True),("corpora",identity)])
+   reply <- if at message "op"=="resume" then replyFrame current (at message "id") (obj [("paired",Bool True),("corpora",identity)])
     else if at message "op"=="api" && at message "method"=="GET" then executeReply b current message
     else do
      let service=bridgeService b
@@ -217,7 +216,7 @@ processFrame b config frame = admitted (bridgeService b) True $ do
            matches = stored==digest || boolean (get saved "legacy") &&
             matchesLegacyReceipt hash stored digest plaintext
        require matches 400 "Request ID was reused"
-       if get saved "reply"==Null then replyFrame b current ident (obj [("error",str "Outcome uncertain after interruption. Check desktop history before sending again.")])
+       if get saved "reply"==Null then replyFrame current ident (obj [("error",str "Outcome uncertain after interruption. Check desktop history before sending again.")])
         else pure (get saved "reply")
       Nothing -> do
        result <- executeReply b current message
@@ -230,7 +229,6 @@ runBridge b = loop 1
  loop delay = do
   config <- readMVar (bridgeConfig b)
   if config==Null then threadDelay 500000 >> loop 1 else do
-   awaitBrowser (bridgeCrypto b)
    result <- try $ bracket (openSocket config) closeSocket $ \client -> do
     writeIORef (bridgeError b) ""
     seconds >>= writeIORef (bridgeContact b) . toJSON
