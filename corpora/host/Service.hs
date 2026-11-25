@@ -26,6 +26,7 @@ import System.FilePath
 import System.Info
 import Types
 import qualified Telemetry
+import qualified TelemetryWire
 import DataRoot
 import qualified Computer
 import qualified Store as DB
@@ -220,10 +221,11 @@ dispatch transport s method target body = locked s $ do
  case (method,parts) of
   ("GET",["api","telemetry"]) -> json 200 $ do
    telemetry <- readIORef (serviceTelemetry s)
-   maybe (pure (obj [("enabled",Bool False),("available",Bool False)])) Telemetry.consentView telemetry
+   maybe (pure (obj [("enabled",Bool False),("available",Bool False)])) (fmap toJSON . Telemetry.consentView) telemetry
   ("POST",["api","telemetry","heartbeat"]) -> json 202 $ do
    telemetry <- readIORef (serviceTelemetry s)
-   forM_ telemetry $ \reporter -> Telemetry.uiHeartbeat reporter (Just (serviceCorporaId s)) (Telemetry.parseClientContext d) d
+   forM_ telemetry $ \reporter ->
+    mapM_ (Telemetry.emit reporter . Telemetry.UIHeartbeat) (TelemetryWire.parseHeartbeat (Just (Telemetry.CorporaId (serviceCorporaId s))) (TelemetryWire.parseClientContext d) d)
    pure (obj [("accepted",Bool True)])
   ("GET",["api","model-settings"]) -> json 200 (toJSON <$> readModelSettings s)
   ("GET",["api","providers"]) -> json 200 (Provider.providersView (repositoryRoot s))
@@ -254,7 +256,15 @@ dispatch transport s method target body = locked s $ do
   ("POST",["api","groups",gid,"calls",rid,action]) -> json 200 (GC.actionGroup s gid rid action)
   ("POST",["api","agents"]) -> json 201 $ do row<-createAgent s d; Mgt.prepare s (at row "id"); pure row
   ("PUT",["api","agents",a]) -> json 200 (updateAgent s a d)
-  ("POST",["api","agents",a,"messages"]) -> json 202 (E.submitTurn transport s a d)
+  ("POST",["api","agents",a,"messages"]) -> json 202 $ do
+   let supplied = TelemetryWire.parseClientContext (get d "client_context")
+   context <- case transport of
+    Telemetry.Direct -> do
+     reporter <- readIORef (serviceTelemetry s)
+     maybe (pure Nothing) (\telemetry -> Telemetry.localClientContext telemetry supplied) reporter
+    Telemetry.Remote -> pure supplied
+    Telemetry.UnknownTransport -> pure supplied
+   E.submitTurn transport context s a d
   ("POST",["api","agents",a,"control"]) -> json 200 (withActor s a Nothing (Mgt.control s a d))
   ("GET",["api","agents",a,"turns",tid,"audit"]) -> json 200 $ do
    void (DB.agent s a)
