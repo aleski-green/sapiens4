@@ -42,7 +42,7 @@ import System.IO
 import System.IO.Error (isDoesNotExistError)
 import System.Timeout (timeout)
 import TelemetryWire
-import TelemetryDevice
+import Environment
 
 data RuntimeKind = Desktop | Headless deriving Eq
 data RequestTransport = Direct | Remote | UnknownTransport

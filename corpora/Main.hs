@@ -16,6 +16,8 @@ import Computer
 import Server
 import Setup
 import Mcp
+import YokeReplay (catchUpMain)
+import qualified Network.HTTP.Types as H
 import Control.Concurrent
 import Control.Exception
 import Control.Monad
@@ -82,6 +84,8 @@ run args = do
   "computer":rest -> jsonCommand (computerMain root rest)
   "relay":rest -> relayMain root (normalized rest)
   "mcp":rest -> mcpMain withInstalledVersion (option "--url" "http://127.0.0.1:4174" (normalized rest))
+  ["yoke","catch-up","--from",from,"--data-dir",directory] -> jsonCommand (catchUpMain (T.pack from) directory)
+  "yoke":_ -> jsonCommand (failure (H.statusCode H.badRequest400) "Usage: sapiens4 yoke catch-up --from URL --data-dir DIRECTORY")
   _ -> hostMain root (normalized args)
 jsonCommand :: IO ExitCode -> IO ()
 jsonCommand action = do
