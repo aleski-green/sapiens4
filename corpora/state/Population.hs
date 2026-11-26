@@ -17,6 +17,7 @@ import System.Environment
 import System.FilePath
 import System.Info
 import Types
+import Environment (EnvironmentId(..), EnvironmentRecord(..), deviceKey, nativeOS, readNativeDevice, sameDevice)
 import qualified Store as DB
 import Memo
 import Workspace (seedMemoBookmark)
@@ -223,14 +224,29 @@ changeRetirement s a retire reason = do
   pure (obj [("id",str a),("retired",Bool retire),("changed",Bool True)])
 corporaSettings :: Service -> IO CorporaConfig
 corporaSettings s = loadValue s "corpora-settings" (CorporaConfig Nothing "This computer" "" Active 1 mempty)
+environmentKey :: Text
+environmentKey = "local/environment"
+ensureEnvironment :: Service -> IO ()
+ensureEnvironment s = do
+ machineKey <- fmap deviceKey <$> readNativeDevice
+ stored <- loadValue s environmentKey Nothing
+ unless (maybe False (sameDevice machineKey) stored) $ do
+  created <- EnvironmentId <$> newId
+  saveValue s environmentKey (EnvironmentRecord created machineKey)
 corporaIdentity :: Service -> IO Value
 corporaIdentity s = do
  cfg <- corporaSettings s
+ machine <- loadValue s environmentKey (Nothing :: Maybe EnvironmentRecord)
  identity <- readJSON (serviceRoot s </> "corpora-identity.json") empty
  chief <- DB.mainAgent s
  row <- if T.null chief then pure empty else DB.agent s chief
  template <- prompt s "corpora-settings-request"
- pure $ merge (remove ["operations"] (toJSON cfg)) (obj [("id",get identity "corpora_id"),("name",toJSON (corporaName cfg) `fallback` str ("CORPORA · " <> at row "name")),("chief_id",str chief),("settings_template",str (T.strip template)),("stopping",Bool False)])
+ let place = obj [("id",toJSON (environmentId <$> machine)),("os",str nativeOS)]
+ let title = toJSON (corporaName cfg) `fallback` str ("CORPORA · " <> at row "name")
+     summary = obj
+      [ ("id",get identity "corpora_id"), ("name",title), ("chief_id",str chief)
+      , ("settings_template",str (T.strip template)), ("stopping",Bool False), ("environment",place) ]
+ pure (merge (remove ["operations"] (toJSON cfg)) summary)
 
 data ModelSettingsDraft = ModelSettingsDraft
  { modelSettingsRevision :: Int, modelSettingsDefault :: ModelSelection, modelSettingsOverrides :: Map.Map Text ModelSelection }
