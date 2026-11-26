@@ -18,6 +18,7 @@ abbrev Job := String × IO Unit
 
 def headlessJobs : List Job := [
   ("Persist valid model settings", User.retainModelSettingsAcrossRestart),
+  ("Keep one environment across restart", User.keepOneEnvironmentAcrossRestart),
   ("MCP work, pause and resume", User.completeWorkThroughMcp),
   ("Restore private notes and bookmarks", User.retainPrivateNotesAndBookmarks),
   ("Scheduled review timing", User.finishOneScheduledReview),
