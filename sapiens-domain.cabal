@@ -43,11 +43,12 @@ common host
   other-modules:
     Clock,
     Command,
+    Config,
     Admission,
     Domain,
     RuntimePaths,
     Telemetry,
-    TelemetryDevice,
+    Environment,
     TelemetryWire,
     Paths_sapiens_domain,
     DataRoot,
@@ -100,6 +101,9 @@ common host
     Types,
     Voice,
     Workspace,
+    Yoke,
+    YokeReplay,
+    YokeWire,
     Wire
   if os(windows)
     hs-source-dirs: environments/windows
@@ -139,7 +143,7 @@ executable sapiens-macos
     Domain,
     RuntimePaths,
     Telemetry,
-    TelemetryDevice,
+    Environment,
     TelemetryWire,
     Paths_sapiens_domain,
     DataRoot,
@@ -195,7 +199,7 @@ common windows-host
     Domain,
     RuntimePaths,
     Telemetry,
-    TelemetryDevice,
+    Environment,
     TelemetryWire,
     Paths_sapiens_domain,
     DataRoot,

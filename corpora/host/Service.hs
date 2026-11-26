@@ -30,6 +30,11 @@ import DataRoot
 import qualified Computer
 import qualified Store as DB
 import qualified AppStorage as A
+import qualified Append4.KV as K
+import Environment (EnvironmentRecord(..))
+import Yoke (readAfter, shareable)
+import Config (yokeHistoryLimit)
+import qualified Network.HTTP.Types as H
 import qualified Migrations
 import qualified Clock
 import Population
@@ -74,6 +79,7 @@ openService clock gate telemetry choice path = do
       files <- newIORef Set.empty
       voicePieces <- newIORef M.empty
       let s=Service gate root repo guard lock stopping worker runs lease endpoint pulse actors store clock revision subscribers files voicePieces telemetry corporaId
+      ensureEnvironment s
       A.transaction store $ do
        rows <- DB.agents s
        when (null rows) $ void (createAgent s (obj [("name",str "ChiefSapi"),("role",str "Head of Corpora")]))
@@ -204,6 +210,12 @@ savePreferences s d = do
  let current=merge prefs (if has d "attachment_drafts" then put "attachment_drafts" (obj drafts) d else d)
  DB.saveSingleton s DB.Preferences current
  pure (obj [("saved",Bool True),("preferences",current)])
+yokeHistory :: Service -> Text -> IO Value
+yokeHistory s query = do
+ after <- maybe (failure (H.statusCode H.badRequest400) "Expected after as a whole number") pure (readAfter query)
+ source <- loadValue s environmentKey (Nothing :: Maybe EnvironmentRecord)
+ page <- K.historyPage (serviceStore s) after yokeHistoryLimit
+ pure (obj [("environment",toJSON (environmentId <$> source)),("appends",toJSON (map shareable page))])
 dispatch :: Telemetry.RequestTransport -> Service -> Text -> Text -> Maybe Value -> IO (Int,BL.ByteString,Text)
 dispatch _ s "PUT" "/api/model-settings" body = do
  requested <- decodeValue 400 (fromMaybe Null body)
@@ -233,6 +245,7 @@ dispatch transport s method target body = locked s $ do
   ("GET",["api","corpora"]) -> json 200 (corporaIdentity s)
   ("GET",["api","corpora","operations",operation]) -> json 200 $ do identity<-corporaIdentity s; pure (obj [("applied",Bool (has (toJSON (corporaOperations cfg)) operation)),("corpora",identity)])
   ("PUT",["api","corpora","lifecycle"]) -> json 200 (Mgt.lifecycle s d)
+  ("GET",["api","yoke","history"]) -> json (H.statusCode H.ok200) (yokeHistory s query)
   ("GET",["api","decision-prompts"]) -> json 200 (obj . (:[]) . ("prompts",) . arr <$> D.templates s)
   ("PUT",["api","decision-prompts",node]) -> json 200 (D.editTemplate s node d)
   ("GET",["api","agents",a,"tasks"]) -> do
