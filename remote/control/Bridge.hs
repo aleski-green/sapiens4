@@ -5,6 +5,8 @@ import qualified Telemetry
 import qualified Service as Service
 import Crypto
 import BrowserCrypto
+import Environment (deviceKey, readNativeDevice)
+import HostKeys
 import LegacyReceipt (matchesLegacyReceipt)
 import Setup
 import Transport
@@ -22,7 +24,10 @@ import qualified Data.Text as T
 import Data.Text (Text)
 
 
-data Bridge = Bridge { bridgeCrypto :: BrowserCrypto, bridgeService :: Service, bridgeConfig :: MVar Value, bridgeError :: IORef Text, bridgeContact :: IORef Value, bridgeConnections :: IORef (S.Set Text), bridgeThread :: MVar (Maybe (Async ())) }
+data Bridge = Bridge
+ { bridgeCrypto :: BrowserCrypto, bridgeService :: Service, bridgeConfig :: MVar Value
+ , bridgeError :: IORef Text, bridgeContact :: IORef Value, bridgeConnections :: IORef (S.Set Text)
+ , bridgeThread :: MVar (Maybe (Async ())), bridgeKeyring :: MVar (Maybe HostKeys) }
 saveRelay :: Bridge -> Value -> IO ()
 saveRelay b = saveValue (bridgeService b) "local/relay"
 expiry :: Value -> Double
@@ -32,6 +37,7 @@ newBridge :: BrowserCrypto -> Service -> IO Bridge
 newBridge browser service = do
  config <- newMVar Null
  b <- Bridge browser service config <$> newIORef "" <*> newIORef Null <*> newIORef S.empty <*> newMVar Nothing
+  <*> newMVar Nothing
  loaded <- try $ do
   saved <- loadValue service "local/device" Null
   if saved==Null then pure Null else do
@@ -52,7 +58,33 @@ newBridge browser service = do
 startBridge :: Bridge -> IO ()
 startBridge b = modifyMVar_ (bridgeThread b) $ \existing -> case existing of
  Just _ -> pure existing
- Nothing -> Just <$> async (runBridge b)
+ Nothing -> Just <$> async (concurrently_ (prepareHostKeys b) (runBridge b))
+
+prepareHostKeys :: Bridge -> IO ()
+prepareHostKeys b = do
+ awaitBrowser (bridgeCrypto b)
+ result <- try (hostKeys b)
+ case result of
+  Left (errorValue::SomeException) -> rethrowAsync errorValue
+  Right _ -> pure ()
+
+hostKeys :: Bridge -> IO HostKeys
+hostKeys b = modifyMVar (bridgeKeyring b) $ \cached -> case cached of
+ Just ready -> pure (cached,ready)
+ Nothing -> do
+  machine <- fmap deviceKey <$> readNativeDevice
+  saved <- loadValue (bridgeService b) hostKeysKey Null
+  pairing <- loadValue (bridgeService b) "local/device" Null
+  chosen <- case planHostKeys machine (readHostKeys saved) (readHostKeys pairing) of
+   KeepKeys existing -> pure existing
+   AdoptKeys existing -> keep existing
+   MakeKeys -> do
+    (private,public) <- keypair (bridgeCrypto b)
+    keep (HostKeys private public machine)
+  pure (Just chosen,chosen)
+ where
+ keep stored = saveValue (bridgeService b) hostKeysKey stored >> pure stored
+
 saveConfig :: Bridge -> Value -> IO ()
 saveConfig b = saveValue (bridgeService b) "local/device"
 savedRelay :: Bridge -> IO Value
@@ -84,7 +116,8 @@ createPairing b input = modifyMVar (bridgeConfig b) $ \current -> do
  require (current==Null) 409 "Revoke the existing pairing before creating another"
  selected <- if boolean (get input "local") then localConnection (repositoryRoot (bridgeService b)) else if boolean (get input "saved") then savedRelay b else pure input
  connection <- validateConnection (put "format" (str connectionFormat) selected)
- (private,public) <- keypair (bridgeCrypto b)
+ requireBrowser (bridgeCrypto b)
+ HostKeys private public _ <- hostKeys b
  identity <- Service.corporaIdentity (bridgeService b)
  address <- publicId (at identity "id")
  let relay = at connection "relay"

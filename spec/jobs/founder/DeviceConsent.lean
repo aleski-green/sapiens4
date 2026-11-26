@@ -104,6 +104,21 @@ def withdrawConsentBeforeTheOtherDeviceApproves : IO Unit := withRelay fun relay
       let locations ← IO.ofExcept <| registered.mapM (fun corpora => stringField corpora "location")
       IO.ofExcept <| requireThat "cancelled device registered a remote corpora" (locations.toList == ["Local"])
 
+def keepOneHostKeyAcrossPairings : IO Unit := withRelay fun relay admin =>
+  IO.FS.withTempDir fun directory => do
+    let original ← withCryptoHost directory fun host => do
+      let key ← IO.ofExcept <| stringField (← invitationFor host relay admin) "desktop"
+      let revoked ← host.api "POST" "/api/remote/revoke" (json% {})
+      IO.ofExcept <| fieldsMatch revoked (json% {revoked: true})
+      let again ← IO.ofExcept <| stringField (← invitationFor host relay admin) "desktop"
+      IO.ofExcept <| requireThat "pairing made a new host key" (again == key)
+      let cleared ← host.api "POST" "/api/remote/revoke" (json% {})
+      IO.ofExcept <| fieldsMatch cleared (json% {revoked: true})
+      return key
+    withCryptoHost directory fun host => do
+      let restarted ← IO.ofExcept <| stringField (← invitationFor host relay admin) "desktop"
+      IO.ofExcept <| requireThat "restart made a new host key" (restarted == original)
+
 private structure Mailbox where
   relay : String
   path : String

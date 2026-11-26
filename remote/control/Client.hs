@@ -4,6 +4,7 @@ import Types
 import qualified Telemetry
 import Crypto
 import BrowserCrypto
+import HostKeys (HostKeys(..))
 import Transport
 import Control.Concurrent.MVar
 import Control.Concurrent.Async (AsyncCancelled)
@@ -108,12 +109,15 @@ validateInvitation time value = do
  void (decodeBase64 (get value "desktop") (Just 32))
  pure relay
 
-invitation :: BrowserCrypto -> Value -> IO Client
-invitation browser value = do
+invitation :: BrowserCrypto -> IO HostKeys -> Value -> IO Client
+invitation browser loadKeys value = do
  time <- seconds
  relay <- validated (validateInvitation time value)
- (private,public) <- keypair browser
- newClient browser (obj [("relay",str relay),("room",get value "room"),("token",get value "token"),("desktop",get value "desktop"),("private",str private),("public",str public)])
+ requireBrowser browser
+ owned <- loadKeys
+ newClient browser (obj
+  [("relay",str relay),("room",get value "room"),("token",get value "token"),("desktop",get value "desktop")
+  ,("private",str (hostPrivate owned)),("public",str (hostPublic owned))])
 pairClient :: Client -> Value -> IO Value
 pairClient c value = do
  time <- seconds

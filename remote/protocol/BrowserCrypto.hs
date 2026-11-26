@@ -38,6 +38,9 @@ browserConnected crypto = not . M.null <$> readTVarIO (cryptoWindows crypto)
 awaitBrowser :: BrowserCrypto -> IO ()
 awaitBrowser crypto = atomically $ readTVar (cryptoWindows crypto) >>= STM.check . not . M.null
 
+requireBrowser :: BrowserCrypto -> IO ()
+requireBrowser crypto = browserConnected crypto >>= \connected -> unless connected (throwIO windowRequired)
+
 browserCall :: BrowserCrypto -> Text -> Value -> IO Value
 browserCall crypto operation input = mask $ \restore -> do
  (identity,answer) <- atomically $ do

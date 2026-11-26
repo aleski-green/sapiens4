@@ -23,6 +23,54 @@ def retainModelSettingsAcrossRestart : IO Unit := IO.FS.withTempDir fun director
     IO.ofExcept <| fieldsMatch inherited (json% {defaults: $(defaults), overrides: {}})
     discard <| host.completedMessage owner "Use the corpora default again"
 
+def keepOneEnvironmentAcrossRestart : IO Unit := IO.FS.withTempDir fun directory => IO.FS.withTempDir fun other => do
+  let environment := fun (host : Host) => do
+    let corpora ← host.api "GET" "/api/corpora"
+    IO.ofExcept <| corpora.getObjVal? "environment" >>= (stringField · "id")
+  let first ← withHost directory environment
+  let again ← withHost directory environment
+  let elsewhere ← withHost other environment
+  IO.ofExcept <| requireThat "restart changed the environment" (!first.isEmpty && again == first)
+  IO.ofExcept <| requireThat "two data folders shared one environment" (elsewhere != first)
+
+def shareHistoryWithoutDeviceKeys : IO Unit := IO.FS.withTempDir fun directory => do
+  withHost directory fun host => do
+    let corpora ← host.api "GET" "/api/corpora"
+    let whole ← host.api "GET" "/api/yoke/history?after=0"
+    let later ← host.api "GET" "/api/yoke/history?after=1"
+    let rejected ← host.api "GET" "/api/yoke/history?after=first" none 400
+    IO.ofExcept do
+      let reason ← stringField rejected "error"
+      requireThat "bad cursor was not explained" (!reason.isEmpty)
+      let environment ← corpora.getObjVal? "environment" >>= (stringField · "id")
+      requireThat "history named another environment" ((← stringField whole "environment") == environment)
+      let first ← (← whole.getObjValAs? (Array Json) "appends").mapM (·.getObjValAs? Nat "appendId")
+      let rest ← (← later.getObjValAs? (Array Json) "appends").mapM (·.getObjValAs? Nat "appendId")
+      requireThat "history missed the first write" (first.contains 1)
+      requireThat "history repeated writes before the cursor" (rest.all (· > 1))
+      requireThat "history shared a device-only key" ((whole.compress.splitOn "local/").length == 1)
+
+private def catchUp (url : String) (directory : FilePath) : IO Json := do
+  let root ← repoRoot
+  let command := #["yoke", "catch-up", "--from", url, "--data-dir", directory.toString]
+  let output ← IO.Process.output {cmd := (binary root "sapiens4").toString, args := command, cwd := root}
+  unless output.exitCode == 0 do throw <| IO.userError s!"catch-up failed: {output.stdout}{output.stderr}"
+  IO.ofExcept <| Json.parse output.stdout.trimAscii.toString
+
+def catchUpWithoutRepeating : IO Unit := IO.FS.withTempDir fun directory => IO.FS.withTempDir fun standby => do
+  let (sapi, first, second) ← withHost directory fun host => do
+    let sapi ← host.agent "Reviewer"
+    let first ← catchUp host.url standby
+    let second ← catchUp host.url standby
+    return (sapi, first, second)
+  IO.ofExcept do
+    requireThat "catch-up copied nothing" ((← first.getObjValAs? Nat "applied") > 0)
+    requireThat "second catch-up repeated writes" ((← second.getObjValAs? Nat "applied") == 0)
+  withHost standby fun host => do
+    let state ← host.state
+    let copied ← IO.ofExcept <| state.getObjVal? "agents" >>= (uniqueRecord · "id" (toJson sapi))
+    IO.ofExcept <| fieldsMatch copied (json% {name: "Reviewer"})
+
 private def mcpSession (url : String) (requests : Array Json) : IO (Array Json) := do
   let root ← repoRoot
   let handshake := json% {jsonrpc: "2.0", id: 0, method: "initialize", params: {

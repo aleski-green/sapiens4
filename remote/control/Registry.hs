@@ -226,7 +226,9 @@ canApprovePairing closed pending = not closed && maybe False (not . pairCancelle
 beginPair :: Registry -> Value -> IO Value
 beginPair registry input = do
  reporter <- readIORef (serviceTelemetry (registryService registry))
- client <- invitation (bridgeCrypto (registryBridge registry)) input >>= \value -> pure value {clientTelemetry=reporter}
+ let bridge = registryBridge registry
+ invited <- invitation (bridgeCrypto bridge) (hostKeys bridge) input
+ let client = invited {clientTelemetry=reporter}
  identity <- newId
  config <- readMVar (clientConfig client)
  code <- confirmationCode (get input "desktop") (get config "public") (at input "room")
